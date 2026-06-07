@@ -25,7 +25,7 @@
 
 | Phase | Name | Milestone URL | Open | Closed | Total |
 |:--|:--|:--|--:|--:|--:|
-| 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 5 | 0 | 5 |
+| 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 4 | 1 | 5 |
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 5 | 0 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 5 | 0 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 4 | 0 | 4 |
@@ -36,7 +36,7 @@
 
 | Task ID | Issue | Title | Status |
 |:--|:--|:--|:--|
-| T1.1 | #21 | Add ActionIntent schema and interpreter service | open |
+| T1.1 | #21 | Add ActionIntent schema and interpreter service | closed by PR #47 |
 | T1.2 | #22 | Inject scene planner into runtime | open |
 | T1.3 | #23 | Expand runtime trace contract | open |
 | T1.4 | #24 | Strengthen fixture/source-of-truth validation | open |
@@ -73,7 +73,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 
 ## Phase Checklist
 
-- [ ] Phase 1: Core Runtime Hardening (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
+- [ ] Phase 1: Core Runtime Hardening (1/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
 - [ ] Phase 2: Story Craft and Provider Contracts (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [ ] Phase 3: Desktop Studio Skeleton (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [ ] Phase 4: Media and Job Pipeline (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
@@ -83,7 +83,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 ## Current Status
 
 **Active Phase**: Phase 1 — Core Runtime Hardening
-**Active Task**: T1.1 Add ActionIntent schema and interpreter service (Issue #21)
+**Active Task**: T1.2 Inject scene planner into runtime (Issue #22)
 **Blockers**: None
 
 ## Governance Status
@@ -109,3 +109,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | Date | Session | Summary |
 |:--|:--|:--|
 | 2026-06-07 | Planning | Analyzed current MVP and PRD full-version gaps; created GitHub milestones #9-#14 and issues #21-#46. |
+| 2026-06-07 | Execution | Completed #21 via PR #47: added typed ActionIntent, unsupported-input no-commit behavior, regression tests, and project memory rule. |
