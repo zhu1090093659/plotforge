@@ -1,4 +1,4 @@
-use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner};
+use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner, ScenePlannerError};
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
     ActionIntent, ProjectData, RuntimeError, RuntimeTrace, Scene, StoryState, WorldDelta,
@@ -14,13 +14,16 @@ pub enum RuntimeEngineError {
     MissingScene(String),
     #[error("unsupported player action: {0}")]
     UnsupportedAction(String),
+    #[error(transparent)]
+    Planner(#[from] ScenePlannerError),
 }
 
 #[derive(Clone, Debug)]
-pub struct RuntimeSession {
+pub struct RuntimeSession<P = MockAgentPipeline> {
     project: ProjectData,
     story_state: StoryState,
     world_state: WorldState,
+    scene_planner: P,
 }
 
 #[derive(Clone, Debug)]
@@ -29,12 +32,22 @@ pub struct RuntimeStep {
     pub trace: RuntimeTrace,
 }
 
-impl RuntimeSession {
+impl RuntimeSession<MockAgentPipeline> {
     pub fn new(project: ProjectData) -> Self {
+        Self::with_scene_planner(project, MockAgentPipeline)
+    }
+}
+
+impl<P> RuntimeSession<P>
+where
+    P: ScenePlanner,
+{
+    pub fn with_scene_planner(project: ProjectData, scene_planner: P) -> Self {
         Self {
             story_state: project.story_state.clone(),
             world_state: project.world_state.clone(),
             project,
+            scene_planner,
         }
     }
 
@@ -68,13 +81,13 @@ impl RuntimeSession {
                 RuntimeEngineError::MissingScene(self.story_state.current_scene_key.clone())
             })?;
 
-        let plan = MockAgentPipeline.plan_next_scene(ScenePlanRequest {
+        let plan = self.scene_planner.plan_next_scene(ScenePlanRequest {
             project: &self.project,
             story_state: &self.story_state,
             world_state: &world_state_after,
             player_input,
             action_type,
-        });
+        })?;
 
         let next_scene = if action_type == "continue" {
             current_scene

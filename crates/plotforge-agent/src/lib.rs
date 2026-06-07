@@ -19,15 +19,44 @@ pub struct ScenePlan {
     pub fallback_used: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScenePlannerError {
+    pub code: String,
+    pub message: String,
+}
+
+impl ScenePlannerError {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ScenePlannerError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ScenePlannerError {}
+
 pub trait ScenePlanner {
-    fn plan_next_scene(&self, request: ScenePlanRequest<'_>) -> ScenePlan;
+    fn plan_next_scene(
+        &self,
+        request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError>;
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct MockAgentPipeline;
 
 impl ScenePlanner for MockAgentPipeline {
-    fn plan_next_scene(&self, request: ScenePlanRequest<'_>) -> ScenePlan {
+    fn plan_next_scene(
+        &self,
+        request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
         let next_turn = request.story_state.turn + 1;
 
         if request.action_type == "continue" {
@@ -44,11 +73,11 @@ impl ScenePlanner for MockAgentPipeline {
                 &request.project.story_craft,
                 &request.project.characters,
             );
-            return ScenePlan {
+            return Ok(ScenePlan {
                 scene,
                 review,
                 fallback_used,
-            };
+            });
         }
 
         let scene = dynasty_scene(next_turn, &request);
@@ -57,11 +86,11 @@ impl ScenePlanner for MockAgentPipeline {
             &request.project.story_craft,
             &request.project.characters,
         );
-        ScenePlan {
+        Ok(ScenePlan {
             scene,
             review,
             fallback_used: false,
-        }
+        })
     }
 }
 
@@ -231,13 +260,15 @@ mod tests {
             scenes: Vec::new(),
         };
 
-        let plan = MockAgentPipeline.plan_next_scene(ScenePlanRequest {
-            project: &project,
-            story_state: &project.story_state,
-            world_state: &project.world_state,
-            player_input: "Raise the levy",
-            action_type: "raise_tax",
-        });
+        let plan = MockAgentPipeline
+            .plan_next_scene(ScenePlanRequest {
+                project: &project,
+                story_state: &project.story_state,
+                world_state: &project.world_state,
+                player_input: "Raise the levy",
+                action_type: "raise_tax",
+            })
+            .expect("plan");
 
         assert_eq!(plan.scene.key, "court-crisis-001");
         assert!(plan.review.passes());
@@ -268,13 +299,15 @@ mod tests {
             scenes: Vec::new(),
         };
 
-        let plan = MockAgentPipeline.plan_next_scene(ScenePlanRequest {
-            project: &project,
-            story_state: &project.story_state,
-            world_state: &project.world_state,
-            player_input: "continue",
-            action_type: "continue",
-        });
+        let plan = MockAgentPipeline
+            .plan_next_scene(ScenePlanRequest {
+                project: &project,
+                story_state: &project.story_state,
+                world_state: &project.world_state,
+                player_input: "continue",
+                action_type: "continue",
+            })
+            .expect("plan");
 
         assert!(plan.fallback_used);
         assert!(plan.scene.key.starts_with("fallback-"));
@@ -291,13 +324,15 @@ mod tests {
             ("inspect_corruption", "court-insider"),
             ("pay_army", "border-payroll"),
         ] {
-            let plan = pipeline.plan_next_scene(ScenePlanRequest {
-                project: &project,
-                story_state: &project.story_state,
-                world_state: &project.world_state,
-                player_input: action_type,
-                action_type,
-            });
+            let plan = pipeline
+                .plan_next_scene(ScenePlanRequest {
+                    project: &project,
+                    story_state: &project.story_state,
+                    world_state: &project.world_state,
+                    player_input: action_type,
+                    action_type,
+                })
+                .expect("plan");
             assert!(
                 plan.scene.plot_thread_updates.contains_key(expected_thread),
                 "{action_type} should update {expected_thread}"
