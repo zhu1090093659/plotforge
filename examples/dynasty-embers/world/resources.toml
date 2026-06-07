@@ -1,0 +1,41 @@
+[[resources]]
+key = "treasury"
+label = "Treasury"
+initial = 40
+min = 0
+max = 100
+
+[[resources]]
+key = "public_order"
+label = "Public order"
+initial = 55
+min = 0
+max = 100
+
+[[resources]]
+key = "army_morale"
+label = "Army morale"
+initial = 45
+min = 0
+max = 100
+
+[[resources]]
+key = "court_stability"
+label = "Court stability"
+initial = 50
+min = 0
+max = 100
+
+[[resources]]
+key = "local_control"
+label = "Local control"
+initial = 48
+min = 0
+max = 100
+
+[[resources]]
+key = "enemy_pressure"
+label = "Enemy pressure"
+initial = 70
+min = 0
+max = 100

@@ -1,0 +1,15 @@
+[package]
+name = "plotforge-export"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+plotforge-schema.workspace = true
+plotforge-storage.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

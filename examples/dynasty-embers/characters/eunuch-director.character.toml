@@ -1,0 +1,9 @@
+id = "eunuch-director"
+name = "Eunuch Director"
+role = "Palace intelligence channel"
+traits = [
+    "watchful",
+    "ambiguous",
+]
+visual_card = "Eunuch Director, restrained historical portrait"
+voice_card = "Eunuch Director, concise court speech"

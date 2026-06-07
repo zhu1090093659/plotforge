@@ -4,6 +4,8 @@ node_modules/
 dist/
 build/
 *.log
+**/traces/*.json
+**/exports/
 .env
 .env.*
 !.env.example

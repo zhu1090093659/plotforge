@@ -1,0 +1,10 @@
+[package]
+name = "plotforge-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+plotforge-schema.workspace = true
+plotforge-storycraft.workspace = true
