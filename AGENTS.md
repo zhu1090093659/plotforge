@@ -25,6 +25,7 @@ The current MVP contains:
 
 - Keep rule evaluation in `plotforge-rule`; do not duplicate rule behavior in CLI, UI, storage, export, or tests.
 - Keep runtime state transitions in `plotforge-runtime`; agents propose content and runtime/rules commit state.
+- Player/freeform input must resolve to a typed `ActionIntent`; unsupported input must not mutate runtime state or silently map to a default action.
 - Keep persistence and fixture file layout in `plotforge-storage`.
 - Keep static export behavior in `plotforge-export`; exported bundles must not include private traces, provider config, raw provider responses, or secrets.
 - Keep CLI behavior in `plotforge-cli`; CLI should orchestrate crates instead of owning business logic.

@@ -134,6 +134,45 @@ pub struct Choice {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActionIntent {
+    pub status: ActionIntentStatus,
+    pub action_type: Option<String>,
+    pub matched_terms: Vec<String>,
+    pub reason: Option<String>,
+}
+
+impl ActionIntent {
+    pub fn supported(action_type: impl Into<String>, matched_terms: Vec<String>) -> Self {
+        Self {
+            status: ActionIntentStatus::Supported,
+            action_type: Some(action_type.into()),
+            matched_terms,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            status: ActionIntentStatus::Unsupported,
+            action_type: None,
+            matched_terms: Vec::new(),
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn action_type(&self) -> Option<&str> {
+        self.action_type.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionIntentStatus {
+    Supported,
+    Unsupported,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Rule {
     pub id: String,
     pub action_type: String,
@@ -265,6 +304,18 @@ mod tests {
         let encoded = serde_json::to_string(&game).expect("serialize game");
         let decoded: GameProject = serde_json::from_str(&encoded).expect("deserialize game");
         assert_eq!(decoded, game);
+    }
+
+    #[test]
+    fn action_intent_roundtrips_json() {
+        let intent = ActionIntent::supported("raise_tax", vec!["加征".into(), "辽饷".into()]);
+
+        let encoded = serde_json::to_string(&intent).expect("serialize intent");
+        let decoded: ActionIntent = serde_json::from_str(&encoded).expect("deserialize intent");
+
+        assert_eq!(decoded, intent);
+        assert_eq!(decoded.status, ActionIntentStatus::Supported);
+        assert_eq!(decoded.action_type(), Some("raise_tax"));
     }
 
     #[test]

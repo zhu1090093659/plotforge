@@ -71,6 +71,36 @@ fn cli_rejects_interactive_play_for_now() {
 }
 
 #[test]
+fn cli_rejects_unsupported_play_input_without_trace() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    run([
+        "new",
+        "demo",
+        "--path",
+        project.to_str().unwrap(),
+        "--force",
+    ])
+    .assert_success_contains("created Dynasty Embers");
+
+    let output = Command::new(bin())
+        .args([
+            "play",
+            project.to_str().unwrap(),
+            "--once",
+            "--input",
+            "朕今日只想题诗赏月",
+        ])
+        .output()
+        .expect("run command");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported player action"));
+    assert!(!project.join("traces/latest.json").exists());
+}
+
+#[test]
 fn committed_example_fixture_is_cli_valid() {
     let root = repo_root();
     let fixture = root.join("examples/dynasty-embers");
