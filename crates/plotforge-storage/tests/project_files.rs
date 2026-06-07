@@ -1,4 +1,8 @@
-use std::fs;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use plotforge_schema::{
     ActionIntent, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace, RuntimeTraceDiagnostic,
@@ -84,20 +88,127 @@ fn write_trace_writes_trace_id_and_latest() {
 
 #[test]
 fn committed_fixture_matches_generated_demo_semantics() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let committed_fixture = repo_root().join("examples/dynasty-embers");
+    let temp = tempfile::tempdir().expect("tempdir");
+    let generated_fixture = temp.path().join("dynasty-embers");
+    create_demo_project(&generated_fixture, false).expect("generate fixture");
+
+    assert_fixture_files_match_generated_demo(&committed_fixture, &generated_fixture);
+
+    let committed =
+        canonical_project(load_project(&committed_fixture).expect("load committed fixture"));
+    let generated_loaded =
+        canonical_project(load_project(&generated_fixture).expect("load generated fixture"));
+    let generated_in_memory = canonical_project(dynasty_embers_project());
+
+    assert_eq!(committed, generated_loaded);
+    assert_eq!(committed, generated_in_memory);
+}
+
+#[test]
+fn committed_fixture_contains_no_generated_trace_json() {
+    let fixture = repo_root().join("examples/dynasty-embers");
+    let trace_files = trace_json_files(&fixture);
+    let trace_file_list = trace_files
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    assert!(
+        trace_files.is_empty(),
+        "committed fixture contains generated trace json: {trace_file_list}"
+    );
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
-        .expect("repo root");
-    let committed = load_project(root.join("examples/dynasty-embers")).expect("load fixture");
-    let generated = dynasty_embers_project();
+        .expect("repo root")
+}
 
-    assert_eq!(committed.game.id, generated.game.id);
-    assert_eq!(committed.game.entry_scene, generated.game.entry_scene);
-    assert_eq!(committed.resources.len(), generated.resources.len());
-    assert_eq!(committed.characters.len(), generated.characters.len());
-    assert_eq!(committed.rules.len(), generated.rules.len());
-    assert_eq!(
-        committed.story_craft.plot_threads.len(),
-        generated.story_craft.plot_threads.len()
-    );
+fn assert_fixture_files_match_generated_demo(committed_fixture: &Path, generated_fixture: &Path) {
+    let committed_manifest = source_file_manifest(committed_fixture);
+    let generated_manifest = source_file_manifest(generated_fixture);
+    let committed_paths = committed_manifest.keys().collect::<Vec<_>>();
+    let generated_paths = generated_manifest.keys().collect::<Vec<_>>();
+
+    assert_eq!(committed_paths, generated_paths);
+    for (relative_path, generated_bytes) in generated_manifest {
+        let committed_bytes = committed_manifest
+            .get(&relative_path)
+            .unwrap_or_else(|| panic!("committed fixture missing {}", relative_path.display()));
+        assert!(
+            committed_bytes == &generated_bytes,
+            "fixture source file drifted from generated demo: {}",
+            relative_path.display()
+        );
+    }
+}
+
+fn canonical_project(mut project: plotforge_schema::ProjectData) -> plotforge_schema::ProjectData {
+    project
+        .resources
+        .sort_by(|left, right| left.key.cmp(&right.key));
+    project
+        .characters
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    project.rules.sort_by(|left, right| left.id.cmp(&right.id));
+    project
+        .scenes
+        .sort_by(|left, right| left.key.cmp(&right.key));
+    project
+        .story_craft
+        .plot_threads
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    project.story_craft.emotional_arc.sort_by(|left, right| {
+        left.scene_key
+            .cmp(&right.scene_key)
+            .then_with(|| left.target_emotion.cmp(&right.target_emotion))
+            .then_with(|| left.intensity.cmp(&right.intensity))
+    });
+    project
+}
+
+fn source_file_manifest(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    let mut manifest = BTreeMap::new();
+    collect_source_files(root, root, &mut manifest);
+    manifest
+}
+
+fn collect_source_files(root: &Path, dir: &Path, manifest: &mut BTreeMap<PathBuf, Vec<u8>>) {
+    let mut entries = fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("read fixture directory {}: {error}", dir.display()))
+        .map(|entry| entry.expect("fixture directory entry").path())
+        .collect::<Vec<_>>();
+    entries.sort();
+
+    for path in entries {
+        if path.is_dir() {
+            collect_source_files(root, &path, manifest);
+            continue;
+        }
+
+        let relative_path = path
+            .strip_prefix(root)
+            .unwrap_or_else(|error| panic!("strip fixture prefix {}: {error}", path.display()))
+            .to_path_buf();
+        let bytes = fs::read(&path)
+            .unwrap_or_else(|error| panic!("read fixture file {}: {error}", path.display()));
+        manifest.insert(relative_path, bytes);
+    }
+}
+
+fn trace_json_files(root: &Path) -> Vec<PathBuf> {
+    source_file_manifest(root)
+        .into_keys()
+        .filter(|path| {
+            path.components()
+                .any(|component| component.as_os_str() == "traces")
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "json")
+        })
+        .collect()
 }
