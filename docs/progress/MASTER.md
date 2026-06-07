@@ -26,7 +26,7 @@
 | Phase | Name | Milestone URL | Open | Closed | Total |
 |:--|:--|:--|--:|--:|--:|
 | 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 0 | 5 | 5 |
-| 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 1 | 4 | 5 |
+| 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 0 | 5 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 5 | 0 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 4 | 0 | 4 |
 | 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 4 | 0 | 4 |
@@ -45,7 +45,7 @@
 | T2.2 | #27 | Add agent output proposal contracts | closed by PR #53 |
 | T2.3 | #28 | Add TextModelProvider trait and fake provider pipeline | closed by PR #54 |
 | T2.4 | #29 | Add reference-library compliance scaffolding | closed by PR #55 |
-| T2.5 | #30 | Add JSON Schema and TypeScript contract export | open |
+| T2.5 | #30 | Add JSON Schema and TypeScript contract export | closed by PR #56 |
 | T3.1 | #31 | Initialize creator desktop frontend workspace | open |
 | T3.2 | #32 | Add Tauri command bridge | open |
 | T3.3 | #33 | Build project dashboard and source-file editor shell | open |
@@ -74,7 +74,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 ## Phase Checklist
 
 - [x] Phase 1: Core Runtime Hardening (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
-- [ ] Phase 2: Story Craft and Provider Contracts (4/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
+- [x] Phase 2: Story Craft and Provider Contracts (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [ ] Phase 3: Desktop Studio Skeleton (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [ ] Phase 4: Media and Job Pipeline (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
 - [ ] Phase 5: Persistence, Debugger, and Export v2 (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
@@ -82,8 +82,8 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 
 ## Current Status
 
-**Active Phase**: Phase 2 — Story Craft and Provider Contracts
-**Active Task**: T2.5 Add JSON Schema and TypeScript contract export (Issue #30)
+**Active Phase**: Phase 3 — Desktop Studio Skeleton
+**Active Task**: T3.1 Initialize creator desktop frontend workspace (Issue #31)
 **Blockers**: None
 
 ## Governance Status
@@ -100,8 +100,8 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #30: add JSON Schema and TypeScript contract export.
-2. Keep provider contracts fake/mockable and avoid real model SDKs or network calls in Phase 2.
+1. Implement #31: initialize the creator desktop frontend workspace.
+2. Keep frontend contracts generated from Rust schema and avoid duplicating business logic in UI code.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
 ## Session Log
@@ -118,3 +118,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-07 | Execution | Completed #27 via PR #53: added typed scene plan, beat draft, and review agent output proposals, role/payload validation, no-direct-state-commit rejection tests, and scene assembly validation. |
 | 2026-06-07 | Execution | Completed #28 via PR #54: added TextModelProvider, deterministic fake provider pipeline, raw JSON proposal validation, provider error/timeout/schema/JSON fallback tests, and runtime trace-visible provider errors. |
 | 2026-06-07 | Execution | Completed #29 via PR #55: added summary-only reference analysis schema, storage compliance validation, large raw-text rejection, demo reference fixture, and AGENTS reference-library rule. |
+| 2026-06-07 | Execution | Completed #30 via PR #56: added generated JSON Schema and TypeScript contract snapshots, contract version envelope checks, export/check scripts, CI contract drift gate, and closed Phase 2 with drift_score 0. |
