@@ -25,7 +25,7 @@
 
 | Phase | Name | Milestone URL | Open | Closed | Total |
 |:--|:--|:--|--:|--:|--:|
-| 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 1 | 4 | 5 |
+| 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 0 | 5 | 5 |
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 5 | 0 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 5 | 0 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 4 | 0 | 4 |
@@ -40,7 +40,7 @@
 | T1.2 | #22 | Inject scene planner into runtime | closed by PR #48 |
 | T1.3 | #23 | Expand runtime trace contract | closed by PR #49 |
 | T1.4 | #24 | Strengthen fixture/source-of-truth validation | closed by PR #50 |
-| T1.5 | #25 | Add export whitelist package audit foundation | open |
+| T1.5 | #25 | Add export whitelist package audit foundation | closed by PR #51 |
 | T2.1 | #26 | Enrich StoryCraft schema toward PRD fields | open |
 | T2.2 | #27 | Add agent output proposal contracts | open |
 | T2.3 | #28 | Add TextModelProvider trait and fake provider pipeline | open |
@@ -73,7 +73,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 
 ## Phase Checklist
 
-- [ ] Phase 1: Core Runtime Hardening (4/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
+- [x] Phase 1: Core Runtime Hardening (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
 - [ ] Phase 2: Story Craft and Provider Contracts (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [ ] Phase 3: Desktop Studio Skeleton (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [ ] Phase 4: Media and Job Pipeline (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
@@ -82,8 +82,8 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 
 ## Current Status
 
-**Active Phase**: Phase 1 — Core Runtime Hardening
-**Active Task**: T1.5 Add export whitelist package audit foundation (Issue #25)
+**Active Phase**: Phase 2 — Story Craft and Provider Contracts
+**Active Task**: T2.1 Enrich StoryCraft schema toward PRD fields (Issue #26)
 **Blockers**: None
 
 ## Governance Status
@@ -100,8 +100,8 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #25: add export whitelist package audit foundation and provider/trace exclusion tests.
-2. Keep Phase 1 changes scoped to core crates and tests before desktop/provider/media work.
+1. Implement #26: enrich StoryCraft schema toward PRD fields while preserving fixture compatibility.
+2. Keep provider contracts fake/mockable and avoid real model SDKs or network calls in Phase 2.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
 ## Session Log
@@ -113,3 +113,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-07 | Execution | Completed #22 via PR #48: injected runtime scene planner, added explicit planner errors, and covered fake planner success, fallback-visible, and no-commit error paths. |
 | 2026-06-07 | Execution | Completed #23 via PR #49: added structured redaction-safe trace fields for intent, rule, planner, diagnostics, fallback/errors, CLI inspect output, and regression tests. |
 | 2026-06-07 | Execution | Completed #24 via PR #50: strengthened committed fixture validation against freshly generated source files, canonical project semantics, and no generated trace JSON. |
+| 2026-06-07 | Execution | Completed #25 via PR #51: added static export whitelist auditing, safe asset path validation, provider/trace/raw response exclusion tests, and HTTP smoke package checks. Phase 1 milestone closed with drift_score 0. |
