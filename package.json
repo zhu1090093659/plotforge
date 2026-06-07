@@ -1,0 +1,16 @@
+{
+  "name": "plotforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/creator-desktop"
+  ],
+  "scripts": {
+    "creator-desktop:dev": "npm run dev --workspace @plotforge/creator-desktop",
+    "creator-desktop:typecheck": "npm run typecheck --workspace @plotforge/creator-desktop",
+    "creator-desktop:test": "npm run test --workspace @plotforge/creator-desktop",
+    "creator-desktop:build": "npm run build --workspace @plotforge/creator-desktop",
+    "creator-desktop:qa": "npm run creator-desktop:typecheck && npm run creator-desktop:test && npm run creator-desktop:build"
+  }
+}
