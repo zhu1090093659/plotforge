@@ -83,6 +83,7 @@ Fixture validation commands:
 - Prefer explicit errors over broad catch-all handling.
 - Do not hardcode secrets, API keys, tokens, provider credentials, or personal paths into source, fixtures, tests, exports, or docs.
 - Static exports must reject obvious secret markers and must not copy private traces or provider configuration.
+- Static export package output must be audited against an explicit whitelist of player files, manifest files, and referenced assets; stale or unexpected files in the output package are errors.
 - Do not introduce hidden network calls in tests or MVP runtime paths.
 
 ## Change Discipline
