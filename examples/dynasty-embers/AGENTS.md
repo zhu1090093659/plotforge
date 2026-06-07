@@ -15,3 +15,4 @@ Build a playable PlotForge story project from local files.
 - Files are source of truth.
 - Do not put API keys in project files or exports.
 - AI output proposes content; engine rules commit state.
+- Reference imports store metadata, rights, short summaries, and structure notes only; do not store large raw copyrighted bodies.

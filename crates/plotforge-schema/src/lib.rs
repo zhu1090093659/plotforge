@@ -105,6 +105,57 @@ pub struct ReferenceModule {
     pub summary: String,
 }
 
+pub const MAX_REFERENCE_SUMMARY_CHARS: usize = 600;
+pub const MAX_REFERENCE_STRUCTURE_NOTE_CHARS: usize = 300;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceAnalysis {
+    pub id: String,
+    pub title: String,
+    pub source: ReferenceSource,
+    pub summary: String,
+    #[serde(default)]
+    pub structure_notes: Vec<ReferenceStructureNote>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceSource {
+    pub source_type: ReferenceSourceType,
+    pub rights: ReferenceRights,
+    pub citation: String,
+    pub user_authorized: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceSourceType {
+    UserImport,
+    PublicDomain,
+    OpenLicense,
+    MethodTemplate,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceRights {
+    UserOwned,
+    UserAuthorized,
+    PublicDomain,
+    OpenLicense,
+    GenericMethod,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceStructureNote {
+    pub label: String,
+    pub summary: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryPromise {
     pub id: String,
@@ -759,6 +810,32 @@ mod tests {
     }
 
     #[test]
+    fn reference_analysis_roundtrips_summary_only_contract() {
+        let analysis = sample_reference_analysis();
+
+        let encoded = serde_json::to_string_pretty(&analysis).expect("serialize reference");
+        let decoded: ReferenceAnalysis =
+            serde_json::from_str(&encoded).expect("deserialize reference");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("reference value");
+
+        assert_eq!(decoded, analysis);
+        assert_eq!(value["source"]["source_type"], "user_import");
+        assert_eq!(value["source"]["rights"], "user_authorized");
+        assert!(value.get("raw_text").is_none());
+        assert!(value.get("body").is_none());
+    }
+
+    #[test]
+    fn reference_analysis_rejects_raw_text_fields() {
+        let mut analysis = serde_json::to_value(sample_reference_analysis()).expect("reference");
+        analysis["raw_text"] = serde_json::json!("large copyrighted body");
+        let error = serde_json::from_value::<ReferenceAnalysis>(analysis)
+            .expect_err("raw text should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn runtime_trace_roundtrips_json() {
         let story_state = StoryState {
             current_scene_key: "court-crisis-001".into(),
@@ -1128,6 +1205,28 @@ mod tests {
                 message: "Proposal advances tax disorder visibly.".into(),
                 resolved: true,
             }],
+        }
+    }
+
+    fn sample_reference_analysis() -> ReferenceAnalysis {
+        ReferenceAnalysis {
+            id: "authorized-crisis-structure".into(),
+            title: "Authorized Crisis Structure Notes".into(),
+            source: ReferenceSource {
+                source_type: ReferenceSourceType::UserImport,
+                rights: ReferenceRights::UserAuthorized,
+                citation: "User supplied notes, local import".into(),
+                user_authorized: true,
+            },
+            summary:
+                "Escalate the visible cost of every court decision without copying source prose."
+                    .into(),
+            structure_notes: vec![ReferenceStructureNote {
+                label: "pressure ladder".into(),
+                summary: "Start with material scarcity, then make legitimacy and loyalty collide."
+                    .into(),
+            }],
+            tags: vec!["political".into(), "pacing".into()],
         }
     }
 }

@@ -5,12 +5,14 @@ use std::{
 };
 
 use plotforge_schema::{
-    ActionIntent, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace, RuntimeTraceDiagnostic,
-    RuntimeTraceStage, RuntimeTraceStageStatus, StoryState, WorldDelta, WorldState,
+    ActionIntent, ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
+    ReferenceStructureNote, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace,
+    RuntimeTraceDiagnostic, RuntimeTraceStage, RuntimeTraceStageStatus, StoryState, WorldDelta,
+    WorldState,
 };
 use plotforge_storage::{
     StorageError, create_demo_project, dynasty_embers_project, load_project, validate_project,
-    write_trace,
+    validate_reference_library, write_reference_analysis, write_trace,
 };
 
 #[test]
@@ -84,6 +86,40 @@ fn write_trace_writes_trace_id_and_latest() {
     assert_eq!(trace_path.file_name().unwrap(), "trace-test.json");
     assert!(project.join("traces/trace-test.json").is_file());
     assert!(project.join("traces/latest.json").is_file());
+}
+
+#[test]
+fn reference_imports_store_metadata_and_summary_only() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let path =
+        write_reference_analysis(&project, &sample_reference_analysis()).expect("write reference");
+    validate_reference_library(&project).expect("reference library valid");
+
+    let json = fs::read_to_string(path).expect("reference json");
+    assert!(json.contains("\"source\""));
+    assert!(json.contains("\"summary\""));
+    assert!(json.contains("\"structure_notes\""));
+    assert!(!json.contains("raw_text"));
+    assert!(!json.contains("copyrighted body"));
+}
+
+#[test]
+fn reference_library_rejects_large_raw_copyrighted_text_fixture() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+    let raw_path = project.join("references/user_imports/paid_novel_chapter.txt");
+    fs::write(&raw_path, "paid novel chapter body ".repeat(400)).expect("write raw text");
+
+    let error = validate_project(&project).expect_err("large raw text should fail validation");
+
+    assert!(matches!(
+        error,
+        StorageError::ReferenceCompliance { reason, .. } if reason.contains("large raw reference text")
+    ));
 }
 
 #[test]
@@ -228,4 +264,23 @@ fn trace_json_files(root: &Path) -> Vec<PathBuf> {
                     .is_some_and(|extension| extension == "json")
         })
         .collect()
+}
+
+fn sample_reference_analysis() -> ReferenceAnalysis {
+    ReferenceAnalysis {
+        id: "authorized-crisis-notes".into(),
+        title: "Authorized Crisis Notes".into(),
+        source: ReferenceSource {
+            source_type: ReferenceSourceType::UserImport,
+            rights: ReferenceRights::UserAuthorized,
+            citation: "User-supplied local notes".into(),
+            user_authorized: true,
+        },
+        summary: "Use scarcity, legitimacy, and faction pressure as structure notes only.".into(),
+        structure_notes: vec![ReferenceStructureNote {
+            label: "pressure sequence".into(),
+            summary: "Start with shortage, then force a legitimacy tradeoff.".into(),
+        }],
+        tags: vec!["authorized".into(), "structure".into()],
+    }
 }
