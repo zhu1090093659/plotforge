@@ -1,7 +1,8 @@
 use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner};
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
-    ProjectData, RuntimeError, RuntimeTrace, Scene, StoryState, WorldDelta, WorldState,
+    ActionIntent, ProjectData, RuntimeError, RuntimeTrace, Scene, StoryState, WorldDelta,
+    WorldState,
 };
 use thiserror::Error;
 
@@ -11,6 +12,8 @@ pub enum RuntimeEngineError {
     Rule(#[from] RuleError),
     #[error("current scene is missing: {0}")]
     MissingScene(String),
+    #[error("unsupported player action: {0}")]
+    UnsupportedAction(String),
 }
 
 #[derive(Clone, Debug)]
@@ -44,7 +47,10 @@ impl RuntimeSession {
     }
 
     pub fn play_once(&mut self, player_input: &str) -> Result<RuntimeStep, RuntimeEngineError> {
-        let action_type = interpret_action(player_input);
+        let action_intent = interpret_action(player_input);
+        let action_type = action_intent
+            .action_type()
+            .ok_or_else(|| RuntimeEngineError::UnsupportedAction(player_input.to_string()))?;
         let choice_id = selected_choice_for_action(action_type);
         let world_state_before = self.world_state.clone();
         let story_state_before = self.story_state.clone();
@@ -111,34 +117,37 @@ impl RuntimeSession {
     }
 }
 
-pub fn interpret_action(player_input: &str) -> &'static str {
+pub fn interpret_action(player_input: &str) -> ActionIntent {
     let normalized = player_input.to_lowercase();
-    if normalized.contains("continue")
-        || normalized.contains("minister")
-        || normalized.contains("听")
+    if let Some(intent) = match_terms(&normalized, "continue", &["continue", "minister", "听"]) {
+        intent
+    } else if let Some(intent) =
+        match_terms(&normalized, "pay_army", &["army", "pay", "军饷", "拨"])
     {
-        "continue"
-    } else if normalized.contains("army")
-        || normalized.contains("pay")
-        || normalized.contains("军饷")
-        || normalized.contains("拨")
+        intent
+    } else if let Some(intent) =
+        match_terms(&normalized, "raise_tax", &["tax", "levy", "辽饷", "加征"])
     {
-        "pay_army"
-    } else if normalized.contains("tax")
-        || normalized.contains("levy")
-        || normalized.contains("辽饷")
-        || normalized.contains("加征")
-    {
-        "raise_tax"
-    } else if normalized.contains("corruption")
-        || normalized.contains("inspect")
-        || normalized.contains("贪")
-        || normalized.contains("查")
-    {
-        "inspect_corruption"
+        intent
+    } else if let Some(intent) = match_terms(
+        &normalized,
+        "inspect_corruption",
+        &["corruption", "inspect", "贪", "查"],
+    ) {
+        intent
     } else {
-        "raise_tax"
+        ActionIntent::unsupported("no supported PlotForge action intent matched the input")
     }
+}
+
+fn match_terms(input: &str, action_type: &str, terms: &[&str]) -> Option<ActionIntent> {
+    let matched_terms = terms
+        .iter()
+        .filter(|term| input.contains(**term))
+        .map(|term| (*term).to_string())
+        .collect::<Vec<_>>();
+
+    (!matched_terms.is_empty()).then(|| ActionIntent::supported(action_type, matched_terms))
 }
 
 fn selected_choice_for_action(action_type: &str) -> &'static str {
@@ -188,9 +197,19 @@ mod tests {
 
     #[test]
     fn interprets_chinese_action_text() {
-        assert_eq!(interpret_action("朕决定加征辽饷"), "raise_tax");
-        assert_eq!(interpret_action("严查贪墨"), "inspect_corruption");
-        assert_eq!(interpret_action("先拨内帑稳住边军军饷"), "pay_army");
+        assert_eq!(
+            interpret_action("朕决定加征辽饷").action_type(),
+            Some("raise_tax")
+        );
+        assert_eq!(
+            interpret_action("严查贪墨").action_type(),
+            Some("inspect_corruption")
+        );
+        assert_eq!(
+            interpret_action("先拨内帑稳住边军军饷").action_type(),
+            Some("pay_army")
+        );
+        assert_eq!(interpret_action("题诗赏月").action_type(), None);
     }
 
     #[test]
