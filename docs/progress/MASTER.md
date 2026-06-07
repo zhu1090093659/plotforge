@@ -25,7 +25,7 @@
 
 | Phase | Name | Milestone URL | Open | Closed | Total |
 |:--|:--|:--|--:|--:|--:|
-| 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 3 | 2 | 5 |
+| 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 2 | 3 | 5 |
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 5 | 0 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 5 | 0 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 4 | 0 | 4 |
@@ -38,7 +38,7 @@
 |:--|:--|:--|:--|
 | T1.1 | #21 | Add ActionIntent schema and interpreter service | closed by PR #47 |
 | T1.2 | #22 | Inject scene planner into runtime | closed by PR #48 |
-| T1.3 | #23 | Expand runtime trace contract | open |
+| T1.3 | #23 | Expand runtime trace contract | closed by PR #49 |
 | T1.4 | #24 | Strengthen fixture/source-of-truth validation | open |
 | T1.5 | #25 | Add export whitelist package audit foundation | open |
 | T2.1 | #26 | Enrich StoryCraft schema toward PRD fields | open |
@@ -73,7 +73,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 
 ## Phase Checklist
 
-- [ ] Phase 1: Core Runtime Hardening (2/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
+- [ ] Phase 1: Core Runtime Hardening (3/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
 - [ ] Phase 2: Story Craft and Provider Contracts (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [ ] Phase 3: Desktop Studio Skeleton (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [ ] Phase 4: Media and Job Pipeline (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
@@ -83,7 +83,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 ## Current Status
 
 **Active Phase**: Phase 1 — Core Runtime Hardening
-**Active Task**: T1.3 Expand runtime trace contract (Issue #23)
+**Active Task**: T1.4 Strengthen fixture/source-of-truth validation (Issue #24)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #23: expand `RuntimeTrace` with redaction-safe runtime intent, rule, planner, fallback, and error diagnostics.
+1. Implement #24: strengthen generated-vs-committed fixture validation and no-generated-trace checks.
 2. Keep Phase 1 changes scoped to core crates and tests before desktop/provider/media work.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -111,3 +111,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-07 | Planning | Analyzed current MVP and PRD full-version gaps; created GitHub milestones #9-#14 and issues #21-#46. |
 | 2026-06-07 | Execution | Completed #21 via PR #47: added typed ActionIntent, unsupported-input no-commit behavior, regression tests, and project memory rule. |
 | 2026-06-07 | Execution | Completed #22 via PR #48: injected runtime scene planner, added explicit planner errors, and covered fake planner success, fallback-visible, and no-commit error paths. |
+| 2026-06-07 | Execution | Completed #23 via PR #49: added structured redaction-safe trace fields for intent, rule, planner, diagnostics, fallback/errors, CLI inspect output, and regression tests. |
