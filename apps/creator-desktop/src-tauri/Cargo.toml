@@ -1,0 +1,22 @@
+[package]
+name = "plotforge-creator-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+repository = "https://github.com/zhu1090093659/plotforge"
+
+[lib]
+name = "plotforge_creator_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "plotforge-creator-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+plotforge-studio = { path = "../../../crates/plotforge-studio" }
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2", features = [] }

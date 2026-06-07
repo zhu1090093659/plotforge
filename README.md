@@ -22,6 +22,8 @@ npm run creator-desktop:dev
 npm run creator-desktop:typecheck
 npm run creator-desktop:test
 npm run creator-desktop:build
+npm run creator-desktop:tauri:check
+npm run creator-desktop:tauri:dev
 npm run creator-desktop:qa
 
 cargo run -p plotforge-cli -- new demo --path examples/dynasty-embers --force
@@ -46,4 +48,4 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 
 ## QA
 
-The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build, CLI smoke, and export smoke. Codex Desktop Computer Use verification is documented in `scripts/qa/computer_use_static_export.md`; it is intentionally local-only and not part of GitHub Actions.
+The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build/Tauri check, CLI smoke, and export smoke. Codex Desktop Computer Use verification is documented in `scripts/qa/computer_use_static_export.md`; it is intentionally local-only and not part of GitHub Actions.
