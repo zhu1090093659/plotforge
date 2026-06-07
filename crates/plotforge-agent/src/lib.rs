@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use plotforge_schema::{
     AgentOutputProposal, AgentProposalPayload, AgentRole, Beat, BeatDraftProposal,
-    BeatDraftsProposal, Choice, NarrativeReview, ProjectData, ReviewProposal, Scene,
-    ScenePlanProposal, StoryState, WorldState,
+    BeatDraftsProposal, Choice, NarrativeFunction, NarrativeReview, ProjectData, ReviewProposal,
+    RuntimeError, Scene, ScenePlanProposal, StoryState, WorldState,
 };
 use plotforge_storycraft::review_scene;
 
@@ -21,6 +21,7 @@ pub struct ScenePlan {
     pub scene: Scene,
     pub review: NarrativeReview,
     pub fallback_used: bool,
+    pub error: Option<RuntimeError>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -265,6 +266,511 @@ pub trait ScenePlanner {
     ) -> Result<ScenePlan, ScenePlannerError>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextModelRequest {
+    pub call_id: String,
+    pub agent: AgentRole,
+    pub scene_key: String,
+    pub prompt: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextModelResponse {
+    pub raw_json: String,
+}
+
+impl TextModelResponse {
+    pub fn json(raw_json: impl Into<String>) -> Self {
+        Self {
+            raw_json: raw_json.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextModelProviderErrorKind {
+    Provider,
+    Timeout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextModelProviderError {
+    pub kind: TextModelProviderErrorKind,
+    pub code: String,
+    pub message: String,
+}
+
+impl TextModelProviderError {
+    pub fn provider(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::Provider,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::Timeout,
+            code: "text_provider_timeout".into(),
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for TextModelProviderError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for TextModelProviderError {}
+
+pub trait TextModelProvider {
+    fn complete(
+        &self,
+        request: &TextModelRequest,
+    ) -> Result<TextModelResponse, TextModelProviderError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ProviderAgentPipeline<P> {
+    provider: P,
+}
+
+impl<P> ProviderAgentPipeline<P> {
+    pub fn new(provider: P) -> Self {
+        Self { provider }
+    }
+}
+
+impl<P> ScenePlanner for ProviderAgentPipeline<P>
+where
+    P: TextModelProvider,
+{
+    fn plan_next_scene(
+        &self,
+        request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
+        let next_turn = request.story_state.turn + 1;
+        let scene_key = format!("provider-scene-{next_turn:03}");
+
+        if request.action_type == "continue" {
+            let (scene, fallback_used, error) = if let Some(scene) = request
+                .project
+                .scene(&request.story_state.current_scene_key)
+            {
+                (scene.clone(), false, None)
+            } else {
+                (
+                    fallback_scene(next_turn, request.action_type),
+                    true,
+                    Some(RuntimeError::redacted(
+                        "fallback_scene",
+                        "Provider pipeline used a fallback scene because the requested scene was missing.",
+                    )),
+                )
+            };
+            let review = review_scene(
+                &scene,
+                &request.project.story_craft,
+                &request.project.characters,
+            );
+            return Ok(ScenePlan {
+                scene,
+                review,
+                fallback_used,
+                error,
+            });
+        }
+
+        match self.provider_scene_plan(&request, &scene_key) {
+            Ok((scene, review)) => Ok(ScenePlan {
+                scene,
+                review,
+                fallback_used: false,
+                error: None,
+            }),
+            Err(error) => {
+                let runtime_error = error.into_runtime_error();
+                let scene = fallback_scene(next_turn, request.action_type);
+                let review = review_scene(
+                    &scene,
+                    &request.project.story_craft,
+                    &request.project.characters,
+                );
+                Ok(ScenePlan {
+                    scene,
+                    review,
+                    fallback_used: true,
+                    error: Some(runtime_error),
+                })
+            }
+        }
+    }
+}
+
+impl<P> ProviderAgentPipeline<P>
+where
+    P: TextModelProvider,
+{
+    fn provider_scene_plan(
+        &self,
+        request: &ScenePlanRequest<'_>,
+        scene_key: &str,
+    ) -> Result<(Scene, NarrativeReview), ProviderPipelineError> {
+        let scene_plan = match self
+            .complete_agent_output(AgentRole::ScenePlanner, request, scene_key)?
+            .output
+        {
+            AgentProposalPayload::ScenePlan(scene_plan) => scene_plan,
+            output => {
+                return Err(ProviderPipelineError::Validation {
+                    agent: AgentRole::ScenePlanner,
+                    message: format!("unexpected payload `{}`", payload_kind(&output)),
+                });
+            }
+        };
+        let beat_drafts = match self
+            .complete_agent_output(AgentRole::BeatWriter, request, scene_key)?
+            .output
+        {
+            AgentProposalPayload::BeatDrafts(beat_drafts) => beat_drafts,
+            output => {
+                return Err(ProviderPipelineError::Validation {
+                    agent: AgentRole::BeatWriter,
+                    message: format!("unexpected payload `{}`", payload_kind(&output)),
+                });
+            }
+        };
+        let review = match self
+            .complete_agent_output(AgentRole::PlotDoctor, request, scene_key)?
+            .output
+        {
+            AgentProposalPayload::Review(review) => review,
+            output => {
+                return Err(ProviderPipelineError::Validation {
+                    agent: AgentRole::PlotDoctor,
+                    message: format!("unexpected payload `{}`", payload_kind(&output)),
+                });
+            }
+        };
+        let scene =
+            scene_from_proposals(&scene_plan, &beat_drafts, Some(&review)).map_err(|error| {
+                ProviderPipelineError::Validation {
+                    agent: AgentRole::ScenePlanner,
+                    message: format!("scene assembly rejected provider proposals: {error:?}"),
+                }
+            })?;
+
+        Ok((scene, review.review))
+    }
+
+    fn complete_agent_output(
+        &self,
+        agent: AgentRole,
+        request: &ScenePlanRequest<'_>,
+        scene_key: &str,
+    ) -> Result<AgentOutputProposal, ProviderPipelineError> {
+        let model_request = TextModelRequest {
+            call_id: format!("{}-{}", scene_key, payload_call_suffix(&agent)),
+            agent: agent.clone(),
+            scene_key: scene_key.to_string(),
+            prompt: text_model_prompt(&agent, request, scene_key),
+        };
+        let response = self
+            .provider
+            .complete(&model_request)
+            .map_err(ProviderPipelineError::Provider)?;
+        let proposal =
+            serde_json::from_str::<AgentOutputProposal>(&response.raw_json).map_err(|error| {
+                ProviderPipelineError::InvalidJson {
+                    agent: agent.clone(),
+                    message: error.to_string(),
+                }
+            })?;
+        validate_agent_output_proposal(&proposal).map_err(|error| {
+            ProviderPipelineError::Validation {
+                agent,
+                message: format!("{error:?}"),
+            }
+        })?;
+
+        Ok(proposal)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ProviderPipelineError {
+    Provider(TextModelProviderError),
+    InvalidJson { agent: AgentRole, message: String },
+    Validation { agent: AgentRole, message: String },
+}
+
+impl ProviderPipelineError {
+    fn into_runtime_error(self) -> RuntimeError {
+        match self {
+            Self::Provider(error) => match error.kind {
+                TextModelProviderErrorKind::Provider => {
+                    RuntimeError::redacted(error.code, error.message)
+                }
+                TextModelProviderErrorKind::Timeout => RuntimeError::redacted(
+                    "text_provider_timeout",
+                    format!("text provider timed out: {}", error.message),
+                ),
+            },
+            Self::InvalidJson { agent, message } => RuntimeError::redacted(
+                "text_provider_invalid_json",
+                format!("{agent:?} returned invalid JSON: {message}"),
+            ),
+            Self::Validation { agent, message } => RuntimeError::redacted(
+                "text_provider_schema_validation",
+                format!("{agent:?} returned invalid proposal: {message}"),
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FakeTextModelProvider {
+    failure: Option<FakeTextModelFailure>,
+}
+
+impl FakeTextModelProvider {
+    pub fn success() -> Self {
+        Self::default()
+    }
+
+    pub fn provider_error(agent: AgentRole) -> Self {
+        Self::with_failure(agent, FakeTextModelFailureKind::ProviderError)
+    }
+
+    pub fn timeout(agent: AgentRole) -> Self {
+        Self::with_failure(agent, FakeTextModelFailureKind::Timeout)
+    }
+
+    pub fn invalid_json(agent: AgentRole) -> Self {
+        Self::with_failure(agent, FakeTextModelFailureKind::InvalidJson)
+    }
+
+    pub fn invalid_schema(agent: AgentRole) -> Self {
+        Self::with_failure(agent, FakeTextModelFailureKind::InvalidSchema)
+    }
+
+    fn with_failure(agent: AgentRole, kind: FakeTextModelFailureKind) -> Self {
+        Self {
+            failure: Some(FakeTextModelFailure { agent, kind }),
+        }
+    }
+}
+
+impl TextModelProvider for FakeTextModelProvider {
+    fn complete(
+        &self,
+        request: &TextModelRequest,
+    ) -> Result<TextModelResponse, TextModelProviderError> {
+        if let Some(failure) = &self.failure
+            && failure.agent == request.agent
+        {
+            return match failure.kind {
+                FakeTextModelFailureKind::ProviderError => Err(TextModelProviderError::provider(
+                    "text_provider_error",
+                    format!("{:?} fake provider failure", request.agent),
+                )),
+                FakeTextModelFailureKind::Timeout => Err(TextModelProviderError::timeout(format!(
+                    "{:?} fake provider timeout",
+                    request.agent
+                ))),
+                FakeTextModelFailureKind::InvalidJson => Ok(TextModelResponse::json("{")),
+                FakeTextModelFailureKind::InvalidSchema => fake_invalid_schema_response(request),
+            };
+        }
+
+        fake_success_response(request)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FakeTextModelFailure {
+    agent: AgentRole,
+    kind: FakeTextModelFailureKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FakeTextModelFailureKind {
+    ProviderError,
+    Timeout,
+    InvalidJson,
+    InvalidSchema,
+}
+
+fn fake_success_response(
+    request: &TextModelRequest,
+) -> Result<TextModelResponse, TextModelProviderError> {
+    let proposal = match request.agent {
+        AgentRole::ScenePlanner => AgentOutputProposal {
+            id: format!("{}-scene-plan", request.call_id),
+            agent: AgentRole::ScenePlanner,
+            output: AgentProposalPayload::ScenePlan(ScenePlanProposal {
+                scene_key: request.scene_key.clone(),
+                title: "Provider Planned Scene".into(),
+                location: "Qianqing Palace".into(),
+                scene_summary: "A fake text model proposes the next court crisis.".into(),
+                dramatic_purpose:
+                    "Exercise the provider-backed scene pipeline without external network calls."
+                        .into(),
+                hook: "The fake provider returns a schema-checked scene plan.".into(),
+                emotional_goal: Some("controlled generation".into()),
+                cast: vec!["grand-secretary".into(), "eunuch-director".into()],
+                entry_beat_id: format!("{}-beat-001", request.scene_key),
+                background_asset: Some(format!("assets/generated/{}.png", request.scene_key)),
+            }),
+        },
+        AgentRole::BeatWriter => AgentOutputProposal {
+            id: format!("{}-beats", request.call_id),
+            agent: AgentRole::BeatWriter,
+            output: AgentProposalPayload::BeatDrafts(BeatDraftsProposal {
+                scene_key: request.scene_key.clone(),
+                beats: vec![BeatDraftProposal {
+                    id: format!("{}-beat-001", request.scene_key),
+                    scene_key: request.scene_key.clone(),
+                    text: "The fake provider writes a beat that keeps the player in control."
+                        .into(),
+                    choices: vec![Choice {
+                        id: "continue-council".into(),
+                        label: "Continue".into(),
+                        action_type: "continue".into(),
+                        dramatic_purpose: "Let the engine continue from provider output.".into(),
+                        change_scene: false,
+                    }],
+                    narrative_function: NarrativeFunction::Hook,
+                }],
+            }),
+        },
+        AgentRole::PlotDoctor => AgentOutputProposal {
+            id: format!("{}-review", request.call_id),
+            agent: AgentRole::PlotDoctor,
+            output: AgentProposalPayload::Review(ReviewProposal {
+                scene_key: request.scene_key.clone(),
+                review: NarrativeReview {
+                    scene_key: request.scene_key.clone(),
+                    score: 96,
+                    hook_score: 95,
+                    pacing_score: 96,
+                    character_consistency_score: 100,
+                    payoff_score: 94,
+                    choice_meaningfulness_score: 95,
+                    ai_slop_risk: 5,
+                    issues: Vec::new(),
+                },
+                notes: Vec::new(),
+            }),
+        },
+        _ => {
+            return Err(TextModelProviderError::provider(
+                "fake_provider_unsupported_agent",
+                format!(
+                    "fake provider has no output contract for {:?}",
+                    request.agent
+                ),
+            ));
+        }
+    };
+
+    encode_fake_response(&proposal)
+}
+
+fn fake_invalid_schema_response(
+    request: &TextModelRequest,
+) -> Result<TextModelResponse, TextModelProviderError> {
+    let proposal = match request.agent {
+        AgentRole::ScenePlanner => AgentOutputProposal {
+            id: format!("{}-invalid-scene-plan", request.call_id),
+            agent: AgentRole::ScenePlanner,
+            output: AgentProposalPayload::ScenePlan(ScenePlanProposal {
+                scene_key: String::new(),
+                title: "Invalid Scene Plan".into(),
+                location: "Qianqing Palace".into(),
+                scene_summary: "This payload is structurally valid JSON but fails validation."
+                    .into(),
+                dramatic_purpose: "Test schema validation failure.".into(),
+                hook: "A missing scene key should fail.".into(),
+                emotional_goal: None,
+                cast: Vec::new(),
+                entry_beat_id: "missing-entry".into(),
+                background_asset: None,
+            }),
+        },
+        AgentRole::BeatWriter => AgentOutputProposal {
+            id: format!("{}-invalid-beats", request.call_id),
+            agent: AgentRole::BeatWriter,
+            output: AgentProposalPayload::BeatDrafts(BeatDraftsProposal {
+                scene_key: request.scene_key.clone(),
+                beats: Vec::new(),
+            }),
+        },
+        AgentRole::PlotDoctor => AgentOutputProposal {
+            id: format!("{}-invalid-review", request.call_id),
+            agent: AgentRole::PlotDoctor,
+            output: AgentProposalPayload::Review(ReviewProposal {
+                scene_key: request.scene_key.clone(),
+                review: NarrativeReview {
+                    scene_key: "other-scene".into(),
+                    score: 96,
+                    hook_score: 95,
+                    pacing_score: 96,
+                    character_consistency_score: 100,
+                    payoff_score: 94,
+                    choice_meaningfulness_score: 95,
+                    ai_slop_risk: 5,
+                    issues: Vec::new(),
+                },
+                notes: Vec::new(),
+            }),
+        },
+        _ => {
+            return Err(TextModelProviderError::provider(
+                "fake_provider_unsupported_agent",
+                format!(
+                    "fake provider has no invalid schema output for {:?}",
+                    request.agent
+                ),
+            ));
+        }
+    };
+
+    encode_fake_response(&proposal)
+}
+
+fn encode_fake_response(
+    proposal: &AgentOutputProposal,
+) -> Result<TextModelResponse, TextModelProviderError> {
+    serde_json::to_string(proposal)
+        .map(TextModelResponse::json)
+        .map_err(|error| {
+            TextModelProviderError::provider("fake_provider_serialization", error.to_string())
+        })
+}
+
+fn payload_call_suffix(agent: &AgentRole) -> &'static str {
+    match agent {
+        AgentRole::ScenePlanner => "scene-plan",
+        AgentRole::BeatWriter => "beats",
+        AgentRole::PlotDoctor => "review",
+        AgentRole::StoryArchitect => "story-architect",
+        AgentRole::StoryCraftPlanner => "story-craft-planner",
+        AgentRole::ConsistencyChecker => "consistency-checker",
+        AgentRole::DeslopRefiner => "deslop-refiner",
+    }
+}
+
+fn text_model_prompt(agent: &AgentRole, request: &ScenePlanRequest<'_>, scene_key: &str) -> String {
+    format!(
+        "agent={agent:?}; scene_key={scene_key}; action_type={}; player_input={}; turn={}",
+        request.action_type, request.player_input, request.story_state.turn
+    )
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MockAgentPipeline;
 
@@ -276,13 +782,20 @@ impl ScenePlanner for MockAgentPipeline {
         let next_turn = request.story_state.turn + 1;
 
         if request.action_type == "continue" {
-            let (scene, fallback_used) = if let Some(scene) = request
+            let (scene, fallback_used, error) = if let Some(scene) = request
                 .project
                 .scene(&request.story_state.current_scene_key)
             {
-                (scene.clone(), false)
+                (scene.clone(), false, None)
             } else {
-                (fallback_scene(next_turn, request.action_type), true)
+                (
+                    fallback_scene(next_turn, request.action_type),
+                    true,
+                    Some(RuntimeError::redacted(
+                        "fallback_scene",
+                        "Mock agent used a fallback scene because the requested scene was missing.",
+                    )),
+                )
             };
             let review = review_scene(
                 &scene,
@@ -293,6 +806,7 @@ impl ScenePlanner for MockAgentPipeline {
                 scene,
                 review,
                 fallback_used,
+                error,
             });
         }
 
@@ -306,6 +820,7 @@ impl ScenePlanner for MockAgentPipeline {
             scene,
             review,
             fallback_used: false,
+            error: None,
         })
     }
 }
@@ -438,8 +953,9 @@ mod tests {
     };
 
     use super::{
-        AgentProposalValidationError, MockAgentPipeline, ScenePlanRequest, ScenePlanner,
-        scene_from_proposals, validate_agent_output_proposal,
+        AgentProposalValidationError, FakeTextModelProvider, MockAgentPipeline,
+        ProviderAgentPipeline, ScenePlanRequest, ScenePlanner, scene_from_proposals,
+        validate_agent_output_proposal,
     };
 
     #[test]
@@ -631,6 +1147,94 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn fake_text_provider_pipeline_builds_scene_from_json_proposals() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::success());
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("provider plan");
+
+        assert_eq!(plan.scene.key, "provider-scene-001");
+        assert_eq!(plan.review.scene_key, "provider-scene-001");
+        assert_eq!(plan.review.score, 96);
+        assert!(!plan.fallback_used);
+        assert!(plan.error.is_none());
+        assert!(plan.scene.plot_thread_updates.is_empty());
+    }
+
+    #[test]
+    fn fake_text_provider_pipeline_falls_back_on_provider_error() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::provider_error(
+            AgentRole::ScenePlanner,
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        assert_eq!(
+            plan.error.as_ref().expect("provider error").code,
+            "text_provider_error"
+        );
+        assert_eq!(plan.scene.key, "fallback-001");
+    }
+
+    #[test]
+    fn fake_text_provider_pipeline_falls_back_on_timeout() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline =
+            ProviderAgentPipeline::new(FakeTextModelProvider::timeout(AgentRole::BeatWriter));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        assert_eq!(
+            plan.error.as_ref().expect("timeout error").code,
+            "text_provider_timeout"
+        );
+    }
+
+    #[test]
+    fn fake_text_provider_pipeline_falls_back_on_schema_validation() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::invalid_schema(
+            AgentRole::BeatWriter,
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        assert_eq!(
+            plan.error.as_ref().expect("validation error").code,
+            "text_provider_schema_validation"
+        );
+    }
+
+    #[test]
+    fn fake_text_provider_pipeline_falls_back_on_invalid_json() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline =
+            ProviderAgentPipeline::new(FakeTextModelProvider::invalid_json(AgentRole::PlotDoctor));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        assert_eq!(
+            plan.error.as_ref().expect("invalid json error").code,
+            "text_provider_invalid_json"
+        );
+    }
+
     fn sample_scene_plan_output_proposal() -> AgentOutputProposal {
         AgentOutputProposal {
             id: "scene-plan-proposal-001".into(),
@@ -714,6 +1318,16 @@ mod tests {
                 message: "Proposal advances tax disorder visibly.".into(),
                 resolved: true,
             }],
+        }
+    }
+
+    fn provider_request<'a>(project: &'a plotforge_schema::ProjectData) -> ScenePlanRequest<'a> {
+        ScenePlanRequest {
+            project,
+            story_state: &project.story_state,
+            world_state: &project.world_state,
+            player_input: "Raise the levy",
+            action_type: "raise_tax",
         }
     }
 }

@@ -257,6 +257,7 @@ dependencies = [
  "plotforge-schema",
  "plotforge-storage",
  "plotforge-storycraft",
+ "serde_json",
 ]
 
 [[package]]

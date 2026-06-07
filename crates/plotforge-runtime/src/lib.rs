@@ -93,6 +93,7 @@ where
             action_type,
         })?;
         let planner_fallback_used = plan.fallback_used;
+        let planner_fallback_error = plan.error;
         let planner_review = plan.review;
         let planned_scene = plan.scene;
 
@@ -115,7 +116,11 @@ where
 
         self.world_state = world_state_after.clone();
 
-        let errors = fallback_errors(planner_fallback_used);
+        let errors = if let Some(error) = planner_fallback_error {
+            vec![error]
+        } else {
+            fallback_errors(planner_fallback_used)
+        };
         let planner_error = errors.first().cloned();
         let planner_status = if planner_fallback_used {
             RuntimeTraceStageStatus::Fallback
@@ -152,10 +157,17 @@ where
                 RuntimeTraceStage::PlanScene,
                 planner_status,
                 if planner_fallback_used {
-                    format!(
-                        "planner returned fallback scene `{}`",
-                        planner_review.scene_key
-                    )
+                    if let Some(error) = planner_error.as_ref() {
+                        format!(
+                            "planner returned fallback scene `{}` after `{}`",
+                            planner_review.scene_key, error.code
+                        )
+                    } else {
+                        format!(
+                            "planner returned fallback scene `{}`",
+                            planner_review.scene_key
+                        )
+                    }
                 } else {
                     format!("planner returned scene `{}`", planner_review.scene_key)
                 },
