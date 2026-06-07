@@ -6,6 +6,7 @@ build/
 *.log
 **/traces/*.json
 **/exports/
+artifacts/qa/
 .env
 .env.*
 !.env.example

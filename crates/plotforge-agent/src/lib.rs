@@ -279,4 +279,30 @@ mod tests {
         assert!(plan.fallback_used);
         assert!(plan.scene.key.starts_with("fallback-"));
     }
+
+    #[test]
+    fn mock_pipeline_maps_actions_to_plot_threads() {
+        let mut project = plotforge_storage::dynasty_embers_project();
+        project.story_state.turn = 1;
+        let pipeline = MockAgentPipeline;
+
+        for (action_type, expected_thread) in [
+            ("raise_tax", "tax-disorder"),
+            ("inspect_corruption", "court-insider"),
+            ("pay_army", "border-payroll"),
+        ] {
+            let plan = pipeline.plan_next_scene(ScenePlanRequest {
+                project: &project,
+                story_state: &project.story_state,
+                world_state: &project.world_state,
+                player_input: action_type,
+                action_type,
+            });
+            assert!(
+                plan.scene.plot_thread_updates.contains_key(expected_thread),
+                "{action_type} should update {expected_thread}"
+            );
+            assert!(plan.scene.beats[0].text.contains("treasury"));
+        }
+    }
 }
