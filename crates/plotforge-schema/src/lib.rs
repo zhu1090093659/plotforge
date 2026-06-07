@@ -163,6 +163,22 @@ impl ActionIntent {
     pub fn action_type(&self) -> Option<&str> {
         self.action_type.as_deref()
     }
+
+    pub fn redacted(&self) -> Self {
+        Self {
+            status: self.status.clone(),
+            action_type: self
+                .action_type
+                .as_ref()
+                .map(|action_type| redact_trace_text(action_type)),
+            matched_terms: self
+                .matched_terms
+                .iter()
+                .map(|term| redact_trace_text(term))
+                .collect(),
+            reason: self.reason.as_ref().map(|reason| redact_trace_text(reason)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -210,6 +226,14 @@ impl NarrativeReview {
             .iter()
             .all(|issue| issue.severity != Severity::Error)
     }
+
+    pub fn redacted(&self) -> Self {
+        Self {
+            scene_key: redact_trace_text(&self.scene_key),
+            score: self.score,
+            issues: self.issues.iter().map(NarrativeIssue::redacted).collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -217,6 +241,16 @@ pub struct NarrativeIssue {
     pub kind: NarrativeIssueKind,
     pub severity: Severity,
     pub message: String,
+}
+
+impl NarrativeIssue {
+    pub fn redacted(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            severity: self.severity.clone(),
+            message: redact_trace_text(&self.message),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -243,12 +277,87 @@ pub struct RuntimeError {
     pub message: String,
 }
 
+impl RuntimeError {
+    pub fn redacted(code: impl Into<String>, message: impl Into<String>) -> Self {
+        let code = code.into();
+        let message = message.into();
+        Self {
+            code: redact_trace_text(&code),
+            message: redact_trace_text(&message),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeRuleResult {
+    pub action_type: String,
+    pub delta_empty: bool,
+    pub state_committed: bool,
+    pub error: Option<RuntimeError>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimePlannerResult {
+    pub requested_action_type: String,
+    pub scene_key: Option<String>,
+    pub fallback_used: bool,
+    pub error: Option<RuntimeError>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeTraceDiagnostic {
+    pub stage: RuntimeTraceStage,
+    pub status: RuntimeTraceStageStatus,
+    pub message: String,
+}
+
+impl RuntimeTraceDiagnostic {
+    pub fn new_redacted(
+        stage: RuntimeTraceStage,
+        status: RuntimeTraceStageStatus,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            stage,
+            status,
+            message: redact_trace_text(&message),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeTraceStage {
+    InterpretAction,
+    SelectChoice,
+    EvaluateRules,
+    PlanScene,
+    CommitState,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeTraceStageStatus {
+    Completed,
+    Fallback,
+    Error,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeTrace {
     pub id: String,
     pub timestamp_ms: u64,
     pub player_input: Option<String>,
     pub selected_choice: Option<String>,
+    #[serde(default)]
+    pub action_intent: Option<ActionIntent>,
+    #[serde(default)]
+    pub rule_result: Option<RuntimeRuleResult>,
+    #[serde(default)]
+    pub planner_result: Option<RuntimePlannerResult>,
+    #[serde(default)]
+    pub diagnostics: Vec<RuntimeTraceDiagnostic>,
     pub world_state_before: WorldState,
     pub world_state_delta: WorldDelta,
     pub world_state_after: WorldState,
@@ -257,6 +366,36 @@ pub struct RuntimeTrace {
     pub narrative_review: Option<NarrativeReview>,
     pub errors: Vec<RuntimeError>,
     pub fallback_used: bool,
+}
+
+pub const REDACTED_TRACE_SECRET: &str = "[REDACTED_SECRET]";
+
+pub fn redact_trace_text(text: &str) -> String {
+    text.split_whitespace()
+        .map(|token| {
+            if contains_secret_marker(token) {
+                REDACTED_TRACE_SECRET.to_string()
+            } else {
+                token.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn contains_secret_marker(token: &str) -> bool {
+    let normalized = token.to_ascii_lowercase();
+    [
+        "sk-",
+        "api_key",
+        "secret_key",
+        "openai_api_key",
+        "authorization:",
+        "bearer",
+        "token=",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -330,6 +469,24 @@ mod tests {
             timestamp_ms: 1,
             player_input: Some("raise taxes".into()),
             selected_choice: Some("raise_tax".into()),
+            action_intent: Some(ActionIntent::supported("raise_tax", vec!["tax".into()])),
+            rule_result: Some(RuntimeRuleResult {
+                action_type: "raise_tax".into(),
+                delta_empty: true,
+                state_committed: true,
+                error: None,
+            }),
+            planner_result: Some(RuntimePlannerResult {
+                requested_action_type: "raise_tax".into(),
+                scene_key: Some("court-crisis-002".into()),
+                fallback_used: false,
+                error: None,
+            }),
+            diagnostics: vec![RuntimeTraceDiagnostic::new_redacted(
+                RuntimeTraceStage::InterpretAction,
+                RuntimeTraceStageStatus::Completed,
+                "action matched",
+            )],
             world_state_before: WorldState::default(),
             world_state_delta: WorldDelta::default(),
             world_state_after: WorldState::default(),
@@ -343,6 +500,39 @@ mod tests {
         let encoded = serde_json::to_string_pretty(&trace).expect("serialize trace");
         let decoded: RuntimeTrace = serde_json::from_str(&encoded).expect("deserialize trace");
         assert_eq!(decoded, trace);
+    }
+
+    #[test]
+    fn trace_redaction_removes_secret_markers() {
+        let text = "朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value";
+
+        let redacted = redact_trace_text(text);
+        let error = RuntimeError::redacted(text, text);
+        let diagnostic = RuntimeTraceDiagnostic::new_redacted(
+            RuntimeTraceStage::PlanScene,
+            RuntimeTraceStageStatus::Error,
+            text,
+        );
+        let review = NarrativeReview {
+            scene_key: text.into(),
+            score: 1,
+            issues: vec![NarrativeIssue {
+                kind: NarrativeIssueKind::WeakHook,
+                severity: Severity::Warning,
+                message: text.into(),
+            }],
+        }
+        .redacted();
+
+        assert!(redacted.contains(REDACTED_TRACE_SECRET));
+        assert!(redacted.contains("朕决定加征辽饷"));
+        assert!(!redacted.contains("OPENAI_API_KEY"));
+        assert!(!redacted.contains("sk-test-secret-marker"));
+        assert!(!error.code.contains("OPENAI_API_KEY"));
+        assert!(!error.message.contains("token=value"));
+        assert!(!diagnostic.message.contains("bearer"));
+        assert!(!review.scene_key.contains("sk-test-secret-marker"));
+        assert!(!review.issues[0].message.contains("token=value"));
     }
 
     #[test]

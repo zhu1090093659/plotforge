@@ -1,5 +1,7 @@
 use std::{fs, process::Command};
 
+use plotforge_schema::REDACTED_TRACE_SECRET;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_plotforge-cli")
 }
@@ -28,6 +30,10 @@ fn cli_runs_full_demo_flow_in_tempdir() {
         project.join("traces/latest.json").to_str().unwrap(),
     ])
     .assert_success_contains("fallback: false")
+    .assert_contains("intent: raise_tax")
+    .assert_contains("rule: raise_tax")
+    .assert_contains("planner: court-crisis-001")
+    .assert_contains("diagnostics: 5")
     .assert_contains("review issues: 0");
     run([
         "export",
@@ -98,6 +104,41 @@ fn cli_rejects_unsupported_play_input_without_trace() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("unsupported player action"));
     assert!(!project.join("traces/latest.json").exists());
+}
+
+#[test]
+fn cli_trace_redacts_secret_markers_from_play_input() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    run([
+        "new",
+        "demo",
+        "--path",
+        project.to_str().unwrap(),
+        "--force",
+    ])
+    .assert_success_contains("created Dynasty Embers");
+
+    run([
+        "play",
+        project.to_str().unwrap(),
+        "--once",
+        "--input",
+        "朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value",
+    ])
+    .assert_success_contains("choice: raise-tax");
+
+    let trace_path = project.join("traces/latest.json");
+    let trace_json = fs::read_to_string(&trace_path).expect("read trace");
+    assert!(trace_json.contains(REDACTED_TRACE_SECRET));
+    assert!(!trace_json.contains("OPENAI_API_KEY"));
+    assert!(!trace_json.contains("sk-test-secret-marker"));
+    assert!(!trace_json.contains("token=value"));
+
+    run(["trace", "inspect", trace_path.to_str().unwrap()])
+        .assert_success_contains("intent: raise_tax")
+        .assert_contains("rule: raise_tax")
+        .assert_contains("planner: court-crisis-001");
 }
 
 #[test]

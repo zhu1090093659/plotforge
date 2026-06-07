@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use plotforge_agent::{ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError};
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
-use plotforge_schema::{ActionIntentStatus, Beat, Choice, NarrativeReview, Scene};
+use plotforge_schema::{
+    ActionIntentStatus, Beat, Choice, NarrativeReview, REDACTED_TRACE_SECRET, RuntimeTraceStage,
+    RuntimeTraceStageStatus, Scene,
+};
 use plotforge_storage::dynasty_embers_project;
 
 #[test]
@@ -112,6 +115,16 @@ fn injected_planner_fallback_is_trace_visible() {
             .iter()
             .any(|error| error.code == "fallback_scene")
     );
+    let planner_result = step.trace.planner_result.as_ref().expect("planner result");
+    assert!(planner_result.fallback_used);
+    assert_eq!(
+        planner_result.error.as_ref().expect("planner error").code,
+        "fallback_scene"
+    );
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::PlanScene
+            && diagnostic.status == RuntimeTraceStageStatus::Fallback
+    }));
 }
 
 #[test]
@@ -138,6 +151,67 @@ fn summarize_delta_keeps_human_readable_lines() {
 
     assert!(lines.contains(&"treasury: +12".into()));
     assert!(lines.contains(&"event: local_tax_resistance".into()));
+}
+
+#[test]
+fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
+    let mut session = RuntimeSession::new(dynasty_embers_project());
+
+    let step = session.play_once("朕决定加征辽饷").expect("play");
+
+    let intent = step.trace.action_intent.as_ref().expect("action intent");
+    assert_eq!(intent.status, ActionIntentStatus::Supported);
+    assert_eq!(intent.action_type(), Some("raise_tax"));
+
+    let rule_result = step.trace.rule_result.as_ref().expect("rule result");
+    assert_eq!(rule_result.action_type, "raise_tax");
+    assert!(!rule_result.delta_empty);
+    assert!(rule_result.state_committed);
+    assert!(rule_result.error.is_none());
+
+    let planner_result = step.trace.planner_result.as_ref().expect("planner result");
+    assert_eq!(planner_result.requested_action_type, "raise_tax");
+    assert_eq!(
+        planner_result.scene_key.as_deref(),
+        Some("court-crisis-001")
+    );
+    assert!(!planner_result.fallback_used);
+    assert!(planner_result.error.is_none());
+
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::InterpretAction
+            && diagnostic.status == RuntimeTraceStageStatus::Completed
+    }));
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::EvaluateRules
+            && diagnostic.status == RuntimeTraceStageStatus::Completed
+    }));
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::PlanScene
+            && diagnostic.status == RuntimeTraceStageStatus::Completed
+    }));
+}
+
+#[test]
+fn runtime_trace_json_redacts_secret_markers() {
+    let mut session = RuntimeSession::new(dynasty_embers_project());
+
+    let step = session
+        .play_once("朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value")
+        .expect("play");
+    let json = serde_json::to_string(&step.trace).expect("serialize trace");
+
+    assert!(
+        step.trace
+            .player_input
+            .as_deref()
+            .expect("player input")
+            .contains(REDACTED_TRACE_SECRET)
+    );
+    assert!(json.contains(REDACTED_TRACE_SECRET));
+    assert!(!json.contains("OPENAI_API_KEY"));
+    assert!(!json.contains("sk-test-secret-marker"));
+    assert!(!json.contains("token=value"));
 }
 
 #[derive(Clone, Debug)]
