@@ -55,12 +55,73 @@ pub struct StoryState {
     pub turn: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryCraftBible {
+    #[serde(default)]
+    pub target_audience: Option<String>,
     pub genre_promise: String,
     pub central_question: String,
     pub target_emotions: Vec<String>,
     pub core_foreshadowing: Vec<String>,
+    #[serde(default)]
+    pub emotional_contract: Vec<String>,
+    #[serde(default)]
+    pub pacing_profile: PacingProfile,
+    #[serde(default)]
+    pub hook_strategy: HookStrategy,
+    #[serde(default)]
+    pub reversal_strategy: Option<ReversalStrategy>,
+    #[serde(default)]
+    pub prose_style_guide: Option<String>,
+    #[serde(default)]
+    pub banned_cliches: Vec<String>,
+    #[serde(default)]
+    pub reference_modules: Vec<ReferenceModule>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PacingProfile {
+    pub escalation_interval_scenes: u8,
+    pub target_tension_curve: Vec<u8>,
+    pub breather_scene_frequency: Option<u8>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HookStrategy {
+    pub primary_hook: String,
+    pub recurring_hook_patterns: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReversalStrategy {
+    pub cadence_scenes: u8,
+    pub principle: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReferenceModule {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoryPromise {
+    pub id: String,
+    pub text: String,
+    pub status: StoryPromiseStatus,
+    pub introduced_at: String,
+    pub payoff_hint: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StoryPromiseStatus {
+    #[default]
+    Active,
+    Complicated,
+    PaidOff,
+    Dropped,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -68,8 +129,30 @@ pub struct PlotThread {
     pub id: String,
     pub title: String,
     pub promise: String,
+    #[serde(default)]
+    pub thread_type: PlotThreadType,
     pub status: PlotThreadStatus,
+    #[serde(default)]
+    pub introduced_at: String,
+    #[serde(default)]
+    pub expected_payoff: Option<String>,
+    #[serde(default)]
+    pub related_characters: Vec<String>,
+    #[serde(default)]
+    pub related_world_flags: Vec<String>,
     pub last_update: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlotThreadType {
+    Mystery,
+    Foreshadow,
+    Relationship,
+    Political,
+    Survival,
+    #[default]
+    Custom,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -78,6 +161,9 @@ pub enum PlotThreadStatus {
     Open,
     Escalating,
     Resolved,
+    Deepened,
+    PaidOff,
+    Abandoned,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -87,11 +173,53 @@ pub struct EmotionalArcPoint {
     pub intensity: u8,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryCraftState {
     pub bible: StoryCraftBible,
+    #[serde(default)]
+    pub active_promises: Vec<StoryPromise>,
     pub emotional_arc: Vec<EmotionalArcPoint>,
     pub plot_threads: Vec<PlotThread>,
+    #[serde(default)]
+    pub character_arcs: Vec<CharacterArc>,
+    #[serde(default)]
+    pub pacing_score: Option<u8>,
+    #[serde(default)]
+    pub tension_score: Option<u8>,
+    #[serde(default)]
+    pub ai_slop_risk: Option<u8>,
+    #[serde(default)]
+    pub review_notes: Vec<NarrativeReviewNote>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CharacterArc {
+    pub id: String,
+    pub character_id: String,
+    pub desire: String,
+    pub pressure: String,
+    pub current_state: String,
+    pub target_state: String,
+    pub status: CharacterArcStatus,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CharacterArcStatus {
+    #[default]
+    Setup,
+    Pressured,
+    Changed,
+    Resolved,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NarrativeReviewNote {
+    pub id: String,
+    pub scene_key: Option<String>,
+    pub severity: Severity,
+    pub message: String,
+    pub resolved: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -217,6 +345,18 @@ pub enum Effect {
 pub struct NarrativeReview {
     pub scene_key: String,
     pub score: u8,
+    #[serde(default = "default_review_score")]
+    pub hook_score: u8,
+    #[serde(default = "default_review_score")]
+    pub pacing_score: u8,
+    #[serde(default = "default_review_score")]
+    pub character_consistency_score: u8,
+    #[serde(default = "default_review_score")]
+    pub payoff_score: u8,
+    #[serde(default = "default_review_score")]
+    pub choice_meaningfulness_score: u8,
+    #[serde(default)]
+    pub ai_slop_risk: u8,
     pub issues: Vec<NarrativeIssue>,
 }
 
@@ -231,9 +371,19 @@ impl NarrativeReview {
         Self {
             scene_key: redact_trace_text(&self.scene_key),
             score: self.score,
+            hook_score: self.hook_score,
+            pacing_score: self.pacing_score,
+            character_consistency_score: self.character_consistency_score,
+            payoff_score: self.payoff_score,
+            choice_meaningfulness_score: self.choice_meaningfulness_score,
+            ai_slop_risk: self.ai_slop_risk,
             issues: self.issues.iter().map(NarrativeIssue::redacted).collect(),
         }
     }
+}
+
+fn default_review_score() -> u8 {
+    100
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -261,6 +411,10 @@ pub enum NarrativeIssueKind {
     FakeChoice,
     OutOfCharacter,
     BrokenPlotThread,
+    ThreadForgotten,
+    WorldStateIgnored,
+    TooMuchExposition,
+    AiSlopStyle,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -503,6 +657,126 @@ mod tests {
     }
 
     #[test]
+    fn story_craft_contract_roundtrips_prd_fields() {
+        let state = StoryCraftState {
+            bible: StoryCraftBible {
+                target_audience: Some("political sim players".into()),
+                genre_promise: "court intrigue".into(),
+                central_question: "survive?".into(),
+                target_emotions: vec!["pressure".into()],
+                core_foreshadowing: vec!["ledger".into()],
+                emotional_contract: vec!["lonely authority".into()],
+                pacing_profile: PacingProfile {
+                    escalation_interval_scenes: 2,
+                    target_tension_curve: vec![70, 85, 95],
+                    breather_scene_frequency: Some(4),
+                },
+                hook_strategy: HookStrategy {
+                    primary_hook: "Open with a concrete pressure.".into(),
+                    recurring_hook_patterns: vec!["sealed memorial".into()],
+                },
+                reversal_strategy: Some(ReversalStrategy {
+                    cadence_scenes: 3,
+                    principle: "Relief exposes a new cost.".into(),
+                }),
+                prose_style_guide: Some("concrete political pressure".into()),
+                banned_cliches: vec!["empty prophecy".into()],
+                reference_modules: vec![ReferenceModule {
+                    id: "pacing-template".into(),
+                    title: "Pacing Template".into(),
+                    summary: "Escalate every two scenes.".into(),
+                }],
+            },
+            active_promises: vec![StoryPromise {
+                id: "survival-cost".into(),
+                text: "Every survival move has a visible cost.".into(),
+                status: StoryPromiseStatus::Active,
+                introduced_at: "court-crisis-001".into(),
+                payoff_hint: Some("force a legitimacy tradeoff".into()),
+            }],
+            emotional_arc: vec![EmotionalArcPoint {
+                scene_key: "court-crisis-001".into(),
+                target_emotion: "pressure".into(),
+                intensity: 80,
+            }],
+            plot_threads: vec![PlotThread {
+                id: "border-payroll".into(),
+                title: "Border payroll".into(),
+                promise: "Soldiers stay loyal while paid.".into(),
+                thread_type: PlotThreadType::Survival,
+                status: PlotThreadStatus::Open,
+                introduced_at: "court-crisis-001".into(),
+                expected_payoff: Some("army paid or defects".into()),
+                related_characters: vec!["war-minister".into()],
+                related_world_flags: vec!["border_army_paid".into()],
+                last_update: "ledger arrives".into(),
+            }],
+            character_arcs: vec![CharacterArc {
+                id: "minister-pressure".into(),
+                character_id: "war-minister".into(),
+                desire: "pay the army".into(),
+                pressure: "empty treasury".into(),
+                current_state: "urgent".into(),
+                target_state: "openly defies court delay".into(),
+                status: CharacterArcStatus::Setup,
+            }],
+            pacing_score: Some(80),
+            tension_score: Some(85),
+            ai_slop_risk: Some(10),
+            review_notes: vec![NarrativeReviewNote {
+                id: "opening-hook".into(),
+                scene_key: Some("court-crisis-001".into()),
+                severity: Severity::Info,
+                message: "Opening hook is concrete.".into(),
+                resolved: true,
+            }],
+        };
+
+        let encoded = serde_json::to_string_pretty(&state).expect("serialize story craft");
+        let decoded: StoryCraftState =
+            serde_json::from_str(&encoded).expect("deserialize story craft");
+
+        assert_eq!(decoded, state);
+        assert_eq!(decoded.bible.pacing_profile.escalation_interval_scenes, 2);
+        assert_eq!(
+            decoded.plot_threads[0].thread_type,
+            PlotThreadType::Survival
+        );
+        assert_eq!(decoded.character_arcs[0].status, CharacterArcStatus::Setup);
+    }
+
+    #[test]
+    fn legacy_story_craft_defaults_new_prd_fields() {
+        let legacy = r#"{
+            "bible": {
+                "genre_promise": "history",
+                "central_question": "survive?",
+                "target_emotions": ["pressure"],
+                "core_foreshadowing": ["ledger"]
+            },
+            "emotional_arc": [],
+            "plot_threads": [{
+                "id": "border-payroll",
+                "title": "Border payroll",
+                "promise": "Soldiers stay loyal while paid.",
+                "status": "open",
+                "last_update": "ledger arrives"
+            }]
+        }"#;
+
+        let decoded: StoryCraftState =
+            serde_json::from_str(legacy).expect("deserialize legacy story craft");
+
+        assert!(decoded.active_promises.is_empty());
+        assert!(decoded.character_arcs.is_empty());
+        assert!(decoded.review_notes.is_empty());
+        assert_eq!(decoded.bible.pacing_profile, PacingProfile::default());
+        assert_eq!(decoded.bible.hook_strategy, HookStrategy::default());
+        assert_eq!(decoded.plot_threads[0].thread_type, PlotThreadType::Custom);
+        assert!(decoded.plot_threads[0].related_characters.is_empty());
+    }
+
+    #[test]
     fn trace_redaction_removes_secret_markers() {
         let text = "朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value";
 
@@ -516,6 +790,12 @@ mod tests {
         let review = NarrativeReview {
             scene_key: text.into(),
             score: 1,
+            hook_score: 1,
+            pacing_score: 1,
+            character_consistency_score: 1,
+            payoff_score: 1,
+            choice_meaningfulness_score: 1,
+            ai_slop_risk: 99,
             issues: vec![NarrativeIssue {
                 kind: NarrativeIssueKind::WeakHook,
                 severity: Severity::Warning,
@@ -565,9 +845,11 @@ mod tests {
                     central_question: "survive?".into(),
                     target_emotions: vec!["pressure".into()],
                     core_foreshadowing: vec!["ledger".into()],
+                    ..StoryCraftBible::default()
                 },
                 emotional_arc: Vec::new(),
                 plot_threads: Vec::new(),
+                ..StoryCraftState::default()
             },
             characters: Vec::new(),
             rules: vec![Rule {

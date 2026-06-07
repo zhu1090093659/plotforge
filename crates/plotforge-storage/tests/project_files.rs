@@ -162,6 +162,23 @@ fn canonical_project(mut project: plotforge_schema::ProjectData) -> plotforge_sc
         .story_craft
         .plot_threads
         .sort_by(|left, right| left.id.cmp(&right.id));
+    project
+        .story_craft
+        .active_promises
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    project
+        .story_craft
+        .character_arcs
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    project
+        .story_craft
+        .review_notes
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    project
+        .story_craft
+        .bible
+        .reference_modules
+        .sort_by(|left, right| left.id.cmp(&right.id));
     project.story_craft.emotional_arc.sort_by(|left, right| {
         left.scene_key
             .cmp(&right.scene_key)

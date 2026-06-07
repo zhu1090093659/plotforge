@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 
 use plotforge_schema::{
-    Character, EmotionalArcPoint, NarrativeIssue, NarrativeIssueKind, NarrativeReview, PlotThread,
-    PlotThreadStatus, Scene, Severity, StoryCraftBible, StoryCraftState,
+    Character, CharacterArc, CharacterArcStatus, EmotionalArcPoint, HookStrategy, NarrativeIssue,
+    NarrativeIssueKind, NarrativeReview, NarrativeReviewNote, PacingProfile, PlotThread,
+    PlotThreadStatus, PlotThreadType, ReferenceModule, ReversalStrategy, Scene, Severity,
+    StoryCraftBible, StoryCraftState, StoryPromise, StoryPromiseStatus,
 };
 
 pub fn dynasty_embers_story_craft() -> StoryCraftState {
@@ -23,7 +25,56 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
                 "local tax disorder".into(),
                 "capital relocation dispute".into(),
             ],
+            target_audience: Some("Players who enjoy political crisis fiction and visible systemic tradeoffs.".into()),
+            emotional_contract: vec![
+                "power under pressure".into(),
+                "lonely decisions".into(),
+                "short-term relief with long-term cost".into(),
+            ],
+            pacing_profile: PacingProfile {
+                escalation_interval_scenes: 2,
+                target_tension_curve: vec![70, 78, 86, 92],
+                breather_scene_frequency: Some(4),
+            },
+            hook_strategy: HookStrategy {
+                primary_hook: "Open each scene with a concrete court pressure that demands a tradeoff.".into(),
+                recurring_hook_patterns: vec![
+                    "ledger reveals hidden cost".into(),
+                    "sealed memorial arrives too early".into(),
+                    "messenger interrupts with provincial unrest".into(),
+                ],
+            },
+            reversal_strategy: Some(ReversalStrategy {
+                cadence_scenes: 3,
+                principle: "Every relief action should expose a new political cost.".into(),
+            }),
+            prose_style_guide: Some("Tense, concrete, political, and consequence-driven.".into()),
+            banned_cliches: vec![
+                "empty imperial grandeur".into(),
+                "prophecy without systems consequence".into(),
+            ],
+            reference_modules: vec![ReferenceModule {
+                id: "court-crisis-escalation".into(),
+                title: "Court crisis escalation".into(),
+                summary: "Use resources, factions, and visible tradeoffs to escalate pressure without copying source text.".into(),
+            }],
         },
+        active_promises: vec![
+            StoryPromise {
+                id: "dynasty-survival".into(),
+                text: "The player can extend the dynasty only by accepting visible costs.".into(),
+                status: StoryPromiseStatus::Active,
+                introduced_at: "court-crisis-001".into(),
+                payoff_hint: Some("A later scene should force a choice between legitimacy and survival.".into()),
+            },
+            StoryPromise {
+                id: "sealed-decisions-leak".into(),
+                text: "Sealed court decisions may be leaking before orders are issued.".into(),
+                status: StoryPromiseStatus::Active,
+                introduced_at: "court-crisis-001".into(),
+                payoff_hint: Some("Expose or exploit the insider channel.".into()),
+            },
+        ],
         emotional_arc: vec![
             EmotionalArcPoint {
                 scene_key: "court-crisis-001".into(),
@@ -46,7 +97,12 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
                 id: "border-payroll".into(),
                 title: "Border payroll gap".into(),
                 promise: "The border army is loyal only while pay keeps flowing.".into(),
+                thread_type: PlotThreadType::Survival,
                 status: PlotThreadStatus::Open,
+                introduced_at: "court-crisis-001".into(),
+                expected_payoff: Some("The army either gets paid, defects, or becomes a coup risk.".into()),
+                related_characters: vec!["war-minister".into(), "border-general".into()],
+                related_world_flags: vec!["border_army_paid".into()],
                 last_update: "Rumors mention unpaid soldiers outside the pass.".into(),
             },
             PlotThread {
@@ -54,7 +110,12 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
                 title: "Court insider betrayal".into(),
                 promise: "A trusted court channel is leaking decisions before they are issued."
                     .into(),
+                thread_type: PlotThreadType::Mystery,
                 status: PlotThreadStatus::Open,
+                introduced_at: "court-crisis-001".into(),
+                expected_payoff: Some("A future review should identify who benefits from the leak.".into()),
+                related_characters: vec!["eunuch-director".into(), "grand-secretary".into()],
+                related_world_flags: vec!["corruption_investigation".into()],
                 last_update: "Memorials arrive too quickly after sealed conversations.".into(),
             },
             PlotThread {
@@ -62,10 +123,45 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
                 title: "Local tax disorder".into(),
                 promise: "Short-term revenue measures can ignite resistance in the provinces."
                     .into(),
+                thread_type: PlotThreadType::Political,
                 status: PlotThreadStatus::Open,
+                introduced_at: "court-crisis-001".into(),
+                expected_payoff: Some("The provinces either comply, revolt, or bargain for autonomy.".into()),
+                related_characters: vec!["provincial-governor".into(), "censor".into()],
+                related_world_flags: vec!["local_tax_resistance".into()],
                 last_update: "Provincial reports already omit several granary shortages.".into(),
             },
         ],
+        character_arcs: vec![
+            CharacterArc {
+                id: "grand-secretary-loyalty".into(),
+                character_id: "grand-secretary".into(),
+                desire: "Keep the dynasty functioning without becoming the scapegoat.".into(),
+                pressure: "Every treasury order creates a factional enemy.".into(),
+                current_state: "Cautious administrator".into(),
+                target_state: "Openly chooses stability or self-preservation.".into(),
+                status: CharacterArcStatus::Setup,
+            },
+            CharacterArc {
+                id: "eunuch-director-leverage".into(),
+                character_id: "eunuch-director".into(),
+                desire: "Preserve palace leverage over official channels.".into(),
+                pressure: "A corruption inquiry may expose palace brokers.".into(),
+                current_state: "Ambiguous information broker".into(),
+                target_state: "Reveals whether loyalty is personal or institutional.".into(),
+                status: CharacterArcStatus::Setup,
+            },
+        ],
+        pacing_score: Some(78),
+        tension_score: Some(82),
+        ai_slop_risk: Some(12),
+        review_notes: vec![NarrativeReviewNote {
+            id: "opening-pressure-clear".into(),
+            scene_key: Some("court-crisis-001".into()),
+            severity: Severity::Info,
+            message: "Opening scene has a clear pressure hook and three systemic tradeoffs.".into(),
+            resolved: true,
+        }],
     }
 }
 
@@ -135,10 +231,35 @@ pub fn review_scene(
         }
     }
 
+    let has_weak_hook = issues
+        .iter()
+        .any(|issue| issue.kind == NarrativeIssueKind::WeakHook);
+    let has_no_progress = issues
+        .iter()
+        .any(|issue| issue.kind == NarrativeIssueKind::NoProgress);
+    let has_fake_choice = issues
+        .iter()
+        .any(|issue| issue.kind == NarrativeIssueKind::FakeChoice);
+    let has_ooc = issues
+        .iter()
+        .any(|issue| issue.kind == NarrativeIssueKind::OutOfCharacter);
+    let has_broken_thread = issues
+        .iter()
+        .any(|issue| issue.kind == NarrativeIssueKind::BrokenPlotThread);
     let penalty = issues.len().saturating_mul(15) as u8;
     NarrativeReview {
         scene_key: scene.key.clone(),
         score: 100_u8.saturating_sub(penalty),
+        hook_score: if has_weak_hook { 55 } else { 100 },
+        pacing_score: if has_no_progress { 60 } else { 100 },
+        character_consistency_score: if has_ooc { 35 } else { 100 },
+        payoff_score: if has_broken_thread { 60 } else { 100 },
+        choice_meaningfulness_score: if has_fake_choice { 45 } else { 100 },
+        ai_slop_risk: if has_weak_hook || has_no_progress {
+            35
+        } else {
+            5
+        },
         issues,
     }
 }
@@ -162,8 +283,16 @@ mod tests {
     #[test]
     fn story_craft_has_required_plot_threads() {
         let state = dynasty_embers_story_craft();
+        assert!(state.active_promises.len() >= 2);
         assert!(state.emotional_arc.len() >= 3);
         assert!(state.plot_threads.len() >= 3);
+        assert!(state.character_arcs.len() >= 2);
+        assert!(state.pacing_score.is_some());
+        assert!(state.tension_score.is_some());
+        assert!(state.ai_slop_risk.is_some());
+        assert!(!state.review_notes.is_empty());
+        assert_eq!(state.bible.pacing_profile.escalation_interval_scenes, 2);
+        assert!(!state.bible.emotional_contract.is_empty());
     }
 
     #[test]
@@ -213,6 +342,11 @@ mod tests {
             ))
         );
         assert!(!review.passes());
+        assert!(review.hook_score < 100);
+        assert!(review.pacing_score < 100);
+        assert!(review.character_consistency_score < 100);
+        assert!(review.choice_meaningfulness_score < 100);
+        assert!(review.ai_slop_risk > 0);
     }
 
     #[test]
@@ -253,6 +387,12 @@ mod tests {
 
         let review = review_scene(&scene, &dynasty_embers_story_craft(), &characters);
         assert!(review.passes());
+        assert_eq!(review.hook_score, 100);
+        assert_eq!(review.pacing_score, 100);
+        assert_eq!(review.character_consistency_score, 100);
+        assert_eq!(review.payoff_score, 100);
+        assert_eq!(review.choice_meaningfulness_score, 100);
+        assert!(review.ai_slop_risk <= 5);
     }
 
     #[test]

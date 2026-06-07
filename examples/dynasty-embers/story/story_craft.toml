@@ -1,4 +1,10 @@
+[story_craft]
+pacing_score = 78
+tension_score = 82
+ai_slop_risk = 12
+
 [story_craft.bible]
+target_audience = "Players who enjoy political crisis fiction and visible systemic tradeoffs."
 genre_promise = "Historical crisis simulation with court intrigue"
 central_question = "Can the player extend a collapsing dynasty under internal and external pressure?"
 target_emotions = [
@@ -12,6 +18,57 @@ core_foreshadowing = [
     "local tax disorder",
     "capital relocation dispute",
 ]
+emotional_contract = [
+    "power under pressure",
+    "lonely decisions",
+    "short-term relief with long-term cost",
+]
+prose_style_guide = "Tense, concrete, political, and consequence-driven."
+banned_cliches = [
+    "empty imperial grandeur",
+    "prophecy without systems consequence",
+]
+
+[story_craft.bible.pacing_profile]
+escalation_interval_scenes = 2
+target_tension_curve = [
+    70,
+    78,
+    86,
+    92,
+]
+breather_scene_frequency = 4
+
+[story_craft.bible.hook_strategy]
+primary_hook = "Open each scene with a concrete court pressure that demands a tradeoff."
+recurring_hook_patterns = [
+    "ledger reveals hidden cost",
+    "sealed memorial arrives too early",
+    "messenger interrupts with provincial unrest",
+]
+
+[story_craft.bible.reversal_strategy]
+cadence_scenes = 3
+principle = "Every relief action should expose a new political cost."
+
+[[story_craft.bible.reference_modules]]
+id = "court-crisis-escalation"
+title = "Court crisis escalation"
+summary = "Use resources, factions, and visible tradeoffs to escalate pressure without copying source text."
+
+[[story_craft.active_promises]]
+id = "dynasty-survival"
+text = "The player can extend the dynasty only by accepting visible costs."
+status = "active"
+introduced_at = "court-crisis-001"
+payoff_hint = "A later scene should force a choice between legitimacy and survival."
+
+[[story_craft.active_promises]]
+id = "sealed-decisions-leak"
+text = "Sealed court decisions may be leaking before orders are issued."
+status = "active"
+introduced_at = "court-crisis-001"
+payoff_hint = "Expose or exploit the insider channel."
 
 [[story_craft.emotional_arc]]
 scene_key = "court-crisis-001"
@@ -32,19 +89,68 @@ intensity = 86
 id = "border-payroll"
 title = "Border payroll gap"
 promise = "The border army is loyal only while pay keeps flowing."
+thread_type = "survival"
 status = "open"
+introduced_at = "court-crisis-001"
+expected_payoff = "The army either gets paid, defects, or becomes a coup risk."
+related_characters = [
+    "war-minister",
+    "border-general",
+]
+related_world_flags = ["border_army_paid"]
 last_update = "Rumors mention unpaid soldiers outside the pass."
 
 [[story_craft.plot_threads]]
 id = "court-insider"
 title = "Court insider betrayal"
 promise = "A trusted court channel is leaking decisions before they are issued."
+thread_type = "mystery"
 status = "open"
+introduced_at = "court-crisis-001"
+expected_payoff = "A future review should identify who benefits from the leak."
+related_characters = [
+    "eunuch-director",
+    "grand-secretary",
+]
+related_world_flags = ["corruption_investigation"]
 last_update = "Memorials arrive too quickly after sealed conversations."
 
 [[story_craft.plot_threads]]
 id = "tax-disorder"
 title = "Local tax disorder"
 promise = "Short-term revenue measures can ignite resistance in the provinces."
+thread_type = "political"
 status = "open"
+introduced_at = "court-crisis-001"
+expected_payoff = "The provinces either comply, revolt, or bargain for autonomy."
+related_characters = [
+    "provincial-governor",
+    "censor",
+]
+related_world_flags = ["local_tax_resistance"]
 last_update = "Provincial reports already omit several granary shortages."
+
+[[story_craft.character_arcs]]
+id = "grand-secretary-loyalty"
+character_id = "grand-secretary"
+desire = "Keep the dynasty functioning without becoming the scapegoat."
+pressure = "Every treasury order creates a factional enemy."
+current_state = "Cautious administrator"
+target_state = "Openly chooses stability or self-preservation."
+status = "setup"
+
+[[story_craft.character_arcs]]
+id = "eunuch-director-leverage"
+character_id = "eunuch-director"
+desire = "Preserve palace leverage over official channels."
+pressure = "A corruption inquiry may expose palace brokers."
+current_state = "Ambiguous information broker"
+target_state = "Reveals whether loyalty is personal or institutional."
+status = "setup"
+
+[[story_craft.review_notes]]
+id = "opening-pressure-clear"
+scene_key = "court-crisis-001"
+severity = "info"
+message = "Opening scene has a clear pressure hook and three systemic tradeoffs."
+resolved = true

@@ -2,19 +2,43 @@
 id = "border-payroll"
 title = "Border payroll gap"
 promise = "The border army is loyal only while pay keeps flowing."
+thread_type = "survival"
 status = "open"
+introduced_at = "court-crisis-001"
+expected_payoff = "The army either gets paid, defects, or becomes a coup risk."
+related_characters = [
+    "war-minister",
+    "border-general",
+]
+related_world_flags = ["border_army_paid"]
 last_update = "Rumors mention unpaid soldiers outside the pass."
 
 [[plot_threads]]
 id = "court-insider"
 title = "Court insider betrayal"
 promise = "A trusted court channel is leaking decisions before they are issued."
+thread_type = "mystery"
 status = "open"
+introduced_at = "court-crisis-001"
+expected_payoff = "A future review should identify who benefits from the leak."
+related_characters = [
+    "eunuch-director",
+    "grand-secretary",
+]
+related_world_flags = ["corruption_investigation"]
 last_update = "Memorials arrive too quickly after sealed conversations."
 
 [[plot_threads]]
 id = "tax-disorder"
 title = "Local tax disorder"
 promise = "Short-term revenue measures can ignite resistance in the provinces."
+thread_type = "political"
 status = "open"
+introduced_at = "court-crisis-001"
+expected_payoff = "The provinces either comply, revolt, or bargain for autonomy."
+related_characters = [
+    "provincial-governor",
+    "censor",
+]
+related_world_flags = ["local_tax_resistance"]
 last_update = "Provincial reports already omit several granary shortages."

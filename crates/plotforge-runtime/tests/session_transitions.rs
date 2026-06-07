@@ -266,6 +266,12 @@ impl ScenePlanner for FakePlanner {
         let review = NarrativeReview {
             scene_key,
             score: 100,
+            hook_score: 100,
+            pacing_score: 100,
+            character_consistency_score: 100,
+            payoff_score: 100,
+            choice_meaningfulness_score: 100,
+            ai_slop_risk: 0,
             issues: Vec::new(),
         };
         Ok(ScenePlan {
