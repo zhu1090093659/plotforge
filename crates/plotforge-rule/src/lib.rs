@@ -218,4 +218,73 @@ mod tests {
         let delta = engine.evaluate("raise_tax", &state).expect("evaluate");
         assert!(delta.is_empty());
     }
+
+    #[test]
+    fn supports_flag_conditions_set_resource_and_event_dedupe() {
+        let engine = RuleEngine::new(
+            vec![ResourceDefinition {
+                key: "treasury".into(),
+                label: "Treasury".into(),
+                initial: 40,
+                min: 0,
+                max: 100,
+            }],
+            vec![Rule {
+                id: "stabilize-after-investigation".into(),
+                action_type: "stabilize".into(),
+                conditions: vec![
+                    Condition::FlagEquals {
+                        key: "corruption_investigation".into(),
+                        value: true,
+                    },
+                    Condition::ResourceAtMost {
+                        key: "treasury".into(),
+                        value: 50,
+                    },
+                ],
+                effects: vec![
+                    Effect::SetResource {
+                        key: "treasury".into(),
+                        value: 60,
+                    },
+                    Effect::TriggerEvent {
+                        event: "officials_submit_memorials".into(),
+                    },
+                    Effect::TriggerEvent {
+                        event: "officials_submit_memorials".into(),
+                    },
+                ],
+            }],
+        );
+        let mut state = WorldState::default();
+        state.resources.insert("treasury".into(), 40);
+        state.flags.insert("corruption_investigation".into(), true);
+
+        let delta = engine.evaluate("stabilize", &state).expect("evaluate");
+        let next = engine.apply_delta(&state, &delta).expect("apply");
+
+        assert_eq!(next.resources["treasury"], 60);
+        assert_eq!(next.triggered_events, vec!["officials_submit_memorials"]);
+    }
+
+    #[test]
+    fn returns_error_for_unknown_resource_effect() {
+        let engine = RuleEngine::new(
+            Vec::new(),
+            vec![Rule {
+                id: "bad".into(),
+                action_type: "bad_action".into(),
+                conditions: Vec::new(),
+                effects: vec![Effect::AddResource {
+                    key: "missing".into(),
+                    amount: 1,
+                }],
+            }],
+        );
+
+        let error = engine
+            .evaluate("bad_action", &WorldState::default())
+            .expect_err("unknown resource should fail");
+        assert_eq!(error, super::RuleError::UnknownResource("missing".into()));
+    }
 }

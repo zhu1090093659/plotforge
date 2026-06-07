@@ -8,3 +8,6 @@ repository.workspace = true
 [dependencies]
 plotforge-schema.workspace = true
 plotforge-storycraft.workspace = true
+
+[dev-dependencies]
+plotforge-storage.workspace = true

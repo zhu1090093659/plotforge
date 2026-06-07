@@ -293,4 +293,89 @@ mod tests {
         let decoded: RuntimeTrace = serde_json::from_str(&encoded).expect("deserialize trace");
         assert_eq!(decoded, trace);
     }
+
+    #[test]
+    fn project_data_and_export_manifest_roundtrip_json() {
+        let project = ProjectData {
+            game: GameProject {
+                id: "dynasty-embers".into(),
+                title: "Dynasty Embers".into(),
+                version: "0.1.0".into(),
+                description: "Demo".into(),
+                entry_scene: "court-crisis-001".into(),
+                run_seed: 7,
+            },
+            resources: vec![ResourceDefinition {
+                key: "treasury".into(),
+                label: "Treasury".into(),
+                initial: 40,
+                min: 0,
+                max: 100,
+            }],
+            world_state: WorldState::default(),
+            story_state: StoryState {
+                current_scene_key: "court-crisis-001".into(),
+                completed_scene_keys: Vec::new(),
+                turn: 0,
+            },
+            story_craft: StoryCraftState {
+                bible: StoryCraftBible {
+                    genre_promise: "history".into(),
+                    central_question: "survive?".into(),
+                    target_emotions: vec!["pressure".into()],
+                    core_foreshadowing: vec!["ledger".into()],
+                },
+                emotional_arc: Vec::new(),
+                plot_threads: Vec::new(),
+            },
+            characters: Vec::new(),
+            rules: vec![Rule {
+                id: "raise-tax".into(),
+                action_type: "raise_tax".into(),
+                conditions: vec![Condition::ResourceAtMost {
+                    key: "treasury".into(),
+                    value: 80,
+                }],
+                effects: vec![Effect::TriggerEvent {
+                    event: "local_tax_resistance".into(),
+                }],
+            }],
+            scenes: Vec::new(),
+        };
+        let manifest = ExportManifest {
+            game: project.game.clone(),
+            entry_scene: project.story_state.current_scene_key.clone(),
+            scenes: project.scenes.clone(),
+            assets: vec!["assets/generated/placeholder.png".into()],
+            generated_by: "test".into(),
+        };
+
+        let project_json = serde_json::to_string(&project).expect("serialize project");
+        let manifest_json = serde_json::to_string(&manifest).expect("serialize manifest");
+        assert_eq!(
+            serde_json::from_str::<ProjectData>(&project_json).expect("deserialize project"),
+            project
+        );
+        assert_eq!(
+            serde_json::from_str::<ExportManifest>(&manifest_json).expect("deserialize manifest"),
+            manifest
+        );
+    }
+
+    #[test]
+    fn tagged_rule_enums_use_snake_case_contracts() {
+        let condition = serde_json::to_value(Condition::FlagEquals {
+            key: "tax_resistance".into(),
+            value: true,
+        })
+        .expect("serialize condition");
+        let effect = serde_json::to_value(Effect::SetResource {
+            key: "treasury".into(),
+            value: 12,
+        })
+        .expect("serialize effect");
+
+        assert_eq!(condition["kind"], "flag_equals");
+        assert_eq!(effect["kind"], "set_resource");
+    }
 }

@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  rust:
+  rust-static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -17,7 +17,39 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Check workspace
         run: cargo check --workspace
-      - name: Run tests
-        run: cargo test --workspace
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  rust-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run tests
+        run: cargo test --workspace
+
+  cli-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run CLI smoke in tempdir
+        run: |
+          tmp="$(mktemp -d)"
+          cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
+          cargo run -p plotforge-cli -- check "$tmp/dynasty-embers"
+          cargo run -p plotforge-cli -- play "$tmp/dynasty-embers" --once
+          cargo run -p plotforge-cli -- trace inspect "$tmp/dynasty-embers/traces/latest.json"
+          cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+
+  export-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build static export
+        run: |
+          tmp="$(mktemp -d)"
+          cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
+          cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+          python3 scripts/qa/static_export_http_smoke.py --export-dir "$tmp/export"

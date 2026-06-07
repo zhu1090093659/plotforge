@@ -254,4 +254,51 @@ mod tests {
         let review = review_scene(&scene, &dynasty_embers_story_craft(), &characters);
         assert!(review.passes());
     }
+
+    #[test]
+    fn review_locks_each_issue_kind() {
+        let scene = Scene {
+            key: "bad".into(),
+            title: "Bad".into(),
+            location: "Court".into(),
+            dramatic_purpose: String::new(),
+            hook: "weak".into(),
+            background_asset: "assets/generated/placeholder.png".into(),
+            character_ids: vec!["ghost".into()],
+            plot_thread_updates: BTreeMap::from([("ghost-thread".into(), "missing".into())]),
+            beats: vec![Beat {
+                id: "beat-1".into(),
+                text: "Flat.".into(),
+                choices: vec![
+                    Choice {
+                        id: "a".into(),
+                        label: "Wait".into(),
+                        action_type: "continue".into(),
+                        dramatic_purpose: String::new(),
+                        change_scene: false,
+                    },
+                    Choice {
+                        id: "b".into(),
+                        label: "Wait".into(),
+                        action_type: "continue".into(),
+                        dramatic_purpose: "Duplicate label.".into(),
+                        change_scene: false,
+                    },
+                ],
+            }],
+        };
+
+        let review = review_scene(&scene, &dynasty_embers_story_craft(), &[]);
+        let kinds = review
+            .issues
+            .iter()
+            .map(|issue| issue.kind.clone())
+            .collect::<Vec<_>>();
+
+        assert!(kinds.contains(&plotforge_schema::NarrativeIssueKind::WeakHook));
+        assert!(kinds.contains(&plotforge_schema::NarrativeIssueKind::FakeChoice));
+        assert!(kinds.contains(&plotforge_schema::NarrativeIssueKind::OutOfCharacter));
+        assert!(kinds.contains(&plotforge_schema::NarrativeIssueKind::BrokenPlotThread));
+        assert!(review.score < 100);
+    }
 }
