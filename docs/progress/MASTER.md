@@ -26,7 +26,7 @@
 | Phase | Name | Milestone URL | Open | Closed | Total |
 |:--|:--|:--|--:|--:|--:|
 | 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 0 | 5 | 5 |
-| 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 4 | 1 | 5 |
+| 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 3 | 2 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 5 | 0 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 4 | 0 | 4 |
 | 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 4 | 0 | 4 |
@@ -42,7 +42,7 @@
 | T1.4 | #24 | Strengthen fixture/source-of-truth validation | closed by PR #50 |
 | T1.5 | #25 | Add export whitelist package audit foundation | closed by PR #51 |
 | T2.1 | #26 | Enrich StoryCraft schema toward PRD fields | closed by PR #52 |
-| T2.2 | #27 | Add agent output proposal contracts | open |
+| T2.2 | #27 | Add agent output proposal contracts | closed by PR #53 |
 | T2.3 | #28 | Add TextModelProvider trait and fake provider pipeline | open |
 | T2.4 | #29 | Add reference-library compliance scaffolding | open |
 | T2.5 | #30 | Add JSON Schema and TypeScript contract export | open |
@@ -74,7 +74,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 ## Phase Checklist
 
 - [x] Phase 1: Core Runtime Hardening (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
-- [ ] Phase 2: Story Craft and Provider Contracts (1/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
+- [ ] Phase 2: Story Craft and Provider Contracts (2/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [ ] Phase 3: Desktop Studio Skeleton (0/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [ ] Phase 4: Media and Job Pipeline (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
 - [ ] Phase 5: Persistence, Debugger, and Export v2 (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
@@ -83,7 +83,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 ## Current Status
 
 **Active Phase**: Phase 2 — Story Craft and Provider Contracts
-**Active Task**: T2.2 Add agent output proposal contracts (Issue #27)
+**Active Task**: T2.3 Add TextModelProvider trait and fake provider pipeline (Issue #28)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #27: add typed agent output proposal contracts that cannot commit runtime state directly.
+1. Implement #28: add `TextModelProvider` trait and fake provider pipeline.
 2. Keep provider contracts fake/mockable and avoid real model SDKs or network calls in Phase 2.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -115,3 +115,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-07 | Execution | Completed #24 via PR #50: strengthened committed fixture validation against freshly generated source files, canonical project semantics, and no generated trace JSON. |
 | 2026-06-07 | Execution | Completed #25 via PR #51: added static export whitelist auditing, safe asset path validation, provider/trace/raw response exclusion tests, and HTTP smoke package checks. Phase 1 milestone closed with drift_score 0. |
 | 2026-06-07 | Execution | Completed #26 via PR #52: enriched StoryCraft schema with PRD pacing, hook/reversal, promises, character arcs, review notes, PlotThread metadata, NarrativeReview score fields, legacy defaults, and updated demo fixture. |
+| 2026-06-07 | Execution | Completed #27 via PR #53: added typed scene plan, beat draft, and review agent output proposals, role/payload validation, no-direct-state-commit rejection tests, and scene assembly validation. |
