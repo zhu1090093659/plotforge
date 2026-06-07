@@ -5,8 +5,10 @@ use std::{
 };
 
 use plotforge_schema::{
-    Beat, Character, Choice, Condition, Effect, GameProject, PlotThread, ProjectData,
-    ResourceDefinition, Rule, Scene, StoryState, WorldState,
+    Beat, Character, Choice, Condition, Effect, GameProject, MAX_REFERENCE_STRUCTURE_NOTE_CHARS,
+    MAX_REFERENCE_SUMMARY_CHARS, PlotThread, ProjectData, ReferenceAnalysis, ReferenceRights,
+    ReferenceSource, ReferenceSourceType, ReferenceStructureNote, ResourceDefinition, Rule, Scene,
+    StoryState, WorldState,
 };
 use plotforge_storycraft::dynasty_embers_story_craft;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -38,7 +40,11 @@ pub enum StorageError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("reference compliance error at {path}: {reason}")]
+    ReferenceCompliance { path: PathBuf, reason: String },
 }
+
+pub const MAX_REFERENCE_RAW_TEXT_BYTES: u64 = 4096;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ResourceFile {
@@ -101,6 +107,8 @@ pub fn load_project(path: impl AsRef<Path>) -> Result<ProjectData, StorageError>
 }
 
 pub fn validate_project(path: impl AsRef<Path>) -> Result<ProjectData, StorageError> {
+    let path = path.as_ref();
+    validate_reference_library(path)?;
     let project = load_project(path)?;
     let entry_scene = project.game.entry_scene.as_str();
     if project.scene(entry_scene).is_none() {
@@ -109,6 +117,34 @@ pub fn validate_project(path: impl AsRef<Path>) -> Result<ProjectData, StorageEr
         ))));
     }
     Ok(project)
+}
+
+pub fn write_reference_analysis(
+    project_path: impl AsRef<Path>,
+    analysis: &ReferenceAnalysis,
+) -> Result<PathBuf, StorageError> {
+    let project_path = project_path.as_ref();
+    let relative_path = PathBuf::from(format!(
+        "references/user_imports/{}.reference.json",
+        analysis.id
+    ));
+    validate_reference_analysis(&relative_path, analysis)?;
+    let path = project_path.join(relative_path);
+    write_json(&path, analysis)?;
+    Ok(path)
+}
+
+pub fn validate_reference_library(project_path: impl AsRef<Path>) -> Result<(), StorageError> {
+    let project_path = project_path.as_ref();
+    for path in reference_analysis_paths(project_path)? {
+        let analysis = read_json::<ReferenceAnalysis>(&path)?;
+        let relative_path = path
+            .strip_prefix(project_path)
+            .unwrap_or(path.as_path())
+            .to_path_buf();
+        validate_reference_analysis(&relative_path, &analysis)?;
+    }
+    validate_no_large_raw_reference_text(project_path)
 }
 
 pub fn write_trace(
@@ -268,6 +304,14 @@ fn write_project(path: &Path, project: &ProjectData) -> Result<(), StorageError>
         &path.join("agents/plot_doctor.prompt.md"),
         "Review hook, progress, choice quality, character fit, and threads.\n",
     )?;
+    write_text(
+        &path.join("references/README.md"),
+        "# Reference Library\n\nStore metadata, short summaries, and structure notes only. Do not store raw copyrighted bodies here.\n",
+    )?;
+    write_json(
+        &path.join("references/methods/political-crisis-patterns.reference.json"),
+        &demo_reference_analysis(),
+    )?;
     write_text(&path.join("AGENTS.md"), project_agents_md())?;
     write_placeholder_png(&path.join("assets/generated/placeholder.png"))?;
     write_placeholder_png(&path.join("assets/generated/court-crisis-001.png"))?;
@@ -342,6 +386,178 @@ fn read_collection<T: DeserializeOwned>(
             }
         })
         .collect()
+}
+
+fn reference_analysis_paths(project_path: &Path) -> Result<Vec<PathBuf>, StorageError> {
+    let mut paths = Vec::new();
+    for relative_dir in [
+        "references/methods",
+        "references/user_imports",
+        "references/analyses",
+    ] {
+        let dir = project_path.join(relative_dir);
+        if !dir.exists() {
+            continue;
+        }
+        let mut entries = fs::read_dir(&dir)
+            .map_io(&dir)?
+            .map(|entry| entry.map(|entry| entry.path()).map_io(&dir))
+            .collect::<Result<Vec<_>, _>>()?;
+        entries.sort();
+        paths.extend(entries.into_iter().filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".reference.json"))
+        }));
+    }
+
+    Ok(paths)
+}
+
+fn validate_reference_analysis(
+    relative_path: &Path,
+    analysis: &ReferenceAnalysis,
+) -> Result<(), StorageError> {
+    validate_reference_id(relative_path, &analysis.id)?;
+    validate_non_empty(relative_path, "title", &analysis.title)?;
+    validate_non_empty(relative_path, "source.citation", &analysis.source.citation)?;
+    validate_non_empty(relative_path, "summary", &analysis.summary)?;
+    validate_char_limit(
+        relative_path,
+        "summary",
+        &analysis.summary,
+        MAX_REFERENCE_SUMMARY_CHARS,
+    )?;
+    validate_reference_rights(relative_path, &analysis.source)?;
+
+    for note in &analysis.structure_notes {
+        validate_non_empty(relative_path, "structure_notes.label", &note.label)?;
+        validate_non_empty(relative_path, "structure_notes.summary", &note.summary)?;
+        validate_char_limit(
+            relative_path,
+            "structure_notes.summary",
+            &note.summary,
+            MAX_REFERENCE_STRUCTURE_NOTE_CHARS,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_reference_id(path: &Path, id: &str) -> Result<(), StorageError> {
+    validate_non_empty(path, "id", id)?;
+    let valid = id
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+    if valid {
+        Ok(())
+    } else {
+        Err(reference_compliance_error(
+            path,
+            "id may only contain ASCII letters, numbers, hyphen, and underscore",
+        ))
+    }
+}
+
+fn validate_reference_rights(path: &Path, source: &ReferenceSource) -> Result<(), StorageError> {
+    let rights_require_authorization =
+        matches!(
+            source.rights,
+            ReferenceRights::UserOwned | ReferenceRights::UserAuthorized
+        ) || matches!(source.source_type, ReferenceSourceType::UserImport);
+    if rights_require_authorization && !source.user_authorized {
+        Err(reference_compliance_error(
+            path,
+            "user imports and user-owned references require explicit authorization metadata",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_no_large_raw_reference_text(project_path: &Path) -> Result<(), StorageError> {
+    let user_imports = project_path.join("references/user_imports");
+    if !user_imports.exists() {
+        return Ok(());
+    }
+
+    let mut stack = vec![user_imports];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).map_io(&dir)? {
+            let path = entry.map_io(&dir)?.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !is_raw_reference_text_path(&path) {
+                continue;
+            }
+            let bytes = fs::metadata(&path).map_io(&path)?.len();
+            if bytes > MAX_REFERENCE_RAW_TEXT_BYTES {
+                let relative_path = path
+                    .strip_prefix(project_path)
+                    .unwrap_or(path.as_path())
+                    .to_path_buf();
+                return Err(reference_compliance_error(
+                    &relative_path,
+                    format!(
+                        "large raw reference text is not allowed ({bytes} bytes > {MAX_REFERENCE_RAW_TEXT_BYTES} bytes); store metadata, short summary, and structure notes instead"
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_raw_reference_text_path(path: &Path) -> bool {
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".reference.json"))
+    {
+        return false;
+    }
+
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension, "txt" | "md" | "markdown"))
+}
+
+fn validate_non_empty(path: &Path, field: &str, value: &str) -> Result<(), StorageError> {
+    if value.trim().is_empty() {
+        Err(reference_compliance_error(
+            path,
+            format!("{field} must not be empty"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_char_limit(
+    path: &Path,
+    field: &str,
+    value: &str,
+    max_chars: usize,
+) -> Result<(), StorageError> {
+    let chars = value.chars().count();
+    if chars > max_chars {
+        Err(reference_compliance_error(
+            path,
+            format!("{field} is too long ({chars} chars > {max_chars} chars)"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn reference_compliance_error(path: &Path, reason: impl Into<String>) -> StorageError {
+    StorageError::ReferenceCompliance {
+        path: path.to_path_buf(),
+        reason: reason.into(),
+    }
 }
 
 fn resource(key: &str, label: &str, initial: i32, min: i32, max: i32) -> ResourceDefinition {
@@ -490,6 +706,33 @@ fn dynasty_rules() -> Vec<Rule> {
     ]
 }
 
+fn demo_reference_analysis() -> ReferenceAnalysis {
+    ReferenceAnalysis {
+        id: "political-crisis-patterns".into(),
+        title: "Political Crisis Pattern Notes".into(),
+        source: ReferenceSource {
+            source_type: ReferenceSourceType::MethodTemplate,
+            rights: ReferenceRights::GenericMethod,
+            citation: "PlotForge built-in generic method template".into(),
+            user_authorized: false,
+        },
+        summary: "Escalate political pressure through visible tradeoffs, not copied source prose."
+            .into(),
+        structure_notes: vec![
+            ReferenceStructureNote {
+                label: "resource squeeze".into(),
+                summary: "Start with a concrete shortage the ruler cannot ignore.".into(),
+            },
+            ReferenceStructureNote {
+                label: "legitimacy collision".into(),
+                summary: "Make each practical fix damage trust, order, or faction alignment."
+                    .into(),
+            },
+        ],
+        tags: vec!["method".into(), "political".into(), "pacing".into()],
+    }
+}
+
 fn initial_scene() -> Scene {
     Scene {
         key: "court-crisis-001".into(),
@@ -538,7 +781,7 @@ fn initial_scene() -> Scene {
 }
 
 fn project_agents_md() -> &'static str {
-    "# AGENTS.md\n\n## Project goal\n\nBuild a playable PlotForge story project from local files.\n\n## Commands\n\n- `plotforge check .`\n- `plotforge play . --once`\n- `plotforge export static . --out exports/static`\n\n## Rules\n\n- Files are source of truth.\n- Do not put API keys in project files or exports.\n- AI output proposes content; engine rules commit state.\n"
+    "# AGENTS.md\n\n## Project goal\n\nBuild a playable PlotForge story project from local files.\n\n## Commands\n\n- `plotforge check .`\n- `plotforge play . --once`\n- `plotforge export static . --out exports/static`\n\n## Rules\n\n- Files are source of truth.\n- Do not put API keys in project files or exports.\n- AI output proposes content; engine rules commit state.\n- Reference imports store metadata, rights, short summaries, and structure notes only; do not store large raw copyrighted bodies.\n"
 }
 
 trait IoContext<T> {

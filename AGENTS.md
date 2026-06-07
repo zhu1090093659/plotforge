@@ -85,6 +85,7 @@ Fixture validation commands:
 - Static exports must reject obvious secret markers and must not copy private traces or provider configuration.
 - Static export package output must be audited against an explicit whitelist of player files, manifest files, and referenced assets; stale or unexpected files in the output package are errors.
 - Do not introduce hidden network calls in tests or MVP runtime paths.
+- Reference-library imports must store source metadata, authorization/rights metadata, short summaries, and structure notes only; do not store large raw copyrighted bodies in fixtures or project files.
 
 ## Change Discipline
 
