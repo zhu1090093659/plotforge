@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
+use plotforge_agent::{ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError};
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
-use plotforge_schema::ActionIntentStatus;
+use plotforge_schema::{ActionIntentStatus, Beat, Choice, NarrativeReview, Scene};
 use plotforge_storage::dynasty_embers_project;
 
 #[test]
@@ -81,6 +84,52 @@ fn action_intent_is_explicit_for_known_and_unknown_inputs() {
 }
 
 #[test]
+fn runtime_uses_injected_planner_success_path() {
+    let mut session =
+        RuntimeSession::with_scene_planner(dynasty_embers_project(), FakePlanner::success());
+
+    let step = session.play_once("朕决定加征辽饷").expect("play");
+
+    assert_eq!(step.scene.key, "injected-scene-001");
+    assert_eq!(
+        step.trace.narrative_review.expect("review").scene_key,
+        "injected-scene-001"
+    );
+    assert!(!step.trace.fallback_used);
+}
+
+#[test]
+fn injected_planner_fallback_is_trace_visible() {
+    let mut session =
+        RuntimeSession::with_scene_planner(dynasty_embers_project(), FakePlanner::fallback());
+
+    let step = session.play_once("朕决定加征辽饷").expect("play");
+
+    assert!(step.trace.fallback_used);
+    assert!(
+        step.trace
+            .errors
+            .iter()
+            .any(|error| error.code == "fallback_scene")
+    );
+}
+
+#[test]
+fn injected_planner_error_does_not_commit_state() {
+    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), ErrorPlanner);
+    let story_before = session.story_state().clone();
+    let world_before = session.world_state().clone();
+
+    let error = session
+        .play_once("朕决定加征辽饷")
+        .expect_err("planner error");
+
+    assert!(matches!(error, RuntimeEngineError::Planner(_)));
+    assert_eq!(session.story_state(), &story_before);
+    assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
 fn summarize_delta_keeps_human_readable_lines() {
     let mut session = RuntimeSession::new(dynasty_embers_project());
     let step = session.play_once("朕决定加征辽饷").expect("play");
@@ -89,4 +138,81 @@ fn summarize_delta_keeps_human_readable_lines() {
 
     assert!(lines.contains(&"treasury: +12".into()));
     assert!(lines.contains(&"event: local_tax_resistance".into()));
+}
+
+#[derive(Clone, Debug)]
+struct FakePlanner {
+    fallback_used: bool,
+}
+
+impl FakePlanner {
+    fn success() -> Self {
+        Self {
+            fallback_used: false,
+        }
+    }
+
+    fn fallback() -> Self {
+        Self {
+            fallback_used: true,
+        }
+    }
+}
+
+impl ScenePlanner for FakePlanner {
+    fn plan_next_scene(
+        &self,
+        request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
+        let scene_key = format!("injected-scene-{:03}", request.story_state.turn + 1);
+        let scene = Scene {
+            key: scene_key.clone(),
+            title: "Injected Planner Scene".into(),
+            location: "Test Court".into(),
+            dramatic_purpose: "Prove runtime uses the injected planner.".into(),
+            hook: "A test planner interrupts the court protocol.".into(),
+            background_asset: format!("assets/generated/{scene_key}.png"),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::from([(
+                "tax-disorder".into(),
+                "Injected planner advanced the thread.".into(),
+            )]),
+            beats: vec![Beat {
+                id: format!("{scene_key}-beat-001"),
+                text: format!("Injected response to {}", request.player_input),
+                choices: vec![Choice {
+                    id: "continue-council".into(),
+                    label: "Continue".into(),
+                    action_type: "continue".into(),
+                    dramatic_purpose: "Continue after injected planner.".into(),
+                    change_scene: false,
+                }],
+            }],
+        };
+        let review = NarrativeReview {
+            scene_key,
+            score: 100,
+            issues: Vec::new(),
+        };
+        Ok(ScenePlan {
+            scene,
+            review,
+            fallback_used: self.fallback_used,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ErrorPlanner;
+
+impl ScenePlanner for ErrorPlanner {
+    fn plan_next_scene(
+        &self,
+        _request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
+        Err(ScenePlannerError::new(
+            "fake_planner",
+            "planner failed before scene proposal",
+        ))
+    }
 }
