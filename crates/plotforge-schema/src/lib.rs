@@ -262,6 +262,92 @@ pub struct Choice {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRole {
+    StoryArchitect,
+    StoryCraftPlanner,
+    ScenePlanner,
+    BeatWriter,
+    PlotDoctor,
+    ConsistencyChecker,
+    DeslopRefiner,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentOutputProposal {
+    pub id: String,
+    pub agent: AgentRole,
+    pub output: AgentProposalPayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(
+    tag = "kind",
+    content = "payload",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum AgentProposalPayload {
+    ScenePlan(ScenePlanProposal),
+    BeatDrafts(BeatDraftsProposal),
+    Review(ReviewProposal),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ScenePlanProposal {
+    pub scene_key: String,
+    pub title: String,
+    pub location: String,
+    pub scene_summary: String,
+    pub dramatic_purpose: String,
+    pub hook: String,
+    pub emotional_goal: Option<String>,
+    pub cast: Vec<String>,
+    pub entry_beat_id: String,
+    pub background_asset: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BeatDraftsProposal {
+    pub scene_key: String,
+    #[serde(default)]
+    pub beats: Vec<BeatDraftProposal>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BeatDraftProposal {
+    pub id: String,
+    pub scene_key: String,
+    pub text: String,
+    pub choices: Vec<Choice>,
+    pub narrative_function: NarrativeFunction,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NarrativeFunction {
+    Hook,
+    Setup,
+    Payoff,
+    Reversal,
+    Choice,
+    Cliffhanger,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewProposal {
+    pub scene_key: String,
+    pub review: NarrativeReview,
+    #[serde(default)]
+    pub notes: Vec<NarrativeReviewNote>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActionIntent {
     pub status: ActionIntentStatus,
     pub action_type: Option<String>,
@@ -612,6 +698,67 @@ mod tests {
     }
 
     #[test]
+    fn agent_output_proposals_roundtrip_json() {
+        let proposals = vec![
+            sample_scene_plan_output_proposal(),
+            sample_beat_drafts_output_proposal(),
+            sample_review_output_proposal(),
+        ];
+
+        for proposal in proposals {
+            let encoded = serde_json::to_string_pretty(&proposal).expect("serialize proposal");
+            let decoded: AgentOutputProposal =
+                serde_json::from_str(&encoded).expect("deserialize proposal");
+
+            assert_eq!(decoded, proposal);
+        }
+
+        let encoded =
+            serde_json::to_string_pretty(&sample_scene_plan_output_proposal()).expect("serialize");
+        let decoded: AgentOutputProposal =
+            serde_json::from_str(&encoded).expect("deserialize proposal");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("proposal value");
+
+        assert_eq!(value["agent"], "scene_planner");
+        assert_eq!(value["output"]["kind"], "scene_plan");
+        assert!(matches!(
+            decoded.output,
+            AgentProposalPayload::ScenePlan(ScenePlanProposal { .. })
+        ));
+    }
+
+    #[test]
+    fn agent_output_proposal_rejects_unknown_state_commit_fields() {
+        let mut proposal =
+            serde_json::to_value(sample_scene_plan_output_proposal()).expect("proposal");
+        proposal["world_state_delta"] = serde_json::json!({"treasury": 10});
+        let error = serde_json::from_value::<AgentOutputProposal>(proposal)
+            .expect_err("top-level state patch should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut output =
+            serde_json::to_value(sample_scene_plan_output_proposal()).expect("proposal");
+        output["output"]["world_state_delta"] = serde_json::json!({"treasury": 10});
+        let _error = serde_json::from_value::<AgentOutputProposal>(output)
+            .expect_err("output state patch should be rejected");
+
+        let mut nested =
+            serde_json::to_value(sample_scene_plan_output_proposal()).expect("proposal");
+        nested["output"]["payload"]["story_state_patch"] = serde_json::json!({"turn": 2});
+        let error = serde_json::from_value::<AgentOutputProposal>(nested)
+            .expect_err("scene plan state patch should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut beat =
+            serde_json::to_value(sample_beat_drafts_output_proposal()).expect("proposal");
+        beat["output"]["payload"]["beats"][0]["world_state_delta"] =
+            serde_json::json!({"treasury": 10});
+        let error = serde_json::from_value::<AgentOutputProposal>(beat)
+            .expect_err("beat draft state patch should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn runtime_trace_roundtrips_json() {
         let story_state = StoryState {
             current_scene_key: "court-crisis-001".into(),
@@ -900,5 +1047,87 @@ mod tests {
 
         assert_eq!(condition["kind"], "flag_equals");
         assert_eq!(effect["kind"], "set_resource");
+    }
+
+    fn sample_scene_plan_output_proposal() -> AgentOutputProposal {
+        AgentOutputProposal {
+            id: "scene-plan-proposal-001".into(),
+            agent: AgentRole::ScenePlanner,
+            output: AgentProposalPayload::ScenePlan(sample_scene_plan_proposal()),
+        }
+    }
+
+    fn sample_beat_drafts_output_proposal() -> AgentOutputProposal {
+        AgentOutputProposal {
+            id: "beat-drafts-proposal-001".into(),
+            agent: AgentRole::BeatWriter,
+            output: AgentProposalPayload::BeatDrafts(BeatDraftsProposal {
+                scene_key: "court-crisis-002".into(),
+                beats: vec![sample_beat_draft_proposal()],
+            }),
+        }
+    }
+
+    fn sample_review_output_proposal() -> AgentOutputProposal {
+        AgentOutputProposal {
+            id: "review-proposal-001".into(),
+            agent: AgentRole::PlotDoctor,
+            output: AgentProposalPayload::Review(sample_review_proposal()),
+        }
+    }
+
+    fn sample_scene_plan_proposal() -> ScenePlanProposal {
+        ScenePlanProposal {
+            scene_key: "court-crisis-002".into(),
+            title: "Tax Resistance Memorials".into(),
+            location: "Qianqing Palace".into(),
+            scene_summary: "The levy creates immediate provincial resistance.".into(),
+            dramatic_purpose: "Show the cost of emergency revenue.".into(),
+            hook: "Three memorials arrive with broken tax seals.".into(),
+            emotional_goal: Some("consequence".into()),
+            cast: vec!["grand-secretary".into()],
+            entry_beat_id: "court-crisis-002-beat-001".into(),
+            background_asset: Some("assets/generated/court-crisis-002.png".into()),
+        }
+    }
+
+    fn sample_beat_draft_proposal() -> BeatDraftProposal {
+        BeatDraftProposal {
+            id: "court-crisis-002-beat-001".into(),
+            scene_key: "court-crisis-002".into(),
+            text: "The court reads three provincial reports in silence.".into(),
+            choices: vec![Choice {
+                id: "inspect-corruption".into(),
+                label: "Investigate the collectors".into(),
+                action_type: "inspect_corruption".into(),
+                dramatic_purpose: "Trade court stability for cleaner revenue.".into(),
+                change_scene: true,
+            }],
+            narrative_function: NarrativeFunction::Hook,
+        }
+    }
+
+    fn sample_review_proposal() -> ReviewProposal {
+        ReviewProposal {
+            scene_key: "court-crisis-002".into(),
+            review: NarrativeReview {
+                scene_key: "court-crisis-002".into(),
+                score: 95,
+                hook_score: 95,
+                pacing_score: 95,
+                character_consistency_score: 100,
+                payoff_score: 90,
+                choice_meaningfulness_score: 95,
+                ai_slop_risk: 5,
+                issues: Vec::new(),
+            },
+            notes: vec![NarrativeReviewNote {
+                id: "proposal-review-note".into(),
+                scene_key: Some("court-crisis-002".into()),
+                severity: Severity::Info,
+                message: "Proposal advances tax disorder visibly.".into(),
+                resolved: true,
+            }],
+        }
     }
 }
