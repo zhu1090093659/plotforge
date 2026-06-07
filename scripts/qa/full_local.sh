@@ -10,6 +10,7 @@ cd "$ROOT"
 cargo fmt --all -- --check
 cargo check --workspace
 cargo test --workspace
+scripts/contracts/check_contracts.sh
 cargo clippy --workspace --all-targets -- -D warnings
 
 PROJECT="$TMP/dynasty-embers"

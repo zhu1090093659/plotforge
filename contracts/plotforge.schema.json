@@ -1,0 +1,1735 @@
+{
+  "$defs": {
+    "ActionIntent": {
+      "properties": {
+        "action_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matched_terms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/ActionIntentStatus"
+        }
+      },
+      "required": [
+        "status",
+        "matched_terms"
+      ],
+      "type": "object"
+    },
+    "ActionIntentStatus": {
+      "enum": [
+        "supported",
+        "unsupported"
+      ],
+      "type": "string"
+    },
+    "AgentOutputProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/AgentRole"
+        },
+        "id": {
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/AgentProposalPayload"
+        }
+      },
+      "required": [
+        "id",
+        "agent",
+        "output"
+      ],
+      "type": "object"
+    },
+    "AgentProposalPayload": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "scene_plan",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/ScenePlanProposal"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "beat_drafts",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/BeatDraftsProposal"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "review",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/ReviewProposal"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AgentRole": {
+      "enum": [
+        "story_architect",
+        "story_craft_planner",
+        "scene_planner",
+        "beat_writer",
+        "plot_doctor",
+        "consistency_checker",
+        "deslop_refiner"
+      ],
+      "type": "string"
+    },
+    "Beat": {
+      "properties": {
+        "choices": {
+          "items": {
+            "$ref": "#/$defs/Choice"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "choices"
+      ],
+      "type": "object"
+    },
+    "BeatDraftProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "choices": {
+          "items": {
+            "$ref": "#/$defs/Choice"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "narrative_function": {
+          "$ref": "#/$defs/NarrativeFunction"
+        },
+        "scene_key": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "scene_key",
+        "text",
+        "choices",
+        "narrative_function"
+      ],
+      "type": "object"
+    },
+    "BeatDraftsProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "beats": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BeatDraftProposal"
+          },
+          "type": "array"
+        },
+        "scene_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_key"
+      ],
+      "type": "object"
+    },
+    "Character": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "traits": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "visual_card": {
+          "type": "string"
+        },
+        "voice_card": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "role",
+        "traits",
+        "visual_card",
+        "voice_card"
+      ],
+      "type": "object"
+    },
+    "CharacterArc": {
+      "properties": {
+        "character_id": {
+          "type": "string"
+        },
+        "current_state": {
+          "type": "string"
+        },
+        "desire": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "pressure": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CharacterArcStatus"
+        },
+        "target_state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "character_id",
+        "desire",
+        "pressure",
+        "current_state",
+        "target_state",
+        "status"
+      ],
+      "type": "object"
+    },
+    "CharacterArcStatus": {
+      "enum": [
+        "setup",
+        "pressured",
+        "changed",
+        "resolved"
+      ],
+      "type": "string"
+    },
+    "Choice": {
+      "properties": {
+        "action_type": {
+          "type": "string"
+        },
+        "change_scene": {
+          "type": "boolean"
+        },
+        "dramatic_purpose": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "action_type",
+        "dramatic_purpose",
+        "change_scene"
+      ],
+      "type": "object"
+    },
+    "Condition": {
+      "oneOf": [
+        {
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "resource_at_least",
+              "type": "string"
+            },
+            "value": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "resource_at_most",
+              "type": "string"
+            },
+            "value": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "flag_equals",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Effect": {
+      "oneOf": [
+        {
+          "properties": {
+            "amount": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "add_resource",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "amount"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "set_resource",
+              "type": "string"
+            },
+            "value": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "set_flag",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "event": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "trigger_event",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "event"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EmotionalArcPoint": {
+      "properties": {
+        "intensity": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scene_key": {
+          "type": "string"
+        },
+        "target_emotion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_key",
+        "target_emotion",
+        "intensity"
+      ],
+      "type": "object"
+    },
+    "ExportManifest": {
+      "properties": {
+        "assets": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "entry_scene": {
+          "type": "string"
+        },
+        "game": {
+          "$ref": "#/$defs/GameProject"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "scenes": {
+          "items": {
+            "$ref": "#/$defs/Scene"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "game",
+        "entry_scene",
+        "scenes",
+        "assets",
+        "generated_by"
+      ],
+      "type": "object"
+    },
+    "GameProject": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "entry_scene": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "run_seed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "version",
+        "description",
+        "entry_scene",
+        "run_seed"
+      ],
+      "type": "object"
+    },
+    "HookStrategy": {
+      "properties": {
+        "primary_hook": {
+          "type": "string"
+        },
+        "recurring_hook_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "primary_hook",
+        "recurring_hook_patterns"
+      ],
+      "type": "object"
+    },
+    "NarrativeFunction": {
+      "enum": [
+        "hook",
+        "setup",
+        "payoff",
+        "reversal",
+        "choice",
+        "cliffhanger"
+      ],
+      "type": "string"
+    },
+    "NarrativeIssue": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/NarrativeIssueKind"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "kind",
+        "severity",
+        "message"
+      ],
+      "type": "object"
+    },
+    "NarrativeIssueKind": {
+      "enum": [
+        "weak_hook",
+        "no_progress",
+        "fake_choice",
+        "out_of_character",
+        "broken_plot_thread",
+        "thread_forgotten",
+        "world_state_ignored",
+        "too_much_exposition",
+        "ai_slop_style"
+      ],
+      "type": "string"
+    },
+    "NarrativeReview": {
+      "properties": {
+        "ai_slop_risk": {
+          "default": 0,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "character_consistency_score": {
+          "default": 100,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "choice_meaningfulness_score": {
+          "default": 100,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hook_score": {
+          "default": 100,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/NarrativeIssue"
+          },
+          "type": "array"
+        },
+        "pacing_score": {
+          "default": 100,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "payoff_score": {
+          "default": 100,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scene_key": {
+          "type": "string"
+        },
+        "score": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "scene_key",
+        "score",
+        "issues"
+      ],
+      "type": "object"
+    },
+    "NarrativeReviewNote": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "scene_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "message",
+        "resolved"
+      ],
+      "type": "object"
+    },
+    "PacingProfile": {
+      "properties": {
+        "breather_scene_frequency": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "escalation_interval_scenes": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target_tension_curve": {
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "escalation_interval_scenes",
+        "target_tension_curve"
+      ],
+      "type": "object"
+    },
+    "PlotThread": {
+      "properties": {
+        "expected_payoff": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "introduced_at": {
+          "default": "",
+          "type": "string"
+        },
+        "last_update": {
+          "type": "string"
+        },
+        "promise": {
+          "type": "string"
+        },
+        "related_characters": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "related_world_flags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/PlotThreadStatus"
+        },
+        "thread_type": {
+          "$ref": "#/$defs/PlotThreadType",
+          "default": "custom"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "promise",
+        "status",
+        "last_update"
+      ],
+      "type": "object"
+    },
+    "PlotThreadStatus": {
+      "enum": [
+        "open",
+        "escalating",
+        "resolved",
+        "deepened",
+        "paid_off",
+        "abandoned"
+      ],
+      "type": "string"
+    },
+    "PlotThreadType": {
+      "enum": [
+        "mystery",
+        "foreshadow",
+        "relationship",
+        "political",
+        "survival",
+        "custom"
+      ],
+      "type": "string"
+    },
+    "ProjectData": {
+      "properties": {
+        "characters": {
+          "items": {
+            "$ref": "#/$defs/Character"
+          },
+          "type": "array"
+        },
+        "game": {
+          "$ref": "#/$defs/GameProject"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceDefinition"
+          },
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": "array"
+        },
+        "scenes": {
+          "items": {
+            "$ref": "#/$defs/Scene"
+          },
+          "type": "array"
+        },
+        "story_craft": {
+          "$ref": "#/$defs/StoryCraftState"
+        },
+        "story_state": {
+          "$ref": "#/$defs/StoryState"
+        },
+        "world_state": {
+          "$ref": "#/$defs/WorldState"
+        }
+      },
+      "required": [
+        "game",
+        "resources",
+        "world_state",
+        "story_state",
+        "story_craft",
+        "characters",
+        "rules",
+        "scenes"
+      ],
+      "type": "object"
+    },
+    "ReferenceAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/ReferenceSource"
+        },
+        "structure_notes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReferenceStructureNote"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "source",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ReferenceModule": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ReferenceRights": {
+      "enum": [
+        "user_owned",
+        "user_authorized",
+        "public_domain",
+        "open_license",
+        "generic_method"
+      ],
+      "type": "string"
+    },
+    "ReferenceSource": {
+      "additionalProperties": false,
+      "properties": {
+        "citation": {
+          "type": "string"
+        },
+        "rights": {
+          "$ref": "#/$defs/ReferenceRights"
+        },
+        "source_type": {
+          "$ref": "#/$defs/ReferenceSourceType"
+        },
+        "user_authorized": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_type",
+        "rights",
+        "citation",
+        "user_authorized"
+      ],
+      "type": "object"
+    },
+    "ReferenceSourceType": {
+      "enum": [
+        "user_import",
+        "public_domain",
+        "open_license",
+        "method_template"
+      ],
+      "type": "string"
+    },
+    "ReferenceStructureNote": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ResourceDefinition": {
+      "properties": {
+        "initial": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "max": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "min": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "initial",
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "ReversalStrategy": {
+      "properties": {
+        "cadence_scenes": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "principle": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "cadence_scenes",
+        "principle"
+      ],
+      "type": "object"
+    },
+    "ReviewProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "notes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NarrativeReviewNote"
+          },
+          "type": "array"
+        },
+        "review": {
+          "$ref": "#/$defs/NarrativeReview"
+        },
+        "scene_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_key",
+        "review"
+      ],
+      "type": "object"
+    },
+    "Rule": {
+      "properties": {
+        "action_type": {
+          "type": "string"
+        },
+        "conditions": {
+          "items": {
+            "$ref": "#/$defs/Condition"
+          },
+          "type": "array"
+        },
+        "effects": {
+          "items": {
+            "$ref": "#/$defs/Effect"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action_type",
+        "conditions",
+        "effects"
+      ],
+      "type": "object"
+    },
+    "RuntimeError": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "RuntimePlannerResult": {
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fallback_used": {
+          "type": "boolean"
+        },
+        "requested_action_type": {
+          "type": "string"
+        },
+        "scene_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "requested_action_type",
+        "fallback_used"
+      ],
+      "type": "object"
+    },
+    "RuntimeRuleResult": {
+      "properties": {
+        "action_type": {
+          "type": "string"
+        },
+        "delta_empty": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state_committed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action_type",
+        "delta_empty",
+        "state_committed"
+      ],
+      "type": "object"
+    },
+    "RuntimeTrace": {
+      "properties": {
+        "action_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionIntent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "diagnostics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RuntimeTraceDiagnostic"
+          },
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/RuntimeError"
+          },
+          "type": "array"
+        },
+        "fallback_used": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "narrative_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NarrativeReview"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planner_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimePlannerResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "player_input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rule_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeRuleResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "selected_choice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "story_state_after": {
+          "$ref": "#/$defs/StoryState"
+        },
+        "story_state_before": {
+          "$ref": "#/$defs/StoryState"
+        },
+        "timestamp_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "world_state_after": {
+          "$ref": "#/$defs/WorldState"
+        },
+        "world_state_before": {
+          "$ref": "#/$defs/WorldState"
+        },
+        "world_state_delta": {
+          "$ref": "#/$defs/WorldDelta"
+        }
+      },
+      "required": [
+        "id",
+        "timestamp_ms",
+        "world_state_before",
+        "world_state_delta",
+        "world_state_after",
+        "story_state_before",
+        "story_state_after",
+        "errors",
+        "fallback_used"
+      ],
+      "type": "object"
+    },
+    "RuntimeTraceDiagnostic": {
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/RuntimeTraceStage"
+        },
+        "status": {
+          "$ref": "#/$defs/RuntimeTraceStageStatus"
+        }
+      },
+      "required": [
+        "stage",
+        "status",
+        "message"
+      ],
+      "type": "object"
+    },
+    "RuntimeTraceStage": {
+      "enum": [
+        "interpret_action",
+        "select_choice",
+        "evaluate_rules",
+        "plan_scene",
+        "commit_state"
+      ],
+      "type": "string"
+    },
+    "RuntimeTraceStageStatus": {
+      "enum": [
+        "completed",
+        "fallback",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Scene": {
+      "properties": {
+        "background_asset": {
+          "type": "string"
+        },
+        "beats": {
+          "items": {
+            "$ref": "#/$defs/Beat"
+          },
+          "type": "array"
+        },
+        "character_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dramatic_purpose": {
+          "type": "string"
+        },
+        "hook": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "plot_thread_updates": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "location",
+        "dramatic_purpose",
+        "hook",
+        "background_asset",
+        "character_ids",
+        "plot_thread_updates",
+        "beats"
+      ],
+      "type": "object"
+    },
+    "ScenePlanProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "background_asset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cast": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dramatic_purpose": {
+          "type": "string"
+        },
+        "emotional_goal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entry_beat_id": {
+          "type": "string"
+        },
+        "hook": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "scene_key": {
+          "type": "string"
+        },
+        "scene_summary": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_key",
+        "title",
+        "location",
+        "scene_summary",
+        "dramatic_purpose",
+        "hook",
+        "cast",
+        "entry_beat_id"
+      ],
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "StoryCraftBible": {
+      "properties": {
+        "banned_cliches": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "central_question": {
+          "type": "string"
+        },
+        "core_foreshadowing": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "emotional_contract": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "genre_promise": {
+          "type": "string"
+        },
+        "hook_strategy": {
+          "$ref": "#/$defs/HookStrategy",
+          "default": {
+            "primary_hook": "",
+            "recurring_hook_patterns": []
+          }
+        },
+        "pacing_profile": {
+          "$ref": "#/$defs/PacingProfile",
+          "default": {
+            "breather_scene_frequency": null,
+            "escalation_interval_scenes": 0,
+            "target_tension_curve": []
+          }
+        },
+        "prose_style_guide": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reference_modules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReferenceModule"
+          },
+          "type": "array"
+        },
+        "reversal_strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReversalStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_audience": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_emotions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "genre_promise",
+        "central_question",
+        "target_emotions",
+        "core_foreshadowing"
+      ],
+      "type": "object"
+    },
+    "StoryCraftState": {
+      "properties": {
+        "active_promises": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StoryPromise"
+          },
+          "type": "array"
+        },
+        "ai_slop_risk": {
+          "default": null,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "bible": {
+          "$ref": "#/$defs/StoryCraftBible"
+        },
+        "character_arcs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CharacterArc"
+          },
+          "type": "array"
+        },
+        "emotional_arc": {
+          "items": {
+            "$ref": "#/$defs/EmotionalArcPoint"
+          },
+          "type": "array"
+        },
+        "pacing_score": {
+          "default": null,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "plot_threads": {
+          "items": {
+            "$ref": "#/$defs/PlotThread"
+          },
+          "type": "array"
+        },
+        "review_notes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NarrativeReviewNote"
+          },
+          "type": "array"
+        },
+        "tension_score": {
+          "default": null,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bible",
+        "emotional_arc",
+        "plot_threads"
+      ],
+      "type": "object"
+    },
+    "StoryPromise": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "introduced_at": {
+          "type": "string"
+        },
+        "payoff_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/StoryPromiseStatus"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "status",
+        "introduced_at"
+      ],
+      "type": "object"
+    },
+    "StoryPromiseStatus": {
+      "enum": [
+        "active",
+        "complicated",
+        "paid_off",
+        "dropped"
+      ],
+      "type": "string"
+    },
+    "StoryState": {
+      "properties": {
+        "completed_scene_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "current_scene_key": {
+          "type": "string"
+        },
+        "turn": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "current_scene_key",
+        "completed_scene_keys",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "WorldDelta": {
+      "properties": {
+        "flags": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "resource_changes": {
+          "additionalProperties": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "resource_sets": {
+          "additionalProperties": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "triggered_events": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "resource_changes",
+        "resource_sets",
+        "flags",
+        "triggered_events"
+      ],
+      "type": "object"
+    },
+    "WorldState": {
+      "properties": {
+        "flags": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "resources": {
+          "additionalProperties": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "triggered_events": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "resources",
+        "flags",
+        "triggered_events"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "agent_output_proposal": {
+      "$ref": "#/$defs/AgentOutputProposal"
+    },
+    "export_manifest": {
+      "$ref": "#/$defs/ExportManifest"
+    },
+    "project_data": {
+      "$ref": "#/$defs/ProjectData"
+    },
+    "reference_analysis": {
+      "$ref": "#/$defs/ReferenceAnalysis"
+    },
+    "runtime_trace": {
+      "$ref": "#/$defs/RuntimeTrace"
+    }
+  },
+  "required": [
+    "project_data",
+    "runtime_trace",
+    "agent_output_proposal",
+    "reference_analysis",
+    "export_manifest"
+  ],
+  "title": "ContractRootSchemas",
+  "type": "object"
+}
