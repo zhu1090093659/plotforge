@@ -4,11 +4,12 @@ This file is the project-level memory for future agents. Keep durable engineerin
 
 ## Project Goal
 
-Build PlotForge as a CLI-first Rust MVP before adding desktop UI, real model providers, media providers, SQLite cache, or Steam/Workshop integrations.
+Build PlotForge as a CLI-first Rust engine with a creator desktop UI adapter. Real model providers, media providers, SQLite cache, and Steam/Workshop integrations remain deferred until their planned tasks.
 
 The current MVP contains:
 
 - Rust workspace crates for schema, storage, rule evaluation, story craft review, mock agent planning, runtime, static export, and CLI.
+- `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace.
 - Folder project source of truth using TOML, JSON, Markdown, and generated local assets.
 - `examples/dynasty-embers` as the committed demo fixture.
 - Static web export served from local files over HTTP.
@@ -31,7 +32,8 @@ The current MVP contains:
 - Keep persistence and fixture file layout in `plotforge-storage`.
 - Keep static export behavior in `plotforge-export`; exported bundles must not include private traces, provider config, raw provider responses, or secrets.
 - Keep CLI behavior in `plotforge-cli`; CLI should orchestrate crates instead of owning business logic.
-- Do not add Steam/Workshop, provider SDKs, desktop UI, or networked model calls to MVP core crates unless the project scope is explicitly changed.
+- Keep `apps/creator-desktop` as an adapter over generated contracts and future Tauri commands. TypeScript UI code may import types from `contracts/plotforge.d.ts`, but must not reimplement rule, runtime, storage, storycraft, or agent business logic.
+- Do not add Steam/Workshop, provider SDKs, or networked model calls to MVP core crates unless the project scope is explicitly changed.
 
 ## Testing Policy
 
@@ -41,6 +43,7 @@ The current MVP contains:
 - Rule, runtime, storage, export, storycraft, and agent behavior changes must include crate-level tests for the changed boundary.
 - CLI command changes must update black-box tests under `crates/plotforge-cli/tests/`.
 - Export/player behavior changes must update export tests and, when rendering or interaction matters, the HTTP smoke path.
+- Creator desktop changes must run `npm run creator-desktop:qa`; user-visible UI adapters should add or update TypeScript/Vitest coverage for contract-backed behavior.
 - Fixture changes must keep `cargo run -p plotforge-cli -- check examples/dynasty-embers` passing and must not commit generated trace JSON.
 - CLI/export smoke tests must use temp dirs; do not mutate checked-in fixtures in CI.
 - If a meaningful test cannot be added, document the reason in the PR or final response and run the next best validation.
@@ -53,6 +56,7 @@ Use the narrowest relevant checks during development, then run the full gate bef
 - `cargo check --workspace`
 - `cargo test --workspace`
 - `cargo clippy --workspace --all-targets -- -D warnings`
+- `npm run creator-desktop:qa`
 - `scripts/qa/full_local.sh`
 - `scripts/contracts/check_contracts.sh`
 
@@ -74,6 +78,7 @@ Fixture validation commands:
 ## CI and QA
 
 - GitHub Actions must keep separate jobs for static Rust checks, unit/integration tests, CLI smoke, and export smoke.
+- GitHub Actions must keep creator desktop typecheck/test/build in a separate frontend job.
 - `scripts/qa/full_local.sh` is the repeatable local quality gate.
 - Codex Desktop Computer Use smoke is local desktop QA only and must not become a GitHub Actions dependency.
 - For Computer Use export smoke, serve static exports over localhost HTTP, then verify visible title, scene text, choice buttons, and post-click text changes.
