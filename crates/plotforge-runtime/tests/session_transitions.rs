@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
 
-use plotforge_agent::{ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError};
+use plotforge_agent::{
+    FakeTextModelProvider, ProviderAgentPipeline, ScenePlan, ScenePlanRequest, ScenePlanner,
+    ScenePlannerError,
+};
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
 use plotforge_schema::{
-    ActionIntentStatus, Beat, Choice, NarrativeReview, REDACTED_TRACE_SECRET, RuntimeTraceStage,
-    RuntimeTraceStageStatus, Scene,
+    ActionIntentStatus, AgentRole, Beat, Choice, NarrativeReview, REDACTED_TRACE_SECRET,
+    RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
 };
 use plotforge_storage::dynasty_embers_project;
 
@@ -143,6 +146,33 @@ fn injected_planner_error_does_not_commit_state() {
 }
 
 #[test]
+fn provider_pipeline_errors_are_trace_visible() {
+    let planner = ProviderAgentPipeline::new(FakeTextModelProvider::timeout(AgentRole::BeatWriter));
+    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), planner);
+
+    let step = session.play_once("朕决定加征辽饷").expect("fallback play");
+
+    assert!(step.trace.fallback_used);
+    assert!(
+        step.trace
+            .errors
+            .iter()
+            .any(|error| error.code == "text_provider_timeout")
+    );
+    let planner_result = step.trace.planner_result.as_ref().expect("planner result");
+    assert!(planner_result.fallback_used);
+    assert_eq!(
+        planner_result.error.as_ref().expect("planner error").code,
+        "text_provider_timeout"
+    );
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::PlanScene
+            && diagnostic.status == RuntimeTraceStageStatus::Fallback
+            && diagnostic.message.contains("text_provider_timeout")
+    }));
+}
+
+#[test]
 fn summarize_delta_keeps_human_readable_lines() {
     let mut session = RuntimeSession::new(dynasty_embers_project());
     let step = session.play_once("朕决定加征辽饷").expect("play");
@@ -278,6 +308,7 @@ impl ScenePlanner for FakePlanner {
             scene,
             review,
             fallback_used: self.fallback_used,
+            error: None,
         })
     }
 }
