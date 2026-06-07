@@ -1,0 +1,20 @@
+[[plot_threads]]
+id = "border-payroll"
+title = "Border payroll gap"
+promise = "The border army is loyal only while pay keeps flowing."
+status = "open"
+last_update = "Rumors mention unpaid soldiers outside the pass."
+
+[[plot_threads]]
+id = "court-insider"
+title = "Court insider betrayal"
+promise = "A trusted court channel is leaking decisions before they are issued."
+status = "open"
+last_update = "Memorials arrive too quickly after sealed conversations."
+
+[[plot_threads]]
+id = "tax-disorder"
+title = "Local tax disorder"
+promise = "Short-term revenue measures can ignite resistance in the provinces."
+status = "open"
+last_update = "Provincial reports already omit several granary shortages."

@@ -1,0 +1,17 @@
+[
+  {
+    "scene_key": "court-crisis-001",
+    "target_emotion": "pressure",
+    "intensity": 70
+  },
+  {
+    "scene_key": "court-crisis-002",
+    "target_emotion": "uncertainty",
+    "intensity": 78
+  },
+  {
+    "scene_key": "court-crisis-003",
+    "target_emotion": "consequence",
+    "intensity": 86
+  }
+]

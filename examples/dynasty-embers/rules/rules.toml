@@ -1,0 +1,84 @@
+[[rules]]
+id = "raise-tax-emergency"
+action_type = "raise_tax"
+
+[[rules.conditions]]
+kind = "resource_at_most"
+key = "treasury"
+value = 80
+
+[[rules.effects]]
+kind = "add_resource"
+key = "treasury"
+amount = 12
+
+[[rules.effects]]
+kind = "add_resource"
+key = "public_order"
+amount = -8
+
+[[rules.effects]]
+kind = "add_resource"
+key = "court_stability"
+amount = -5
+
+[[rules.effects]]
+kind = "add_resource"
+key = "army_morale"
+amount = 4
+
+[[rules.effects]]
+kind = "trigger_event"
+event = "local_tax_resistance"
+
+[[rules]]
+id = "inspect-corruption-ledger"
+action_type = "inspect_corruption"
+conditions = []
+
+[[rules.effects]]
+kind = "add_resource"
+key = "treasury"
+amount = 4
+
+[[rules.effects]]
+kind = "add_resource"
+key = "court_stability"
+amount = -8
+
+[[rules.effects]]
+kind = "set_flag"
+key = "corruption_investigation"
+value = true
+
+[[rules.effects]]
+kind = "trigger_event"
+event = "officials_submit_memorials"
+
+[[rules]]
+id = "pay-border-army"
+action_type = "pay_army"
+
+[[rules.conditions]]
+kind = "resource_at_least"
+key = "treasury"
+value = 10
+
+[[rules.effects]]
+kind = "add_resource"
+key = "treasury"
+amount = -10
+
+[[rules.effects]]
+kind = "add_resource"
+key = "army_morale"
+amount = 12
+
+[[rules.effects]]
+kind = "add_resource"
+key = "enemy_pressure"
+amount = -3
+
+[[rules.effects]]
+kind = "trigger_event"
+event = "border_army_paid"

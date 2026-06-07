@@ -1,0 +1,16 @@
+[package]
+name = "plotforge-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+plotforge-agent.workspace = true
+plotforge-rule.workspace = true
+plotforge-schema.workspace = true
+plotforge-storycraft.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+plotforge-storage.workspace = true

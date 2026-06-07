@@ -1,0 +1,6 @@
+id = "dynasty-embers"
+title = "Dynasty Embers"
+version = "0.1.0"
+description = "Historical crisis simulation about a collapsing dynasty."
+entry_scene = "court-crisis-001"
+run_seed = 7

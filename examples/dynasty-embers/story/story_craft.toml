@@ -1,0 +1,50 @@
+[story_craft.bible]
+genre_promise = "Historical crisis simulation with court intrigue"
+central_question = "Can the player extend a collapsing dynasty under internal and external pressure?"
+target_emotions = [
+    "pressure",
+    "lonely authority",
+    "short-term relief versus long-term cost",
+]
+core_foreshadowing = [
+    "border payroll gap",
+    "court insider betrayal",
+    "local tax disorder",
+    "capital relocation dispute",
+]
+
+[[story_craft.emotional_arc]]
+scene_key = "court-crisis-001"
+target_emotion = "pressure"
+intensity = 70
+
+[[story_craft.emotional_arc]]
+scene_key = "court-crisis-002"
+target_emotion = "uncertainty"
+intensity = 78
+
+[[story_craft.emotional_arc]]
+scene_key = "court-crisis-003"
+target_emotion = "consequence"
+intensity = 86
+
+[[story_craft.plot_threads]]
+id = "border-payroll"
+title = "Border payroll gap"
+promise = "The border army is loyal only while pay keeps flowing."
+status = "open"
+last_update = "Rumors mention unpaid soldiers outside the pass."
+
+[[story_craft.plot_threads]]
+id = "court-insider"
+title = "Court insider betrayal"
+promise = "A trusted court channel is leaking decisions before they are issued."
+status = "open"
+last_update = "Memorials arrive too quickly after sealed conversations."
+
+[[story_craft.plot_threads]]
+id = "tax-disorder"
+title = "Local tax disorder"
+promise = "Short-term revenue measures can ignite resistance in the provinces."
+status = "open"
+last_update = "Provincial reports already omit several granary shortages."

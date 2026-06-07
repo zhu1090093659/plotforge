@@ -1,0 +1,45 @@
+{
+  "key": "court-crisis-001",
+  "title": "The Red Deficit Ledger",
+  "location": "Qianqing Palace",
+  "dramatic_purpose": "Force the player to choose between revenue, order, and military loyalty.",
+  "hook": "The border payroll ledger arrives with a fresh red deficit mark beside the army columns.",
+  "background_asset": "assets/generated/court-crisis-001.png",
+  "character_ids": [
+    "grand-secretary",
+    "war-minister",
+    "eunuch-director"
+  ],
+  "plot_thread_updates": {
+    "border-payroll": "The unpaid army becomes the first visible crisis."
+  },
+  "beats": [
+    {
+      "id": "court-crisis-001-beat-001",
+      "text": "The court kneels around a ledger that says the border army is two months from mutiny.",
+      "choices": [
+        {
+          "id": "raise-tax",
+          "label": "加征辽饷，立刻补军饷",
+          "action_type": "raise_tax",
+          "dramatic_purpose": "Trade public order for immediate treasury relief.",
+          "change_scene": true
+        },
+        {
+          "id": "inspect-corruption",
+          "label": "严查军饷贪墨",
+          "action_type": "inspect_corruption",
+          "dramatic_purpose": "Seek stolen funds while angering court factions.",
+          "change_scene": true
+        },
+        {
+          "id": "pay-army",
+          "label": "先拨内帑稳住边军",
+          "action_type": "pay_army",
+          "dramatic_purpose": "Spend scarce treasury to buy military time.",
+          "change_scene": true
+        }
+      ]
+    }
+  ]
+}
