@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeSet,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use plotforge_schema::ExportManifest;
@@ -26,12 +26,25 @@ pub enum ExportError {
     },
     #[error("static export contains a blocked secret marker: {0}")]
     SecretMarker(String),
+    #[error("static export asset path is not package-safe: {0}")]
+    UnsafeAssetPath(String),
+    #[error("static export package contains a disallowed file: {0}")]
+    DisallowedPackageFile(PathBuf),
+    #[error("static export package is missing an expected file: {0}")]
+    MissingPackageFile(PathBuf),
 }
 
 #[derive(Clone, Debug)]
 pub struct ExportReport {
     pub output_dir: PathBuf,
     pub files_written: Vec<PathBuf>,
+    pub audit: ExportPackageAudit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportPackageAudit {
+    pub allowed_files: Vec<PathBuf>,
+    pub files_found: Vec<PathBuf>,
 }
 
 pub fn export_static_web(
@@ -51,6 +64,11 @@ pub fn export_static_web(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
+    let asset_paths = assets
+        .iter()
+        .map(|asset| validate_export_asset_path(asset))
+        .collect::<Result<Vec<_>, _>>()?;
+    let allowed_files = allowed_export_files(&asset_paths);
     let manifest = ExportManifest {
         game: project.game,
         entry_scene: project.story_state.current_scene_key,
@@ -70,15 +88,17 @@ pub fn export_static_web(
     fs::write(&data_path, data + "\n").map_io(&data_path)?;
 
     let mut files_written = vec![index_path, data_path];
-    for asset in assets {
-        let asset_path = output_dir.join(asset);
+    for asset in asset_paths {
+        let asset_path = output_dir.join(&asset);
         write_placeholder_png(&asset_path)?;
         files_written.push(asset_path);
     }
+    let audit = audit_export_package(output_dir, &allowed_files)?;
 
     Ok(ExportReport {
         output_dir: output_dir.to_path_buf(),
         files_written,
+        audit,
     })
 }
 
@@ -87,6 +107,84 @@ fn assert_no_secret_markers(data: &str) -> Result<(), ExportError> {
         if data.contains(marker) {
             return Err(ExportError::SecretMarker(marker.into()));
         }
+    }
+    Ok(())
+}
+
+fn validate_export_asset_path(asset: &str) -> Result<PathBuf, ExportError> {
+    let path = Path::new(asset);
+    if asset.is_empty() || path.is_absolute() || !path.starts_with("assets") {
+        return Err(ExportError::UnsafeAssetPath(asset.into()));
+    }
+
+    for component in path.components() {
+        if !matches!(component, Component::Normal(_)) {
+            return Err(ExportError::UnsafeAssetPath(asset.into()));
+        }
+    }
+
+    Ok(path.to_path_buf())
+}
+
+fn allowed_export_files(asset_paths: &[PathBuf]) -> BTreeSet<PathBuf> {
+    let mut allowed_files =
+        BTreeSet::from([PathBuf::from("game.json"), PathBuf::from("index.html")]);
+    allowed_files.extend(asset_paths.iter().cloned());
+    allowed_files
+}
+
+fn audit_export_package(
+    output_dir: &Path,
+    allowed_files: &BTreeSet<PathBuf>,
+) -> Result<ExportPackageAudit, ExportError> {
+    let files_found = export_file_manifest(output_dir)?;
+    for file in &files_found {
+        if !allowed_files.contains(file) {
+            return Err(ExportError::DisallowedPackageFile(file.clone()));
+        }
+    }
+    for file in allowed_files {
+        if !files_found.contains(file) {
+            return Err(ExportError::MissingPackageFile(file.clone()));
+        }
+    }
+
+    Ok(ExportPackageAudit {
+        allowed_files: allowed_files.iter().cloned().collect(),
+        files_found: files_found.into_iter().collect(),
+    })
+}
+
+fn export_file_manifest(output_dir: &Path) -> Result<BTreeSet<PathBuf>, ExportError> {
+    let mut manifest = BTreeSet::new();
+    collect_export_files(output_dir, output_dir, &mut manifest)?;
+    Ok(manifest)
+}
+
+fn collect_export_files(
+    output_dir: &Path,
+    dir: &Path,
+    manifest: &mut BTreeSet<PathBuf>,
+) -> Result<(), ExportError> {
+    let mut entries = fs::read_dir(dir)
+        .map_io(dir)?
+        .map(|entry| entry.map(|entry| entry.path()).map_io(dir))
+        .collect::<Result<Vec<_>, _>>()?;
+    entries.sort();
+
+    for path in entries {
+        if path.is_dir() {
+            collect_export_files(output_dir, &path, manifest)?;
+            continue;
+        }
+
+        let relative_path = path
+            .strip_prefix(output_dir)
+            .map_err(|source| ExportError::Io {
+                path: path.clone(),
+                source: std::io::Error::other(source),
+            })?;
+        manifest.insert(relative_path.to_path_buf());
     }
     Ok(())
 }
@@ -210,5 +308,6 @@ mod tests {
                 .exists()
         );
         assert!(report.files_written.len() >= 3);
+        assert_eq!(report.audit.allowed_files, report.audit.files_found);
     }
 }

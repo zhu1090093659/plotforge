@@ -28,6 +28,7 @@ def main() -> int:
 
     for asset in manifest["assets"]:
         assert_file(export_dir / asset)
+    assert_whitelisted_files(export_dir, manifest["assets"])
 
     port = free_port()
     server = subprocess.Popen(
@@ -52,6 +53,30 @@ def main() -> int:
 def assert_file(path: pathlib.Path) -> None:
     if not path.is_file() or path.stat().st_size == 0:
         raise AssertionError(f"missing or empty file: {path}")
+
+
+def assert_whitelisted_files(export_dir: pathlib.Path, assets: list[str]) -> None:
+    expected = {"index.html", "game.json", *assets}
+    actual = {
+        path.relative_to(export_dir).as_posix()
+        for path in export_dir.rglob("*")
+        if path.is_file()
+    }
+    unexpected = sorted(actual - expected)
+    missing = sorted(expected - actual)
+    if unexpected:
+        raise AssertionError(f"unexpected files in export package: {unexpected}")
+    if missing:
+        raise AssertionError(f"missing files in export package: {missing}")
+
+    blocked_dirs = {"traces", "providers", "provider_config", "raw_responses"}
+    blocked = sorted(
+        file
+        for file in actual
+        if any(part in blocked_dirs for part in pathlib.PurePosixPath(file).parts)
+    )
+    if blocked:
+        raise AssertionError(f"private files leaked into export package: {blocked}")
 
 
 def free_port() -> int:
