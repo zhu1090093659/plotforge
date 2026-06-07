@@ -9,7 +9,11 @@ npm run creator-desktop:dev
 npm run creator-desktop:typecheck
 npm run creator-desktop:test
 npm run creator-desktop:build
+npm run creator-desktop:tauri:check
+npm run creator-desktop:tauri:dev
 npm run creator-desktop:qa
 ```
 
 Do not hand-maintain contract shapes in this app. Regenerate `contracts/` from `plotforge-schema` when Rust schema changes.
+
+Tauri commands are thin IPC wrappers in `src-tauri`; command behavior belongs in Rust adapter crates such as `plotforge-studio`.

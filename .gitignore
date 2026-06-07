@@ -3,6 +3,7 @@ target/
 node_modules/
 dist/
 build/
+apps/creator-desktop/src-tauri/gen/
 *.log
 **/traces/*.json
 **/exports/

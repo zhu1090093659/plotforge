@@ -6,9 +6,11 @@ members = [
   "crates/plotforge-rule",
   "crates/plotforge-runtime",
   "crates/plotforge-schema",
+  "crates/plotforge-studio",
   "crates/plotforge-storage",
   "crates/plotforge-storycraft",
 ]
+exclude = ["apps/creator-desktop/src-tauri"]
 resolver = "3"
 
 [workspace.package]
@@ -25,6 +27,7 @@ plotforge-export = { path = "crates/plotforge-export" }
 plotforge-rule = { path = "crates/plotforge-rule" }
 plotforge-runtime = { path = "crates/plotforge-runtime" }
 plotforge-schema = { path = "crates/plotforge-schema" }
+plotforge-studio = { path = "crates/plotforge-studio" }
 plotforge-storage = { path = "crates/plotforge-storage" }
 plotforge-storycraft = { path = "crates/plotforge-storycraft" }
 schemars = "1.2.1"

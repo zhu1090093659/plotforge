@@ -19,7 +19,7 @@ const metrics = [
 const checks = [
   { label: "Generated contracts", value: "plotforge.d.ts", ok: true },
   { label: "Rust core boundary", value: "UI adapter only", ok: true },
-  { label: "Tauri bridge", value: "Phase 3.2", ok: false },
+  { label: "Tauri bridge", value: "commands wired", ok: true },
 ];
 
 export function App() {
