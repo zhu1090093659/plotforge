@@ -1,11 +1,16 @@
 use std::collections::BTreeMap;
 
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
 pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const CONTRACT_SCHEMA_VERSION: u32 = 1;
+pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GameProject {
     pub id: String,
     pub title: String,
@@ -15,7 +20,7 @@ pub struct GameProject {
     pub run_seed: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ResourceDefinition {
     pub key: String,
     pub label: String,
@@ -24,14 +29,14 @@ pub struct ResourceDefinition {
     pub max: i32,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorldState {
     pub resources: ResourceMap,
     pub flags: FlagMap,
     pub triggered_events: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorldDelta {
     pub resource_changes: ResourceMap,
     pub resource_sets: ResourceMap,
@@ -48,14 +53,14 @@ impl WorldDelta {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryState {
     pub current_scene_key: String,
     pub completed_scene_keys: Vec<String>,
     pub turn: u32,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryCraftBible {
     #[serde(default)]
     pub target_audience: Option<String>,
@@ -79,26 +84,26 @@ pub struct StoryCraftBible {
     pub reference_modules: Vec<ReferenceModule>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PacingProfile {
     pub escalation_interval_scenes: u8,
     pub target_tension_curve: Vec<u8>,
     pub breather_scene_frequency: Option<u8>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HookStrategy {
     pub primary_hook: String,
     pub recurring_hook_patterns: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReversalStrategy {
     pub cadence_scenes: u8,
     pub principle: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReferenceModule {
     pub id: String,
     pub title: String,
@@ -108,7 +113,7 @@ pub struct ReferenceModule {
 pub const MAX_REFERENCE_SUMMARY_CHARS: usize = 600;
 pub const MAX_REFERENCE_STRUCTURE_NOTE_CHARS: usize = 300;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReferenceAnalysis {
     pub id: String,
@@ -121,7 +126,7 @@ pub struct ReferenceAnalysis {
     pub tags: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReferenceSource {
     pub source_type: ReferenceSourceType,
@@ -130,7 +135,7 @@ pub struct ReferenceSource {
     pub user_authorized: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferenceSourceType {
     UserImport,
@@ -139,7 +144,7 @@ pub enum ReferenceSourceType {
     MethodTemplate,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferenceRights {
     UserOwned,
@@ -149,14 +154,14 @@ pub enum ReferenceRights {
     GenericMethod,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReferenceStructureNote {
     pub label: String,
     pub summary: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryPromise {
     pub id: String,
     pub text: String,
@@ -165,7 +170,7 @@ pub struct StoryPromise {
     pub payoff_hint: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StoryPromiseStatus {
     #[default]
@@ -175,7 +180,7 @@ pub enum StoryPromiseStatus {
     Dropped,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlotThread {
     pub id: String,
     pub title: String,
@@ -194,7 +199,7 @@ pub struct PlotThread {
     pub last_update: String,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PlotThreadType {
     Mystery,
@@ -206,7 +211,7 @@ pub enum PlotThreadType {
     Custom,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PlotThreadStatus {
     Open,
@@ -217,14 +222,14 @@ pub enum PlotThreadStatus {
     Abandoned,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EmotionalArcPoint {
     pub scene_key: String,
     pub target_emotion: String,
     pub intensity: u8,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryCraftState {
     pub bible: StoryCraftBible,
     #[serde(default)]
@@ -243,7 +248,7 @@ pub struct StoryCraftState {
     pub review_notes: Vec<NarrativeReviewNote>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CharacterArc {
     pub id: String,
     pub character_id: String,
@@ -254,7 +259,7 @@ pub struct CharacterArc {
     pub status: CharacterArcStatus,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CharacterArcStatus {
     #[default]
@@ -264,7 +269,7 @@ pub enum CharacterArcStatus {
     Resolved,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NarrativeReviewNote {
     pub id: String,
     pub scene_key: Option<String>,
@@ -273,7 +278,7 @@ pub struct NarrativeReviewNote {
     pub resolved: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Character {
     pub id: String,
     pub name: String,
@@ -283,7 +288,7 @@ pub struct Character {
     pub voice_card: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Scene {
     pub key: String,
     pub title: String,
@@ -296,14 +301,14 @@ pub struct Scene {
     pub beats: Vec<Beat>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Beat {
     pub id: String,
     pub text: String,
     pub choices: Vec<Choice>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Choice {
     pub id: String,
     pub label: String,
@@ -312,7 +317,7 @@ pub struct Choice {
     pub change_scene: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentRole {
     StoryArchitect,
@@ -324,7 +329,7 @@ pub enum AgentRole {
     DeslopRefiner,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AgentOutputProposal {
     pub id: String,
@@ -332,7 +337,7 @@ pub struct AgentOutputProposal {
     pub output: AgentProposalPayload,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(
     tag = "kind",
     content = "payload",
@@ -345,7 +350,7 @@ pub enum AgentProposalPayload {
     Review(ReviewProposal),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ScenePlanProposal {
     pub scene_key: String,
@@ -360,7 +365,7 @@ pub struct ScenePlanProposal {
     pub background_asset: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BeatDraftsProposal {
     pub scene_key: String,
@@ -368,7 +373,7 @@ pub struct BeatDraftsProposal {
     pub beats: Vec<BeatDraftProposal>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BeatDraftProposal {
     pub id: String,
@@ -378,7 +383,7 @@ pub struct BeatDraftProposal {
     pub narrative_function: NarrativeFunction,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NarrativeFunction {
     Hook,
@@ -389,7 +394,7 @@ pub enum NarrativeFunction {
     Cliffhanger,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewProposal {
     pub scene_key: String,
@@ -398,7 +403,7 @@ pub struct ReviewProposal {
     pub notes: Vec<NarrativeReviewNote>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActionIntent {
     pub status: ActionIntentStatus,
     pub action_type: Option<String>,
@@ -446,14 +451,14 @@ impl ActionIntent {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionIntentStatus {
     Supported,
     Unsupported,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Rule {
     pub id: String,
     pub action_type: String,
@@ -461,7 +466,7 @@ pub struct Rule {
     pub effects: Vec<Effect>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Condition {
     ResourceAtLeast { key: String, value: i32 },
@@ -469,7 +474,7 @@ pub enum Condition {
     FlagEquals { key: String, value: bool },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Effect {
     AddResource { key: String, amount: i32 },
@@ -478,7 +483,7 @@ pub enum Effect {
     TriggerEvent { event: String },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NarrativeReview {
     pub scene_key: String,
     pub score: u8,
@@ -523,7 +528,7 @@ fn default_review_score() -> u8 {
     100
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NarrativeIssue {
     pub kind: NarrativeIssueKind,
     pub severity: Severity,
@@ -540,7 +545,7 @@ impl NarrativeIssue {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NarrativeIssueKind {
     WeakHook,
@@ -554,7 +559,7 @@ pub enum NarrativeIssueKind {
     AiSlopStyle,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Info,
@@ -562,7 +567,7 @@ pub enum Severity {
     Error,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeError {
     pub code: String,
     pub message: String,
@@ -579,7 +584,7 @@ impl RuntimeError {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeRuleResult {
     pub action_type: String,
     pub delta_empty: bool,
@@ -587,7 +592,7 @@ pub struct RuntimeRuleResult {
     pub error: Option<RuntimeError>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimePlannerResult {
     pub requested_action_type: String,
     pub scene_key: Option<String>,
@@ -595,7 +600,7 @@ pub struct RuntimePlannerResult {
     pub error: Option<RuntimeError>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeTraceDiagnostic {
     pub stage: RuntimeTraceStage,
     pub status: RuntimeTraceStageStatus,
@@ -617,7 +622,7 @@ impl RuntimeTraceDiagnostic {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeTraceStage {
     InterpretAction,
@@ -627,7 +632,7 @@ pub enum RuntimeTraceStage {
     CommitState,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeTraceStageStatus {
     Completed,
@@ -635,7 +640,7 @@ pub enum RuntimeTraceStageStatus {
     Error,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeTrace {
     pub id: String,
     pub timestamp_ms: u64,
@@ -689,7 +694,7 @@ fn contains_secret_marker(token: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProjectData {
     pub game: GameProject,
     pub resources: Vec<ResourceDefinition>,
@@ -707,13 +712,157 @@ impl ProjectData {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportManifest {
     pub game: GameProject,
     pub entry_scene: String,
     pub scenes: Vec<Scene>,
     pub assets: Vec<String>,
     pub generated_by: String,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContractRootSchemas {
+    pub project_data: ProjectData,
+    pub runtime_trace: RuntimeTrace,
+    pub agent_output_proposal: AgentOutputProposal,
+    pub reference_analysis: ReferenceAnalysis,
+    pub export_manifest: ExportManifest,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContractBundle {
+    pub contract_version: String,
+    pub schema_version: u32,
+    pub generated_by: String,
+    pub json_schema: serde_json::Value,
+    pub typescript: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContractVersionError {
+    UnsupportedContractVersion { expected: String, actual: String },
+    UnsupportedSchemaVersion { expected: u32, actual: u32 },
+}
+
+pub fn contract_bundle() -> ContractBundle {
+    ContractBundle {
+        contract_version: CONTRACT_VERSION.into(),
+        schema_version: CONTRACT_SCHEMA_VERSION,
+        generated_by: CONTRACT_GENERATOR.into(),
+        json_schema: contract_json_schema(),
+        typescript: contract_typescript(),
+    }
+}
+
+pub fn contract_json_schema() -> serde_json::Value {
+    serde_json::to_value(schema_for!(ContractRootSchemas)).expect("contract schema serializes")
+}
+
+pub fn contract_typescript() -> String {
+    let mut output = String::new();
+    output.push_str("// Generated by plotforge-schema. Do not edit by hand.\n");
+    output.push_str(&format!(
+        "export const PLOTFORGE_CONTRACT_VERSION = \"{}\" as const;\n",
+        CONTRACT_VERSION
+    ));
+    output.push_str(&format!(
+        "export const PLOTFORGE_CONTRACT_SCHEMA_VERSION = {} as const;\n\n",
+        CONTRACT_SCHEMA_VERSION
+    ));
+    output.push_str(
+        r#"export type ResourceMap = { [key: string]: number };
+export type FlagMap = { [key: string]: boolean };
+export type ContractEnvelope<T> = { contract_version: typeof PLOTFORGE_CONTRACT_VERSION; schema_version: typeof PLOTFORGE_CONTRACT_SCHEMA_VERSION; payload: T };
+
+export interface GameProject { id: string; title: string; version: string; description: string; entry_scene: string; run_seed: number; }
+export interface ResourceDefinition { key: string; label: string; initial: number; min: number; max: number; }
+export interface WorldState { resources: ResourceMap; flags: FlagMap; triggered_events: string[]; }
+export interface WorldDelta { resource_changes: ResourceMap; resource_sets: ResourceMap; flags: FlagMap; triggered_events: string[]; }
+export interface StoryState { current_scene_key: string; completed_scene_keys: string[]; turn: number; }
+
+export interface StoryCraftBible { target_audience?: string | null; genre_promise: string; central_question: string; target_emotions: string[]; core_foreshadowing: string[]; emotional_contract: string[]; pacing_profile: PacingProfile; hook_strategy: HookStrategy; reversal_strategy?: ReversalStrategy | null; prose_style_guide?: string | null; banned_cliches: string[]; reference_modules: ReferenceModule[]; }
+export interface PacingProfile { escalation_interval_scenes: number; target_tension_curve: number[]; breather_scene_frequency?: number | null; }
+export interface HookStrategy { primary_hook: string; recurring_hook_patterns: string[]; }
+export interface ReversalStrategy { cadence_scenes: number; principle: string; }
+export interface ReferenceModule { id: string; title: string; summary: string; }
+export interface ReferenceAnalysis { id: string; title: string; source: ReferenceSource; summary: string; structure_notes: ReferenceStructureNote[]; tags: string[]; }
+export interface ReferenceSource { source_type: ReferenceSourceType; rights: ReferenceRights; citation: string; user_authorized: boolean; }
+export type ReferenceSourceType = "user_import" | "public_domain" | "open_license" | "method_template";
+export type ReferenceRights = "user_owned" | "user_authorized" | "public_domain" | "open_license" | "generic_method";
+export interface ReferenceStructureNote { label: string; summary: string; }
+export interface StoryPromise { id: string; text: string; status: StoryPromiseStatus; introduced_at: string; payoff_hint?: string | null; }
+export type StoryPromiseStatus = "active" | "complicated" | "paid_off" | "dropped";
+export interface PlotThread { id: string; title: string; promise: string; thread_type: PlotThreadType; status: PlotThreadStatus; introduced_at: string; expected_payoff?: string | null; related_characters: string[]; related_world_flags: string[]; last_update: string; }
+export type PlotThreadType = "mystery" | "foreshadow" | "relationship" | "political" | "survival" | "custom";
+export type PlotThreadStatus = "open" | "escalating" | "resolved" | "deepened" | "paid_off" | "abandoned";
+export interface EmotionalArcPoint { scene_key: string; target_emotion: string; intensity: number; }
+export interface StoryCraftState { bible: StoryCraftBible; active_promises: StoryPromise[]; emotional_arc: EmotionalArcPoint[]; plot_threads: PlotThread[]; character_arcs: CharacterArc[]; pacing_score?: number | null; tension_score?: number | null; ai_slop_risk?: number | null; review_notes: NarrativeReviewNote[]; }
+export interface CharacterArc { id: string; character_id: string; desire: string; pressure: string; current_state: string; target_state: string; status: CharacterArcStatus; }
+export type CharacterArcStatus = "setup" | "pressured" | "changed" | "resolved";
+export interface NarrativeReviewNote { id: string; scene_key?: string | null; severity: Severity; message: string; resolved: boolean; }
+
+export interface Character { id: string; name: string; role: string; traits: string[]; visual_card: string; voice_card: string; }
+export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
+export interface Beat { id: string; text: string; choices: Choice[]; }
+export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
+
+export type AgentRole = "story_architect" | "story_craft_planner" | "scene_planner" | "beat_writer" | "plot_doctor" | "consistency_checker" | "deslop_refiner";
+export interface AgentOutputProposal { id: string; agent: AgentRole; output: AgentProposalPayload; }
+export type AgentProposalPayload = { kind: "scene_plan"; payload: ScenePlanProposal } | { kind: "beat_drafts"; payload: BeatDraftsProposal } | { kind: "review"; payload: ReviewProposal };
+export interface ScenePlanProposal { scene_key: string; title: string; location: string; scene_summary: string; dramatic_purpose: string; hook: string; emotional_goal?: string | null; cast: string[]; entry_beat_id: string; background_asset?: string | null; }
+export interface BeatDraftsProposal { scene_key: string; beats: BeatDraftProposal[]; }
+export interface BeatDraftProposal { id: string; scene_key: string; text: string; choices: Choice[]; narrative_function: NarrativeFunction; }
+export type NarrativeFunction = "hook" | "setup" | "payoff" | "reversal" | "choice" | "cliffhanger";
+export interface ReviewProposal { scene_key: string; review: NarrativeReview; notes: NarrativeReviewNote[]; }
+
+export interface ActionIntent { status: ActionIntentStatus; action_type?: string | null; matched_terms: string[]; reason?: string | null; }
+export type ActionIntentStatus = "supported" | "unsupported";
+export interface Rule { id: string; action_type: string; conditions: Condition[]; effects: Effect[]; }
+export type Condition = { kind: "resource_at_least"; key: string; value: number } | { kind: "resource_at_most"; key: string; value: number } | { kind: "flag_equals"; key: string; value: boolean };
+export type Effect = { kind: "add_resource"; key: string; amount: number } | { kind: "set_resource"; key: string; value: number } | { kind: "set_flag"; key: string; value: boolean } | { kind: "trigger_event"; event: string };
+export interface NarrativeReview { scene_key: string; score: number; hook_score: number; pacing_score: number; character_consistency_score: number; payoff_score: number; choice_meaningfulness_score: number; ai_slop_risk: number; issues: NarrativeIssue[]; }
+export interface NarrativeIssue { kind: NarrativeIssueKind; severity: Severity; message: string; }
+export type NarrativeIssueKind = "weak_hook" | "no_progress" | "fake_choice" | "out_of_character" | "broken_plot_thread" | "thread_forgotten" | "world_state_ignored" | "too_much_exposition" | "ai_slop_style";
+export type Severity = "info" | "warning" | "error";
+
+export interface RuntimeError { code: string; message: string; }
+export interface RuntimeRuleResult { action_type: string; delta_empty: boolean; state_committed: boolean; error?: RuntimeError | null; }
+export interface RuntimePlannerResult { requested_action_type: string; scene_key?: string | null; fallback_used: boolean; error?: RuntimeError | null; }
+export interface RuntimeTraceDiagnostic { stage: RuntimeTraceStage; status: RuntimeTraceStageStatus; message: string; }
+export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate_rules" | "plan_scene" | "commit_state";
+export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
+export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; errors: RuntimeError[]; fallback_used: boolean; }
+
+export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
+export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; export_manifest: ExportManifest; }
+"#,
+    );
+    output
+}
+
+pub fn validate_contract_version(
+    contract_version: &str,
+    schema_version: u32,
+) -> Result<(), ContractVersionError> {
+    if contract_version != CONTRACT_VERSION {
+        return Err(ContractVersionError::UnsupportedContractVersion {
+            expected: CONTRACT_VERSION.into(),
+            actual: contract_version.into(),
+        });
+    }
+    if schema_version != CONTRACT_SCHEMA_VERSION {
+        return Err(ContractVersionError::UnsupportedSchemaVersion {
+            expected: CONTRACT_SCHEMA_VERSION,
+            actual: schema_version,
+        });
+    }
+    Ok(())
+}
+
+pub fn validate_contract_bundle(bundle: &ContractBundle) -> Result<(), ContractVersionError> {
+    validate_contract_version(&bundle.contract_version, bundle.schema_version)
 }
 
 #[cfg(test)]
@@ -833,6 +982,44 @@ mod tests {
             .expect_err("raw text should be rejected");
 
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn contract_bundle_uses_current_version_envelope() {
+        let bundle = contract_bundle();
+
+        assert_eq!(bundle.contract_version, CONTRACT_VERSION);
+        assert_eq!(bundle.schema_version, CONTRACT_SCHEMA_VERSION);
+        assert_eq!(bundle.generated_by, CONTRACT_GENERATOR);
+        validate_contract_bundle(&bundle).expect("current bundle valid");
+    }
+
+    #[test]
+    fn contract_export_snapshots_are_reproducible() {
+        let schema_snapshot: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/plotforge.schema.json"))
+                .expect("schema snapshot json");
+        let typescript_snapshot = include_str!("../../../contracts/plotforge.d.ts");
+
+        assert_eq!(schema_snapshot, contract_json_schema());
+        assert_eq!(typescript_snapshot, contract_typescript());
+    }
+
+    #[test]
+    fn contract_version_validation_rejects_unsupported_versions() {
+        let version_error = validate_contract_version("0.0.0", CONTRACT_SCHEMA_VERSION)
+            .expect_err("invalid contract version");
+        assert!(matches!(
+            version_error,
+            ContractVersionError::UnsupportedContractVersion { .. }
+        ));
+
+        let schema_error = validate_contract_version(CONTRACT_VERSION, CONTRACT_SCHEMA_VERSION + 1)
+            .expect_err("invalid schema version");
+        assert!(matches!(
+            schema_error,
+            ContractVersionError::UnsupportedSchemaVersion { .. }
+        ));
     }
 
     #[test]

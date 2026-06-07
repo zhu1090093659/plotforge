@@ -6,7 +6,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+schemars.workspace = true
 serde.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true

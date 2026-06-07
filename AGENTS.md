@@ -16,6 +16,7 @@ The current MVP contains:
 ## Source of Truth
 
 - `plotforge-schema` is the only schema contract source of truth.
+- Generated frontend contracts live in `contracts/`; regenerate them with `scripts/contracts/export_contracts.sh` after Rust schema changes and verify with `scripts/contracts/check_contracts.sh`.
 - Folder project files are the source of truth for game projects; generated caches, exports, traces, and build artifacts must be rebuildable.
 - `examples/dynasty-embers` must remain a valid fixture and must stay semantically aligned with `create_demo_project`.
 - Runtime traces are generated evidence, not committed fixture state.
@@ -53,6 +54,7 @@ Use the narrowest relevant checks during development, then run the full gate bef
 - `cargo test --workspace`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `scripts/qa/full_local.sh`
+- `scripts/contracts/check_contracts.sh`
 
 Tempdir CLI smoke commands:
 
