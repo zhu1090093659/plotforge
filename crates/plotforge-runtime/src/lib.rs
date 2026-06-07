@@ -1,8 +1,9 @@
 use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner, ScenePlannerError};
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
-    ActionIntent, ProjectData, RuntimeError, RuntimeTrace, Scene, StoryState, WorldDelta,
-    WorldState,
+    ActionIntent, ProjectData, RuntimeError, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace,
+    RuntimeTraceDiagnostic, RuntimeTraceStage, RuntimeTraceStageStatus, Scene, StoryState,
+    WorldDelta, WorldState, redact_trace_text,
 };
 use thiserror::Error;
 
@@ -14,6 +15,8 @@ pub enum RuntimeEngineError {
     MissingScene(String),
     #[error("unsupported player action: {0}")]
     UnsupportedAction(String),
+    #[error("no selected choice mapping for action type: {0}")]
+    MissingChoiceMapping(String),
     #[error(transparent)]
     Planner(#[from] ScenePlannerError),
 }
@@ -64,7 +67,8 @@ where
         let action_type = action_intent
             .action_type()
             .ok_or_else(|| RuntimeEngineError::UnsupportedAction(player_input.to_string()))?;
-        let choice_id = selected_choice_for_action(action_type);
+        let choice_id = selected_choice_for_action(action_type)
+            .ok_or_else(|| RuntimeEngineError::MissingChoiceMapping(action_type.to_string()))?;
         let world_state_before = self.world_state.clone();
         let story_state_before = self.story_state.clone();
 
@@ -88,11 +92,14 @@ where
             player_input,
             action_type,
         })?;
+        let planner_fallback_used = plan.fallback_used;
+        let planner_review = plan.review;
+        let planned_scene = plan.scene;
 
         let next_scene = if action_type == "continue" {
             current_scene
         } else {
-            plan.scene
+            planned_scene
         };
 
         if action_type != "continue" {
@@ -108,19 +115,85 @@ where
 
         self.world_state = world_state_after.clone();
 
+        let errors = fallback_errors(planner_fallback_used);
+        let planner_error = errors.first().cloned();
+        let planner_status = if planner_fallback_used {
+            RuntimeTraceStageStatus::Fallback
+        } else {
+            RuntimeTraceStageStatus::Completed
+        };
+        let redacted_action_type = redact_trace_text(action_type);
+        let redacted_choice_id = redact_trace_text(choice_id);
+        let redacted_planner_scene_key = redact_trace_text(&planner_review.scene_key);
+        let diagnostics = vec![
+            RuntimeTraceDiagnostic::new_redacted(
+                RuntimeTraceStage::InterpretAction,
+                RuntimeTraceStageStatus::Completed,
+                format!(
+                    "action `{action_type}` matched {} term(s)",
+                    action_intent.matched_terms.len()
+                ),
+            ),
+            RuntimeTraceDiagnostic::new_redacted(
+                RuntimeTraceStage::SelectChoice,
+                RuntimeTraceStageStatus::Completed,
+                format!("selected choice `{choice_id}`"),
+            ),
+            RuntimeTraceDiagnostic::new_redacted(
+                RuntimeTraceStage::EvaluateRules,
+                RuntimeTraceStageStatus::Completed,
+                if world_delta.is_empty() {
+                    format!("rules evaluated for `{action_type}` with no world delta")
+                } else {
+                    format!("rules evaluated for `{action_type}` and produced a world delta")
+                },
+            ),
+            RuntimeTraceDiagnostic::new_redacted(
+                RuntimeTraceStage::PlanScene,
+                planner_status,
+                if planner_fallback_used {
+                    format!(
+                        "planner returned fallback scene `{}`",
+                        planner_review.scene_key
+                    )
+                } else {
+                    format!("planner returned scene `{}`", planner_review.scene_key)
+                },
+            ),
+            RuntimeTraceDiagnostic::new_redacted(
+                RuntimeTraceStage::CommitState,
+                RuntimeTraceStageStatus::Completed,
+                format!("committed story turn {}", self.story_state.turn),
+            ),
+        ];
+
         let trace = RuntimeTrace {
             id: format!("trace-{:03}", self.story_state.turn),
             timestamp_ms: u64::from(self.story_state.turn),
-            player_input: Some(player_input.to_string()),
-            selected_choice: Some(choice_id.to_string()),
+            player_input: Some(redact_trace_text(player_input)),
+            selected_choice: Some(redacted_choice_id),
+            action_intent: Some(action_intent.redacted()),
+            rule_result: Some(RuntimeRuleResult {
+                action_type: redacted_action_type.clone(),
+                delta_empty: world_delta.is_empty(),
+                state_committed: true,
+                error: None,
+            }),
+            planner_result: Some(RuntimePlannerResult {
+                requested_action_type: redacted_action_type,
+                scene_key: Some(redacted_planner_scene_key),
+                fallback_used: planner_fallback_used,
+                error: planner_error,
+            }),
+            diagnostics,
             world_state_before,
             world_state_delta: world_delta,
             world_state_after,
             story_state_before,
             story_state_after: self.story_state.clone(),
-            narrative_review: Some(plan.review),
-            errors: fallback_errors(plan.fallback_used),
-            fallback_used: plan.fallback_used,
+            narrative_review: Some(planner_review.redacted()),
+            errors,
+            fallback_used: planner_fallback_used,
         };
 
         Ok(RuntimeStep {
@@ -163,23 +236,22 @@ fn match_terms(input: &str, action_type: &str, terms: &[&str]) -> Option<ActionI
     (!matched_terms.is_empty()).then(|| ActionIntent::supported(action_type, matched_terms))
 }
 
-fn selected_choice_for_action(action_type: &str) -> &'static str {
+fn selected_choice_for_action(action_type: &str) -> Option<&'static str> {
     match action_type {
-        "continue" => "continue-council",
-        "inspect_corruption" => "inspect-corruption",
-        "pay_army" => "pay-army",
-        "raise_tax" => "raise-tax",
-        _ => "raise-tax",
+        "continue" => Some("continue-council"),
+        "inspect_corruption" => Some("inspect-corruption"),
+        "pay_army" => Some("pay-army"),
+        "raise_tax" => Some("raise-tax"),
+        _ => None,
     }
 }
 
 fn fallback_errors(fallback_used: bool) -> Vec<RuntimeError> {
     if fallback_used {
-        vec![RuntimeError {
-            code: "fallback_scene".into(),
-            message: "Mock agent used a fallback scene because the requested scene was missing."
-                .into(),
-        }]
+        vec![RuntimeError::redacted(
+            "fallback_scene",
+            "Mock agent used a fallback scene because the requested scene was missing.",
+        )]
     } else {
         Vec::new()
     }

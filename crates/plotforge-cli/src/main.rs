@@ -167,12 +167,35 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
                 "selected: {}",
                 trace.selected_choice.as_deref().unwrap_or("none")
             );
+            if let Some(intent) = trace.action_intent.as_ref() {
+                println!(
+                    "intent: {}",
+                    intent.action_type.as_deref().unwrap_or("unsupported")
+                );
+            }
+            if let Some(rule_result) = trace.rule_result.as_ref() {
+                println!(
+                    "rule: {} (delta empty: {}, committed: {})",
+                    rule_result.action_type, rule_result.delta_empty, rule_result.state_committed
+                );
+            }
+            if let Some(planner_result) = trace.planner_result.as_ref() {
+                println!(
+                    "planner: {} (fallback: {})",
+                    planner_result.scene_key.as_deref().unwrap_or("none"),
+                    planner_result.fallback_used
+                );
+            }
             println!("fallback: {}", trace.fallback_used);
             println!("world delta:");
             for line in summarize_delta(&trace.world_state_delta) {
                 println!("  {line}");
             }
-            if let Some(review) = trace.narrative_review {
+            println!("diagnostics: {}", trace.diagnostics.len());
+            for error in &trace.errors {
+                println!("error: {} - {}", error.code, error.message);
+            }
+            if let Some(review) = trace.narrative_review.as_ref() {
                 println!("review score: {}", review.score);
                 println!("review issues: {}", review.issues.len());
             }

@@ -1,6 +1,9 @@
 use std::fs;
 
-use plotforge_schema::{RuntimeTrace, StoryState, WorldDelta, WorldState};
+use plotforge_schema::{
+    ActionIntent, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace, RuntimeTraceDiagnostic,
+    RuntimeTraceStage, RuntimeTraceStageStatus, StoryState, WorldDelta, WorldState,
+};
 use plotforge_storage::{
     StorageError, create_demo_project, dynasty_embers_project, load_project, validate_project,
     write_trace,
@@ -44,6 +47,24 @@ fn write_trace_writes_trace_id_and_latest() {
         timestamp_ms: 1,
         player_input: Some("test".into()),
         selected_choice: Some("raise-tax".into()),
+        action_intent: Some(ActionIntent::supported("raise_tax", vec!["test".into()])),
+        rule_result: Some(RuntimeRuleResult {
+            action_type: "raise_tax".into(),
+            delta_empty: true,
+            state_committed: true,
+            error: None,
+        }),
+        planner_result: Some(RuntimePlannerResult {
+            requested_action_type: "raise_tax".into(),
+            scene_key: Some("court-crisis-002".into()),
+            fallback_used: false,
+            error: None,
+        }),
+        diagnostics: vec![RuntimeTraceDiagnostic::new_redacted(
+            RuntimeTraceStage::CommitState,
+            RuntimeTraceStageStatus::Completed,
+            "committed",
+        )],
         world_state_before: WorldState::default(),
         world_state_delta: WorldDelta::default(),
         world_state_after: WorldState::default(),

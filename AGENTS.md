@@ -19,6 +19,7 @@ The current MVP contains:
 - Folder project files are the source of truth for game projects; generated caches, exports, traces, and build artifacts must be rebuildable.
 - `examples/dynasty-embers` must remain a valid fixture and must stay semantically aligned with `create_demo_project`.
 - Runtime traces are generated evidence, not committed fixture state.
+- Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
 - Spec-driven planning artifacts belong under `docs/archives/<initiative>/` after completion.
 
 ## Architecture Boundaries
