@@ -9,3 +9,11 @@
 - **GitHub Issues**: #1 - #10
 - **Tracking Mode**: GITHUB_STANDARD
 
+## plotforge-test-system
+
+- **Description**: Comprehensive MVP test system covering Rust crate tests, CLI black-box smoke, fixture drift checks, static export HTTP smoke, split GitHub Actions, local QA scripts, and Codex Desktop Computer Use verification.
+- **Date Range**: 2026-06-07 - 2026-06-07
+- **Archived Progress**: [MASTER.md](./plotforge-test-system/progress/MASTER.md)
+- **Pull Request**: https://github.com/zhu1090093659/plotforge/pull/20
+- **GitHub Issues**: #12 - #19
+- **Tracking Mode**: GITHUB_STANDARD
