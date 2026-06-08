@@ -2895,7 +2895,13 @@
         "ai_disclosure_markdown": {
           "type": "string"
         },
+        "asset_references_markdown": {
+          "type": "string"
+        },
         "checklist_markdown": {
+          "type": "string"
+        },
+        "content_safety_checklist_markdown": {
           "type": "string"
         },
         "content_warnings_markdown": {
@@ -2928,6 +2934,12 @@
         "source_workshop_manifest_path": {
           "type": "string"
         },
+        "steam_direct_checklist_markdown": {
+          "type": "string"
+        },
+        "store_copy_markdown": {
+          "type": "string"
+        },
         "workshop_package_id": {
           "type": "string"
         }
@@ -2938,9 +2950,13 @@
         "workshop_package_id",
         "generated_by",
         "source_workshop_manifest_path",
+        "store_copy_markdown",
         "checklist_markdown",
         "ai_disclosure_markdown",
         "content_warnings_markdown",
+        "asset_references_markdown",
+        "steam_direct_checklist_markdown",
+        "content_safety_checklist_markdown",
         "packaging_notes_markdown",
         "official_reference_urls",
         "notices"
@@ -3499,6 +3515,83 @@
       ],
       "type": "object"
     },
+    "WorkshopPublishDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "ai_usage_manifest_path": {
+          "type": "string"
+        },
+        "content_root": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "notices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "package_files": {
+          "items": {
+            "$ref": "#/$defs/WorkshopPackageFile"
+          },
+          "type": "array"
+        },
+        "package_id": {
+          "type": "string"
+        },
+        "preview_image": {
+          "type": "string"
+        },
+        "requires_explicit_steamworks_credentials": {
+          "type": "boolean"
+        },
+        "steamworks_api_called": {
+          "type": "boolean"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "upload_enabled": {
+          "type": "boolean"
+        },
+        "visibility": {
+          "$ref": "#/$defs/WorkshopDraftVisibility"
+        }
+      },
+      "required": [
+        "manifest_version",
+        "package_id",
+        "title",
+        "description",
+        "visibility",
+        "preview_image",
+        "content_root",
+        "tags",
+        "ai_usage_manifest_path",
+        "package_files",
+        "generated_by",
+        "upload_enabled",
+        "requires_explicit_steamworks_credentials",
+        "steamworks_api_called",
+        "notices"
+      ],
+      "type": "object"
+    },
     "WorldDelta": {
       "properties": {
         "flags": {
@@ -3739,6 +3832,9 @@
     "workshop_item_package": {
       "$ref": "#/$defs/WorkshopItemPackage"
     },
+    "workshop_publish_draft": {
+      "$ref": "#/$defs/WorkshopPublishDraft"
+    },
     "world_edit_document": {
       "$ref": "#/$defs/WorldEditDocument"
     },
@@ -3781,6 +3877,7 @@
     "ai_usage_manifest",
     "desktop_runtime_draft",
     "workshop_item_package",
+    "workshop_publish_draft",
     "steam_submission_kit_request",
     "steam_submission_kit_draft",
     "export_manifest"

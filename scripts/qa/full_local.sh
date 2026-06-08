@@ -11,6 +11,7 @@ cargo fmt --all -- --check
 python3 scripts/qa/no_launch_promise_lint.py
 cargo check --workspace
 cargo test --workspace
+cargo test -p plotforge-cli --test cli_smoke cli_runs_workshop_local_flow_in_tempdir
 scripts/contracts/check_contracts.sh
 npm ci
 npm run creator-desktop:qa

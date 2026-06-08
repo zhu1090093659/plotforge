@@ -87,6 +87,70 @@ describe("App", () => {
     });
   });
 
+  it("switches product modes and keeps Steam entries local-first", async () => {
+    const dataSource = appTestDataSource();
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Play Mode" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Creator Mode" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Developer Mode" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Creator Mode" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Mode" }));
+
+    expect(screen.getByText("Built-in project")).toBeTruthy();
+    expect(screen.getByText("Local Workshop package")).toBeTruthy();
+    expect(screen.getByText("No network calls")).toBeTruthy();
+    expect(
+      screen.getByText(/does not contact Steamworks, upload files/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview local project" }));
+
+    expect(
+      screen.getByRole("button", { name: "Creator Mode" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(screen.getAllByText("Playtest").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Playtest input")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Developer Mode" }));
+
+    expect(screen.getByText("Local package profiles")).toBeTruthy();
+    expect(screen.getByText("Runtime trace debug")).toBeTruthy();
+    expect(screen.getByText("Submission Kit readiness")).toBeTruthy();
+    expect(
+      screen.getByText(/does not publish, upload, provide legal conclusions/),
+    ).toBeTruthy();
+    expect(screen.getByText(/no Steamworks API calls/)).toBeTruthy();
+    expect(document.body.textContent ?? "").not.toMatch(
+      /one-click Steam launch|automatic publishing|approval guarantee|legal guarantee/i,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Review Submission Kit" }));
+
+    expect(
+      screen.getByRole("button", { name: "Creator Mode" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(screen.getAllByText("steam_submission_kit").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "This profile does not call Steamworks APIs or promise approval.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("renders asset records and visual-audio bible cards before background fallback", async () => {
     const dataSource = appTestDataSource();
 

@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 12;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 13;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -1567,6 +1567,26 @@ pub struct WorkshopItemPackage {
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct WorkshopPublishDraft {
+    pub manifest_version: String,
+    pub package_id: String,
+    pub title: String,
+    pub description: String,
+    pub visibility: WorkshopDraftVisibility,
+    pub preview_image: String,
+    pub content_root: String,
+    pub tags: Vec<String>,
+    pub ai_usage_manifest_path: String,
+    pub package_files: Vec<WorkshopPackageFile>,
+    pub generated_by: String,
+    pub upload_enabled: bool,
+    pub requires_explicit_steamworks_credentials: bool,
+    pub steamworks_api_called: bool,
+    pub notices: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SteamSubmissionKitRequest {
     pub product_name: String,
     #[serde(default)]
@@ -1589,9 +1609,13 @@ pub struct SteamSubmissionKitDraft {
     pub workshop_package_id: String,
     pub generated_by: String,
     pub source_workshop_manifest_path: String,
+    pub store_copy_markdown: String,
     pub checklist_markdown: String,
     pub ai_disclosure_markdown: String,
     pub content_warnings_markdown: String,
+    pub asset_references_markdown: String,
+    pub steam_direct_checklist_markdown: String,
+    pub content_safety_checklist_markdown: String,
     pub packaging_notes_markdown: String,
     pub official_reference_urls: Vec<String>,
     pub notices: Vec<String>,
@@ -1649,6 +1673,7 @@ pub struct ContractRootSchemas {
     pub ai_usage_manifest: AiUsageManifest,
     pub desktop_runtime_draft: DesktopRuntimeDraft,
     pub workshop_item_package: WorkshopItemPackage,
+    pub workshop_publish_draft: WorkshopPublishDraft,
     pub steam_submission_kit_request: SteamSubmissionKitRequest,
     pub steam_submission_kit_draft: SteamSubmissionKitDraft,
     pub export_manifest: ExportManifest,
@@ -1760,8 +1785,9 @@ export type WorkshopDraftVisibility = "private_draft" | "friends_only_draft" | "
 export interface WorkshopPackageFile { path: string; content_hash: string; hash_algorithm: string; byte_length: number; }
 export interface DesktopRuntimeDraft { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; static_manifest_path: string; ai_usage_manifest_path: string; build_notes_markdown: string; package_files: WorkshopPackageFile[]; runtime_entrypoint: string; requires_network_at_runtime: boolean; provider_credentials_included: boolean; private_traces_included: boolean; raw_provider_responses_included: boolean; notices: string[]; }
 export interface WorkshopItemPackage { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; export_profile: ExportProfile; ai_usage_manifest_path: string; content_files: WorkshopPackageFile[]; notices: string[]; }
+export interface WorkshopPublishDraft { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; ai_usage_manifest_path: string; package_files: WorkshopPackageFile[]; generated_by: string; upload_enabled: boolean; requires_explicit_steamworks_credentials: boolean; steamworks_api_called: boolean; notices: string[]; }
 export interface SteamSubmissionKitRequest { product_name: string; desktop_build_path?: string | null; store_short_description: string; screenshot_paths: string[]; capsule_asset_paths: string[]; content_warnings: string[]; safety_guardrails: string[]; user_reporting_path: string; moderation_policy: string; build_notes: string[]; }
-export interface SteamSubmissionKitDraft { manifest_version: string; product_name: string; workshop_package_id: string; generated_by: string; source_workshop_manifest_path: string; checklist_markdown: string; ai_disclosure_markdown: string; content_warnings_markdown: string; packaging_notes_markdown: string; official_reference_urls: string[]; notices: string[]; }
+export interface SteamSubmissionKitDraft { manifest_version: string; product_name: string; workshop_package_id: string; generated_by: string; source_workshop_manifest_path: string; store_copy_markdown: string; checklist_markdown: string; ai_disclosure_markdown: string; content_warnings_markdown: string; asset_references_markdown: string; steam_direct_checklist_markdown: string; content_safety_checklist_markdown: string; packaging_notes_markdown: string; official_reference_urls: string[]; notices: string[]; }
 export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; audio_refs: MediaAssetReference[]; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; entry_beat_id?: string | null; }
 export interface Beat { id: string; text: string; speaker?: string | null; line_delivery?: string | null; audio_refs: MediaAssetReference[]; choices: Choice[]; next?: BeatNext; }
 export type BeatNext = { kind: "beat"; payload: string } | { kind: "scene" } | { kind: "end" } | { kind: "none" };
@@ -1818,7 +1844,7 @@ export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attem
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; visual_bible: VisualBible; audio_bible: AudioBible; asset_records: AssetRecord[]; ai_safety_policy: AiSafetyPolicy; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; asset_records: AssetRecord[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -2692,6 +2718,22 @@ mod tests {
     }
 
     #[test]
+    fn workshop_publish_draft_roundtrips_and_rejects_upload_state_fields() {
+        let draft = sample_workshop_publish_draft();
+        assert_contract_roundtrip_rejects_unknown(draft.clone());
+        assert!(!draft.upload_enabled);
+        assert!(draft.requires_explicit_steamworks_credentials);
+        assert!(!draft.steamworks_api_called);
+
+        let mut value = serde_json::to_value(draft).expect("publish draft value");
+        value["published_file_id"] = serde_json::json!("1234567890");
+        let error = serde_json::from_value::<WorkshopPublishDraft>(value)
+            .expect_err("Steam upload fields should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn steam_submission_kit_contracts_roundtrip_and_reject_unknown_fields() {
         let request = sample_steam_submission_kit_request();
         let encoded = serde_json::to_string_pretty(&request).expect("serialize kit request");
@@ -2888,6 +2930,35 @@ mod tests {
         }
     }
 
+    fn sample_workshop_publish_draft() -> WorkshopPublishDraft {
+        WorkshopPublishDraft {
+            manifest_version: "2026-06-09".into(),
+            package_id: "dynasty-embers-workshop-draft".into(),
+            title: "Dynasty Embers".into(),
+            description: "Offline Workshop package draft for local validation.".into(),
+            visibility: WorkshopDraftVisibility::PrivateDraft,
+            preview_image: "preview.png".into(),
+            content_root: "content".into(),
+            tags: vec!["story-game".into(), "strategy".into()],
+            ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
+            package_files: vec![WorkshopPackageFile {
+                path: "content/game.json".into(),
+                content_hash: "sha256:abc".into(),
+                hash_algorithm: "sha256".into(),
+                byte_length: 42,
+            }],
+            generated_by: "plotforge-workshop 0.1.0".into(),
+            upload_enabled: false,
+            requires_explicit_steamworks_credentials: true,
+            steamworks_api_called: false,
+            notices: vec![
+                "Local publish draft only; no Steamworks API call was made.".into(),
+                "A future upload adapter must require explicit credentials and configuration."
+                    .into(),
+            ],
+        }
+    }
+
     fn sample_desktop_runtime_draft(game: &GameProject) -> DesktopRuntimeDraft {
         DesktopRuntimeDraft {
             manifest_version: "2026-06-08".into(),
@@ -2944,9 +3015,13 @@ mod tests {
             workshop_package_id: "dynasty-embers-workshop-draft".into(),
             generated_by: "plotforge-workshop 0.1.0".into(),
             source_workshop_manifest_path: "workshop-item.json".into(),
+            store_copy_markdown: "# Store Copy Draft\n".into(),
             checklist_markdown: "# Steam Submission Checklist Draft\n".into(),
             ai_disclosure_markdown: "# Steam AI Disclosure Draft\n".into(),
             content_warnings_markdown: "# Content Warnings Draft\n".into(),
+            asset_references_markdown: "# Screenshots And Capsule References\n".into(),
+            steam_direct_checklist_markdown: "# Steam Direct Checklist Draft\n".into(),
+            content_safety_checklist_markdown: "# Content Safety Checklist Draft\n".into(),
             packaging_notes_markdown: "# Packaging Notes\n".into(),
             official_reference_urls: vec![
                 "https://partner.steamgames.com/doc/gettingstarted/contentsurvey".into(),

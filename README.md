@@ -11,14 +11,15 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Export profile listing plus a local Desktop Runtime draft package with `desktop-runtime-draft.json`, build notes, static player files, reachable assets, and package hashes.
 - No-network static player package sourced from `apps/player-web/static` and copied into exports.
 - Export profiles and `ai-usage.json` package disclosure for static and desktop draft exports; these describe capabilities and AI usage evidence without legal conclusions or platform approval promises.
-- Local-only Workshop item package schema and validator in `plotforge-workshop`; no Steam API, upload, or release-readiness integration is included.
-- Local Steam Submission Kit draft generation in `plotforge-workshop`; it produces checklist, AI disclosure, content warnings, and packaging-note Markdown drafts from validated package evidence.
+- Local-only Workshop item package schema, validator, library import/load/remix/block/report/delete flow, publish draft writer, and gated upload port in `plotforge-workshop`; no Steam API call is made by default.
+- Local Steam Submission Kit draft generation in `plotforge-workshop`; it produces store copy, checklist, AI disclosure, content warnings, asset reference, Steam Direct checklist, content safety, and packaging-note Markdown drafts from validated package evidence.
+- Creator desktop Play/Creator/Developer product mode shell for the Steam route, plus thin Studio adapters over Workshop package and draft operations.
 - Steam compliance QA guidance and static no-launch-promise lint for active project-facing docs.
 - Media asset registry foundation with typed records, SHA-256 hashes, runtime references, provider metadata, and exportable paths.
 - Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
 - Rebuildable SQLite cache/index for project summaries, source file hashes, trace metadata, and asset metadata; folder files remain source of truth.
-- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers and Steam/Workshop are deferred.
+- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers, real Steamworks API calls, hosted sharing, and paid Workshop flows are deferred.
 
 ## Commands
 
@@ -47,6 +48,7 @@ cargo run -p plotforge-cli -- trace inspect examples/dynasty-embers/traces/lates
 cargo run -p plotforge-cli -- export profiles
 cargo run -p plotforge-cli -- export static examples/dynasty-embers --out dist/dynasty-embers
 cargo run -p plotforge-cli -- export desktop examples/dynasty-embers --out dist/dynasty-embers-desktop
+cargo test -p plotforge-cli --test cli_smoke cli_runs_workshop_local_flow_in_tempdir
 
 scripts/contracts/export_contracts.sh
 scripts/contracts/check_contracts.sh
@@ -68,7 +70,7 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - `plotforge-export` packages only reachable referenced assets from the media registry.
 - Desktop Runtime draft export is local package evidence only; it emits build notes and hashes but does not create an installer, bundle credentials, include private traces, or claim platform readiness.
 - Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal conclusions, or platform approval promises.
-- `plotforge-workshop` owns local Workshop draft package validation. It must not call Steamworks APIs, upload content, or claim release readiness.
+- `plotforge-workshop` owns local Workshop draft package validation, local library operations, publish draft generation, and the gated Steamworks upload port. It must not call Steamworks APIs by default or claim external platform outcomes.
 - `plotforge-workshop` also owns Steam Submission Kit draft generation. Generated drafts are local support material only; they do not decide compliance, approval, publishing, or legal status.
 - Steam-facing docs and generated guidance must pass `scripts/qa/no_launch_promise_lint.py`; active docs must not promise automatic publishing, platform outcomes, legal conclusions, or ownership of a creator's Steamworks workflow.
 - `apps/player-web/static` owns the exported static player surface and consumes `ExportManifest` without duplicating runtime/rule logic.

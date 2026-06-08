@@ -8,6 +8,7 @@ import {
   Play,
   RefreshCcw,
   Save,
+  ShipWheel,
   TerminalSquare,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -74,6 +75,34 @@ type StudioSectionId =
   | "debugger"
   | "export";
 
+type ProductModeId = "play" | "creator" | "developer";
+
+const productModes: Array<{
+  id: ProductModeId;
+  label: string;
+  description: string;
+  icon: typeof Play;
+}> = [
+  {
+    id: "play",
+    label: "Play Mode",
+    description: "Local play shelf for bundled and Workshop-style packages",
+    icon: Play,
+  },
+  {
+    id: "creator",
+    label: "Creator Mode",
+    description: "Project editing, playtest, assets, and export profiles",
+    icon: PlusCircle,
+  },
+  {
+    id: "developer",
+    label: "Developer Mode",
+    description: "Local package, debug, and Steam evidence readiness",
+    icon: TerminalSquare,
+  },
+];
+
 type FormStatus = {
   section: StudioSectionId;
   tone: "success" | "error";
@@ -106,6 +135,7 @@ export function App({
   dataSource = createDefaultStudioDataSource(),
   initialProjectPath = defaultProjectPath(),
 }: AppProps) {
+  const [activeMode, setActiveMode] = useState<ProductModeId>("creator");
   const [activeSection, setActiveSection] =
     useState<StudioSectionId>("dashboard");
   const [projectPath, setProjectPath] = useState(initialProjectPath);
@@ -201,6 +231,8 @@ export function App({
   const activeSectionMeta =
     studioSections.find((section) => section.id === activeSection) ??
     studioSections[0];
+  const activeModeMeta =
+    productModes.find((mode) => mode.id === activeMode) ?? productModes[1];
   const dirty = Boolean(selectedFile?.editable && editorContent !== savedContent);
   const assetCatalog = useMemo(
     () => projectAssetCatalog(projectData, assetRecords),
@@ -878,6 +910,172 @@ export function App({
         current === index ? { ...card, ...patch } : card,
       ),
     });
+  }
+
+  function openCreatorSection(section: StudioSectionId) {
+    setActiveMode("creator");
+    setActiveSection(section);
+  }
+
+  function openExportProfile(profileId: string) {
+    setSelectedExportProfileId(profileId);
+    setExportReport(null);
+    setExportError(null);
+    openCreatorSection("export");
+  }
+
+  function renderActiveMode() {
+    switch (activeMode) {
+      case "play":
+        return renderPlayMode();
+      case "developer":
+        return renderDeveloperMode();
+      case "creator":
+      default:
+        return renderCreatorMode();
+    }
+  }
+
+  function renderCreatorMode() {
+    return renderActiveSection();
+  }
+
+  function renderPlayMode() {
+    const currentTitle = projectSummary?.title ?? "Local project";
+    const currentDescription =
+      projectData?.game.description ??
+      "A folder-backed PlotForge project loaded from this machine.";
+
+    return (
+      <div className="grid gap-5">
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <article className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase text-signal">
+              Built-in project
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold">{currentTitle}</h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/65">
+              {currentDescription}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold uppercase text-ink/55">
+              <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1">
+                Local files
+              </span>
+              <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1">
+                No network calls
+              </span>
+              <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1">
+                Runtime preview
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openCreatorSection("playtest")}
+              className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black"
+            >
+              <Play aria-hidden size={16} />
+              Preview local project
+            </button>
+          </article>
+
+          <article className="rounded-md border border-ink/10 bg-parchment p-5">
+            <p className="text-xs font-semibold uppercase text-ink/45">
+              Workshop-style entry
+            </p>
+            <h3 className="mt-2 text-lg font-semibold">
+              Local Workshop package
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-ink/65">
+              Use local package metadata and copied assets to inspect a future
+              Workshop candidate. This shell does not contact Steamworks,
+              upload files, or claim platform approval.
+            </p>
+            <button
+              type="button"
+              onClick={() => openExportProfile("steam-workshop")}
+              className={`${secondaryButtonClassName} mt-5`}
+            >
+              <ShipWheel aria-hidden size={16} />
+              Review Workshop profile
+            </button>
+          </article>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map((metric) => (
+            <article
+              key={metric.label}
+              className={`rounded-md border bg-white p-4 shadow-sm ${metric.tone}`}
+            >
+              <p className="text-sm font-medium text-ink/55">{metric.label}</p>
+              <p className="mt-2 text-3xl font-semibold text-current">
+                {metric.value}
+              </p>
+            </article>
+          ))}
+        </section>
+      </div>
+    );
+  }
+
+  function renderDeveloperMode() {
+    const workshopProfile = exportProfiles.find(
+      (profile) => profile.id === "steam-workshop",
+    );
+    const submissionProfile = exportProfiles.find(
+      (profile) => profile.id === "steam-submission-kit",
+    );
+
+    return (
+      <div className="grid gap-5">
+        <section className="grid gap-4 lg:grid-cols-3">
+          <DeveloperEntry
+            title="Local package profiles"
+            subtitle="Export and package metadata"
+            body="Inspect static, desktop, and Steam-oriented profiles from the Studio contract. Static web remains the only wired export command."
+            actionLabel="Open Export"
+            onAction={() => openCreatorSection("export")}
+          />
+          <DeveloperEntry
+            title="Runtime trace debug"
+            subtitle="Local evidence"
+            body="Review the latest playtest report, diagnostics, reproducibility metadata, media references, and visible fallback markers."
+            actionLabel="Open Debugger"
+            onAction={() => openCreatorSection("debugger")}
+          />
+          <DeveloperEntry
+            title="Submission Kit readiness"
+            subtitle="Draft support material"
+            body="Check the local Steam Submission Kit evidence profile. It does not publish, upload, provide legal conclusions, or claim approval."
+            actionLabel="Review Submission Kit"
+            onAction={() => openExportProfile("steam-submission-kit")}
+          />
+        </section>
+
+        <section className={panelClassName}>
+          <PanelHeader
+            title="Steam evidence boundary"
+            subtitle="Local-only metadata for package and readiness review"
+          />
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <SteamBoundaryCard
+              title="Workshop package candidate"
+              profile={workshopProfile}
+              empty="steam-workshop profile is not available from the adapter."
+            />
+            <SteamBoundaryCard
+              title="Submission Kit evidence"
+              profile={submissionProfile}
+              empty="steam-submission-kit profile is not available from the adapter."
+            />
+          </div>
+          <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm text-ink/65">
+            Developer Mode is local-first: no Steamworks API calls, no upload
+            action, and no platform outcome or legal conclusion.
+          </div>
+        </section>
+      </div>
+    );
   }
 
   function renderActiveSection() {
@@ -2469,16 +2667,18 @@ export function App({
             </button>
           </div>
 
-          <nav className="mt-5 grid gap-1">
-            {studioSections.map((section) => {
-              const Icon = section.icon;
-              const selected = section.id === activeSection;
+          <nav aria-label="Product modes" className="mt-5 grid gap-1">
+            {productModes.map((mode) => {
+              const Icon = mode.icon;
+              const selected = mode.id === activeMode;
               return (
                 <button
                   type="button"
-                  key={section.id}
-                  title={section.description}
-                  onClick={() => setActiveSection(section.id as StudioSectionId)}
+                  key={mode.id}
+                  aria-label={mode.label}
+                  aria-pressed={selected}
+                  title={mode.description}
+                  onClick={() => setActiveMode(mode.id)}
                   className={[
                     "flex min-h-12 items-center gap-3 rounded-md px-3 py-2 text-left transition",
                     selected
@@ -2489,7 +2689,7 @@ export function App({
                   <Icon aria-hidden size={18} className="shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">
-                      {section.label}
+                      {mode.label}
                     </span>
                     <span
                       className={[
@@ -2497,7 +2697,7 @@ export function App({
                         selected ? "text-white/65" : "text-ink/45",
                       ].join(" ")}
                     >
-                      {section.status}
+                      {mode.id}
                     </span>
                   </span>
                   {selected ? <ChevronRight aria-hidden size={16} /> : null}
@@ -2505,19 +2705,64 @@ export function App({
               );
             })}
           </nav>
+
+          {activeMode === "creator" ? (
+            <nav aria-label="Creator sections" className="mt-5 grid gap-1">
+              {studioSections.map((section) => {
+                const Icon = section.icon;
+                const selected = section.id === activeSection;
+                return (
+                  <button
+                    type="button"
+                    key={section.id}
+                    title={section.description}
+                    onClick={() =>
+                      setActiveSection(section.id as StudioSectionId)
+                    }
+                    className={[
+                      "flex min-h-12 items-center gap-3 rounded-md px-3 py-2 text-left transition",
+                      selected
+                        ? "bg-ink text-white"
+                        : "text-ink/75 hover:bg-ink/5 hover:text-ink",
+                    ].join(" ")}
+                  >
+                    <Icon aria-hidden size={18} className="shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {section.label}
+                      </span>
+                      <span
+                        className={[
+                          "block truncate text-xs",
+                          selected ? "text-white/65" : "text-ink/45",
+                        ].join(" ")}
+                      >
+                        {section.status}
+                      </span>
+                    </span>
+                    {selected ? <ChevronRight aria-hidden size={16} /> : null}
+                  </button>
+                );
+              })}
+            </nav>
+          ) : null}
         </aside>
 
         <main className="min-w-0 px-6 py-5 lg:px-8">
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-ink/10 pb-5">
             <div>
               <p className="text-sm font-medium uppercase text-ink/55">
-                {dataSource.runtimeName}
+                {activeModeMeta.label} / {dataSource.runtimeName}
               </p>
               <h2 className="mt-1 text-2xl font-semibold">
-                {activeSectionMeta.label}
+                {activeMode === "creator"
+                  ? activeSectionMeta.label
+                  : activeModeMeta.label}
               </h2>
               <p className="mt-1 text-sm text-ink/55">
-                {projectSummary?.title ?? "No project loaded"}
+                {activeMode === "creator"
+                  ? (projectSummary?.title ?? "No project loaded")
+                  : activeModeMeta.description}
               </p>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -2541,7 +2786,7 @@ export function App({
               </button>
               <button
                 type="button"
-                onClick={() => setActiveSection("playtest")}
+                onClick={() => openCreatorSection("playtest")}
                 className="inline-flex h-10 items-center gap-2 rounded-md border border-ink/15 bg-white px-4 text-sm font-semibold text-ink transition hover:border-ink/40"
               >
                 <Play aria-hidden size={16} />
@@ -2550,7 +2795,7 @@ export function App({
             </div>
           </header>
 
-          <div className="py-5">{renderActiveSection()}</div>
+          <div className="py-5">{renderActiveMode()}</div>
         </main>
       </div>
     </div>
@@ -2583,6 +2828,108 @@ function PanelHeader({
       </div>
       {action}
     </div>
+  );
+}
+
+function DeveloperEntry({
+  title,
+  subtitle,
+  body,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  subtitle: string;
+  body: string;
+  actionLabel: string;
+  onAction(): void;
+}) {
+  return (
+    <article className="flex min-h-56 flex-col rounded-md border border-ink/10 bg-white p-5 shadow-sm">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase text-ink/45">
+          {subtitle}
+        </p>
+        <h3 className="mt-2 text-lg font-semibold">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-ink/65">{body}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onAction}
+        className={`${secondaryButtonClassName} mt-auto w-fit`}
+      >
+        <ChevronRight aria-hidden size={16} />
+        {actionLabel}
+      </button>
+    </article>
+  );
+}
+
+function SteamBoundaryCard({
+  title,
+  profile,
+  empty,
+}: {
+  title: string;
+  profile: ExportProfile | undefined;
+  empty: string;
+}) {
+  if (!profile) {
+    return (
+      <article className="rounded-md border border-ink/10 bg-parchment p-4 text-sm text-ink/60">
+        {empty}
+      </article>
+    );
+  }
+
+  return (
+    <article className="rounded-md border border-ink/10 bg-parchment p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase text-ink/45">
+            {title}
+          </p>
+          <h3 className="mt-1 truncate text-base font-semibold">
+            {profile.id}
+          </h3>
+        </div>
+        <span className="rounded-sm border border-ink/10 bg-white px-2 py-1 text-xs font-semibold text-ink/60">
+          {profile.target}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+        <ProfileFlag
+          label="Runtime network"
+          value={profile.requires_network_at_runtime ? "required" : "not required"}
+          safe={!profile.requires_network_at_runtime}
+        />
+        <ProfileFlag
+          label="Provider config"
+          value={profile.includes_provider_config ? "included" : "excluded"}
+          safe={!profile.includes_provider_config}
+        />
+        <ProfileFlag
+          label="Private traces"
+          value={profile.includes_private_traces ? "included" : "excluded"}
+          safe={!profile.includes_private_traces}
+        />
+        <ProfileFlag
+          label="Platform readiness"
+          value={profile.platform_submission_ready ? "claimed" : "not claimed"}
+          safe={!profile.platform_submission_ready}
+        />
+      </div>
+      <div className="mt-4 grid gap-2">
+        {profile.notes.map((note) => (
+          <p
+            key={note}
+            className="rounded-md border border-ink/10 bg-white px-3 py-2 text-sm text-ink/65"
+          >
+            {note}
+          </p>
+        ))}
+      </div>
+    </article>
   );
 }
 
