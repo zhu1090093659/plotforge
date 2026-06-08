@@ -1,7 +1,8 @@
 use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner, ScenePlannerError};
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
-    ActionIntent, ProjectData, RuntimeError, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace,
+    ActionIntent, AssetReference, AssetReferenceKind, ProjectData, RuntimeError,
+    RuntimeMediaReference, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace,
     RuntimeTraceDiagnostic, RuntimeTraceStage, RuntimeTraceStageStatus, Scene, StoryState,
     WorldDelta, WorldState, redact_trace_text,
 };
@@ -204,6 +205,7 @@ where
             story_state_before,
             story_state_after: self.story_state.clone(),
             narrative_review: Some(planner_review.redacted()),
+            media_references: scene_media_references(&next_scene),
             errors,
             fallback_used: planner_fallback_used,
         };
@@ -267,6 +269,17 @@ fn fallback_errors(fallback_used: bool) -> Vec<RuntimeError> {
     } else {
         Vec::new()
     }
+}
+
+fn scene_media_references(scene: &Scene) -> Vec<RuntimeMediaReference> {
+    vec![RuntimeMediaReference {
+        reference: AssetReference {
+            reference_kind: AssetReferenceKind::Scene,
+            reference_id: redact_trace_text(&scene.key),
+            slot: "background_asset".into(),
+        },
+        project_path: redact_trace_text(&scene.background_asset),
+    }]
 }
 
 pub fn summarize_delta(delta: &WorldDelta) -> Vec<String> {

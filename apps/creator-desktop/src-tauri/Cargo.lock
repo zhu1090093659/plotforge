@@ -2205,6 +2205,7 @@ dependencies = [
 name = "plotforge-export"
 version = "0.1.0"
 dependencies = [
+ "plotforge-media",
  "plotforge-schema",
  "plotforge-storage",
  "serde_json",

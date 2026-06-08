@@ -77,6 +77,7 @@ fn write_trace_writes_trace_id_and_latest() {
         story_state_before: story.clone(),
         story_state_after: story,
         narrative_review: None,
+        media_references: Vec::new(),
         errors: Vec::new(),
         fallback_used: false,
     };
