@@ -5,15 +5,27 @@ use std::{
 };
 
 use plotforge_schema::{
-    ActionIntent, ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
-    ReferenceStructureNote, RuntimePlannerResult, RuntimeRuleResult, RuntimeSnapshot, RuntimeTrace,
-    RuntimeTraceDiagnostic, RuntimeTraceStage, RuntimeTraceStageStatus, StoryState, WorldDelta,
-    WorldState,
+    ActionIntent, AiSafetyPolicy, AiUsageContentKind, Character, CharacterGenerationReport,
+    CharacterPortraitRequest, Effect, GenerationEvidence, GenerationStatus, ProjectCreationRequest,
+    ProjectTemplateId, ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
+    ReferenceStructureNote, ReproducibilityMetadata, ResourceDefinition, Rule,
+    RuntimePlannerResult, RuntimeRuleResult, RuntimeSnapshot, RuntimeTrace, RuntimeTraceDiagnostic,
+    RuntimeTraceStage, RuntimeTraceStageStatus, StoryCraftGenerationReport, StoryState, WorldDelta,
+    WorldEditDocument, WorldGenerationReport, WorldState,
 };
 use plotforge_storage::{
-    SQLITE_CACHE_SCHEMA_VERSION, StorageError, create_demo_project, dynasty_embers_project,
-    load_project, read_latest_runtime_snapshot, read_runtime_snapshot, read_sqlite_cache_summary,
-    rebuild_sqlite_cache, sqlite_cache_path, validate_project, validate_reference_library,
+    SQLITE_CACHE_SCHEMA_VERSION, StorageError, apply_character_generation_report,
+    apply_story_craft_generation_report, apply_world_generation_report,
+    build_character_generation_request, build_story_craft_generation_request,
+    build_world_generation_request, create_character, create_demo_project,
+    create_project_from_request, create_resource, create_rule, dynasty_embers_project,
+    load_project, read_ai_safety_policy, read_character_edit_document,
+    read_latest_runtime_snapshot, read_rules_edit_document, read_runtime_snapshot,
+    read_sqlite_cache_summary, read_state_variables_edit_document, read_story_craft_edit_document,
+    read_world_edit_document, rebuild_sqlite_cache, sqlite_cache_path, update_ai_safety_policy,
+    update_character_edit_document, update_rules_edit_document,
+    update_state_variables_edit_document, update_story_craft_edit_document,
+    update_world_edit_document, validate_project, validate_reference_library,
     write_reference_analysis, write_runtime_snapshot, write_trace,
 };
 use rusqlite::Connection;
@@ -28,6 +40,468 @@ fn create_demo_respects_force_flag() {
     assert!(matches!(error, StorageError::ProjectExists(_)));
 
     create_demo_project(&project, true).expect("force=true recreates");
+}
+
+#[test]
+fn create_project_from_request_persists_wizard_fields_and_reopens() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("winter-regency");
+    let request = sample_project_creation_request();
+
+    let report =
+        create_project_from_request(&project, request.clone(), false).expect("create project");
+    let loaded = validate_project(&project).expect("validate created project");
+
+    assert_eq!(report.project_path, project.display().to_string());
+    assert_eq!(report.template, ProjectTemplateId::HistoricalCrisis);
+    assert_eq!(report.concept, request.concept);
+    assert_eq!(report.visual_style, request.visual_style);
+    assert!(report.voice_enabled);
+    assert_eq!(report.initial_scene_request, request.initial_scene_request);
+    assert_eq!(report.project.game.id, "winter-regency");
+    assert_eq!(loaded.game.title, "Winter Regency");
+    assert_eq!(
+        loaded.game.description,
+        "A regency court must survive a winter coup."
+    );
+    assert_eq!(
+        loaded.story_craft.bible.genre_promise,
+        "A regency court must survive a winter coup."
+    );
+    assert_eq!(
+        loaded.story_craft.bible.prose_style_guide.as_deref(),
+        Some("ink wash court drama")
+    );
+    assert!(project.join("game.toml").is_file());
+    assert!(project.join("story/story_craft.toml").is_file());
+    assert!(project.join("world/forbidden_facts.json").is_file());
+    assert!(project.join("safety/ai_safety_policy.toml").is_file());
+    assert!(report.files_created.iter().any(|path| path == "game.toml"));
+    assert!(
+        report
+            .files_created
+            .iter()
+            .any(|path| path == "story/story_craft.toml")
+    );
+    assert!(
+        report
+            .files_created
+            .iter()
+            .any(|path| path == "world/forbidden_facts.json")
+    );
+    assert!(
+        report
+            .files_created
+            .iter()
+            .any(|path| path == "safety/ai_safety_policy.toml")
+    );
+    assert!(loaded.ai_safety_policy.human_review_required);
+    assert_eq!(
+        loaded.ai_safety_policy.policy_source_path.as_deref(),
+        Some("safety/ai_safety_policy.toml")
+    );
+
+    let world = fs::read_to_string(project.join("world/world.md")).expect("world bible");
+    let story = fs::read_to_string(project.join("story/story_bible.md")).expect("story bible");
+    let style = fs::read_to_string(project.join("story/style_guide.md")).expect("style guide");
+    assert!(world.contains("A regency court must survive a winter coup."));
+    assert!(story.contains("Open on an empty granary ledger."));
+    assert!(style.contains("ink wash court drama"));
+    assert!(style.contains("Voice generation requested"));
+}
+
+#[test]
+fn structured_edit_documents_roundtrip_and_persist_source_files() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let mut world = read_world_edit_document(&project).expect("read world edit");
+    world
+        .world_bible_markdown
+        .push_str("\n## Winter Court\n\nSnow blocks the passes.\n");
+    world
+        .forbidden_facts
+        .push("The emperor cannot secretly be immortal.".into());
+    update_world_edit_document(&project, world.clone()).expect("update world edit");
+    assert_eq!(
+        read_world_edit_document(&project).expect("read world again"),
+        world
+    );
+    assert!(
+        fs::read_to_string(project.join("world/forbidden_facts.json"))
+            .expect("forbidden facts")
+            .contains("immortal")
+    );
+
+    let mut story = read_story_craft_edit_document(&project).expect("read story edit");
+    story.story_craft.bible.genre_promise = "A winter court crisis with visible tradeoffs.".into();
+    story
+        .story_craft
+        .bible
+        .core_foreshadowing
+        .push("frozen granary locks".into());
+    story
+        .story_bible_markdown
+        .push_str("\nThe frozen granary locks matter.\n");
+    update_story_craft_edit_document(&project, story.clone()).expect("update story edit");
+    let loaded = load_project(&project).expect("load story update");
+    assert_eq!(
+        loaded.story_craft.bible.genre_promise,
+        story.story_craft.bible.genre_promise
+    );
+    assert!(
+        fs::read_to_string(project.join("story/story_bible.md"))
+            .expect("story bible")
+            .contains("frozen granary locks")
+    );
+
+    let mut characters = read_character_edit_document(&project).expect("read characters");
+    characters.characters.push(sample_character("regent"));
+    update_character_edit_document(&project, characters).expect("update characters");
+    assert!(project.join("characters/regent.character.toml").is_file());
+    create_character(&project, sample_character("tax-envoy")).expect("create character");
+    assert!(
+        read_character_edit_document(&project)
+            .expect("read created characters")
+            .characters
+            .iter()
+            .any(|character| character.id == "tax-envoy")
+    );
+
+    let mut state = read_state_variables_edit_document(&project).expect("read state");
+    state.resources.push(ResourceDefinition {
+        key: "legitimacy".into(),
+        label: "Legitimacy".into(),
+        initial: 60,
+        min: 0,
+        max: 100,
+    });
+    state
+        .initial_world_state
+        .resources
+        .insert("legitimacy".into(), 60);
+    update_state_variables_edit_document(&project, state).expect("update state");
+    create_resource(
+        &project,
+        ResourceDefinition {
+            key: "grain".into(),
+            label: "Grain".into(),
+            initial: 30,
+            min: 0,
+            max: 100,
+        },
+    )
+    .expect("create resource");
+    let loaded = load_project(&project).expect("load state update");
+    assert!(
+        loaded
+            .resources
+            .iter()
+            .any(|resource| resource.key == "grain")
+    );
+    assert_eq!(loaded.world_state.resources.get("grain"), Some(&30));
+
+    let mut rules = read_rules_edit_document(&project).expect("read rules");
+    rules.rules.push(sample_rule("spend-grain", "grain"));
+    update_rules_edit_document(&project, rules).expect("update rules");
+    create_rule(&project, sample_rule("restore-legitimacy", "legitimacy")).expect("create rule");
+    let loaded = load_project(&project).expect("load rules update");
+    assert!(
+        loaded
+            .rules
+            .iter()
+            .any(|rule| rule.id == "restore-legitimacy")
+    );
+}
+
+#[test]
+fn ai_safety_policy_defaults_when_absent_and_roundtrips() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let loaded = load_project(&project).expect("load project");
+    let policy = read_ai_safety_policy(&project).expect("read policy");
+    assert_eq!(loaded.ai_safety_policy, policy);
+    assert!(project.join("safety/ai_safety_policy.toml").is_file());
+    assert!(!policy.live_generated_content_enabled);
+    assert!(policy.human_review_required);
+
+    fs::remove_file(project.join("safety/ai_safety_policy.toml")).expect("remove policy");
+    let defaulted = load_project(&project).expect("load default policy");
+    assert_eq!(
+        defaulted.ai_safety_policy.policy_source_path.as_deref(),
+        Some("safety/ai_safety_policy.toml")
+    );
+    assert!(defaulted.ai_safety_policy.human_review_required);
+
+    let updated = update_ai_safety_policy(
+        &project,
+        AiSafetyPolicy {
+            live_generated_content_enabled: true,
+            content_kinds: vec![AiUsageContentKind::Text],
+            safety_guardrails: vec!["Queue every generated passage for review.".into()],
+            user_reporting_path: "studio://moderation-queue".into(),
+            moderation_policy: "Creator reviews generated text before export.".into(),
+            human_review_required: true,
+            moderation_queue_enabled: true,
+            policy_source_path: None,
+            evidence_ids: vec!["policy-evidence-001".into()],
+            policy_hash: Some("sha256:policy-fixture".into()),
+            notices: vec!["Local policy only.".into()],
+        },
+    )
+    .expect("update policy");
+    assert_eq!(
+        updated.policy_source_path.as_deref(),
+        Some("safety/ai_safety_policy.toml")
+    );
+    assert_eq!(
+        read_ai_safety_policy(&project).expect("read updated policy"),
+        updated
+    );
+
+    let error = update_ai_safety_policy(
+        &project,
+        AiSafetyPolicy {
+            moderation_policy: "OPENAI_API_KEY=sk-test-secret-marker".into(),
+            ..updated
+        },
+    )
+    .expect_err("secret marker policy should fail");
+    assert!(matches!(error, StorageError::InvalidAiSafetyPolicy { .. }));
+}
+
+#[test]
+fn generation_requests_build_from_project_source_and_reports_apply() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let world_request =
+        build_world_generation_request(&project, "Expand the northern border crisis.")
+            .expect("build world request");
+    assert_eq!(
+        world_request.expansion_goal,
+        "Expand the northern border crisis."
+    );
+    assert!(
+        world_request
+            .document
+            .world_bible_markdown
+            .contains("dynasty")
+    );
+
+    let mut world_document = world_request.document.clone();
+    world_document
+        .forbidden_facts
+        .push("The northern border cannot be solved off-screen.".into());
+    apply_world_generation_report(
+        &project,
+        WorldGenerationReport {
+            document: world_document.clone(),
+            evidence: sample_generation_evidence(GenerationStatus::Succeeded),
+        },
+    )
+    .expect("apply world report");
+    assert_eq!(
+        read_world_edit_document(&project)
+            .expect("read applied world")
+            .forbidden_facts,
+        world_document.forbidden_facts
+    );
+
+    let story_request =
+        build_story_craft_generation_request(&project, "Tighten the winter crisis.")
+            .expect("build story request");
+    assert!(story_request.world_bible_markdown.contains("dynasty"));
+    assert!(
+        story_request
+            .forbidden_facts
+            .contains(&"The northern border cannot be solved off-screen.".into())
+    );
+    assert!(!story_request.characters.is_empty());
+
+    let mut story_document = story_request.document.clone();
+    story_document
+        .style_guide_markdown
+        .push_str("\nKeep court reversals concrete.\n");
+    apply_story_craft_generation_report(
+        &project,
+        StoryCraftGenerationReport {
+            document: story_document.clone(),
+            evidence: sample_generation_evidence(GenerationStatus::Fallback),
+        },
+    )
+    .expect("apply fallback story report");
+    assert_eq!(
+        read_story_craft_edit_document(&project).expect("read story report"),
+        story_document
+    );
+
+    let character_request =
+        build_character_generation_request(&project, "Design a grain envoy.", "court envoy")
+            .expect("build character request");
+    assert_eq!(character_request.role_hint, "court envoy");
+    assert!(character_request.story_bible_markdown.contains("throne"));
+    assert!(!character_request.existing_characters.is_empty());
+
+    apply_character_generation_report(
+        &project,
+        CharacterGenerationReport {
+            character: sample_character("grain-envoy"),
+            evidence: sample_generation_evidence(GenerationStatus::Succeeded),
+        },
+    )
+    .expect("apply character report");
+    assert!(
+        read_character_edit_document(&project)
+            .expect("read characters")
+            .characters
+            .iter()
+            .any(|character| character.id == "grain-envoy")
+    );
+}
+
+#[test]
+fn failed_generation_report_does_not_mutate_project_source() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let original = read_world_edit_document(&project).expect("read original");
+    let mut rejected = original.clone();
+    rejected
+        .world_bible_markdown
+        .push_str("\nThis failed report must not persist.\n");
+
+    let error = apply_world_generation_report(
+        &project,
+        WorldGenerationReport {
+            document: rejected,
+            evidence: sample_generation_evidence(GenerationStatus::Failed),
+        },
+    )
+    .expect_err("failed generation report should not apply");
+
+    assert!(matches!(
+        error,
+        StorageError::InvalidGenerationReport { surface, .. } if surface == "world"
+    ));
+    assert_eq!(
+        read_world_edit_document(&project).expect("read after failed report"),
+        original
+    );
+}
+
+#[test]
+fn structured_edit_documents_reject_invalid_data_explicitly() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let error = update_world_edit_document(
+        &project,
+        WorldEditDocument {
+            world_bible_markdown: "OPENAI_API_KEY=sk-test-secret-marker".into(),
+            canon_markdown: "# Canon\n".into(),
+            forbidden_facts: Vec::new(),
+        },
+    )
+    .expect_err("secret marker should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, reason }
+            if surface == "world"
+                && field == "world_bible_markdown"
+                && reason.contains("secret markers")
+    ));
+
+    let mut state = read_state_variables_edit_document(&project).expect("read state");
+    state.resources[0].initial = state.resources[0].max + 1;
+    let error = update_state_variables_edit_document(&project, state)
+        .expect_err("resource bounds should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, .. }
+            if surface == "state_variables" && field == "resources.initial"
+    ));
+
+    let error = create_character(&project, sample_character("../escape"))
+        .expect_err("unsafe character id should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, .. }
+            if surface == "characters" && field == "characters.id"
+    ));
+
+    let mut character = sample_character("unsafe-portrait");
+    character.portrait_request = Some(CharacterPortraitRequest {
+        prompt_summary: "Authorization: bearer token=value".into(),
+        style: "court portrait".into(),
+        target_asset_slot: "portrait".into(),
+        prompt_hash: "sha256:portrait".into(),
+        provider_config_hash: "sha256:provider".into(),
+        reference_asset_ids: Vec::new(),
+        fallback_allowed: true,
+    });
+    let error = create_character(&project, character)
+        .expect_err("secret marker portrait request should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, reason }
+            if surface == "characters"
+                && field == "characters.portrait_request.prompt_summary"
+                && reason.contains("secret markers")
+    ));
+
+    let mut rules = read_rules_edit_document(&project).expect("read rules");
+    rules
+        .rules
+        .push(sample_rule("bad-rule", "missing_resource"));
+    let error =
+        update_rules_edit_document(&project, rules).expect_err("unknown resource should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, reason }
+            if surface == "rules"
+                && field == "rules.effects.key"
+                && reason.contains("unknown resource key")
+    ));
+
+    assert!(!project.join("characters/../escape.character.toml").exists());
+}
+
+#[test]
+fn create_project_from_request_rejects_existing_path_without_force() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("winter-regency");
+
+    create_project_from_request(&project, sample_project_creation_request(), false)
+        .expect("first create");
+    let error = create_project_from_request(&project, sample_project_creation_request(), false)
+        .expect_err("force=false should reject existing project");
+
+    assert!(matches!(error, StorageError::ProjectExists(_)));
+}
+
+#[test]
+fn create_project_from_request_rejects_secret_markers() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("winter-regency");
+    let mut request = sample_project_creation_request();
+    request.concept = "A court drama OPENAI_API_KEY=sk-test-secret-marker".into();
+
+    let error = create_project_from_request(&project, request, false)
+        .expect_err("secret marker should fail explicitly");
+
+    assert!(matches!(
+        error,
+        StorageError::InvalidProjectCreationRequest { field, reason }
+            if field == "concept" && reason.contains("secret markers")
+    ));
+    assert!(!project.join("game.toml").exists());
 }
 
 #[test]
@@ -48,12 +522,14 @@ fn write_trace_writes_trace_id_and_latest() {
     create_demo_project(&project, false).expect("create");
     let story = StoryState {
         current_scene_key: "court-crisis-001".into(),
+        current_beat_id: Some("court-crisis-001-beat-001".into()),
         completed_scene_keys: Vec::new(),
         turn: 1,
     };
     let trace = RuntimeTrace {
         id: "trace-test".into(),
         timestamp_ms: 1,
+        reproducibility: ReproducibilityMetadata::local_mock(7).with_trace_id("trace-test"),
         player_input: Some("test".into()),
         selected_choice: Some("raise-tax".into()),
         action_intent: Some(ActionIntent::supported("raise_tax", vec!["test".into()])),
@@ -317,6 +793,8 @@ fn sample_runtime_snapshot(id: &str) -> RuntimeSnapshot {
     RuntimeSnapshot {
         id: id.into(),
         timestamp_ms: 42,
+        reproducibility: ReproducibilityMetadata::local_mock(project.game.run_seed)
+            .with_snapshot_id(id),
         project_id: project.game.id,
         project_version: project.game.version,
         story_state: project.story_state,
@@ -328,12 +806,14 @@ fn sample_runtime_snapshot(id: &str) -> RuntimeSnapshot {
 fn sample_runtime_trace(id: &str) -> RuntimeTrace {
     let story = StoryState {
         current_scene_key: "court-crisis-001".into(),
+        current_beat_id: Some("court-crisis-001-beat-001".into()),
         completed_scene_keys: Vec::new(),
         turn: 1,
     };
     RuntimeTrace {
         id: id.into(),
         timestamp_ms: 1,
+        reproducibility: ReproducibilityMetadata::local_mock(7).with_trace_id(id),
         player_input: Some("test".into()),
         selected_choice: Some("raise-tax".into()),
         action_intent: Some(ActionIntent::supported("raise_tax", vec!["test".into()])),
@@ -366,9 +846,25 @@ fn sample_runtime_trace(id: &str) -> RuntimeTrace {
     }
 }
 
+fn sample_generation_evidence(status: GenerationStatus) -> GenerationEvidence {
+    let fallback_used = matches!(status, GenerationStatus::Fallback);
+    GenerationEvidence {
+        status,
+        fallback_used,
+        error: None,
+        reproducibility: ReproducibilityMetadata::local_mock(7),
+        envelopes: Vec::new(),
+    }
+}
+
 fn assert_fixture_files_match_generated_demo(committed_fixture: &Path, generated_fixture: &Path) {
     let committed_manifest = source_file_manifest(committed_fixture);
-    let generated_manifest = source_file_manifest(generated_fixture);
+    let mut generated_manifest = source_file_manifest(generated_fixture);
+    for optional_path in [PathBuf::from("safety/ai_safety_policy.toml")] {
+        if !committed_manifest.contains_key(&optional_path) {
+            generated_manifest.remove(&optional_path);
+        }
+    }
     let committed_paths = committed_manifest.keys().collect::<Vec<_>>();
     let generated_paths = generated_manifest.keys().collect::<Vec<_>>();
 
@@ -466,6 +962,40 @@ fn trace_json_files(root: &Path) -> Vec<PathBuf> {
                     .is_some_and(|extension| extension == "json")
         })
         .collect()
+}
+
+fn sample_project_creation_request() -> ProjectCreationRequest {
+    ProjectCreationRequest {
+        template: ProjectTemplateId::HistoricalCrisis,
+        concept: "A regency court must survive a winter coup.".into(),
+        visual_style: "ink wash court drama".into(),
+        voice_enabled: true,
+        initial_scene_request: "Open on an empty granary ledger.".into(),
+    }
+}
+
+fn sample_character(id: &str) -> Character {
+    Character {
+        id: id.into(),
+        name: "Regent".into(),
+        role: "Temporary court authority".into(),
+        traits: vec!["cautious".into(), "clear".into()],
+        visual_card: "ink portrait with winter robes".into(),
+        voice_card: "measured court speech".into(),
+        portrait_request: None,
+    }
+}
+
+fn sample_rule(id: &str, resource_key: &str) -> Rule {
+    Rule {
+        id: id.into(),
+        action_type: id.replace('-', "_"),
+        conditions: Vec::new(),
+        effects: vec![Effect::AddResource {
+            key: resource_key.into(),
+            amount: -3,
+        }],
+    }
 }
 
 fn sample_reference_analysis() -> ReferenceAnalysis {

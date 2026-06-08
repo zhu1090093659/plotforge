@@ -1,12 +1,18 @@
-use std::{cell::RefCell, collections::BTreeMap};
+use std::{cell::RefCell, collections::BTreeMap, env};
 
 use plotforge_job::{JobClock, JobQueue, JobQueueError, JobRequest};
 use plotforge_media::{AssetRecordInput, AssetRegistry, MediaError};
 use plotforge_schema::{
-    AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind, AssetProviderMetadata,
-    AssetRecord, AssetReference, AssetReferenceKind, AssetSourceKind, Beat, BeatDraftProposal,
-    BeatDraftsProposal, Choice, JobFailure, JobKind, JobRecord, NarrativeFunction, NarrativeReview,
-    ProjectData, ReviewProposal, RuntimeError, Scene, ScenePlanProposal, StoryState, WorldState,
+    AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind,
+    AssetProviderMetadata, AssetRecord, AssetReference, AssetReferenceKind, AssetSourceKind, Beat,
+    BeatDraftProposal, BeatDraftsProposal, BeatNext, CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION,
+    Character, CharacterGenerationReport, CharacterGenerationRequest, CharacterPortraitRequest,
+    CharacterProposal, Choice, EmotionalArcPoint, GenerationEvidence, GenerationStatus, JobFailure,
+    JobKind, JobRecord, NarrativeFunction, NarrativeReview, PlotThread, PlotThreadStatus,
+    PlotThreadType, ProjectData, ReproducibilityMetadata, ReviewProposal, RuntimeError, Scene,
+    ScenePlanProposal, StoryCraftGenerationReport, StoryCraftGenerationRequest,
+    StoryCraftPlanProposal, StoryState, WorldEditDocument, WorldExpansionProposal,
+    WorldGenerationReport, WorldGenerationRequest, WorldState, contains_secret_marker_text,
     redact_trace_text,
 };
 use plotforge_storycraft::review_scene;
@@ -16,6 +22,9 @@ const IMAGE_JOB_TIMEOUT_MS: u64 = 60_000;
 const IMAGE_JOB_MAX_ATTEMPTS: u32 = 2;
 const IMAGE_JOB_ESTIMATED_COST_UNITS: u64 = 1;
 const SCENE_BACKGROUND_SLOT: &str = "background_asset";
+const TEXT_PROMPT_VERSION: &str = "plotforge-agent-text-prompt-v1";
+const FAKE_TEXT_MODEL_VERSION: &str = "fake-text-model-v1";
+const FAKE_TEXT_PROVIDER_CONFIG_HASH: &str = "sha256:fake-text-provider-config-v1";
 
 #[derive(Clone, Debug)]
 pub struct ScenePlanRequest<'a> {
@@ -30,6 +39,7 @@ pub struct ScenePlanRequest<'a> {
 pub struct ScenePlan {
     pub scene: Scene,
     pub review: NarrativeReview,
+    pub reproducibility: ReproducibilityMetadata,
     pub fallback_used: bool,
     pub error: Option<RuntimeError>,
 }
@@ -65,6 +75,15 @@ pub fn validate_agent_output_proposal(
     require_non_empty(&proposal.id, "proposal.id")?;
 
     match (&proposal.agent, &proposal.output) {
+        (AgentRole::StoryArchitect, AgentProposalPayload::WorldExpansion(world_expansion)) => {
+            validate_world_expansion_proposal(world_expansion)
+        }
+        (AgentRole::StoryCraftPlanner, AgentProposalPayload::StoryCraftPlan(story_craft_plan)) => {
+            validate_story_craft_plan_proposal(story_craft_plan)
+        }
+        (AgentRole::CharacterDesigner, AgentProposalPayload::CharacterProfile(character)) => {
+            validate_character_proposal(character)
+        }
         (AgentRole::ScenePlanner, AgentProposalPayload::ScenePlan(scene_plan)) => {
             validate_scene_plan_proposal(scene_plan)
         }
@@ -80,6 +99,56 @@ pub fn validate_agent_output_proposal(
             payload_kind: payload_kind(output),
         }),
     }
+}
+
+pub fn validate_world_expansion_proposal(
+    world_expansion: &WorldExpansionProposal,
+) -> Result<(), AgentProposalValidationError> {
+    require_non_empty(
+        &world_expansion.world_bible_markdown,
+        "world_expansion.world_bible_markdown",
+    )?;
+    require_non_empty(
+        &world_expansion.canon_markdown,
+        "world_expansion.canon_markdown",
+    )?;
+
+    Ok(())
+}
+
+pub fn validate_story_craft_plan_proposal(
+    story_craft_plan: &StoryCraftPlanProposal,
+) -> Result<(), AgentProposalValidationError> {
+    require_non_empty(
+        &story_craft_plan.story_bible_markdown,
+        "story_craft_plan.story_bible_markdown",
+    )?;
+    require_non_empty(
+        &story_craft_plan.style_guide_markdown,
+        "story_craft_plan.style_guide_markdown",
+    )?;
+    require_non_empty(
+        &story_craft_plan.story_craft.bible.genre_promise,
+        "story_craft_plan.story_craft.bible.genre_promise",
+    )?;
+    require_non_empty(
+        &story_craft_plan.story_craft.bible.central_question,
+        "story_craft_plan.story_craft.bible.central_question",
+    )?;
+
+    Ok(())
+}
+
+pub fn validate_character_proposal(
+    character: &CharacterProposal,
+) -> Result<(), AgentProposalValidationError> {
+    require_non_empty(&character.character.id, "character.id")?;
+    require_non_empty(&character.character.name, "character.name")?;
+    require_non_empty(&character.character.role, "character.role")?;
+    require_non_empty(&character.character.visual_card, "character.visual_card")?;
+    require_non_empty(&character.character.voice_card, "character.voice_card")?;
+
+    Ok(())
 }
 
 pub fn validate_scene_plan_proposal(
@@ -189,13 +258,20 @@ pub fn scene_from_proposals(
             .unwrap_or_else(|| format!("assets/generated/{}.png", scene_plan.scene_key)),
         character_ids: scene_plan.cast.clone(),
         plot_thread_updates: BTreeMap::new(),
+        entry_beat_id: Some(scene_plan.entry_beat_id.clone()),
         beats: beat_drafts
             .beats
             .iter()
-            .map(|beat| Beat {
+            .enumerate()
+            .map(|(index, beat)| Beat {
                 id: beat.id.clone(),
                 text: beat.text.clone(),
                 choices: beat.choices.clone(),
+                next: beat_drafts
+                    .beats
+                    .get(index + 1)
+                    .map(|next| BeatNext::Beat(next.id.clone()))
+                    .unwrap_or(BeatNext::Scene),
             })
             .collect(),
     })
@@ -232,6 +308,9 @@ fn validate_beat_draft_proposal(
 
 fn payload_kind(output: &AgentProposalPayload) -> &'static str {
     match output {
+        AgentProposalPayload::WorldExpansion(_) => "world_expansion",
+        AgentProposalPayload::StoryCraftPlan(_) => "story_craft_plan",
+        AgentProposalPayload::CharacterProfile(_) => "character_profile",
         AgentProposalPayload::ScenePlan(_) => "scene_plan",
         AgentProposalPayload::BeatDrafts(_) => "beat_drafts",
         AgentProposalPayload::Review(_) => "review",
@@ -281,6 +360,10 @@ pub struct TextModelRequest {
     pub call_id: String,
     pub agent: AgentRole,
     pub scene_key: String,
+    pub run_seed: u64,
+    pub prompt_version: String,
+    pub model_version: String,
+    pub provider_config_hash: String,
     pub prompt: String,
 }
 
@@ -337,10 +420,738 @@ impl std::fmt::Display for TextModelProviderError {
 impl std::error::Error for TextModelProviderError {}
 
 pub trait TextModelProvider {
+    fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+        ReproducibilityMetadata::local_mock(run_seed)
+    }
+
     fn complete(
         &self,
         request: &TextModelRequest,
     ) -> Result<TextModelResponse, TextModelProviderError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextProviderConfig {
+    pub enabled: bool,
+    pub provider: String,
+    pub model: String,
+    pub endpoint_url: Option<String>,
+    pub credential_env_var: String,
+}
+
+impl TextProviderConfig {
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            provider: "disabled".into(),
+            model: "disabled".into(),
+            endpoint_url: None,
+            credential_env_var: "PLOTFORGE_TEXT_PROVIDER_TOKEN".into(),
+        }
+    }
+
+    pub fn openai_compatible(
+        provider: impl Into<String>,
+        model: impl Into<String>,
+        endpoint_url: impl Into<String>,
+        credential_env_var: impl Into<String>,
+    ) -> Self {
+        Self {
+            enabled: true,
+            provider: provider.into(),
+            model: model.into(),
+            endpoint_url: Some(endpoint_url.into()),
+            credential_env_var: credential_env_var.into(),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), TextProviderConfigError> {
+        require_safe_config_field("provider", &self.provider)?;
+        require_safe_config_field("model", &self.model)?;
+        if let Some(endpoint_url) = self.endpoint_url.as_ref() {
+            require_safe_config_field("endpoint_url", endpoint_url)?;
+            if !endpoint_url.starts_with("https://") && !endpoint_url.starts_with("http://") {
+                return Err(TextProviderConfigError::InvalidField {
+                    field: "endpoint_url",
+                    reason: "must start with http:// or https://".into(),
+                });
+            }
+        }
+        if self.credential_env_var.trim().is_empty() {
+            return Err(TextProviderConfigError::InvalidField {
+                field: "credential_env_var",
+                reason: "must not be empty".into(),
+            });
+        }
+        if !self
+            .credential_env_var
+            .chars()
+            .all(|value| value.is_ascii_uppercase() || value.is_ascii_digit() || value == '_')
+        {
+            return Err(TextProviderConfigError::InvalidField {
+                field: "credential_env_var",
+                reason: "must contain only uppercase ASCII letters, digits, or underscores".into(),
+            });
+        }
+
+        Ok(())
+    }
+
+    pub fn provider_config_hash(&self) -> String {
+        let endpoint_url = self.endpoint_url.as_deref().unwrap_or("");
+        format!(
+            "sha256:{}",
+            stable_sha256_hash(&format!(
+                "enabled={}\nprovider={}\nmodel={}\nendpoint_url={}\ncredential_env_var={}\n",
+                self.enabled, self.provider, self.model, endpoint_url, self.credential_env_var
+            ))
+        )
+    }
+
+    pub fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+        ReproducibilityMetadata {
+            run_seed,
+            prompt_version: TEXT_PROMPT_VERSION.into(),
+            model_version: self.model.clone(),
+            provider_config_hash: self.provider_config_hash(),
+            trace_id: None,
+            snapshot_id: None,
+        }
+    }
+}
+
+fn require_safe_config_field(
+    field: &'static str,
+    value: &str,
+) -> Result<(), TextProviderConfigError> {
+    if value.trim().is_empty() {
+        return Err(TextProviderConfigError::InvalidField {
+            field,
+            reason: "must not be empty".into(),
+        });
+    }
+    if contains_secret_marker_text(value) {
+        return Err(TextProviderConfigError::InvalidField {
+            field,
+            reason: "must not contain secret markers".into(),
+        });
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextProviderConfigError {
+    InvalidField { field: &'static str, reason: String },
+}
+
+impl std::fmt::Display for TextProviderConfigError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidField { field, reason } => {
+                write!(
+                    formatter,
+                    "invalid text provider config field {field}: {reason}"
+                )
+            }
+        }
+    }
+}
+
+fn redact_text_provider_error(error: TextModelProviderError) -> TextModelProviderError {
+    TextModelProviderError {
+        kind: error.kind,
+        code: redact_trace_text(&error.code),
+        message: redact_trace_text(&error.message),
+    }
+}
+
+impl std::error::Error for TextProviderConfigError {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProviderCredentialError {
+    Missing { env_var: String },
+    Empty { env_var: String },
+}
+
+impl std::fmt::Display for ProviderCredentialError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing { env_var } => {
+                write!(
+                    formatter,
+                    "missing provider credential in env var `{env_var}`"
+                )
+            }
+            Self::Empty { env_var } => {
+                write!(
+                    formatter,
+                    "provider credential env var `{env_var}` is empty"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProviderCredentialError {}
+
+pub trait ProviderCredentialResolver {
+    fn resolve(&self, env_var: &str) -> Result<String, ProviderCredentialError>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct EnvCredentialResolver;
+
+impl ProviderCredentialResolver for EnvCredentialResolver {
+    fn resolve(&self, env_var: &str) -> Result<String, ProviderCredentialError> {
+        match env::var(env_var) {
+            Ok(value) if !value.trim().is_empty() => Ok(value),
+            Ok(_) => Err(ProviderCredentialError::Empty {
+                env_var: env_var.into(),
+            }),
+            Err(_) => Err(ProviderCredentialError::Missing {
+                env_var: env_var.into(),
+            }),
+        }
+    }
+}
+
+pub struct TextModelClientRequest<'a> {
+    pub config: &'a TextProviderConfig,
+    pub credential: &'a str,
+    pub request: &'a TextModelRequest,
+}
+
+pub trait TextModelClient {
+    fn complete(
+        &self,
+        request: TextModelClientRequest<'_>,
+    ) -> Result<TextModelResponse, TextModelProviderError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ConfiguredTextModelProvider<C, R> {
+    config: TextProviderConfig,
+    client: C,
+    credential_resolver: R,
+}
+
+impl<C, R> ConfiguredTextModelProvider<C, R> {
+    pub fn new(config: TextProviderConfig, client: C, credential_resolver: R) -> Self {
+        Self {
+            config,
+            client,
+            credential_resolver,
+        }
+    }
+
+    pub fn config(&self) -> &TextProviderConfig {
+        &self.config
+    }
+}
+
+impl<C, R> TextModelProvider for ConfiguredTextModelProvider<C, R>
+where
+    C: TextModelClient,
+    R: ProviderCredentialResolver,
+{
+    fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+        self.config.reproducibility_metadata(run_seed)
+    }
+
+    fn complete(
+        &self,
+        request: &TextModelRequest,
+    ) -> Result<TextModelResponse, TextModelProviderError> {
+        self.config.validate().map_err(|error| {
+            TextModelProviderError::provider("text_provider_config", error.to_string())
+        })?;
+        if !self.config.enabled {
+            return Err(TextModelProviderError::provider(
+                "text_provider_disabled",
+                "text provider is disabled by local configuration",
+            ));
+        }
+        if contains_secret_marker_text(&request.prompt) {
+            return Err(TextModelProviderError::provider(
+                "text_provider_prompt_secret",
+                "text model prompt contained a secret marker",
+            ));
+        }
+        let credential = self
+            .credential_resolver
+            .resolve(&self.config.credential_env_var)
+            .map_err(|error| {
+                TextModelProviderError::provider(
+                    "text_provider_missing_credential",
+                    error.to_string(),
+                )
+            })?;
+        let response = self
+            .client
+            .complete(TextModelClientRequest {
+                config: &self.config,
+                credential: &credential,
+                request,
+            })
+            .map_err(redact_text_provider_error)?;
+
+        Ok(response)
+    }
+}
+
+pub fn generate_world_expansion(
+    request: WorldGenerationRequest,
+    run_seed: u64,
+) -> WorldGenerationReport {
+    let provider = FakeTextModelProvider::success();
+    generate_world_expansion_with_provider(&provider, request, run_seed)
+}
+
+pub fn generate_world_expansion_with_provider<P>(
+    provider: &P,
+    request: WorldGenerationRequest,
+    run_seed: u64,
+) -> WorldGenerationReport
+where
+    P: TextModelProvider,
+{
+    match complete_text_agent_output(
+        provider,
+        AgentRole::StoryArchitect,
+        run_seed,
+        "world-expansion".into(),
+        "world-generation".into(),
+        world_generation_prompt(&request),
+    ) {
+        Ok(envelope) => match envelope.proposal.output.clone() {
+            AgentProposalPayload::WorldExpansion(proposal) => {
+                let proposal = *proposal;
+                WorldGenerationReport {
+                    document: WorldEditDocument {
+                        world_bible_markdown: proposal.world_bible_markdown,
+                        canon_markdown: proposal.canon_markdown,
+                        forbidden_facts: proposal.forbidden_facts,
+                    },
+                    evidence: generation_evidence(
+                        GenerationStatus::Succeeded,
+                        false,
+                        None,
+                        envelope.reproducibility.clone(),
+                        vec![envelope],
+                    ),
+                }
+            }
+            output => generation_world_fallback(
+                request.document,
+                run_seed,
+                ProviderPipelineError::Validation {
+                    agent: AgentRole::StoryArchitect,
+                    message: format!("unexpected payload `{}`", payload_kind(&output)),
+                },
+            ),
+        },
+        Err(error) => generation_world_fallback(request.document, run_seed, error),
+    }
+}
+
+pub fn generate_story_craft(
+    request: StoryCraftGenerationRequest,
+    run_seed: u64,
+) -> StoryCraftGenerationReport {
+    let provider = FakeTextModelProvider::success();
+    generate_story_craft_with_provider(&provider, request, run_seed)
+}
+
+pub fn generate_story_craft_with_provider<P>(
+    provider: &P,
+    request: StoryCraftGenerationRequest,
+    run_seed: u64,
+) -> StoryCraftGenerationReport
+where
+    P: TextModelProvider,
+{
+    match complete_text_agent_output(
+        provider,
+        AgentRole::StoryCraftPlanner,
+        run_seed,
+        "story-craft-generation".into(),
+        "story-craft-generation".into(),
+        story_craft_generation_prompt(&request),
+    ) {
+        Ok(envelope) => match envelope.proposal.output.clone() {
+            AgentProposalPayload::StoryCraftPlan(proposal) => {
+                let proposal = *proposal;
+                StoryCraftGenerationReport {
+                    document: plotforge_schema::StoryCraftEditDocument {
+                        story_bible_markdown: proposal.story_bible_markdown,
+                        style_guide_markdown: proposal.style_guide_markdown,
+                        story_craft: proposal.story_craft,
+                    },
+                    evidence: generation_evidence(
+                        GenerationStatus::Succeeded,
+                        false,
+                        None,
+                        envelope.reproducibility.clone(),
+                        vec![envelope],
+                    ),
+                }
+            }
+            output => generation_story_craft_fallback(
+                request.document,
+                run_seed,
+                ProviderPipelineError::Validation {
+                    agent: AgentRole::StoryCraftPlanner,
+                    message: format!("unexpected payload `{}`", payload_kind(&output)),
+                },
+            ),
+        },
+        Err(error) => generation_story_craft_fallback(request.document, run_seed, error),
+    }
+}
+
+pub fn generate_character(
+    request: CharacterGenerationRequest,
+    run_seed: u64,
+) -> CharacterGenerationReport {
+    let provider = FakeTextModelProvider::success();
+    generate_character_with_provider(&provider, request, run_seed)
+}
+
+pub fn generate_character_with_provider<P>(
+    provider: &P,
+    request: CharacterGenerationRequest,
+    run_seed: u64,
+) -> CharacterGenerationReport
+where
+    P: TextModelProvider,
+{
+    match complete_text_agent_output(
+        provider,
+        AgentRole::CharacterDesigner,
+        run_seed,
+        "character-generation".into(),
+        "character-generation".into(),
+        character_generation_prompt(&request),
+    ) {
+        Ok(envelope) => match envelope.proposal.output.clone() {
+            AgentProposalPayload::CharacterProfile(proposal) => {
+                let proposal = *proposal;
+                CharacterGenerationReport {
+                    character: proposal.character,
+                    evidence: generation_evidence(
+                        GenerationStatus::Succeeded,
+                        false,
+                        None,
+                        envelope.reproducibility.clone(),
+                        vec![envelope],
+                    ),
+                }
+            }
+            output => generation_character_fallback(
+                request,
+                run_seed,
+                ProviderPipelineError::Validation {
+                    agent: AgentRole::CharacterDesigner,
+                    message: format!("unexpected payload `{}`", payload_kind(&output)),
+                },
+            ),
+        },
+        Err(error) => generation_character_fallback(request, run_seed, error),
+    }
+}
+
+fn complete_text_agent_output<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    prompt: String,
+) -> Result<AgentOutputEnvelope, ProviderPipelineError>
+where
+    P: TextModelProvider,
+{
+    if contains_secret_marker_text(&prompt) {
+        return Err(ProviderPipelineError::Validation {
+            agent,
+            message: "text generation prompt contained a secret marker".into(),
+        });
+    }
+
+    let reproducibility = provider.reproducibility_metadata(run_seed);
+    let model_request = TextModelRequest {
+        call_id,
+        agent: agent.clone(),
+        scene_key,
+        run_seed: reproducibility.run_seed,
+        prompt_version: reproducibility.prompt_version.clone(),
+        model_version: reproducibility.model_version.clone(),
+        provider_config_hash: reproducibility.provider_config_hash.clone(),
+        prompt,
+    };
+    let response = provider
+        .complete(&model_request)
+        .map_err(ProviderPipelineError::Provider)?;
+    if contains_secret_marker_text(&response.raw_json) {
+        return Err(ProviderPipelineError::Validation {
+            agent,
+            message: "provider output contained a secret marker".into(),
+        });
+    }
+
+    let repaired_json = repair_json_text(&response.raw_json).map_err(|message| {
+        ProviderPipelineError::InvalidJson {
+            agent: agent.clone(),
+            message,
+        }
+    })?;
+    let envelope =
+        serde_json::from_str::<AgentOutputEnvelope>(&repaired_json).map_err(|error| {
+            ProviderPipelineError::InvalidJson {
+                agent: agent.clone(),
+                message: error.to_string(),
+            }
+        })?;
+    validate_agent_output_envelope(&envelope, &agent).map_err(|message| {
+        ProviderPipelineError::Validation {
+            agent: agent.clone(),
+            message,
+        }
+    })?;
+    ensure_matching_reproducibility(&reproducibility, &envelope.reproducibility, agent.clone())?;
+    validate_agent_output_proposal(&envelope.proposal).map_err(|error| {
+        ProviderPipelineError::Validation {
+            agent,
+            message: format!("{error:?}"),
+        }
+    })?;
+
+    Ok(envelope)
+}
+
+fn generation_world_fallback(
+    document: WorldEditDocument,
+    run_seed: u64,
+    error: ProviderPipelineError,
+) -> WorldGenerationReport {
+    let runtime_error = error.into_runtime_error();
+    WorldGenerationReport {
+        document,
+        evidence: generation_evidence(
+            GenerationStatus::Fallback,
+            true,
+            Some(runtime_error),
+            ReproducibilityMetadata::local_mock(run_seed),
+            Vec::new(),
+        ),
+    }
+}
+
+fn generation_story_craft_fallback(
+    document: plotforge_schema::StoryCraftEditDocument,
+    run_seed: u64,
+    error: ProviderPipelineError,
+) -> StoryCraftGenerationReport {
+    let runtime_error = error.into_runtime_error();
+    StoryCraftGenerationReport {
+        document,
+        evidence: generation_evidence(
+            GenerationStatus::Fallback,
+            true,
+            Some(runtime_error),
+            ReproducibilityMetadata::local_mock(run_seed),
+            Vec::new(),
+        ),
+    }
+}
+
+fn generation_character_fallback(
+    request: CharacterGenerationRequest,
+    run_seed: u64,
+    error: ProviderPipelineError,
+) -> CharacterGenerationReport {
+    let runtime_error = error.into_runtime_error();
+    CharacterGenerationReport {
+        character: fallback_character(&request, run_seed),
+        evidence: generation_evidence(
+            GenerationStatus::Fallback,
+            true,
+            Some(runtime_error),
+            ReproducibilityMetadata::local_mock(run_seed),
+            Vec::new(),
+        ),
+    }
+}
+
+fn generation_evidence(
+    status: GenerationStatus,
+    fallback_used: bool,
+    error: Option<RuntimeError>,
+    reproducibility: ReproducibilityMetadata,
+    envelopes: Vec<AgentOutputEnvelope>,
+) -> GenerationEvidence {
+    GenerationEvidence {
+        status,
+        fallback_used,
+        error,
+        reproducibility,
+        envelopes,
+    }
+}
+
+fn world_generation_prompt(request: &WorldGenerationRequest) -> String {
+    format!(
+        "agent=StoryArchitect; expansion_goal={}; world_bible_chars={}; canon_chars={}; forbidden_fact_count={}",
+        request.expansion_goal,
+        request.document.world_bible_markdown.len(),
+        request.document.canon_markdown.len(),
+        request.document.forbidden_facts.len()
+    )
+}
+
+fn story_craft_generation_prompt(request: &StoryCraftGenerationRequest) -> String {
+    format!(
+        "agent=StoryCraftPlanner; concept={}; world_bible_chars={}; canon_chars={}; forbidden_fact_count={}; character_count={}",
+        request.concept,
+        request.world_bible_markdown.len(),
+        request.canon_markdown.len(),
+        request.forbidden_facts.len(),
+        request.characters.len()
+    )
+}
+
+fn character_generation_prompt(request: &CharacterGenerationRequest) -> String {
+    format!(
+        "agent=CharacterDesigner; concept={}; role_hint={}; existing_character_count={}; world_bible_chars={}; story_bible_chars={}",
+        request.concept,
+        request.role_hint,
+        request.existing_characters.len(),
+        request.world_bible_markdown.len(),
+        request.story_bible_markdown.len()
+    )
+}
+
+fn generated_story_craft_state() -> plotforge_schema::StoryCraftState {
+    let mut story_craft = plotforge_storycraft::dynasty_embers_story_craft();
+    story_craft.bible.genre_promise = "A pressure-driven interactive court drama.".into();
+    story_craft.bible.central_question =
+        "Can the player preserve legitimacy while every survival choice has a cost?".into();
+    story_craft.emotional_arc = vec![
+        EmotionalArcPoint {
+            scene_key: "opening-pressure".into(),
+            target_emotion: "urgent responsibility".into(),
+            intensity: 72,
+        },
+        EmotionalArcPoint {
+            scene_key: "first-reversal".into(),
+            target_emotion: "earned consequence".into(),
+            intensity: 84,
+        },
+        EmotionalArcPoint {
+            scene_key: "public-reckoning".into(),
+            target_emotion: "costly agency".into(),
+            intensity: 92,
+        },
+    ];
+    story_craft.plot_threads = vec![
+        PlotThread {
+            id: "resource-legitimacy".into(),
+            title: "Resource legitimacy".into(),
+            promise: "Every emergency resource move changes public trust.".into(),
+            thread_type: PlotThreadType::Political,
+            status: PlotThreadStatus::Open,
+            introduced_at: "opening-pressure".into(),
+            expected_payoff: Some(
+                "A later scene forces a choice between reserves and legitimacy.".into(),
+            ),
+            related_characters: Vec::new(),
+            related_world_flags: vec!["public_trust_tested".into()],
+            last_update: "Generated from StoryCraft planner.".into(),
+        },
+        PlotThread {
+            id: "hidden-court-cost".into(),
+            title: "Hidden court cost".into(),
+            promise: "A useful ally demands a future compromise.".into(),
+            thread_type: PlotThreadType::Mystery,
+            status: PlotThreadStatus::Open,
+            introduced_at: "opening-pressure".into(),
+            expected_payoff: Some(
+                "The ally's price becomes visible after the first success.".into(),
+            ),
+            related_characters: vec!["grand-secretary".into()],
+            related_world_flags: vec!["ally_price_unpaid".into()],
+            last_update: "Generated from StoryCraft planner.".into(),
+        },
+        PlotThread {
+            id: "player-style-mirror".into(),
+            title: "Player style mirror".into(),
+            promise: "Repeated choices teach factions what the ruler values.".into(),
+            thread_type: PlotThreadType::Relationship,
+            status: PlotThreadStatus::Open,
+            introduced_at: "opening-pressure".into(),
+            expected_payoff: Some("A faction copies or punishes the player's pattern.".into()),
+            related_characters: Vec::new(),
+            related_world_flags: vec!["ruling_pattern_noticed".into()],
+            last_update: "Generated from StoryCraft planner.".into(),
+        },
+    ];
+    story_craft
+}
+
+fn generated_character(prompt: &str, provider_config_hash: &str) -> Character {
+    let prompt_hash = format!("sha256:{}", stable_sha256_hash(prompt));
+    Character {
+        id: "generated-character".into(),
+        name: "Generated Envoy".into(),
+        role: "Pressure-bearing story catalyst".into(),
+        traits: vec!["observant".into(), "cost-aware".into(), "direct".into()],
+        visual_card: "Historically grounded portrait, restrained clothing, alert posture.".into(),
+        voice_card: "Concise, tactful, and specific about consequences.".into(),
+        portrait_request: Some(CharacterPortraitRequest {
+            prompt_summary: "Portrait for a pressure-bearing story catalyst.".into(),
+            style: "grounded historical character card".into(),
+            target_asset_slot: "portrait".into(),
+            prompt_hash,
+            provider_config_hash: provider_config_hash.into(),
+            reference_asset_ids: Vec::new(),
+            fallback_allowed: true,
+        }),
+    }
+}
+
+fn fallback_character(request: &CharacterGenerationRequest, run_seed: u64) -> Character {
+    let role = if request.role_hint.trim().is_empty() {
+        "Fallback story catalyst"
+    } else {
+        request.role_hint.trim()
+    };
+    let prompt_hash = format!(
+        "sha256:{}",
+        stable_sha256_hash(&format!(
+            "{}\n{}\n{}",
+            request.concept, request.role_hint, run_seed
+        ))
+    );
+
+    Character {
+        id: "fallback-character".into(),
+        name: "Fallback Character".into(),
+        role: role.into(),
+        traits: vec!["visible fallback".into(), "editable".into()],
+        visual_card: "Fallback character card; edit before production use.".into(),
+        voice_card: "Plain fallback voice; edit before production use.".into(),
+        portrait_request: Some(CharacterPortraitRequest {
+            prompt_summary: format!("Fallback portrait request for {role}."),
+            style: "local placeholder character card".into(),
+            target_asset_slot: "portrait".into(),
+            prompt_hash,
+            provider_config_hash: ReproducibilityMetadata::local_mock(run_seed)
+                .provider_config_hash,
+            reference_asset_ids: Vec::new(),
+            fallback_allowed: true,
+        }),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -775,14 +1586,15 @@ where
             return Ok(ScenePlan {
                 scene,
                 review,
+                reproducibility: local_reproducibility(&request),
                 fallback_used,
                 error,
             });
         }
 
         match provider_scene_plan(&self.text_provider, &request, &scene_key) {
-            Ok((mut scene, review)) => {
-                let image_request = SceneImageRequest::background(&scene);
+            Ok(mut generated) => {
+                let image_request = SceneImageRequest::background(&generated.scene);
                 let image_result = {
                     let mut state = self.state.borrow_mut();
                     let SceneImagePipelineState {
@@ -798,11 +1610,12 @@ where
                 .map_err(|error| {
                     ScenePlannerError::new("image_pipeline_error", error.to_string())
                 })?;
-                scene.background_asset = image_result.asset_record.export_path.clone();
+                generated.scene.background_asset = image_result.asset_record.export_path.clone();
 
                 Ok(ScenePlan {
-                    scene,
-                    review,
+                    scene: generated.scene,
+                    review: generated.review,
+                    reproducibility: generated.reproducibility,
                     fallback_used: image_result.fallback_used,
                     error: image_result.error,
                 })
@@ -818,6 +1631,7 @@ where
                 Ok(ScenePlan {
                     scene,
                     review,
+                    reproducibility: local_reproducibility(&request),
                     fallback_used: true,
                     error: Some(runtime_error),
                 })
@@ -872,7 +1686,11 @@ fn scene_image_prompt(scene: &Scene) -> String {
 }
 
 fn stable_prompt_hash(prompt: &str) -> String {
-    let digest = Sha256::digest(prompt.as_bytes());
+    stable_sha256_hash(prompt)
+}
+
+fn stable_sha256_hash(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -935,15 +1753,17 @@ where
             return Ok(ScenePlan {
                 scene,
                 review,
+                reproducibility: local_reproducibility(&request),
                 fallback_used,
                 error,
             });
         }
 
         match self.provider_scene_plan(&request, &scene_key) {
-            Ok((scene, review)) => Ok(ScenePlan {
-                scene,
-                review,
+            Ok(generated) => Ok(ScenePlan {
+                scene: generated.scene,
+                review: generated.review,
+                reproducibility: generated.reproducibility,
                 fallback_used: false,
                 error: None,
             }),
@@ -958,6 +1778,7 @@ where
                 Ok(ScenePlan {
                     scene,
                     review,
+                    reproducibility: local_reproducibility(&request),
                     fallback_used: true,
                     error: Some(runtime_error),
                 })
@@ -974,28 +1795,30 @@ where
         &self,
         request: &ScenePlanRequest<'_>,
         scene_key: &str,
-    ) -> Result<(Scene, NarrativeReview), ProviderPipelineError> {
+    ) -> Result<ProviderScenePlan, ProviderPipelineError> {
         provider_scene_plan(&self.provider, request, scene_key)
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProviderScenePlan {
+    scene: Scene,
+    review: NarrativeReview,
+    reproducibility: ReproducibilityMetadata,
 }
 
 fn provider_scene_plan<P>(
     provider: &P,
     request: &ScenePlanRequest<'_>,
     scene_key: &str,
-) -> Result<(Scene, NarrativeReview), ProviderPipelineError>
+) -> Result<ProviderScenePlan, ProviderPipelineError>
 where
     P: TextModelProvider,
 {
-    let scene_plan = match complete_agent_output(
-        provider,
-        AgentRole::ScenePlanner,
-        request,
-        scene_key,
-    )?
-    .output
-    {
-        AgentProposalPayload::ScenePlan(scene_plan) => scene_plan,
+    let scene_plan_output =
+        complete_agent_output(provider, AgentRole::ScenePlanner, request, scene_key)?;
+    let scene_plan = match scene_plan_output.proposal.output {
+        AgentProposalPayload::ScenePlan(scene_plan) => *scene_plan,
         output => {
             return Err(ProviderPipelineError::Validation {
                 agent: AgentRole::ScenePlanner,
@@ -1003,26 +1826,36 @@ where
             });
         }
     };
-    let beat_drafts =
-        match complete_agent_output(provider, AgentRole::BeatWriter, request, scene_key)?.output {
-            AgentProposalPayload::BeatDrafts(beat_drafts) => beat_drafts,
-            output => {
-                return Err(ProviderPipelineError::Validation {
-                    agent: AgentRole::BeatWriter,
-                    message: format!("unexpected payload `{}`", payload_kind(&output)),
-                });
-            }
-        };
-    let review =
-        match complete_agent_output(provider, AgentRole::PlotDoctor, request, scene_key)?.output {
-            AgentProposalPayload::Review(review) => review,
-            output => {
-                return Err(ProviderPipelineError::Validation {
-                    agent: AgentRole::PlotDoctor,
-                    message: format!("unexpected payload `{}`", payload_kind(&output)),
-                });
-            }
-        };
+    let beat_output = complete_agent_output(provider, AgentRole::BeatWriter, request, scene_key)?;
+    ensure_matching_reproducibility(
+        &scene_plan_output.reproducibility,
+        &beat_output.reproducibility,
+        AgentRole::BeatWriter,
+    )?;
+    let beat_drafts = match beat_output.proposal.output {
+        AgentProposalPayload::BeatDrafts(beat_drafts) => *beat_drafts,
+        output => {
+            return Err(ProviderPipelineError::Validation {
+                agent: AgentRole::BeatWriter,
+                message: format!("unexpected payload `{}`", payload_kind(&output)),
+            });
+        }
+    };
+    let review_output = complete_agent_output(provider, AgentRole::PlotDoctor, request, scene_key)?;
+    ensure_matching_reproducibility(
+        &scene_plan_output.reproducibility,
+        &review_output.reproducibility,
+        AgentRole::PlotDoctor,
+    )?;
+    let review = match review_output.proposal.output {
+        AgentProposalPayload::Review(review) => *review,
+        output => {
+            return Err(ProviderPipelineError::Validation {
+                agent: AgentRole::PlotDoctor,
+                message: format!("unexpected payload `{}`", payload_kind(&output)),
+            });
+        }
+    };
     let scene =
         scene_from_proposals(&scene_plan, &beat_drafts, Some(&review)).map_err(|error| {
             ProviderPipelineError::Validation {
@@ -1031,7 +1864,11 @@ where
             }
         })?;
 
-    Ok((scene, review.review))
+    Ok(ProviderScenePlan {
+        scene,
+        review: review.review,
+        reproducibility: scene_plan_output.reproducibility,
+    })
 }
 
 fn complete_agent_output<P>(
@@ -1039,34 +1876,153 @@ fn complete_agent_output<P>(
     agent: AgentRole,
     request: &ScenePlanRequest<'_>,
     scene_key: &str,
-) -> Result<AgentOutputProposal, ProviderPipelineError>
+) -> Result<AgentOutputEnvelope, ProviderPipelineError>
 where
     P: TextModelProvider,
 {
+    let prompt = text_model_prompt(&agent, request, scene_key);
+    if contains_secret_marker_text(&prompt) {
+        return Err(ProviderPipelineError::Validation {
+            agent,
+            message: "text generation prompt contained a secret marker".into(),
+        });
+    }
+    let reproducibility = provider.reproducibility_metadata(request.project.game.run_seed);
     let model_request = TextModelRequest {
         call_id: format!("{}-{}", scene_key, payload_call_suffix(&agent)),
         agent: agent.clone(),
         scene_key: scene_key.to_string(),
-        prompt: text_model_prompt(&agent, request, scene_key),
+        run_seed: reproducibility.run_seed,
+        prompt_version: reproducibility.prompt_version.clone(),
+        model_version: reproducibility.model_version.clone(),
+        provider_config_hash: reproducibility.provider_config_hash.clone(),
+        prompt,
     };
     let response = provider
         .complete(&model_request)
         .map_err(ProviderPipelineError::Provider)?;
-    let proposal =
-        serde_json::from_str::<AgentOutputProposal>(&response.raw_json).map_err(|error| {
+    if contains_secret_marker_text(&response.raw_json) {
+        return Err(ProviderPipelineError::Validation {
+            agent,
+            message: "provider output contained a secret marker".into(),
+        });
+    }
+    let repaired_json = repair_json_text(&response.raw_json).map_err(|message| {
+        ProviderPipelineError::InvalidJson {
+            agent: agent.clone(),
+            message,
+        }
+    })?;
+    let envelope =
+        serde_json::from_str::<AgentOutputEnvelope>(&repaired_json).map_err(|error| {
             ProviderPipelineError::InvalidJson {
                 agent: agent.clone(),
                 message: error.to_string(),
             }
         })?;
-    validate_agent_output_proposal(&proposal).map_err(|error| {
+    validate_agent_output_envelope(&envelope, &agent).map_err(|message| {
+        ProviderPipelineError::Validation {
+            agent: agent.clone(),
+            message,
+        }
+    })?;
+    ensure_matching_reproducibility(&reproducibility, &envelope.reproducibility, agent.clone())?;
+    validate_agent_output_proposal(&envelope.proposal).map_err(|error| {
         ProviderPipelineError::Validation {
             agent,
             message: format!("{error:?}"),
         }
     })?;
 
-    Ok(proposal)
+    Ok(envelope)
+}
+
+fn validate_agent_output_envelope(
+    envelope: &AgentOutputEnvelope,
+    expected_agent: &AgentRole,
+) -> Result<(), String> {
+    if envelope.contract_version != CONTRACT_VERSION {
+        return Err(format!(
+            "unsupported contract version `{}`, expected `{}`",
+            envelope.contract_version, CONTRACT_VERSION
+        ));
+    }
+    if envelope.schema_version != CONTRACT_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported schema version `{}`, expected `{}`",
+            envelope.schema_version, CONTRACT_SCHEMA_VERSION
+        ));
+    }
+    if &envelope.agent != expected_agent {
+        return Err(format!(
+            "envelope agent `{:?}` did not match requested agent `{:?}`",
+            envelope.agent, expected_agent
+        ));
+    }
+    if envelope.proposal.agent != envelope.agent {
+        return Err(format!(
+            "proposal agent `{:?}` did not match envelope agent `{:?}`",
+            envelope.proposal.agent, envelope.agent
+        ));
+    }
+    if envelope.reproducibility.prompt_version.trim().is_empty() {
+        return Err("missing prompt_version".into());
+    }
+    if envelope.reproducibility.model_version.trim().is_empty() {
+        return Err("missing model_version".into());
+    }
+    if envelope
+        .reproducibility
+        .provider_config_hash
+        .trim()
+        .is_empty()
+    {
+        return Err("missing provider_config_hash".into());
+    }
+
+    Ok(())
+}
+
+fn repair_json_text(raw_json: &str) -> Result<String, String> {
+    let trimmed = raw_json.trim();
+    if trimmed.is_empty() {
+        return Err("empty provider JSON".into());
+    }
+    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+        return Ok(trimmed.to_string());
+    }
+    if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}'))
+        && start < end
+    {
+        let candidate = &trimmed[start..=end];
+        if serde_json::from_str::<serde_json::Value>(candidate).is_ok() {
+            return Ok(candidate.to_string());
+        }
+    }
+    Err("unable to repair provider JSON envelope".into())
+}
+
+fn ensure_matching_reproducibility(
+    expected: &ReproducibilityMetadata,
+    actual: &ReproducibilityMetadata,
+    agent: AgentRole,
+) -> Result<(), ProviderPipelineError> {
+    if expected.run_seed != actual.run_seed
+        || expected.prompt_version != actual.prompt_version
+        || expected.model_version != actual.model_version
+        || expected.provider_config_hash != actual.provider_config_hash
+    {
+        return Err(ProviderPipelineError::Validation {
+            agent,
+            message: "provider outputs used inconsistent reproducibility metadata".into(),
+        });
+    }
+
+    Ok(())
+}
+
+fn local_reproducibility(request: &ScenePlanRequest<'_>) -> ReproducibilityMetadata {
+    ReproducibilityMetadata::local_mock(request.project.game.run_seed)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1126,6 +2082,14 @@ impl FakeTextModelProvider {
         Self::with_failure(agent, FakeTextModelFailureKind::InvalidSchema)
     }
 
+    pub fn wrapped_json(agent: AgentRole) -> Self {
+        Self::with_failure(agent, FakeTextModelFailureKind::WrappedJson)
+    }
+
+    pub fn secret_marker(agent: AgentRole) -> Self {
+        Self::with_failure(agent, FakeTextModelFailureKind::SecretMarker)
+    }
+
     fn with_failure(agent: AgentRole, kind: FakeTextModelFailureKind) -> Self {
         Self {
             failure: Some(FakeTextModelFailure { agent, kind }),
@@ -1134,6 +2098,17 @@ impl FakeTextModelProvider {
 }
 
 impl TextModelProvider for FakeTextModelProvider {
+    fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+        ReproducibilityMetadata {
+            run_seed,
+            prompt_version: TEXT_PROMPT_VERSION.into(),
+            model_version: FAKE_TEXT_MODEL_VERSION.into(),
+            provider_config_hash: FAKE_TEXT_PROVIDER_CONFIG_HASH.into(),
+            trace_id: None,
+            snapshot_id: None,
+        }
+    }
+
     fn complete(
         &self,
         request: &TextModelRequest,
@@ -1152,6 +2127,10 @@ impl TextModelProvider for FakeTextModelProvider {
                 ))),
                 FakeTextModelFailureKind::InvalidJson => Ok(TextModelResponse::json("{")),
                 FakeTextModelFailureKind::InvalidSchema => fake_invalid_schema_response(request),
+                FakeTextModelFailureKind::WrappedJson => fake_wrapped_json_response(request),
+                FakeTextModelFailureKind::SecretMarker => Ok(TextModelResponse::json(
+                    "```json\n{\"api_key\":\"sk-test-secret-marker\"}\n```",
+                )),
             };
         }
 
@@ -1171,16 +2150,50 @@ enum FakeTextModelFailureKind {
     Timeout,
     InvalidJson,
     InvalidSchema,
+    WrappedJson,
+    SecretMarker,
 }
 
 fn fake_success_response(
     request: &TextModelRequest,
 ) -> Result<TextModelResponse, TextModelProviderError> {
     let proposal = match request.agent {
+        AgentRole::StoryArchitect => AgentOutputProposal {
+            id: format!("{}-world-expansion", request.call_id),
+            agent: AgentRole::StoryArchitect,
+            output: AgentProposalPayload::WorldExpansion(Box::new(WorldExpansionProposal {
+                world_bible_markdown: "# World Bible\n\nThe generated world bible turns the initial premise into concrete factions, resources, and visible consequences.\n\n## Pressure Model\n\nEvery player order should change at least one faction expectation or world resource.\n".into(),
+                canon_markdown: "# Canon Rules\n\n- Canon changes must preserve visible consequences.\n- The player can revise strategy, but not erase already revealed costs.\n- Generated facts must not contradict forbidden facts.\n".into(),
+                forbidden_facts: vec![
+                    "Do not reveal a hidden prophecy that solves the crisis.".into(),
+                    "Do not make the player immune to resource consequences.".into(),
+                ],
+            })),
+        },
+        AgentRole::StoryCraftPlanner => AgentOutputProposal {
+            id: format!("{}-story-craft", request.call_id),
+            agent: AgentRole::StoryCraftPlanner,
+            output: AgentProposalPayload::StoryCraftPlan(Box::new(StoryCraftPlanProposal {
+                story_bible_markdown:
+                    "# Story Bible\n\nThe opening arc converts a broad premise into three concrete promises: resource pressure, faction cost, and player reputation.\n"
+                        .into(),
+                style_guide_markdown:
+                    "# Style Guide\n\nUse specific pressure, short sentences, and consequence-first choices. Avoid vague grandeur and convenient prophecy.\n"
+                        .into(),
+                story_craft: generated_story_craft_state(),
+            })),
+        },
+        AgentRole::CharacterDesigner => AgentOutputProposal {
+            id: format!("{}-character", request.call_id),
+            agent: AgentRole::CharacterDesigner,
+            output: AgentProposalPayload::CharacterProfile(Box::new(CharacterProposal {
+                character: generated_character(&request.prompt, &request.provider_config_hash),
+            })),
+        },
         AgentRole::ScenePlanner => AgentOutputProposal {
             id: format!("{}-scene-plan", request.call_id),
             agent: AgentRole::ScenePlanner,
-            output: AgentProposalPayload::ScenePlan(ScenePlanProposal {
+            output: AgentProposalPayload::ScenePlan(Box::new(ScenePlanProposal {
                 scene_key: request.scene_key.clone(),
                 title: "Provider Planned Scene".into(),
                 location: "Qianqing Palace".into(),
@@ -1193,12 +2206,12 @@ fn fake_success_response(
                 cast: vec!["grand-secretary".into(), "eunuch-director".into()],
                 entry_beat_id: format!("{}-beat-001", request.scene_key),
                 background_asset: Some(format!("assets/generated/{}.png", request.scene_key)),
-            }),
+            })),
         },
         AgentRole::BeatWriter => AgentOutputProposal {
             id: format!("{}-beats", request.call_id),
             agent: AgentRole::BeatWriter,
-            output: AgentProposalPayload::BeatDrafts(BeatDraftsProposal {
+            output: AgentProposalPayload::BeatDrafts(Box::new(BeatDraftsProposal {
                 scene_key: request.scene_key.clone(),
                 beats: vec![BeatDraftProposal {
                     id: format!("{}-beat-001", request.scene_key),
@@ -1209,17 +2222,18 @@ fn fake_success_response(
                         id: "continue-council".into(),
                         label: "Continue".into(),
                         action_type: "continue".into(),
+                        input_terms: choice_input_terms("continue"),
                         dramatic_purpose: "Let the engine continue from provider output.".into(),
                         change_scene: false,
                     }],
                     narrative_function: NarrativeFunction::Hook,
                 }],
-            }),
+            })),
         },
         AgentRole::PlotDoctor => AgentOutputProposal {
             id: format!("{}-review", request.call_id),
             agent: AgentRole::PlotDoctor,
-            output: AgentProposalPayload::Review(ReviewProposal {
+            output: AgentProposalPayload::Review(Box::new(ReviewProposal {
                 scene_key: request.scene_key.clone(),
                 review: NarrativeReview {
                     scene_key: request.scene_key.clone(),
@@ -1233,7 +2247,7 @@ fn fake_success_response(
                     issues: Vec::new(),
                 },
                 notes: Vec::new(),
-            }),
+            })),
         },
         _ => {
             return Err(TextModelProviderError::provider(
@@ -1246,17 +2260,50 @@ fn fake_success_response(
         }
     };
 
-    encode_fake_response(&proposal)
+    encode_fake_response(&proposal, request)
 }
 
 fn fake_invalid_schema_response(
     request: &TextModelRequest,
 ) -> Result<TextModelResponse, TextModelProviderError> {
     let proposal = match request.agent {
+        AgentRole::StoryArchitect => AgentOutputProposal {
+            id: format!("{}-invalid-world-expansion", request.call_id),
+            agent: AgentRole::StoryArchitect,
+            output: AgentProposalPayload::WorldExpansion(Box::new(WorldExpansionProposal {
+                world_bible_markdown: String::new(),
+                canon_markdown: "Invalid canon".into(),
+                forbidden_facts: Vec::new(),
+            })),
+        },
+        AgentRole::StoryCraftPlanner => AgentOutputProposal {
+            id: format!("{}-invalid-story-craft", request.call_id),
+            agent: AgentRole::StoryCraftPlanner,
+            output: AgentProposalPayload::StoryCraftPlan(Box::new(StoryCraftPlanProposal {
+                story_bible_markdown: String::new(),
+                style_guide_markdown: "Invalid style".into(),
+                story_craft: generated_story_craft_state(),
+            })),
+        },
+        AgentRole::CharacterDesigner => AgentOutputProposal {
+            id: format!("{}-invalid-character", request.call_id),
+            agent: AgentRole::CharacterDesigner,
+            output: AgentProposalPayload::CharacterProfile(Box::new(CharacterProposal {
+                character: Character {
+                    id: String::new(),
+                    name: "Invalid Character".into(),
+                    role: "Invalid".into(),
+                    traits: Vec::new(),
+                    visual_card: "Invalid visual".into(),
+                    voice_card: "Invalid voice".into(),
+                    portrait_request: None,
+                },
+            })),
+        },
         AgentRole::ScenePlanner => AgentOutputProposal {
             id: format!("{}-invalid-scene-plan", request.call_id),
             agent: AgentRole::ScenePlanner,
-            output: AgentProposalPayload::ScenePlan(ScenePlanProposal {
+            output: AgentProposalPayload::ScenePlan(Box::new(ScenePlanProposal {
                 scene_key: String::new(),
                 title: "Invalid Scene Plan".into(),
                 location: "Qianqing Palace".into(),
@@ -1268,20 +2315,20 @@ fn fake_invalid_schema_response(
                 cast: Vec::new(),
                 entry_beat_id: "missing-entry".into(),
                 background_asset: None,
-            }),
+            })),
         },
         AgentRole::BeatWriter => AgentOutputProposal {
             id: format!("{}-invalid-beats", request.call_id),
             agent: AgentRole::BeatWriter,
-            output: AgentProposalPayload::BeatDrafts(BeatDraftsProposal {
+            output: AgentProposalPayload::BeatDrafts(Box::new(BeatDraftsProposal {
                 scene_key: request.scene_key.clone(),
                 beats: Vec::new(),
-            }),
+            })),
         },
         AgentRole::PlotDoctor => AgentOutputProposal {
             id: format!("{}-invalid-review", request.call_id),
             agent: AgentRole::PlotDoctor,
-            output: AgentProposalPayload::Review(ReviewProposal {
+            output: AgentProposalPayload::Review(Box::new(ReviewProposal {
                 scene_key: request.scene_key.clone(),
                 review: NarrativeReview {
                     scene_key: "other-scene".into(),
@@ -1295,7 +2342,7 @@ fn fake_invalid_schema_response(
                     issues: Vec::new(),
                 },
                 notes: Vec::new(),
-            }),
+            })),
         },
         _ => {
             return Err(TextModelProviderError::provider(
@@ -1308,13 +2355,39 @@ fn fake_invalid_schema_response(
         }
     };
 
-    encode_fake_response(&proposal)
+    encode_fake_response(&proposal, request)
+}
+
+fn fake_wrapped_json_response(
+    request: &TextModelRequest,
+) -> Result<TextModelResponse, TextModelProviderError> {
+    let response = fake_success_response(request)?;
+    Ok(TextModelResponse::json(format!(
+        "Provider draft:\n```json\n{}\n```\nEnd of draft.",
+        response.raw_json
+    )))
 }
 
 fn encode_fake_response(
     proposal: &AgentOutputProposal,
+    request: &TextModelRequest,
 ) -> Result<TextModelResponse, TextModelProviderError> {
-    serde_json::to_string(proposal)
+    let envelope = AgentOutputEnvelope {
+        id: format!("{}-envelope", proposal.id),
+        contract_version: CONTRACT_VERSION.into(),
+        schema_version: CONTRACT_SCHEMA_VERSION,
+        agent: proposal.agent.clone(),
+        reproducibility: ReproducibilityMetadata {
+            run_seed: request.run_seed,
+            prompt_version: request.prompt_version.clone(),
+            model_version: request.model_version.clone(),
+            provider_config_hash: request.provider_config_hash.clone(),
+            trace_id: None,
+            snapshot_id: None,
+        },
+        proposal: proposal.clone(),
+    };
+    serde_json::to_string(&envelope)
         .map(TextModelResponse::json)
         .map_err(|error| {
             TextModelProviderError::provider("fake_provider_serialization", error.to_string())
@@ -1328,6 +2401,7 @@ fn payload_call_suffix(agent: &AgentRole) -> &'static str {
         AgentRole::PlotDoctor => "review",
         AgentRole::StoryArchitect => "story-architect",
         AgentRole::StoryCraftPlanner => "story-craft-planner",
+        AgentRole::CharacterDesigner => "character-designer",
         AgentRole::ConsistencyChecker => "consistency-checker",
         AgentRole::DeslopRefiner => "deslop-refiner",
     }
@@ -1374,6 +2448,7 @@ impl ScenePlanner for MockAgentPipeline {
             return Ok(ScenePlan {
                 scene,
                 review,
+                reproducibility: local_reproducibility(&request),
                 fallback_used,
                 error,
             });
@@ -1388,6 +2463,7 @@ impl ScenePlanner for MockAgentPipeline {
         Ok(ScenePlan {
             scene,
             review,
+            reproducibility: local_reproducibility(&request),
             fallback_used: false,
             error: None,
         })
@@ -1419,6 +2495,9 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
         ),
     };
 
+    let first_beat_id = format!("{scene_key}-beat-001");
+    let second_beat_id = format!("{scene_key}-beat-002");
+
     Scene {
         key: scene_key.clone(),
         title: title.into(),
@@ -1434,46 +2513,89 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
             thread_for_action(request.action_type).into(),
             thread_update.into(),
         )]),
-        beats: vec![Beat {
-            id: format!("{scene_key}-beat-001"),
-            text: format!(
-                "The court absorbs the order: {} The treasury stands at {}, public order at {}, and army morale at {}.",
-                request.player_input,
-                resource(request.world_state, "treasury"),
-                resource(request.world_state, "public_order"),
-                resource(request.world_state, "army_morale")
-            ),
-            choices: vec![
-                Choice {
-                    id: "raise-tax".into(),
-                    label: "Press another emergency levy".into(),
-                    action_type: "raise_tax".into(),
-                    dramatic_purpose: "Gain treasury while risking unrest.".into(),
-                    change_scene: true,
-                },
-                Choice {
-                    id: "inspect-corruption".into(),
-                    label: "Investigate payroll corruption".into(),
-                    action_type: "inspect_corruption".into(),
-                    dramatic_purpose: "Seek hidden leakage while destabilizing court factions."
+        entry_beat_id: Some(first_beat_id.clone()),
+        beats: vec![
+            Beat {
+                id: first_beat_id,
+                text: format!(
+                    "The court absorbs the order: {} The treasury stands at {}, public order at {}, and army morale at {}.",
+                    request.player_input,
+                    resource(request.world_state, "treasury"),
+                    resource(request.world_state, "public_order"),
+                    resource(request.world_state, "army_morale")
+                ),
+                choices: vec![
+                    Choice {
+                        id: "raise-tax".into(),
+                        label: "Press another emergency levy".into(),
+                        action_type: "raise_tax".into(),
+                        input_terms: choice_input_terms("raise_tax"),
+                        dramatic_purpose: "Gain treasury while risking unrest.".into(),
+                        change_scene: true,
+                    },
+                    Choice {
+                        id: "inspect-corruption".into(),
+                        label: "Investigate payroll corruption".into(),
+                        action_type: "inspect_corruption".into(),
+                        input_terms: choice_input_terms("inspect_corruption"),
+                        dramatic_purpose: "Seek hidden leakage while destabilizing court factions."
+                            .into(),
+                        change_scene: true,
+                    },
+                    Choice {
+                        id: "continue-council".into(),
+                        label: "Hear one more minister".into(),
+                        action_type: "continue".into(),
+                        input_terms: choice_input_terms("continue"),
+                        dramatic_purpose:
+                            "Stay in the scene to gather more pressure before committing.".into(),
+                        change_scene: false,
+                    },
+                ],
+                next: BeatNext::Beat(second_beat_id.clone()),
+            },
+            Beat {
+                id: second_beat_id,
+                text:
+                    "A second minister adds a sharper warning: every answer now has a visible cost."
                         .into(),
-                    change_scene: true,
-                },
-                Choice {
-                    id: "continue-council".into(),
-                    label: "Hear one more minister".into(),
-                    action_type: "continue".into(),
-                    dramatic_purpose:
-                        "Stay in the scene to gather more pressure before committing.".into(),
-                    change_scene: false,
-                },
-            ],
-        }],
+                choices: vec![
+                    Choice {
+                        id: "raise-tax".into(),
+                        label: "Press another emergency levy".into(),
+                        action_type: "raise_tax".into(),
+                        input_terms: choice_input_terms("raise_tax"),
+                        dramatic_purpose: "Gain treasury while risking unrest.".into(),
+                        change_scene: true,
+                    },
+                    Choice {
+                        id: "inspect-corruption".into(),
+                        label: "Investigate payroll corruption".into(),
+                        action_type: "inspect_corruption".into(),
+                        input_terms: choice_input_terms("inspect_corruption"),
+                        dramatic_purpose: "Seek hidden leakage while destabilizing court factions."
+                            .into(),
+                        change_scene: true,
+                    },
+                    Choice {
+                        id: "pay-army".into(),
+                        label: "Pay the border army first".into(),
+                        action_type: "pay_army".into(),
+                        input_terms: choice_input_terms("pay_army"),
+                        dramatic_purpose: "Spend scarce treasury to buy military time.".into(),
+                        change_scene: true,
+                    },
+                ],
+                next: BeatNext::Scene,
+            },
+        ],
     }
 }
 
 fn fallback_scene(turn: u32, action_type: &str) -> Scene {
     let scene_key = format!("fallback-{turn:03}");
+    let first_beat_id = format!("{scene_key}-beat-001");
+    let second_beat_id = format!("{scene_key}-beat-002");
     Scene {
         key: scene_key.clone(),
         title: "Fallback Council".into(),
@@ -1486,17 +2608,29 @@ fn fallback_scene(turn: u32, action_type: &str) -> Scene {
             "tax-disorder".into(),
             format!("Fallback response for action `{action_type}`."),
         )]),
-        beats: vec![Beat {
-            id: format!("{scene_key}-beat-001"),
-            text: "The court waits for the engine to recover a valid scene.".into(),
-            choices: vec![Choice {
-                id: "continue".into(),
-                label: "Continue".into(),
-                action_type: "continue".into(),
-                dramatic_purpose: "Remain in the current recovery beat.".into(),
-                change_scene: false,
-            }],
-        }],
+        entry_beat_id: Some(first_beat_id.clone()),
+        beats: vec![
+            Beat {
+                id: first_beat_id,
+                text: "The court waits for the engine to recover a valid scene.".into(),
+                choices: vec![Choice {
+                    id: "continue".into(),
+                    label: "Continue".into(),
+                    action_type: "continue".into(),
+                    input_terms: choice_input_terms("continue"),
+                    dramatic_purpose: "Remain in the current recovery beat.".into(),
+                    change_scene: false,
+                }],
+                next: BeatNext::Beat(second_beat_id.clone()),
+            },
+            Beat {
+                id: second_beat_id,
+                text: "The recovery beat has no new scene request; the fallback remains visible."
+                    .into(),
+                choices: Vec::new(),
+                next: BeatNext::End,
+            },
+        ],
     }
 }
 
@@ -1513,21 +2647,41 @@ fn thread_for_action(action_type: &str) -> &'static str {
     }
 }
 
+fn choice_input_terms(action_type: &str) -> Vec<String> {
+    let terms: &[&str] = match action_type {
+        "continue" => &["continue", "hear", "minister", "听", "继续", "陈情"],
+        "raise_tax" => &["raise", "tax", "levy", "加征", "辽饷"],
+        "inspect_corruption" => &["inspect", "corruption", "严查", "贪墨", "查"],
+        "pay_army" => &["pay", "army", "军饷", "拨", "内帑", "边军"],
+        _ => &[],
+    };
+    terms.iter().map(|term| (*term).to_string()).collect()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc};
+
     use plotforge_job::{JobClock, JobQueue};
     use plotforge_media::AssetRegistry;
     use plotforge_schema::{
         AgentOutputProposal, AgentProposalPayload, AgentRole, AssetReferenceKind, AssetSourceKind,
-        BeatDraftProposal, BeatDraftsProposal, Choice, GameProject, JobStatus, NarrativeFunction,
-        NarrativeReview, REDACTED_TRACE_SECRET, ReviewProposal, ScenePlanProposal, Severity,
-        StoryState, WorldState,
+        BeatDraftProposal, BeatDraftsProposal, CharacterGenerationRequest, Choice, GameProject,
+        GenerationStatus, JobStatus, NarrativeFunction, NarrativeReview, REDACTED_TRACE_SECRET,
+        ReviewProposal, ScenePlanProposal, Severity, StoryCraftEditDocument,
+        StoryCraftGenerationRequest, StoryState, WorldEditDocument, WorldGenerationRequest,
+        WorldState,
     };
 
     use super::{
-        AgentProposalValidationError, FakeImageProvider, FakeTextModelProvider,
-        ImageProviderAgentPipeline, MockAgentPipeline, ProviderAgentPipeline, SceneImagePipeline,
-        SceneImageRequest, ScenePlanRequest, ScenePlanner, scene_from_proposals,
+        AgentProposalValidationError, ConfiguredTextModelProvider, FakeImageProvider,
+        FakeTextModelProvider, ImageProviderAgentPipeline, MockAgentPipeline,
+        ProviderAgentPipeline, ProviderCredentialError, ProviderCredentialResolver,
+        SceneImagePipeline, SceneImageRequest, ScenePlanRequest, ScenePlanner, TextModelClient,
+        TextModelClientRequest, TextModelProviderError, TextModelResponse, TextProviderConfig,
+        fake_success_response, generate_character, generate_character_with_provider,
+        generate_story_craft, generate_story_craft_with_provider, generate_world_expansion,
+        generate_world_expansion_with_provider, scene_from_proposals,
         validate_agent_output_proposal,
     };
 
@@ -1548,6 +2702,87 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct StaticCredentialResolver {
+        credential: Option<String>,
+    }
+
+    impl StaticCredentialResolver {
+        fn token(value: impl Into<String>) -> Self {
+            Self {
+                credential: Some(value.into()),
+            }
+        }
+
+        fn missing() -> Self {
+            Self { credential: None }
+        }
+    }
+
+    impl ProviderCredentialResolver for StaticCredentialResolver {
+        fn resolve(&self, env_var: &str) -> Result<String, ProviderCredentialError> {
+            self.credential
+                .clone()
+                .ok_or_else(|| ProviderCredentialError::Missing {
+                    env_var: env_var.into(),
+                })
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct RecordingTextModelClient {
+        credentials: Rc<RefCell<Vec<String>>>,
+        prompts: Rc<RefCell<Vec<String>>>,
+        error: Option<TextModelProviderError>,
+    }
+
+    impl RecordingTextModelClient {
+        fn success() -> Self {
+            Self {
+                credentials: Rc::new(RefCell::new(Vec::new())),
+                prompts: Rc::new(RefCell::new(Vec::new())),
+                error: None,
+            }
+        }
+
+        fn provider_error(message: impl Into<String>) -> Self {
+            Self {
+                credentials: Rc::new(RefCell::new(Vec::new())),
+                prompts: Rc::new(RefCell::new(Vec::new())),
+                error: Some(TextModelProviderError::provider(
+                    "text_client_error",
+                    message.into(),
+                )),
+            }
+        }
+
+        fn credentials(&self) -> Vec<String> {
+            self.credentials.borrow().clone()
+        }
+
+        fn prompts(&self) -> Vec<String> {
+            self.prompts.borrow().clone()
+        }
+    }
+
+    impl TextModelClient for RecordingTextModelClient {
+        fn complete(
+            &self,
+            request: TextModelClientRequest<'_>,
+        ) -> Result<TextModelResponse, TextModelProviderError> {
+            self.credentials
+                .borrow_mut()
+                .push(request.credential.to_string());
+            self.prompts
+                .borrow_mut()
+                .push(request.request.prompt.to_string());
+            if let Some(error) = self.error.clone() {
+                return Err(error);
+            }
+            fake_success_response(request.request)
+        }
+    }
+
     #[test]
     fn mock_pipeline_returns_valid_scene_and_review() {
         let project = plotforge_schema::ProjectData {
@@ -1563,6 +2798,7 @@ mod tests {
             world_state: WorldState::default(),
             story_state: StoryState {
                 current_scene_key: "court-crisis-001".into(),
+                current_beat_id: Some("court-crisis-001-beat-001".into()),
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
@@ -1575,6 +2811,7 @@ mod tests {
                     traits: vec!["cautious".into()],
                     visual_card: "elder official".into(),
                     voice_card: "restrained".into(),
+                    portrait_request: None,
                 },
                 plotforge_schema::Character {
                     id: "eunuch-director".into(),
@@ -1583,10 +2820,12 @@ mod tests {
                     traits: vec!["watchful".into()],
                     visual_card: "palace official".into(),
                     voice_card: "quiet".into(),
+                    portrait_request: None,
                 },
             ],
             rules: Vec::new(),
             scenes: Vec::new(),
+            ai_safety_policy: plotforge_schema::AiSafetyPolicy::default(),
         };
 
         let plan = MockAgentPipeline
@@ -1619,6 +2858,7 @@ mod tests {
             world_state: WorldState::default(),
             story_state: StoryState {
                 current_scene_key: "missing".into(),
+                current_beat_id: Some("missing-beat-001".into()),
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
@@ -1626,6 +2866,7 @@ mod tests {
             characters: Vec::new(),
             rules: Vec::new(),
             scenes: Vec::new(),
+            ai_safety_policy: plotforge_schema::AiSafetyPolicy::default(),
         };
 
         let plan = MockAgentPipeline
@@ -1749,9 +2990,40 @@ mod tests {
         assert_eq!(plan.scene.key, "provider-scene-001");
         assert_eq!(plan.review.scene_key, "provider-scene-001");
         assert_eq!(plan.review.score, 96);
+        assert_eq!(plan.reproducibility.run_seed, 7);
+        assert_eq!(
+            plan.reproducibility.prompt_version,
+            "plotforge-agent-text-prompt-v1"
+        );
+        assert_eq!(plan.reproducibility.model_version, "fake-text-model-v1");
+        assert_eq!(
+            plan.reproducibility.provider_config_hash,
+            "sha256:fake-text-provider-config-v1"
+        );
         assert!(!plan.fallback_used);
         assert!(plan.error.is_none());
         assert!(plan.scene.plot_thread_updates.is_empty());
+    }
+
+    #[test]
+    fn fake_text_provider_pipeline_repairs_wrapped_json_output() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::wrapped_json(
+            AgentRole::ScenePlanner,
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("provider plan");
+
+        assert_eq!(plan.scene.key, "provider-scene-001");
+        assert_eq!(plan.review.scene_key, "provider-scene-001");
+        assert_eq!(
+            plan.reproducibility.provider_config_hash,
+            "sha256:fake-text-provider-config-v1"
+        );
+        assert!(!plan.fallback_used);
+        assert!(plan.error.is_none());
     }
 
     #[test]
@@ -1809,6 +3081,25 @@ mod tests {
     }
 
     #[test]
+    fn fake_text_provider_pipeline_falls_back_on_secret_marker_output() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::secret_marker(
+            AgentRole::ScenePlanner,
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        let error = plan.error.as_ref().expect("validation error");
+        assert!(plan.fallback_used);
+        assert_eq!(error.code, "text_provider_schema_validation");
+        assert!(error.message.contains("secret marker"));
+        assert!(!error.message.contains("api_key"));
+        assert!(!error.message.contains("sk-test-secret-marker"));
+    }
+
+    #[test]
     fn fake_text_provider_pipeline_falls_back_on_invalid_json() {
         let project = plotforge_storage::dynasty_embers_project();
         let pipeline =
@@ -1823,6 +3114,291 @@ mod tests {
             plan.error.as_ref().expect("invalid json error").code,
             "text_provider_invalid_json"
         );
+    }
+
+    #[test]
+    fn world_generation_success_records_envelope_evidence() {
+        let report = generate_world_expansion(world_generation_request(), 41);
+
+        assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
+        assert!(!report.evidence.fallback_used);
+        assert!(report.evidence.error.is_none());
+        assert_eq!(report.evidence.envelopes.len(), 1);
+        assert!(
+            report
+                .document
+                .world_bible_markdown
+                .contains("# World Bible")
+        );
+        assert!(
+            report
+                .document
+                .canon_markdown
+                .contains("Generated facts must not contradict forbidden facts")
+        );
+        assert_eq!(report.evidence.reproducibility.run_seed, 41);
+        assert_eq!(
+            report.evidence.reproducibility.provider_config_hash,
+            "sha256:fake-text-provider-config-v1"
+        );
+        let encoded = serde_json::to_string(&report).expect("world report json");
+        assert!(!encoded.contains("sk-test-secret-marker"));
+        assert!(!encoded.contains("api_key"));
+    }
+
+    #[test]
+    fn story_craft_generation_success_builds_plot_threads_and_arc() {
+        let report = generate_story_craft(story_craft_generation_request(), 42);
+
+        assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
+        assert!(!report.evidence.fallback_used);
+        assert!(report.evidence.error.is_none());
+        assert_eq!(report.evidence.envelopes.len(), 1);
+        assert!(
+            report
+                .document
+                .story_bible_markdown
+                .contains("# Story Bible")
+        );
+        assert!(
+            report
+                .document
+                .style_guide_markdown
+                .contains("# Style Guide")
+        );
+        assert!(report.document.story_craft.emotional_arc.len() >= 3);
+        assert!(report.document.story_craft.plot_threads.len() >= 3);
+        assert!(
+            report
+                .document
+                .story_craft
+                .bible
+                .central_question
+                .contains("preserve legitimacy")
+        );
+    }
+
+    #[test]
+    fn character_generation_success_includes_visual_voice_and_portrait_request() {
+        let report = generate_character(character_generation_request(), 43);
+
+        assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
+        assert!(!report.evidence.fallback_used);
+        assert!(report.evidence.error.is_none());
+        assert_eq!(report.character.id, "generated-character");
+        assert!(!report.character.visual_card.trim().is_empty());
+        assert!(!report.character.voice_card.trim().is_empty());
+
+        let portrait_request = report
+            .character
+            .portrait_request
+            .as_ref()
+            .expect("portrait request");
+        assert_eq!(portrait_request.target_asset_slot, "portrait");
+        assert!(portrait_request.fallback_allowed);
+        assert!(portrait_request.prompt_hash.starts_with("sha256:"));
+        assert_eq!(
+            portrait_request.provider_config_hash,
+            "sha256:fake-text-provider-config-v1"
+        );
+    }
+
+    #[test]
+    fn generation_fallback_is_visible_and_redacted_on_invalid_schema() {
+        let provider = FakeTextModelProvider::invalid_schema(AgentRole::CharacterDesigner);
+        let report =
+            generate_character_with_provider(&provider, character_generation_request(), 44);
+
+        assert_eq!(report.evidence.status, GenerationStatus::Fallback);
+        assert!(report.evidence.fallback_used);
+        assert!(report.evidence.envelopes.is_empty());
+        assert_eq!(report.character.id, "fallback-character");
+        assert!(
+            report
+                .character
+                .portrait_request
+                .as_ref()
+                .expect("fallback portrait request")
+                .fallback_allowed
+        );
+
+        let error = report.evidence.error.as_ref().expect("fallback error");
+        assert_eq!(error.code, "text_provider_schema_validation");
+        assert!(error.message.contains("EmptyField"));
+        let encoded = serde_json::to_string(&report).expect("character report json");
+        assert!(!encoded.contains("sk-test-secret-marker"));
+        assert!(!encoded.contains("api_key"));
+    }
+
+    #[test]
+    fn generation_fallback_redacts_secret_marker_output() {
+        let provider = FakeTextModelProvider::secret_marker(AgentRole::StoryArchitect);
+        let report =
+            generate_world_expansion_with_provider(&provider, world_generation_request(), 45);
+
+        assert_eq!(report.evidence.status, GenerationStatus::Fallback);
+        assert!(report.evidence.fallback_used);
+        assert!(report.evidence.envelopes.is_empty());
+        assert_eq!(
+            report.evidence.error.as_ref().expect("secret error").code,
+            "text_provider_schema_validation"
+        );
+
+        let encoded = serde_json::to_string(&report).expect("world report json");
+        assert!(encoded.contains("secret marker"));
+        assert!(!encoded.contains("sk-test-secret-marker"));
+        assert!(!encoded.contains("api_key"));
+    }
+
+    #[test]
+    fn generation_wrapped_json_is_repaired_for_story_craft() {
+        let provider = FakeTextModelProvider::wrapped_json(AgentRole::StoryCraftPlanner);
+        let report =
+            generate_story_craft_with_provider(&provider, story_craft_generation_request(), 46);
+
+        assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
+        assert!(!report.evidence.fallback_used);
+        assert_eq!(report.evidence.envelopes.len(), 1);
+        assert!(report.document.story_craft.plot_threads.len() >= 3);
+    }
+
+    #[test]
+    fn text_provider_config_hash_excludes_credentials() {
+        let config = text_provider_config();
+        let hash = config.provider_config_hash();
+
+        assert!(hash.starts_with("sha256:"));
+        assert_eq!(
+            hash,
+            config.reproducibility_metadata(7).provider_config_hash
+        );
+        assert!(!hash.contains("sk-test-secret-marker"));
+        assert!(!hash.contains("api_key"));
+        assert!(!hash.contains("secret_key"));
+    }
+
+    #[test]
+    fn configured_text_provider_uses_local_credential_without_persisting_it() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let client = RecordingTextModelClient::success();
+        let client_probe = client.clone();
+        let config = text_provider_config();
+        let expected_hash = config.provider_config_hash();
+        let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
+            config,
+            client,
+            StaticCredentialResolver::token("sk-test-secret-marker"),
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("provider plan");
+
+        assert_eq!(plan.scene.key, "provider-scene-001");
+        assert_eq!(plan.reproducibility.model_version, "gpt-plotforge-test");
+        assert_eq!(plan.reproducibility.provider_config_hash, expected_hash);
+        assert!(
+            client_probe
+                .credentials()
+                .iter()
+                .all(|credential| credential == "sk-test-secret-marker")
+        );
+        let encoded = serde_json::to_string(&plan.reproducibility).expect("metadata json");
+        assert!(!encoded.contains("sk-test-secret-marker"));
+    }
+
+    #[test]
+    fn configured_text_provider_disabled_falls_back_explicitly() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
+            TextProviderConfig::disabled(),
+            RecordingTextModelClient::success(),
+            StaticCredentialResolver::token("sk-test-secret-marker"),
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        let error = plan.error.as_ref().expect("disabled error");
+        assert_eq!(error.code, "text_provider_disabled");
+        assert!(error.message.contains("disabled"));
+        assert!(!error.message.contains("sk-test-secret-marker"));
+    }
+
+    #[test]
+    fn configured_text_provider_missing_credential_falls_back_without_secret_leak() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
+            text_provider_config(),
+            RecordingTextModelClient::success(),
+            StaticCredentialResolver::missing(),
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        let error = plan.error.as_ref().expect("credential error");
+        assert_eq!(error.code, "text_provider_missing_credential");
+        assert!(error.message.contains("PLOTFORGE_TEXT_PROVIDER_TOKEN"));
+        assert!(!error.message.contains("sk-test-secret-marker"));
+    }
+
+    #[test]
+    fn configured_text_provider_rejects_secret_player_input_before_client_call() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let client = RecordingTextModelClient::success();
+        let client_probe = client.clone();
+        let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
+            text_provider_config(),
+            client,
+            StaticCredentialResolver::token("sk-test-secret-marker"),
+        ));
+        let request = ScenePlanRequest {
+            project: &project,
+            story_state: &project.story_state,
+            world_state: &project.world_state,
+            player_input: "Authorization: bearer token=value",
+            action_type: "raise_tax",
+        };
+
+        let plan = pipeline.plan_next_scene(request).expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        let error = plan.error.as_ref().expect("prompt validation error");
+        assert_eq!(error.code, "text_provider_schema_validation");
+        assert!(error.message.contains("secret marker"));
+        assert!(!error.message.contains("Authorization"));
+        assert!(!error.message.contains("token=value"));
+        assert!(client_probe.credentials().is_empty());
+        assert!(client_probe.prompts().is_empty());
+    }
+
+    #[test]
+    fn configured_text_provider_client_errors_are_redacted_and_trace_visible() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
+            text_provider_config(),
+            RecordingTextModelClient::provider_error(
+                "upstream rejected request OPENAI_API_KEY=sk-test-secret-marker bearer token=value",
+            ),
+            StaticCredentialResolver::token("sk-test-secret-marker"),
+        ));
+
+        let plan = pipeline
+            .plan_next_scene(provider_request(&project))
+            .expect("fallback plan");
+
+        assert!(plan.fallback_used);
+        let error = plan.error.as_ref().expect("client error");
+        assert_eq!(error.code, "text_client_error");
+        assert!(error.message.contains(REDACTED_TRACE_SECRET));
+        assert!(!error.message.contains("OPENAI_API_KEY"));
+        assert!(!error.message.contains("sk-test-secret-marker"));
+        assert!(!error.message.contains("token=value"));
     }
 
     #[test]
@@ -2017,7 +3593,7 @@ mod tests {
         AgentOutputProposal {
             id: "scene-plan-proposal-001".into(),
             agent: AgentRole::ScenePlanner,
-            output: AgentProposalPayload::ScenePlan(sample_scene_plan_proposal()),
+            output: AgentProposalPayload::ScenePlan(Box::new(sample_scene_plan_proposal())),
         }
     }
 
@@ -2025,7 +3601,7 @@ mod tests {
         AgentOutputProposal {
             id: "beat-drafts-proposal-001".into(),
             agent: AgentRole::BeatWriter,
-            output: AgentProposalPayload::BeatDrafts(sample_beat_drafts_proposal()),
+            output: AgentProposalPayload::BeatDrafts(Box::new(sample_beat_drafts_proposal())),
         }
     }
 
@@ -2033,7 +3609,7 @@ mod tests {
         AgentOutputProposal {
             id: "review-proposal-001".into(),
             agent: AgentRole::PlotDoctor,
-            output: AgentProposalPayload::Review(sample_review_proposal()),
+            output: AgentProposalPayload::Review(Box::new(sample_review_proposal())),
         }
     }
 
@@ -2068,6 +3644,7 @@ mod tests {
                 id: "inspect-corruption".into(),
                 label: "Investigate the collectors".into(),
                 action_type: "inspect_corruption".into(),
+                input_terms: vec!["inspect".into(), "corruption".into()],
                 dramatic_purpose: "Trade court stability for cleaner revenue.".into(),
                 change_scene: true,
             }],
@@ -2109,11 +3686,61 @@ mod tests {
         }
     }
 
+    fn text_provider_config() -> TextProviderConfig {
+        TextProviderConfig::openai_compatible(
+            "openai-compatible",
+            "gpt-plotforge-test",
+            "https://provider.example.test/v1/chat/completions",
+            "PLOTFORGE_TEXT_PROVIDER_TOKEN",
+        )
+    }
+
     fn scene_image_request() -> SceneImageRequest {
         SceneImageRequest {
             scene_key: "scene-one".into(),
             prompt: "paint a tense court hearing".into(),
             output_path: "assets/generated/scene-one.png".into(),
+        }
+    }
+
+    fn world_generation_request() -> WorldGenerationRequest {
+        WorldGenerationRequest {
+            expansion_goal: "Expand the court crisis into factions, canon, and forbidden facts."
+                .into(),
+            document: WorldEditDocument {
+                world_bible_markdown: "# Existing World\n\nA court crisis strains the treasury."
+                    .into(),
+                canon_markdown: "# Existing Canon\n\nVisible choices must have consequences."
+                    .into(),
+                forbidden_facts: vec!["Do not solve the famine with prophecy.".into()],
+            },
+        }
+    }
+
+    fn story_craft_generation_request() -> StoryCraftGenerationRequest {
+        StoryCraftGenerationRequest {
+            concept: "A ruler must survive an escalating fiscal and legitimacy crisis.".into(),
+            world_bible_markdown: "# World Bible\n\nThe court is divided by emergency revenue."
+                .into(),
+            canon_markdown: "# Canon Rules\n\nNo crisis solution is free.".into(),
+            forbidden_facts: vec!["No hidden prophecy rescue.".into()],
+            document: StoryCraftEditDocument {
+                story_bible_markdown: "# Draft Story Bible\n\nInitial premise only.".into(),
+                style_guide_markdown: "# Draft Style\n\nGrounded and specific.".into(),
+                story_craft: plotforge_storycraft::dynasty_embers_story_craft(),
+            },
+            characters: Vec::new(),
+        }
+    }
+
+    fn character_generation_request() -> CharacterGenerationRequest {
+        CharacterGenerationRequest {
+            concept: "A diplomatic envoy pressures the court with concrete tradeoffs.".into(),
+            role_hint: "Envoy".into(),
+            world_bible_markdown: "# World Bible\n\nFactions trade legitimacy for resources."
+                .into(),
+            story_bible_markdown: "# Story Bible\n\nEvery ally has a visible cost.".into(),
+            existing_characters: Vec::new(),
         }
     }
 }

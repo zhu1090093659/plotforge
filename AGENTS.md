@@ -19,27 +19,35 @@ The current MVP contains:
 - Steam compliance QA boundary in `docs/steam-compliance-qa.md`, enforced by `scripts/qa/no_launch_promise_lint.py` for active project-facing guidance surfaces.
 - `examples/dynasty-embers` as the committed demo fixture.
 - Static web export served from local files over HTTP.
+- Spec-driven GitHub issues are task/progress units, but pull requests are Phase-level delivery units; do not open one PR per small task during PRD completion work.
 
 ## Source of Truth
 
 - `plotforge-schema` is the only schema contract source of truth.
 - Generated frontend contracts live in `contracts/`; regenerate them with `scripts/contracts/export_contracts.sh` after Rust schema changes and verify with `scripts/contracts/check_contracts.sh`.
 - Folder project files are the source of truth for game projects; generated caches, exports, traces, and build artifacts must be rebuildable.
+- Structured editing documents for World, StoryCraft, Characters, State variables, and Rules are schema-defined contracts backed by `plotforge-storage` source files; regenerate frontend contracts after changing them.
 - SQLite cache/index files are never required to load canonical project state; when cache contents conflict with folder files, folder files win and the cache must be rebuilt.
 - `examples/dynasty-embers` must remain a valid fixture and must stay semantically aligned with `create_demo_project`.
 - Runtime traces are generated evidence, not committed fixture state.
 - Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, media references, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
+- Runtime traces, snapshots, and provider output envelopes must carry reproducibility metadata (`run_seed`, `prompt_version`, `model_version`, `provider_config_hash`, and trace/snapshot evidence ids where applicable) without storing raw provider responses or credentials.
+- Real provider configuration is local-only: credentials must be injected through explicit local resolvers such as environment variables, provider config hashes must be derived only from non-secret config fields, and `providers/` or `provider_config.*` files must never become project source, contracts, traces, or export package content.
 - Media asset records must use structured, redaction-safe provider metadata only; store prompt hashes/request ids when needed, never raw provider responses or secrets.
 - Job records must use typed state, explicit failure objects, injected clocks for deterministic tests, and no hidden global async state.
 - Image provider fallbacks must remain trace-visible and must register placeholder assets as fallback metadata, not as successful generated-cache hits.
 - Spec-driven planning artifacts and progress logs are local/private operator state for this open-source repository; keep them out of Git and under ignored paths unless explicitly approved.
+- For broad PRD completion phases, prefer parallel sub-agents for disjoint implementation lanes after shared schema/contracts are planned; keep final integration, validation, and Phase PR scope decisions centralized.
 
 ## Architecture Boundaries
 
 - Keep rule evaluation in `plotforge-rule`; do not duplicate rule behavior in CLI, UI, storage, export, or tests.
 - Keep runtime state transitions in `plotforge-runtime`; agents propose content and runtime/rules commit state.
+- Runtime owns Scene/Beat progression: same-scene choices such as `continue` advance through `BeatNext::Beat` without planner calls, scene changes, new images, or turn increments; `change_scene` choices cross the planner/runtime boundary, set the next scene entry beat, and increment the turn.
+- Missing current beats, entry beats, or same-scene beat transitions must fail explicitly; do not silently fall back to another beat when committing runtime state.
 - Player/freeform input must resolve to a typed `ActionIntent`; unsupported input must not mutate runtime state or silently map to a default action.
 - Keep persistence and fixture file layout in `plotforge-storage`.
+- Keep structured editing read/update/create behavior in `plotforge-storage` and expose it through `plotforge-studio`/Tauri command adapters; Creator Desktop must call the generated-contract bridge instead of parsing or validating project files in TypeScript.
 - Keep SQLite cache/index behavior in `plotforge-storage`; it may index project summaries, source file hashes, trace metadata, and asset metadata, but must not become a second project loader or source of truth.
 - Keep static export behavior in `plotforge-export`; exported bundles must copy only reachable referenced assets from `plotforge-media` and must not include private traces, provider config, raw provider responses, unreferenced assets, or secrets.
 - Export profiles and AI usage manifests must stay schema-defined, redaction-safe, and capability/descriptive only; do not put provider credentials, raw provider responses, private traces, legal conclusions, or platform approval promises into them.

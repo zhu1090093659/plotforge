@@ -8,6 +8,13 @@
             "null"
           ]
         },
+        "choice_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "matched_terms": {
           "items": {
             "type": "string"
@@ -37,6 +44,40 @@
       ],
       "type": "string"
     },
+    "AgentOutputEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/AgentRole"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "proposal": {
+          "$ref": "#/$defs/AgentOutputProposal"
+        },
+        "reproducibility": {
+          "$ref": "#/$defs/ReproducibilityMetadata"
+        },
+        "schema_version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "contract_version",
+        "schema_version",
+        "agent",
+        "reproducibility",
+        "proposal"
+      ],
+      "type": "object"
+    },
     "AgentOutputProposal": {
       "additionalProperties": false,
       "properties": {
@@ -59,6 +100,57 @@
     },
     "AgentProposalPayload": {
       "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "world_expansion",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/WorldExpansionProposal"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "story_craft_plan",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/StoryCraftPlanProposal"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "character_profile",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/CharacterProposal"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
         {
           "additionalProperties": false,
           "properties": {
@@ -116,6 +208,7 @@
       "enum": [
         "story_architect",
         "story_craft_planner",
+        "character_designer",
         "scene_planner",
         "beat_writer",
         "plot_doctor",
@@ -162,6 +255,74 @@
       ],
       "type": "object"
     },
+    "AiSafetyPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "content_kinds": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AiUsageContentKind"
+          },
+          "type": "array"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "human_review_required": {
+          "default": false,
+          "type": "boolean"
+        },
+        "live_generated_content_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "moderation_policy": {
+          "default": "",
+          "type": "string"
+        },
+        "moderation_queue_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "notices": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "policy_hash": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_source_path": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "safety_guardrails": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "user_reporting_path": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "AiUsageContentKind": {
       "enum": [
         "text",
@@ -202,6 +363,22 @@
     "AiUsageManifest": {
       "additionalProperties": false,
       "properties": {
+        "ai_safety_policy": {
+          "$ref": "#/$defs/AiSafetyPolicy",
+          "default": {
+            "content_kinds": [],
+            "evidence_ids": [],
+            "human_review_required": false,
+            "live_generated_content_enabled": false,
+            "moderation_policy": "",
+            "moderation_queue_enabled": false,
+            "notices": [],
+            "policy_hash": null,
+            "policy_source_path": null,
+            "safety_guardrails": [],
+            "user_reporting_path": ""
+          }
+        },
         "disclosures": {
           "items": {
             "$ref": "#/$defs/AiUsageDisclosure"
@@ -429,6 +606,12 @@
         "id": {
           "type": "string"
         },
+        "next": {
+          "$ref": "#/$defs/BeatNext",
+          "default": {
+            "kind": "none"
+          }
+        },
         "text": {
           "type": "string"
         }
@@ -490,6 +673,66 @@
       ],
       "type": "object"
     },
+    "BeatNext": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "beat",
+              "type": "string"
+            },
+            "payload": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "scene",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "end",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Character": {
       "properties": {
         "id": {
@@ -497,6 +740,17 @@
         },
         "name": {
           "type": "string"
+        },
+        "portrait_request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CharacterPortraitRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "role": {
           "type": "string"
@@ -568,6 +822,119 @@
       ],
       "type": "string"
     },
+    "CharacterEditDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "characters": {
+          "items": {
+            "$ref": "#/$defs/Character"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "characters"
+      ],
+      "type": "object"
+    },
+    "CharacterGenerationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "character": {
+          "$ref": "#/$defs/Character"
+        },
+        "evidence": {
+          "$ref": "#/$defs/GenerationEvidence"
+        }
+      },
+      "required": [
+        "character",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "CharacterGenerationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "concept": {
+          "type": "string"
+        },
+        "existing_characters": {
+          "items": {
+            "$ref": "#/$defs/Character"
+          },
+          "type": "array"
+        },
+        "role_hint": {
+          "type": "string"
+        },
+        "story_bible_markdown": {
+          "type": "string"
+        },
+        "world_bible_markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "concept",
+        "role_hint",
+        "world_bible_markdown",
+        "story_bible_markdown",
+        "existing_characters"
+      ],
+      "type": "object"
+    },
+    "CharacterPortraitRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fallback_allowed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "prompt_hash": {
+          "type": "string"
+        },
+        "prompt_summary": {
+          "type": "string"
+        },
+        "provider_config_hash": {
+          "type": "string"
+        },
+        "reference_asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": {
+          "type": "string"
+        },
+        "target_asset_slot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt_summary",
+        "style",
+        "target_asset_slot",
+        "prompt_hash",
+        "provider_config_hash"
+      ],
+      "type": "object"
+    },
+    "CharacterProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "character": {
+          "$ref": "#/$defs/Character"
+        }
+      },
+      "required": [
+        "character"
+      ],
+      "type": "object"
+    },
     "Choice": {
       "properties": {
         "action_type": {
@@ -581,6 +948,13 @@
         },
         "id": {
           "type": "string"
+        },
+        "input_terms": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "label": {
           "type": "string"
@@ -929,6 +1303,52 @@
         "run_seed"
       ],
       "type": "object"
+    },
+    "GenerationEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "envelopes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentOutputEnvelope"
+          },
+          "type": "array"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fallback_used": {
+          "type": "boolean"
+        },
+        "reproducibility": {
+          "$ref": "#/$defs/ReproducibilityMetadata"
+        },
+        "status": {
+          "$ref": "#/$defs/GenerationStatus"
+        }
+      },
+      "required": [
+        "status",
+        "fallback_used",
+        "reproducibility"
+      ],
+      "type": "object"
+    },
+    "GenerationStatus": {
+      "enum": [
+        "succeeded",
+        "fallback",
+        "failed"
+      ],
+      "type": "string"
     },
     "HookStrategy": {
       "properties": {
@@ -1377,8 +1797,95 @@
       ],
       "type": "string"
     },
+    "ProjectCreationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "concept": {
+          "type": "string"
+        },
+        "files_created": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "initial_scene_request": {
+          "type": "string"
+        },
+        "project": {
+          "$ref": "#/$defs/ProjectData"
+        },
+        "project_path": {
+          "type": "string"
+        },
+        "template": {
+          "$ref": "#/$defs/ProjectTemplateId"
+        },
+        "visual_style": {
+          "type": "string"
+        },
+        "voice_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project_path",
+        "template",
+        "concept",
+        "visual_style",
+        "voice_enabled",
+        "initial_scene_request",
+        "files_created",
+        "project"
+      ],
+      "type": "object"
+    },
+    "ProjectCreationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "concept": {
+          "type": "string"
+        },
+        "initial_scene_request": {
+          "type": "string"
+        },
+        "template": {
+          "$ref": "#/$defs/ProjectTemplateId"
+        },
+        "visual_style": {
+          "type": "string"
+        },
+        "voice_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "template",
+        "concept",
+        "visual_style",
+        "voice_enabled",
+        "initial_scene_request"
+      ],
+      "type": "object"
+    },
     "ProjectData": {
       "properties": {
+        "ai_safety_policy": {
+          "$ref": "#/$defs/AiSafetyPolicy",
+          "default": {
+            "content_kinds": [],
+            "evidence_ids": [],
+            "human_review_required": false,
+            "live_generated_content_enabled": false,
+            "moderation_policy": "",
+            "moderation_queue_enabled": false,
+            "notices": [],
+            "policy_hash": null,
+            "policy_source_path": null,
+            "safety_guardrails": [],
+            "user_reporting_path": ""
+          }
+        },
         "characters": {
           "items": {
             "$ref": "#/$defs/Character"
@@ -1427,6 +1934,13 @@
         "scenes"
       ],
       "type": "object"
+    },
+    "ProjectTemplateId": {
+      "enum": [
+        "historical_crisis",
+        "dynasty_embers"
+      ],
+      "type": "string"
     },
     "ReferenceAnalysis": {
       "additionalProperties": false,
@@ -1544,6 +2058,46 @@
       ],
       "type": "object"
     },
+    "ReproducibilityMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "model_version": {
+          "type": "string"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "provider_config_hash": {
+          "type": "string"
+        },
+        "run_seed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "snapshot_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "run_seed",
+        "prompt_version",
+        "model_version",
+        "provider_config_hash"
+      ],
+      "type": "object"
+    },
     "ResourceDefinition": {
       "properties": {
         "initial": {
@@ -1641,6 +2195,21 @@
         "action_type",
         "conditions",
         "effects"
+      ],
+      "type": "object"
+    },
+    "RulesEditDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "rules"
       ],
       "type": "object"
     },
@@ -1745,6 +2314,17 @@
         "project_version": {
           "type": "string"
         },
+        "reproducibility": {
+          "$ref": "#/$defs/ReproducibilityMetadata",
+          "default": {
+            "model_version": "plotforge-local-mock-model-v1",
+            "prompt_version": "plotforge-local-mock-prompt-v1",
+            "provider_config_hash": "sha256:plotforge-local-mock-provider-config-v1",
+            "run_seed": 0,
+            "snapshot_id": null,
+            "trace_id": null
+          }
+        },
         "scenes": {
           "items": {
             "$ref": "#/$defs/Scene"
@@ -1839,6 +2419,17 @@
             "string",
             "null"
           ]
+        },
+        "reproducibility": {
+          "$ref": "#/$defs/ReproducibilityMetadata",
+          "default": {
+            "model_version": "plotforge-local-mock-model-v1",
+            "prompt_version": "plotforge-local-mock-prompt-v1",
+            "provider_config_hash": "sha256:plotforge-local-mock-provider-config-v1",
+            "run_seed": 0,
+            "snapshot_id": null,
+            "trace_id": null
+          }
         },
         "rule_result": {
           "anyOf": [
@@ -1948,6 +2539,13 @@
         "dramatic_purpose": {
           "type": "string"
         },
+        "entry_beat_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "hook": {
           "type": "string"
         },
@@ -2042,6 +2640,29 @@
         "error"
       ],
       "type": "string"
+    },
+    "StateVariablesEditDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "initial_story_state": {
+          "$ref": "#/$defs/StoryState"
+        },
+        "initial_world_state": {
+          "$ref": "#/$defs/WorldState"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceDefinition"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "resources",
+        "initial_world_state",
+        "initial_story_state"
+      ],
+      "type": "object"
     },
     "SteamSubmissionKitDraft": {
       "additionalProperties": false,
@@ -2257,6 +2878,100 @@
       ],
       "type": "object"
     },
+    "StoryCraftEditDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "story_bible_markdown": {
+          "type": "string"
+        },
+        "story_craft": {
+          "$ref": "#/$defs/StoryCraftState"
+        },
+        "style_guide_markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "story_bible_markdown",
+        "style_guide_markdown",
+        "story_craft"
+      ],
+      "type": "object"
+    },
+    "StoryCraftGenerationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/StoryCraftEditDocument"
+        },
+        "evidence": {
+          "$ref": "#/$defs/GenerationEvidence"
+        }
+      },
+      "required": [
+        "document",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "StoryCraftGenerationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "canon_markdown": {
+          "type": "string"
+        },
+        "characters": {
+          "items": {
+            "$ref": "#/$defs/Character"
+          },
+          "type": "array"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "document": {
+          "$ref": "#/$defs/StoryCraftEditDocument"
+        },
+        "forbidden_facts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "world_bible_markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "concept",
+        "world_bible_markdown",
+        "canon_markdown",
+        "forbidden_facts",
+        "document",
+        "characters"
+      ],
+      "type": "object"
+    },
+    "StoryCraftPlanProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "story_bible_markdown": {
+          "type": "string"
+        },
+        "story_craft": {
+          "$ref": "#/$defs/StoryCraftState"
+        },
+        "style_guide_markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "story_bible_markdown",
+        "style_guide_markdown",
+        "story_craft"
+      ],
+      "type": "object"
+    },
     "StoryCraftState": {
       "properties": {
         "active_promises": {
@@ -2378,6 +3093,13 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "current_beat_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "current_scene_key": {
           "type": "string"
@@ -2531,6 +3253,84 @@
       ],
       "type": "object"
     },
+    "WorldEditDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "canon_markdown": {
+          "type": "string"
+        },
+        "forbidden_facts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "world_bible_markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "world_bible_markdown",
+        "canon_markdown",
+        "forbidden_facts"
+      ],
+      "type": "object"
+    },
+    "WorldExpansionProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "canon_markdown": {
+          "type": "string"
+        },
+        "forbidden_facts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "world_bible_markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "world_bible_markdown",
+        "canon_markdown",
+        "forbidden_facts"
+      ],
+      "type": "object"
+    },
+    "WorldGenerationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/WorldEditDocument"
+        },
+        "evidence": {
+          "$ref": "#/$defs/GenerationEvidence"
+        }
+      },
+      "required": [
+        "document",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "WorldGenerationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/WorldEditDocument"
+        },
+        "expansion_goal": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expansion_goal",
+        "document"
+      ],
+      "type": "object"
+    },
     "WorldState": {
       "properties": {
         "flags": {
@@ -2563,8 +3363,14 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
+    "agent_output_envelope": {
+      "$ref": "#/$defs/AgentOutputEnvelope"
+    },
     "agent_output_proposal": {
       "$ref": "#/$defs/AgentOutputProposal"
+    },
+    "ai_safety_policy": {
+      "$ref": "#/$defs/AiSafetyPolicy"
     },
     "ai_usage_manifest": {
       "$ref": "#/$defs/AiUsageManifest"
@@ -2572,11 +3378,32 @@
     "asset_record": {
       "$ref": "#/$defs/AssetRecord"
     },
+    "character_edit_document": {
+      "$ref": "#/$defs/CharacterEditDocument"
+    },
+    "character_generation_report": {
+      "$ref": "#/$defs/CharacterGenerationReport"
+    },
+    "character_generation_request": {
+      "$ref": "#/$defs/CharacterGenerationRequest"
+    },
+    "character_portrait_request": {
+      "$ref": "#/$defs/CharacterPortraitRequest"
+    },
     "export_manifest": {
       "$ref": "#/$defs/ExportManifest"
     },
+    "generation_evidence": {
+      "$ref": "#/$defs/GenerationEvidence"
+    },
     "job_record": {
       "$ref": "#/$defs/JobRecord"
+    },
+    "project_creation_report": {
+      "$ref": "#/$defs/ProjectCreationReport"
+    },
+    "project_creation_request": {
+      "$ref": "#/$defs/ProjectCreationRequest"
     },
     "project_data": {
       "$ref": "#/$defs/ProjectData"
@@ -2584,11 +3411,20 @@
     "reference_analysis": {
       "$ref": "#/$defs/ReferenceAnalysis"
     },
+    "reproducibility_metadata": {
+      "$ref": "#/$defs/ReproducibilityMetadata"
+    },
+    "rules_edit_document": {
+      "$ref": "#/$defs/RulesEditDocument"
+    },
     "runtime_snapshot": {
       "$ref": "#/$defs/RuntimeSnapshot"
     },
     "runtime_trace": {
       "$ref": "#/$defs/RuntimeTrace"
+    },
+    "state_variables_edit_document": {
+      "$ref": "#/$defs/StateVariablesEditDocument"
     },
     "steam_submission_kit_draft": {
       "$ref": "#/$defs/SteamSubmissionKitDraft"
@@ -2596,18 +3432,54 @@
     "steam_submission_kit_request": {
       "$ref": "#/$defs/SteamSubmissionKitRequest"
     },
+    "story_craft_edit_document": {
+      "$ref": "#/$defs/StoryCraftEditDocument"
+    },
+    "story_craft_generation_report": {
+      "$ref": "#/$defs/StoryCraftGenerationReport"
+    },
+    "story_craft_generation_request": {
+      "$ref": "#/$defs/StoryCraftGenerationRequest"
+    },
     "workshop_item_package": {
       "$ref": "#/$defs/WorkshopItemPackage"
+    },
+    "world_edit_document": {
+      "$ref": "#/$defs/WorldEditDocument"
+    },
+    "world_generation_report": {
+      "$ref": "#/$defs/WorldGenerationReport"
+    },
+    "world_generation_request": {
+      "$ref": "#/$defs/WorldGenerationRequest"
     }
   },
   "required": [
+    "project_creation_request",
+    "project_creation_report",
+    "world_edit_document",
+    "story_craft_edit_document",
+    "character_edit_document",
+    "state_variables_edit_document",
+    "rules_edit_document",
     "project_data",
     "runtime_trace",
     "runtime_snapshot",
     "job_record",
     "agent_output_proposal",
+    "agent_output_envelope",
+    "reproducibility_metadata",
+    "generation_evidence",
+    "world_generation_request",
+    "world_generation_report",
+    "story_craft_generation_request",
+    "story_craft_generation_report",
+    "character_generation_request",
+    "character_generation_report",
+    "character_portrait_request",
     "reference_analysis",
     "asset_record",
+    "ai_safety_policy",
     "ai_usage_manifest",
     "workshop_item_package",
     "steam_submission_kit_request",

@@ -1,10 +1,15 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use clap::{Args, Parser, Subcommand};
-use plotforge_export::export_static_web;
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use plotforge_export::{export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
-use plotforge_storage::{create_demo_project, load_project, validate_project, write_trace};
+use plotforge_schema::{ProjectCreationRequest, ProjectTemplateId};
+use plotforge_storage::{
+    create_demo_project, create_project_from_request, load_project, read_latest_runtime_snapshot,
+    read_runtime_snapshot, validate_project, validate_runtime_snapshot_id, write_runtime_snapshot,
+    write_trace,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "plotforge")]
@@ -38,6 +43,7 @@ struct NewCommand {
 #[derive(Debug, Subcommand)]
 enum NewSubcommand {
     Demo(NewDemoArgs),
+    Project(NewProjectArgs),
 }
 
 #[derive(Debug, Args)]
@@ -48,14 +54,53 @@ struct NewDemoArgs {
     force: bool,
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+enum ProjectTemplateArg {
+    HistoricalCrisis,
+    DynastyEmbers,
+}
+
+impl From<ProjectTemplateArg> for ProjectTemplateId {
+    fn from(value: ProjectTemplateArg) -> Self {
+        match value {
+            ProjectTemplateArg::HistoricalCrisis => ProjectTemplateId::HistoricalCrisis,
+            ProjectTemplateArg::DynastyEmbers => ProjectTemplateId::DynastyEmbers,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+struct NewProjectArgs {
+    #[arg(long, default_value = "plotforge-project")]
+    path: PathBuf,
+    #[arg(long, value_enum, default_value_t = ProjectTemplateArg::HistoricalCrisis)]
+    template: ProjectTemplateArg,
+    #[arg(long)]
+    concept: String,
+    #[arg(long)]
+    visual_style: String,
+    #[arg(long)]
+    voice_enabled: bool,
+    #[arg(long)]
+    initial_scene: String,
+    #[arg(long)]
+    force: bool,
+}
+
 #[derive(Debug, Args)]
 struct PlayArgs {
     #[arg(default_value = ".")]
     path: PathBuf,
     #[arg(long)]
     once: bool,
-    #[arg(long, default_value = "朕决定加征辽饷，同时严查贪墨官员。")]
+    #[arg(long, default_value = "朕决定加征辽饷")]
     input: String,
+    #[arg(long)]
+    save_id: Option<String>,
+    #[arg(long)]
+    restore_id: Option<String>,
+    #[arg(long)]
+    restore_latest: bool,
 }
 
 #[derive(Debug, Args)]
@@ -91,6 +136,8 @@ struct ExportStaticArgs {
     path: PathBuf,
     #[arg(long, default_value = "exports/static")]
     out: PathBuf,
+    #[arg(long)]
+    zip: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -110,6 +157,23 @@ fn handle_new(command: NewCommand) -> Result<()> {
             let project = create_demo_project(&args.path, args.force)
                 .with_context(|| format!("create demo project at {}", args.path.display()))?;
             println!("created {} at {}", project.game.title, args.path.display());
+        }
+        NewSubcommand::Project(args) => {
+            let request = ProjectCreationRequest {
+                template: args.template.into(),
+                concept: args.concept,
+                visual_style: args.visual_style,
+                voice_enabled: args.voice_enabled,
+                initial_scene_request: args.initial_scene,
+            };
+            let report = create_project_from_request(&args.path, request, args.force)
+                .with_context(|| format!("create project at {}", args.path.display()))?;
+            println!(
+                "created project {} at {} ({} files)",
+                report.project.game.title,
+                args.path.display(),
+                report.files_created.len()
+            );
         }
     }
     Ok(())
@@ -132,15 +196,48 @@ fn handle_play(args: PlayArgs) -> Result<()> {
     if !args.once {
         anyhow::bail!("interactive play is not implemented in the MVP; pass --once");
     }
+    if let Some(save_id) = args.save_id.as_deref() {
+        validate_runtime_snapshot_id(save_id).context("validate runtime snapshot id")?;
+    }
 
     let project = load_project(&args.path)
         .with_context(|| format!("load project at {}", args.path.display()))?;
-    let mut session = RuntimeSession::new(project);
+    let mut session = if args.restore_latest {
+        let snapshot = read_latest_runtime_snapshot(&args.path).with_context(|| {
+            format!("read latest runtime snapshot under {}", args.path.display())
+        })?;
+        RuntimeSession::from_snapshot(project, snapshot)
+            .context("restore latest runtime snapshot")?
+    } else if let Some(snapshot_id) = args.restore_id.as_ref() {
+        let snapshot = read_runtime_snapshot(&args.path, snapshot_id).with_context(|| {
+            format!(
+                "read runtime snapshot `{snapshot_id}` under {}",
+                args.path.display()
+            )
+        })?;
+        RuntimeSession::from_snapshot(project, snapshot)
+            .with_context(|| format!("restore runtime snapshot `{snapshot_id}`"))?
+    } else {
+        RuntimeSession::new(project)
+    };
     let step = session
         .play_once(&args.input)
         .context("run one deterministic play step")?;
     let trace_path = write_trace(&args.path, &step.trace)
         .with_context(|| format!("write trace under {}", args.path.display()))?;
+    let snapshot_path = if let Some(save_id) = args.save_id.as_ref() {
+        let snapshot = session.snapshot(save_id, step.trace.timestamp_ms);
+        Some(
+            write_runtime_snapshot(&args.path, &snapshot).with_context(|| {
+                format!(
+                    "write runtime snapshot `{save_id}` under {}",
+                    args.path.display()
+                )
+            })?,
+        )
+    } else {
+        None
+    };
 
     println!("scene: {} - {}", step.scene.key, step.scene.title);
     println!(
@@ -152,6 +249,9 @@ fn handle_play(args: PlayArgs) -> Result<()> {
         println!("  {line}");
     }
     println!("trace: {}", trace_path.display());
+    if let Some(snapshot_path) = snapshot_path {
+        println!("snapshot: {}", snapshot_path.display());
+    }
     Ok(())
 }
 
@@ -163,6 +263,29 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
             let trace: plotforge_schema::RuntimeTrace =
                 serde_json::from_str(&text).context("parse trace json")?;
             println!("trace: {}", trace.id);
+            println!("run seed: {}", trace.reproducibility.run_seed);
+            println!("prompt version: {}", trace.reproducibility.prompt_version);
+            println!("model version: {}", trace.reproducibility.model_version);
+            println!(
+                "provider config hash: {}",
+                trace.reproducibility.provider_config_hash
+            );
+            println!(
+                "trace evidence id: {}",
+                trace.reproducibility.trace_id.as_deref().unwrap_or("none")
+            );
+            println!(
+                "snapshot evidence id: {}",
+                trace
+                    .reproducibility
+                    .snapshot_id
+                    .as_deref()
+                    .unwrap_or("none")
+            );
+            println!(
+                "player input: {}",
+                trace.player_input.as_deref().unwrap_or("none")
+            );
             println!(
                 "selected: {}",
                 trace.selected_choice.as_deref().unwrap_or("none")
@@ -172,12 +295,32 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
                     "intent: {}",
                     intent.action_type.as_deref().unwrap_or("unsupported")
                 );
+                println!("intent status: {:?}", intent.status);
+                println!(
+                    "intent choice: {}",
+                    intent.choice_id.as_deref().unwrap_or("none")
+                );
+                println!(
+                    "intent action: {}",
+                    intent.action_type.as_deref().unwrap_or("unsupported")
+                );
+                println!("intent matched terms: {}", intent.matched_terms.join(", "));
+                println!(
+                    "intent reason: {}",
+                    intent.reason.as_deref().unwrap_or("none")
+                );
             }
             if let Some(rule_result) = trace.rule_result.as_ref() {
                 println!(
                     "rule: {} (delta empty: {}, committed: {})",
                     rule_result.action_type, rule_result.delta_empty, rule_result.state_committed
                 );
+                println!("rule action: {}", rule_result.action_type);
+                println!("rule delta empty: {}", rule_result.delta_empty);
+                println!("rule committed: {}", rule_result.state_committed);
+                if let Some(error) = rule_result.error.as_ref() {
+                    println!("rule error: {} - {}", error.code, error.message);
+                }
             }
             if let Some(planner_result) = trace.planner_result.as_ref() {
                 println!(
@@ -185,19 +328,74 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
                     planner_result.scene_key.as_deref().unwrap_or("none"),
                     planner_result.fallback_used
                 );
+                println!(
+                    "planner requested: {}",
+                    planner_result.requested_action_type
+                );
+                println!(
+                    "planner scene: {}",
+                    planner_result.scene_key.as_deref().unwrap_or("none")
+                );
+                println!("planner fallback: {}", planner_result.fallback_used);
+                if let Some(error) = planner_result.error.as_ref() {
+                    println!("planner error: {} - {}", error.code, error.message);
+                }
             }
             println!("fallback: {}", trace.fallback_used);
+            println!(
+                "story before: scene={} beat={} turn={}",
+                trace.story_state_before.current_scene_key,
+                trace
+                    .story_state_before
+                    .current_beat_id
+                    .as_deref()
+                    .unwrap_or("none"),
+                trace.story_state_before.turn
+            );
+            println!(
+                "story after: scene={} beat={} turn={}",
+                trace.story_state_after.current_scene_key,
+                trace
+                    .story_state_after
+                    .current_beat_id
+                    .as_deref()
+                    .unwrap_or("none"),
+                trace.story_state_after.turn
+            );
             println!("world delta:");
             for line in summarize_delta(&trace.world_state_delta) {
                 println!("  {line}");
             }
             println!("diagnostics: {}", trace.diagnostics.len());
+            for diagnostic in &trace.diagnostics {
+                println!(
+                    "diagnostic: {:?} {:?} - {}",
+                    diagnostic.stage, diagnostic.status, diagnostic.message
+                );
+            }
+            println!("media references: {}", trace.media_references.len());
+            for media in &trace.media_references {
+                println!(
+                    "media: {:?} {} {} -> {}",
+                    media.reference.reference_kind,
+                    media.reference.reference_id,
+                    media.reference.slot,
+                    media.project_path
+                );
+            }
             for error in &trace.errors {
                 println!("error: {} - {}", error.code, error.message);
             }
             if let Some(review) = trace.narrative_review.as_ref() {
+                println!("review scene: {}", review.scene_key);
                 println!("review score: {}", review.score);
                 println!("review issues: {}", review.issues.len());
+                for issue in &review.issues {
+                    println!(
+                        "review issue: {:?} {:?} - {}",
+                        issue.kind, issue.severity, issue.message
+                    );
+                }
             }
         }
     }
@@ -207,13 +405,31 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
 fn handle_export(command: ExportCommand) -> Result<()> {
     match command.command {
         ExportSubcommand::Static(args) => {
-            let report = export_static_web(&args.path, &args.out).with_context(|| {
-                format!(
-                    "export static web from {} to {}",
-                    args.path.display(),
-                    args.out.display()
-                )
-            })?;
+            let report = if let Some(zip_path) = args.zip.as_ref() {
+                let zip_report = export_static_web_zip(&args.path, &args.out, zip_path)
+                    .with_context(|| {
+                        format!(
+                            "export static web zip from {} to {} and {}",
+                            args.path.display(),
+                            args.out.display(),
+                            zip_path.display()
+                        )
+                    })?;
+                println!(
+                    "exported static zip to {} ({} files)",
+                    zip_report.archive_path.display(),
+                    zip_report.archived_files.len()
+                );
+                zip_report.source_report
+            } else {
+                export_static_web(&args.path, &args.out).with_context(|| {
+                    format!(
+                        "export static web from {} to {}",
+                        args.path.display(),
+                        args.out.display()
+                    )
+                })?
+            };
             println!(
                 "exported static player to {} ({} files)",
                 report.output_dir.display(),

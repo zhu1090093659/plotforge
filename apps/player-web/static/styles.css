@@ -75,10 +75,29 @@ button {
   padding: clamp(24px, 6vw, 72px);
 }
 
+.pf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+}
+
+.pf-kicker,
+.pf-progress {
+  margin: 0;
+}
+
 .pf-kicker {
-  margin: 0 0 14px;
   color: #d7b46a;
   font-weight: 700;
+}
+
+.pf-progress {
+  color: #aebdaf;
+  font-size: 0.88rem;
+  font-weight: 650;
 }
 
 .pf-script h1 {
@@ -95,6 +114,20 @@ button {
   font-size: 1.05rem;
   line-height: 1.65;
   overflow-wrap: anywhere;
+}
+
+.pf-outcome {
+  min-height: 0;
+  margin: 18px 0 0;
+  color: #d7b46a;
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.pf-outcome:empty {
+  display: none;
 }
 
 .pf-beat {
@@ -156,7 +189,15 @@ button {
     padding: 22px 18px 32px;
   }
 
+  .pf-meta {
+    align-items: flex-start;
+  }
+
   .pf-script h1 {
     font-size: 2.25rem;
+  }
+
+  .pf-choice {
+    min-height: 56px;
   }
 }

@@ -67,6 +67,8 @@ def main() -> int:
         assert "PlotForge Player" in index
         assert 'src="./player.js"' in index
         assert 'href="./styles.css"' in index
+        assert 'data-field="progress"' in index
+        assert 'data-field="outcome"' in index
         assert "Dynasty Embers" in game
         assert "static-web" in ai_usage_text
         assert "bootPlayer" in player
@@ -131,6 +133,9 @@ def assert_no_secret_markers(paths: list[pathlib.Path]) -> None:
         "api_key",
         "secret_key",
         "sk-",
+        "authorization:",
+        "bearer",
+        "token=",
         "raw_response",
         "request_id",
     ]

@@ -7,8 +7,9 @@ use plotforge_agent::{
 use plotforge_job::JobClock;
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
 use plotforge_schema::{
-    ActionIntentStatus, AgentRole, Beat, Choice, Effect, NarrativeReview, REDACTED_TRACE_SECRET,
-    Rule, RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
+    ActionIntentStatus, AgentRole, Beat, BeatNext, Choice, Effect, NarrativeReview,
+    REDACTED_TRACE_SECRET, ReproducibilityMetadata, Rule, RuntimeTraceStage,
+    RuntimeTraceStageStatus, Scene,
 };
 use plotforge_storage::dynasty_embers_project;
 
@@ -25,24 +26,43 @@ impl JobClock for FakeClock {
 
 #[test]
 fn continue_action_does_not_advance_scene_or_turn() {
-    let mut project = dynasty_embers_project();
-    project.scenes[0].beats[0]
-        .choices
-        .push(plotforge_schema::Choice {
-            id: "continue-council".into(),
-            label: "Hear one more minister".into(),
-            action_type: "continue".into(),
-            dramatic_purpose: "Gather more pressure.".into(),
-            change_scene: false,
-        });
-    let mut session = RuntimeSession::new(project);
+    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), ErrorPlanner);
 
     let step = session.play_once("听一位大臣继续陈情").expect("play");
 
     assert_eq!(step.scene.key, "court-crisis-001");
+    assert_eq!(
+        step.scene.background_asset,
+        "assets/generated/court-crisis-001.png"
+    );
+    assert_eq!(
+        step.trace.story_state_before.current_beat_id.as_deref(),
+        Some("court-crisis-001-beat-001")
+    );
+    assert_eq!(
+        step.trace.story_state_after.current_beat_id.as_deref(),
+        Some("court-crisis-001-beat-002")
+    );
     assert_eq!(step.trace.story_state_after.turn, 0);
+    assert!(step.trace.story_state_after.completed_scene_keys.is_empty());
     assert!(step.trace.world_state_delta.is_empty());
-    assert_eq!(step.trace.story_state_before, step.trace.story_state_after);
+    assert_eq!(session.story_state(), &step.trace.story_state_after);
+    assert!(step.trace.narrative_review.is_none());
+    let planner_result = step.trace.planner_result.as_ref().expect("planner result");
+    assert_eq!(planner_result.requested_action_type, "continue");
+    assert_eq!(planner_result.scene_key, None);
+    assert!(!planner_result.fallback_used);
+    assert!(planner_result.error.is_none());
+    assert_eq!(step.trace.media_references.len(), 1);
+    assert_eq!(
+        step.trace.media_references[0].project_path,
+        "assets/generated/court-crisis-001.png"
+    );
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::PlanScene
+            && diagnostic.status == RuntimeTraceStageStatus::Completed
+            && diagnostic.message.contains("planner skipped")
+    }));
 }
 
 #[test]
@@ -110,6 +130,68 @@ fn missing_current_scene_is_explicit_error() {
 }
 
 #[test]
+fn missing_current_beat_is_explicit_error_without_commit() {
+    let mut project = dynasty_embers_project();
+    project.story_state.current_beat_id = Some("missing-beat".into());
+    let mut session = RuntimeSession::new(project);
+    let story_before = session.story_state().clone();
+    let world_before = session.world_state().clone();
+
+    let error = session
+        .play_once("朕决定加征辽饷")
+        .expect_err("missing current beat");
+
+    assert!(matches!(
+        error,
+        RuntimeEngineError::MissingBeat { beat_id, .. } if beat_id == "missing-beat"
+    ));
+    assert_eq!(session.story_state(), &story_before);
+    assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
+fn missing_entry_beat_is_explicit_error_without_first_beat_fallback() {
+    let mut project = dynasty_embers_project();
+    project.story_state.current_beat_id = None;
+    project.scenes[0].entry_beat_id = None;
+    let mut session = RuntimeSession::new(project);
+    let story_before = session.story_state().clone();
+    let world_before = session.world_state().clone();
+
+    let error = session
+        .play_once("朕决定加征辽饷")
+        .expect_err("missing entry beat");
+
+    assert!(matches!(
+        error,
+        RuntimeEngineError::MissingEntryBeat(scene_key) if scene_key == "court-crisis-001"
+    ));
+    assert_eq!(session.story_state(), &story_before);
+    assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
+fn missing_same_scene_beat_transition_is_explicit_error_without_commit() {
+    let mut project = dynasty_embers_project();
+    project.scenes[0].beats[0].next = BeatNext::None;
+    let mut session = RuntimeSession::with_scene_planner(project, ErrorPlanner);
+    let story_before = session.story_state().clone();
+    let world_before = session.world_state().clone();
+
+    let error = session
+        .play_once("听一位大臣继续陈情")
+        .expect_err("missing same-scene transition");
+
+    assert!(matches!(
+        error,
+        RuntimeEngineError::MissingBeatTransition { beat_id, .. }
+            if beat_id == "court-crisis-001-beat-001"
+    ));
+    assert_eq!(session.story_state(), &story_before);
+    assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
 fn unsupported_input_does_not_commit_state() {
     let mut session = RuntimeSession::new(dynasty_embers_project());
     let story_before = session.story_state().clone();
@@ -125,13 +207,36 @@ fn unsupported_input_does_not_commit_state() {
 }
 
 #[test]
+fn ambiguous_input_does_not_commit_state() {
+    let mut session = RuntimeSession::new(dynasty_embers_project());
+    let story_before = session.story_state().clone();
+    let world_before = session.world_state().clone();
+
+    let error = session
+        .play_once("朕决定加征辽饷，同时严查贪墨官员。")
+        .expect_err("ambiguous input");
+
+    assert!(matches!(
+        error,
+        RuntimeEngineError::AmbiguousAction { choice_ids, .. }
+            if choice_ids == vec!["raise-tax".to_string(), "inspect-corruption".to_string()]
+    ));
+    assert_eq!(session.story_state(), &story_before);
+    assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
 fn action_intent_is_explicit_for_known_and_unknown_inputs() {
-    let tax = interpret_action("朕决定加征辽饷");
+    let project = dynasty_embers_project();
+    let choices = &project.scenes[0].beats[0].choices;
+
+    let tax = interpret_action("朕决定加征辽饷", choices).expect("tax intent");
     assert_eq!(tax.status, ActionIntentStatus::Supported);
+    assert_eq!(tax.choice_id.as_deref(), Some("raise-tax"));
     assert_eq!(tax.action_type(), Some("raise_tax"));
     assert!(tax.matched_terms.contains(&"加征".into()));
 
-    let unknown = interpret_action("朕今日只想题诗赏月");
+    let unknown = interpret_action("朕今日只想题诗赏月", choices).expect("unsupported intent");
     assert_eq!(unknown.status, ActionIntentStatus::Unsupported);
     assert_eq!(unknown.action_type(), None);
     assert!(unknown.reason.is_some());
@@ -189,6 +294,26 @@ fn injected_planner_error_does_not_commit_state() {
         .expect_err("planner error");
 
     assert!(matches!(error, RuntimeEngineError::Planner(_)));
+    assert_eq!(session.story_state(), &story_before);
+    assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
+fn planner_scene_with_missing_entry_beat_is_explicit_error_without_commit() {
+    let mut session =
+        RuntimeSession::with_scene_planner(dynasty_embers_project(), MissingEntryBeatPlanner);
+    let story_before = session.story_state().clone();
+    let world_before = session.world_state().clone();
+
+    let error = session
+        .play_once("朕决定加征辽饷")
+        .expect_err("planner scene missing entry beat");
+
+    assert!(matches!(
+        error,
+        RuntimeEngineError::MissingBeat { scene_key, beat_id }
+            if scene_key == "invalid-entry-scene" && beat_id == "missing-entry-beat"
+    ));
     assert_eq!(session.story_state(), &story_before);
     assert_eq!(session.world_state(), &world_before);
 }
@@ -393,6 +518,8 @@ impl ScenePlanner for FakePlanner {
         request: ScenePlanRequest<'_>,
     ) -> Result<ScenePlan, ScenePlannerError> {
         let scene_key = format!("injected-scene-{:03}", request.story_state.turn + 1);
+        let first_beat_id = format!("{scene_key}-beat-001");
+        let second_beat_id = format!("{scene_key}-beat-002");
         let scene = Scene {
             key: scene_key.clone(),
             title: "Injected Planner Scene".into(),
@@ -405,17 +532,80 @@ impl ScenePlanner for FakePlanner {
                 "tax-disorder".into(),
                 "Injected planner advanced the thread.".into(),
             )]),
-            beats: vec![Beat {
-                id: format!("{scene_key}-beat-001"),
-                text: format!("Injected response to {}", request.player_input),
-                choices: vec![Choice {
-                    id: "continue-council".into(),
-                    label: "Continue".into(),
-                    action_type: "continue".into(),
-                    dramatic_purpose: "Continue after injected planner.".into(),
-                    change_scene: false,
-                }],
-            }],
+            entry_beat_id: Some(first_beat_id.clone()),
+            beats: vec![
+                Beat {
+                    id: first_beat_id,
+                    text: format!("Injected response to {}", request.player_input),
+                    choices: vec![
+                        Choice {
+                            id: "raise-tax".into(),
+                            label: "Raise taxes".into(),
+                            action_type: "raise_tax".into(),
+                            input_terms: choice_input_terms("raise_tax"),
+                            dramatic_purpose: "Advance after injected tax pressure.".into(),
+                            change_scene: true,
+                        },
+                        Choice {
+                            id: "inspect-corruption".into(),
+                            label: "Inspect corruption".into(),
+                            action_type: "inspect_corruption".into(),
+                            input_terms: choice_input_terms("inspect_corruption"),
+                            dramatic_purpose: "Advance after injected corruption pressure.".into(),
+                            change_scene: true,
+                        },
+                        Choice {
+                            id: "pay-army".into(),
+                            label: "Pay the army".into(),
+                            action_type: "pay_army".into(),
+                            input_terms: choice_input_terms("pay_army"),
+                            dramatic_purpose: "Advance after injected army pressure.".into(),
+                            change_scene: true,
+                        },
+                        Choice {
+                            id: "continue-council".into(),
+                            label: "Continue".into(),
+                            action_type: "continue".into(),
+                            input_terms: choice_input_terms("continue"),
+                            dramatic_purpose: "Continue after injected planner.".into(),
+                            change_scene: false,
+                        },
+                    ],
+                    next: BeatNext::Beat(second_beat_id.clone()),
+                },
+                Beat {
+                    id: second_beat_id,
+                    text: "The injected planner leaves the council with a sharper second beat."
+                        .into(),
+                    choices: vec![
+                        Choice {
+                            id: "raise-tax".into(),
+                            label: "Raise taxes".into(),
+                            action_type: "raise_tax".into(),
+                            input_terms: choice_input_terms("raise_tax"),
+                            dramatic_purpose: "Advance after injected tax pressure.".into(),
+                            change_scene: true,
+                        },
+                        Choice {
+                            id: "inspect-corruption".into(),
+                            label: "Inspect corruption".into(),
+                            action_type: "inspect_corruption".into(),
+                            input_terms: choice_input_terms("inspect_corruption"),
+                            dramatic_purpose: "Advance after injected corruption pressure.".into(),
+                            change_scene: true,
+                        },
+                        Choice {
+                            id: "pay-army".into(),
+                            label: "Pay the army".into(),
+                            action_type: "pay_army".into(),
+                            input_terms: choice_input_terms("pay_army"),
+                            dramatic_purpose: "Advance after injected army pressure.".into(),
+                            change_scene: true,
+                        },
+                    ],
+                    next: BeatNext::Scene,
+                },
+            ],
         };
         let review = NarrativeReview {
             scene_key,
@@ -429,12 +619,24 @@ impl ScenePlanner for FakePlanner {
             issues: Vec::new(),
         };
         Ok(ScenePlan {
+            reproducibility: ReproducibilityMetadata::local_mock(request.project.game.run_seed),
             scene,
             review,
             fallback_used: self.fallback_used,
             error: None,
         })
     }
+}
+
+fn choice_input_terms(action_type: &str) -> Vec<String> {
+    let terms: &[&str] = match action_type {
+        "continue" => &["continue", "hear", "minister", "听", "继续", "陈情"],
+        "raise_tax" => &["raise", "tax", "levy", "加征", "辽饷"],
+        "inspect_corruption" => &["inspect", "corruption", "严查", "贪墨", "查"],
+        "pay_army" => &["pay", "army", "军饷", "拨", "内帑", "边军"],
+        _ => &[],
+    };
+    terms.iter().map(|term| (*term).to_string()).collect()
 }
 
 #[derive(Clone, Debug)]
@@ -449,5 +651,52 @@ impl ScenePlanner for ErrorPlanner {
             "fake_planner",
             "planner failed before scene proposal",
         ))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct MissingEntryBeatPlanner;
+
+impl ScenePlanner for MissingEntryBeatPlanner {
+    fn plan_next_scene(
+        &self,
+        request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
+        let scene_key = "invalid-entry-scene".to_string();
+        let scene = Scene {
+            key: scene_key.clone(),
+            title: "Invalid Entry Scene".into(),
+            location: "Test Court".into(),
+            dramatic_purpose: "Prove invalid planner beat graphs fail before commit.".into(),
+            hook: "The scene points at a missing entry beat.".into(),
+            background_asset: "assets/generated/invalid-entry-scene.png".into(),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::new(),
+            entry_beat_id: Some("missing-entry-beat".into()),
+            beats: vec![Beat {
+                id: "valid-but-not-entry".into(),
+                text: "This beat exists but is not the declared entry beat.".into(),
+                choices: Vec::new(),
+                next: BeatNext::End,
+            }],
+        };
+        let review = NarrativeReview {
+            scene_key,
+            score: 100,
+            hook_score: 100,
+            pacing_score: 100,
+            character_consistency_score: 100,
+            payoff_score: 100,
+            choice_meaningfulness_score: 100,
+            ai_slop_risk: 0,
+            issues: Vec::new(),
+        };
+        Ok(ScenePlan {
+            reproducibility: ReproducibilityMetadata::local_mock(request.project.game.run_seed),
+            scene,
+            review,
+            fallback_used: false,
+            error: None,
+        })
     }
 }

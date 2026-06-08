@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fs, io,
     path::{Component, Path, PathBuf},
 };
 
@@ -8,7 +8,7 @@ use plotforge_media::{AssetRegistry, MediaError};
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiProviderSummary, AiUsageContentKind, AiUsageDisclosure,
     AiUsageManifest, AiUsageSourceKind, AssetKind, AssetRecord, AssetSourceKind, ExportManifest,
-    ExportProfile,
+    ExportProfile, contains_secret_marker_text,
 };
 use plotforge_storage::{StorageError, load_project};
 use thiserror::Error;
@@ -58,6 +58,21 @@ pub enum ExportError {
     DisallowedPackageFile(PathBuf),
     #[error("static export package is missing an expected file: {0}")]
     MissingPackageFile(PathBuf),
+    #[error(
+        "static zip archive path must not be inside the export directory: {archive} inside {output_dir}"
+    )]
+    ArchiveInsideOutputDir {
+        archive: PathBuf,
+        output_dir: PathBuf,
+    },
+    #[error("static zip entry path is not package-safe: {0}")]
+    UnsafeZipPath(PathBuf),
+    #[error("zip error at {path}: {source}")]
+    Zip {
+        path: PathBuf,
+        #[source]
+        source: zip::result::ZipError,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -65,6 +80,13 @@ pub struct ExportReport {
     pub output_dir: PathBuf,
     pub files_written: Vec<PathBuf>,
     pub audit: ExportPackageAudit,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExportZipReport {
+    pub archive_path: PathBuf,
+    pub source_report: ExportReport,
+    pub archived_files: Vec<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,7 +130,7 @@ pub fn export_static_web(
         .collect::<BTreeMap<_, _>>();
     let allowed_files = allowed_export_files(&asset_paths);
     let profile = ExportProfile::static_web();
-    let ai_usage = ai_usage_manifest(&project.game, &profile, &asset_records);
+    let ai_usage = ai_usage_manifest(&project, &profile, &asset_records);
     let manifest = ExportManifest {
         game: project.game,
         entry_scene: project.story_state.current_scene_key,
@@ -154,6 +176,26 @@ pub fn export_static_web(
     })
 }
 
+pub fn export_static_web_zip(
+    project_path: impl AsRef<Path>,
+    output_dir: impl AsRef<Path>,
+    archive_path: impl AsRef<Path>,
+) -> Result<ExportZipReport, ExportError> {
+    let output_dir = output_dir.as_ref();
+    let archive_path = archive_path.as_ref();
+    ensure_archive_outside_output_dir(output_dir, archive_path)?;
+
+    let source_report = export_static_web(project_path, output_dir)?;
+    let archived_files =
+        write_static_zip_archive(output_dir, archive_path, &source_report.audit.files_found)?;
+
+    Ok(ExportZipReport {
+        archive_path: archive_path.to_path_buf(),
+        source_report,
+        archived_files,
+    })
+}
+
 fn write_player_package(output_dir: &Path) -> Result<Vec<PathBuf>, ExportError> {
     PLAYER_PACKAGE_FILES
         .iter()
@@ -165,15 +207,76 @@ fn write_player_package(output_dir: &Path) -> Result<Vec<PathBuf>, ExportError> 
         .collect()
 }
 
+fn ensure_archive_outside_output_dir(
+    output_dir: &Path,
+    archive_path: &Path,
+) -> Result<(), ExportError> {
+    let output_dir = normalized_absolute_path(output_dir)?;
+    let archive_path = normalized_absolute_path(archive_path)?;
+    if archive_path.starts_with(&output_dir) {
+        return Err(ExportError::ArchiveInsideOutputDir {
+            archive: archive_path,
+            output_dir,
+        });
+    }
+    Ok(())
+}
+
+fn write_static_zip_archive(
+    output_dir: &Path,
+    archive_path: &Path,
+    files_found: &[PathBuf],
+) -> Result<Vec<PathBuf>, ExportError> {
+    if let Some(parent) = archive_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_io(parent)?;
+    }
+
+    let file = fs::File::create(archive_path).map_io(archive_path)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+    for relative_path in files_found {
+        let entry_name = zip_entry_name(relative_path)?;
+        zip.start_file(&entry_name, options).map_zip(archive_path)?;
+        let mut input = fs::File::open(output_dir.join(relative_path))
+            .map_io(output_dir.join(relative_path))?;
+        io::copy(&mut input, &mut zip).map_io(archive_path)?;
+    }
+
+    zip.finish().map_zip(archive_path)?;
+    Ok(files_found.to_vec())
+}
+
+fn zip_entry_name(path: &Path) -> Result<String, ExportError> {
+    if path.as_os_str().is_empty() || path.is_absolute() {
+        return Err(ExportError::UnsafeZipPath(path.to_path_buf()));
+    }
+
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let Component::Normal(value) = component else {
+            return Err(ExportError::UnsafeZipPath(path.to_path_buf()));
+        };
+        let Some(value) = value.to_str() else {
+            return Err(ExportError::UnsafeZipPath(path.to_path_buf()));
+        };
+        parts.push(value);
+    }
+    Ok(parts.join("/"))
+}
+
 fn ai_usage_manifest(
-    game: &plotforge_schema::GameProject,
+    project: &plotforge_schema::ProjectData,
     profile: &ExportProfile,
     asset_records: &[AssetRecord],
 ) -> AiUsageManifest {
     AiUsageManifest {
         manifest_version: "2026-06-08".into(),
-        project_id: game.id.clone(),
-        project_version: game.version.clone(),
+        project_id: project.game.id.clone(),
+        project_version: project.game.version.clone(),
         export_profile: profile.clone(),
         generated_by: "plotforge-export 0.1.0".into(),
         external_model_calls_during_export: false,
@@ -182,6 +285,7 @@ fn ai_usage_manifest(
         private_traces_included: false,
         disclosures: ai_usage_disclosures(asset_records),
         provider_summaries: ai_provider_summaries(asset_records),
+        ai_safety_policy: project.ai_safety_policy.clone(),
         notices: vec![
             "Static export packages project content and reachable assets only.".into(),
             "No provider credentials, raw provider responses, or private traces are included."
@@ -287,10 +391,8 @@ fn copy_referenced_asset(
 }
 
 fn assert_no_secret_markers(data: &str) -> Result<(), ExportError> {
-    for marker in ["OPENAI_API_KEY", "api_key", "secret_key", "sk-"] {
-        if data.contains(marker) {
-            return Err(ExportError::SecretMarker(marker.into()));
-        }
+    if contains_secret_marker_text(data) {
+        return Err(ExportError::SecretMarker("secret marker".into()));
     }
     Ok(())
 }
@@ -322,6 +424,27 @@ fn allowed_export_files(asset_paths: &[PathBuf]) -> BTreeSet<PathBuf> {
     );
     allowed_files.extend(asset_paths.iter().cloned());
     allowed_files
+}
+
+fn normalized_absolute_path(path: &Path) -> Result<PathBuf, ExportError> {
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().map_io(".")?.join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute_path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(value) => normalized.push(value),
+        }
+    }
+    Ok(normalized)
 }
 
 fn audit_export_package(
@@ -393,11 +516,24 @@ impl<T> IoContext<T> for Result<T, std::io::Error> {
     }
 }
 
+trait ZipContext<T> {
+    fn map_zip(self, path: impl AsRef<Path>) -> Result<T, ExportError>;
+}
+
+impl<T> ZipContext<T> for zip::result::ZipResult<T> {
+    fn map_zip(self, path: impl AsRef<Path>) -> Result<T, ExportError> {
+        self.map_err(|source| ExportError::Zip {
+            path: path.as_ref().to_path_buf(),
+            source,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use plotforge_storage::create_demo_project;
 
-    use super::export_static_web;
+    use super::{ExportError, export_static_web, export_static_web_zip};
 
     #[test]
     fn exports_static_player_files() {
@@ -422,5 +558,39 @@ mod tests {
         );
         assert!(report.files_written.len() >= 3);
         assert_eq!(report.audit.allowed_files, report.audit.files_found);
+    }
+
+    #[test]
+    fn exports_static_player_zip() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let project_path = temp.path().join("project");
+        let output_dir = temp.path().join("export");
+        let archive_path = temp.path().join("static.zip");
+        create_demo_project(&project_path, false).expect("create demo");
+
+        let report =
+            export_static_web_zip(&project_path, &output_dir, &archive_path).expect("export zip");
+
+        assert_eq!(report.archive_path, archive_path);
+        assert!(archive_path.is_file());
+        assert_eq!(
+            report.archived_files,
+            report.source_report.audit.allowed_files
+        );
+    }
+
+    #[test]
+    fn rejects_zip_archive_inside_export_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let project_path = temp.path().join("project");
+        let output_dir = temp.path().join("export");
+        let archive_path = output_dir.join("static.zip");
+        create_demo_project(&project_path, false).expect("create demo");
+
+        let error = export_static_web_zip(&project_path, &output_dir, &archive_path)
+            .expect_err("archive inside output dir");
+
+        assert!(matches!(error, ExportError::ArchiveInsideOutputDir { .. }));
+        assert!(!archive_path.exists());
     }
 }

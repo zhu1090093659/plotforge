@@ -1,7 +1,19 @@
 use plotforge_studio::{
-    PlayOnceReport, ProjectCheckReport, ProjectData, StaticExportReport, StudioCommandError,
-    SourceFileContent, SourceFileSummary,
+    AiSafetyPolicy, Character, CharacterEditDocument, CharacterGenerationReport, PlayOnceReport,
+    ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData,
+    ResourceDefinition, Rule, RulesEditDocument, StaticExportReport, StateVariablesEditDocument,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError, SourceFileContent,
+    SourceFileSummary, WorldEditDocument, WorldGenerationReport,
 };
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_project(
+    path: String,
+    request: ProjectCreationRequest,
+    force: bool,
+) -> Result<ProjectCreationReport, StudioCommandError> {
+    plotforge_studio::create_project(path, request, force)
+}
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn open_project(path: String) -> Result<ProjectData, StudioCommandError> {
@@ -14,6 +26,136 @@ pub fn check_project(path: String) -> Result<ProjectCheckReport, StudioCommandEr
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn read_world_edit_document(path: String) -> Result<WorldEditDocument, StudioCommandError> {
+    plotforge_studio::read_world_edit_document(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_world_edit_document(
+    path: String,
+    document: WorldEditDocument,
+) -> Result<WorldEditDocument, StudioCommandError> {
+    plotforge_studio::update_world_edit_document(path, document)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_story_craft_edit_document(
+    path: String,
+) -> Result<StoryCraftEditDocument, StudioCommandError> {
+    plotforge_studio::read_story_craft_edit_document(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_story_craft_edit_document(
+    path: String,
+    document: StoryCraftEditDocument,
+) -> Result<StoryCraftEditDocument, StudioCommandError> {
+    plotforge_studio::update_story_craft_edit_document(path, document)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_character_edit_document(
+    path: String,
+) -> Result<CharacterEditDocument, StudioCommandError> {
+    plotforge_studio::read_character_edit_document(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_character_edit_document(
+    path: String,
+    document: CharacterEditDocument,
+) -> Result<CharacterEditDocument, StudioCommandError> {
+    plotforge_studio::update_character_edit_document(path, document)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_character(
+    path: String,
+    character: Character,
+) -> Result<CharacterEditDocument, StudioCommandError> {
+    plotforge_studio::create_character(path, character)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_state_variables_edit_document(
+    path: String,
+) -> Result<StateVariablesEditDocument, StudioCommandError> {
+    plotforge_studio::read_state_variables_edit_document(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_state_variables_edit_document(
+    path: String,
+    document: StateVariablesEditDocument,
+) -> Result<StateVariablesEditDocument, StudioCommandError> {
+    plotforge_studio::update_state_variables_edit_document(path, document)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_resource(
+    path: String,
+    resource: ResourceDefinition,
+) -> Result<StateVariablesEditDocument, StudioCommandError> {
+    plotforge_studio::create_resource(path, resource)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_rules_edit_document(path: String) -> Result<RulesEditDocument, StudioCommandError> {
+    plotforge_studio::read_rules_edit_document(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_rules_edit_document(
+    path: String,
+    document: RulesEditDocument,
+) -> Result<RulesEditDocument, StudioCommandError> {
+    plotforge_studio::update_rules_edit_document(path, document)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_rule(path: String, rule: Rule) -> Result<RulesEditDocument, StudioCommandError> {
+    plotforge_studio::create_rule(path, rule)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn generate_world_expansion(
+    path: String,
+    expansion_goal: String,
+) -> Result<WorldGenerationReport, StudioCommandError> {
+    plotforge_studio::generate_world_expansion(path, &expansion_goal)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn generate_story_craft(
+    path: String,
+    concept: String,
+) -> Result<StoryCraftGenerationReport, StudioCommandError> {
+    plotforge_studio::generate_story_craft(path, &concept)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn generate_character(
+    path: String,
+    concept: String,
+    role_hint: String,
+) -> Result<CharacterGenerationReport, StudioCommandError> {
+    plotforge_studio::generate_character(path, &concept, &role_hint)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_ai_safety_policy(path: String) -> Result<AiSafetyPolicy, StudioCommandError> {
+    plotforge_studio::read_ai_safety_policy(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_ai_safety_policy(
+    path: String,
+    policy: AiSafetyPolicy,
+) -> Result<AiSafetyPolicy, StudioCommandError> {
+    plotforge_studio::update_ai_safety_policy(path, policy)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn play_once_project(
     path: String,
     player_input: String,
@@ -22,11 +164,53 @@ pub fn play_once_project(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn play_once_project_with_save(
+    path: String,
+    player_input: String,
+    save_id: String,
+) -> Result<PlayOnceReport, StudioCommandError> {
+    plotforge_studio::play_once_project_with_save(path, &player_input, Some(&save_id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn play_once_project_from_snapshot(
+    path: String,
+    player_input: String,
+    snapshot_id: String,
+    save_id: Option<String>,
+) -> Result<PlayOnceReport, StudioCommandError> {
+    plotforge_studio::play_once_project_from_snapshot(
+        path,
+        &player_input,
+        &snapshot_id,
+        save_id.as_deref(),
+    )
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn play_once_project_from_latest_snapshot(
+    path: String,
+    player_input: String,
+    save_id: Option<String>,
+) -> Result<PlayOnceReport, StudioCommandError> {
+    plotforge_studio::play_once_project_from_latest_snapshot(path, &player_input, save_id.as_deref())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn export_static_project(
     path: String,
     output_dir: String,
 ) -> Result<StaticExportReport, StudioCommandError> {
     plotforge_studio::export_static_project(path, output_dir)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn export_static_project_zip(
+    path: String,
+    output_dir: String,
+    archive_path: String,
+) -> Result<StaticExportReport, StudioCommandError> {
+    plotforge_studio::export_static_project_zip(path, output_dir, archive_path)
 }
 
 #[tauri::command(rename_all = "snake_case")]
