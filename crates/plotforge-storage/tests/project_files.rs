@@ -6,13 +6,14 @@ use std::{
 
 use plotforge_schema::{
     ActionIntent, ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
-    ReferenceStructureNote, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace,
+    ReferenceStructureNote, RuntimePlannerResult, RuntimeRuleResult, RuntimeSnapshot, RuntimeTrace,
     RuntimeTraceDiagnostic, RuntimeTraceStage, RuntimeTraceStageStatus, StoryState, WorldDelta,
     WorldState,
 };
 use plotforge_storage::{
-    StorageError, create_demo_project, dynasty_embers_project, load_project, validate_project,
-    validate_reference_library, write_reference_analysis, write_trace,
+    StorageError, create_demo_project, dynasty_embers_project, load_project,
+    read_latest_runtime_snapshot, read_runtime_snapshot, validate_project,
+    validate_reference_library, write_reference_analysis, write_runtime_snapshot, write_trace,
 };
 
 #[test]
@@ -90,6 +91,48 @@ fn write_trace_writes_trace_id_and_latest() {
 }
 
 #[test]
+fn write_runtime_snapshot_roundtrips_snapshot_id_and_latest() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+    let snapshot = sample_runtime_snapshot("save-001");
+
+    let snapshot_path = write_runtime_snapshot(&project, &snapshot).expect("write snapshot");
+
+    assert_eq!(
+        snapshot_path.file_name().unwrap(),
+        "save-001.runtime_snapshot.json"
+    );
+    assert!(
+        project
+            .join("saves/save-001.runtime_snapshot.json")
+            .is_file()
+    );
+    assert!(project.join("saves/latest.runtime_snapshot.json").is_file());
+    assert_eq!(
+        read_runtime_snapshot(&project, "save-001").expect("read snapshot"),
+        snapshot
+    );
+    assert_eq!(
+        read_latest_runtime_snapshot(&project).expect("read latest"),
+        snapshot
+    );
+}
+
+#[test]
+fn write_runtime_snapshot_rejects_unsafe_snapshot_id() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+    let snapshot = sample_runtime_snapshot("../escape");
+
+    let error = write_runtime_snapshot(&project, &snapshot).expect_err("unsafe snapshot id");
+
+    assert!(matches!(error, StorageError::InvalidRuntimeSnapshotId(_)));
+    assert!(!project.join("escape.runtime_snapshot.json").exists());
+}
+
+#[test]
 fn reference_imports_store_metadata_and_summary_only() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("dynasty-embers");
@@ -163,6 +206,19 @@ fn repo_root() -> PathBuf {
         .join("../..")
         .canonicalize()
         .expect("repo root")
+}
+
+fn sample_runtime_snapshot(id: &str) -> RuntimeSnapshot {
+    let project = dynasty_embers_project();
+    RuntimeSnapshot {
+        id: id.into(),
+        timestamp_ms: 42,
+        project_id: project.game.id,
+        project_version: project.game.version,
+        story_state: project.story_state,
+        world_state: project.world_state,
+        scenes: project.scenes,
+    }
 }
 
 fn assert_fixture_files_match_generated_demo(committed_fixture: &Path, generated_fixture: &Path) {

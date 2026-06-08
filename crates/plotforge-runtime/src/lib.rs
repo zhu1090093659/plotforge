@@ -2,7 +2,7 @@ use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner, ScenePl
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
     ActionIntent, AssetReference, AssetReferenceKind, ProjectData, RuntimeError,
-    RuntimeMediaReference, RuntimePlannerResult, RuntimeRuleResult, RuntimeTrace,
+    RuntimeMediaReference, RuntimePlannerResult, RuntimeRuleResult, RuntimeSnapshot, RuntimeTrace,
     RuntimeTraceDiagnostic, RuntimeTraceStage, RuntimeTraceStageStatus, Scene, StoryState,
     WorldDelta, WorldState, redact_trace_text,
 };
@@ -20,6 +20,12 @@ pub enum RuntimeEngineError {
     MissingChoiceMapping(String),
     #[error(transparent)]
     Planner(#[from] ScenePlannerError),
+    #[error("runtime snapshot belongs to project `{actual}`, expected `{expected}`")]
+    SnapshotProjectMismatch { expected: String, actual: String },
+    #[error("runtime snapshot has project version `{actual}`, expected `{expected}`")]
+    SnapshotVersionMismatch { expected: String, actual: String },
+    #[error("runtime snapshot current scene is missing: {0}")]
+    SnapshotMissingScene(String),
 }
 
 #[derive(Clone, Debug)]
@@ -40,6 +46,13 @@ impl RuntimeSession<MockAgentPipeline> {
     pub fn new(project: ProjectData) -> Self {
         Self::with_scene_planner(project, MockAgentPipeline)
     }
+
+    pub fn from_snapshot(
+        project: ProjectData,
+        snapshot: RuntimeSnapshot,
+    ) -> Result<Self, RuntimeEngineError> {
+        Self::with_scene_planner_from_snapshot(project, snapshot, MockAgentPipeline)
+    }
 }
 
 impl<P> RuntimeSession<P>
@@ -55,12 +68,38 @@ where
         }
     }
 
+    pub fn with_scene_planner_from_snapshot(
+        project: ProjectData,
+        snapshot: RuntimeSnapshot,
+        scene_planner: P,
+    ) -> Result<Self, RuntimeEngineError> {
+        let project = project_from_snapshot(project, &snapshot)?;
+        Ok(Self {
+            story_state: snapshot.story_state,
+            world_state: snapshot.world_state,
+            project,
+            scene_planner,
+        })
+    }
+
     pub fn story_state(&self) -> &StoryState {
         &self.story_state
     }
 
     pub fn world_state(&self) -> &WorldState {
         &self.world_state
+    }
+
+    pub fn snapshot(&self, id: impl Into<String>, timestamp_ms: u64) -> RuntimeSnapshot {
+        RuntimeSnapshot {
+            id: id.into(),
+            timestamp_ms,
+            project_id: self.project.game.id.clone(),
+            project_version: self.project.game.version.clone(),
+            story_state: self.story_state.clone(),
+            world_state: self.world_state.clone(),
+            scenes: self.project.scenes.clone(),
+        }
     }
 
     pub fn play_once(&mut self, player_input: &str) -> Result<RuntimeStep, RuntimeEngineError> {
@@ -215,6 +254,38 @@ where
             trace,
         })
     }
+}
+
+fn project_from_snapshot(
+    mut project: ProjectData,
+    snapshot: &RuntimeSnapshot,
+) -> Result<ProjectData, RuntimeEngineError> {
+    if project.game.id != snapshot.project_id {
+        return Err(RuntimeEngineError::SnapshotProjectMismatch {
+            expected: project.game.id,
+            actual: snapshot.project_id.clone(),
+        });
+    }
+    if project.game.version != snapshot.project_version {
+        return Err(RuntimeEngineError::SnapshotVersionMismatch {
+            expected: project.game.version,
+            actual: snapshot.project_version.clone(),
+        });
+    }
+
+    project.story_state = snapshot.story_state.clone();
+    project.world_state = snapshot.world_state.clone();
+    project.scenes = snapshot.scenes.clone();
+    if project
+        .scene(&project.story_state.current_scene_key)
+        .is_none()
+    {
+        return Err(RuntimeEngineError::SnapshotMissingScene(
+            project.story_state.current_scene_key,
+        ));
+    }
+
+    Ok(project)
 }
 
 pub fn interpret_action(player_input: &str) -> ActionIntent {

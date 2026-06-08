@@ -1485,6 +1485,46 @@
       ],
       "type": "object"
     },
+    "RuntimeSnapshot": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_version": {
+          "type": "string"
+        },
+        "scenes": {
+          "items": {
+            "$ref": "#/$defs/Scene"
+          },
+          "type": "array"
+        },
+        "story_state": {
+          "$ref": "#/$defs/StoryState"
+        },
+        "timestamp_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "world_state": {
+          "$ref": "#/$defs/WorldState"
+        }
+      },
+      "required": [
+        "id",
+        "timestamp_ms",
+        "project_id",
+        "project_version",
+        "story_state",
+        "world_state",
+        "scenes"
+      ],
+      "type": "object"
+    },
     "RuntimeTrace": {
       "properties": {
         "action_intent": {
@@ -2069,6 +2109,9 @@
     "reference_analysis": {
       "$ref": "#/$defs/ReferenceAnalysis"
     },
+    "runtime_snapshot": {
+      "$ref": "#/$defs/RuntimeSnapshot"
+    },
     "runtime_trace": {
       "$ref": "#/$defs/RuntimeTrace"
     }
@@ -2076,6 +2119,7 @@
   "required": [
     "project_data",
     "runtime_trace",
+    "runtime_snapshot",
     "job_record",
     "agent_output_proposal",
     "reference_analysis",
