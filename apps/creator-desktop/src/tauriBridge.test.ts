@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   AiSafetyPolicy,
+  AudioBible,
   Character,
   CharacterEditDocument,
   ProjectCreationReport,
@@ -10,6 +11,7 @@ import type {
   RuntimeSnapshot,
   StateVariablesEditDocument,
   StoryCraftEditDocument,
+  VisualBible,
   WorldEditDocument,
 } from "../../../contracts/plotforge";
 import {
@@ -73,6 +75,21 @@ describe("createStudioBridge", () => {
           files_found: ["index.html"],
         } satisfies StaticExportReport;
         return result as T;
+      }
+      if (command === studioCommandNames.listAssetRecords) {
+        return demoProjectData.asset_records as T;
+      }
+      if (command === studioCommandNames.readVisualBible) {
+        return demoProjectData.visual_bible as T;
+      }
+      if (command === studioCommandNames.updateVisualBible) {
+        return (args?.visual_bible ?? demoProjectData.visual_bible) as T;
+      }
+      if (command === studioCommandNames.readAudioBible) {
+        return demoProjectData.audio_bible as T;
+      }
+      if (command === studioCommandNames.updateAudioBible) {
+        return (args?.audio_bible ?? demoProjectData.audio_bible) as T;
       }
       return {} as never;
     };
@@ -141,6 +158,22 @@ describe("createStudioBridge", () => {
       ...demoProjectData.ai_safety_policy,
       live_generated_content_enabled: true,
     };
+    const visualBible: VisualBible = {
+      style_cards: [
+        {
+          ...demoProjectData.visual_bible.style_cards[0],
+          prompt: "Sharper winter court ink prompt.",
+        },
+      ],
+    };
+    const audioBible: AudioBible = {
+      voice_cards: [
+        {
+          ...demoProjectData.audio_bible.voice_cards[0],
+          voice: "dry formal court voice",
+        },
+      ],
+    };
 
     await bridge.createProject(
       "/tmp/winter-regency",
@@ -191,6 +224,10 @@ describe("createStudioBridge", () => {
     );
     await bridge.readAiSafetyPolicy("/tmp/dynasty-embers");
     await bridge.updateAiSafetyPolicy("/tmp/dynasty-embers", safetyPolicy);
+    await bridge.readVisualBible("/tmp/dynasty-embers");
+    await bridge.updateVisualBible("/tmp/dynasty-embers", visualBible);
+    await bridge.readAudioBible("/tmp/dynasty-embers");
+    await bridge.updateAudioBible("/tmp/dynasty-embers", audioBible);
     await bridge.playOnceProject("/tmp/dynasty-embers", "continue");
     await bridge.playOnceProjectWithSave(
       "/tmp/dynasty-embers",
@@ -214,6 +251,7 @@ describe("createStudioBridge", () => {
       "/tmp/export",
       "/tmp/export.zip",
     );
+    await bridge.listAssetRecords("/tmp/dynasty-embers");
     await bridge.readSourceFile("/tmp/dynasty-embers", "world/world.md");
     await bridge.writeSourceFile(
       "/tmp/dynasty-embers",
@@ -326,6 +364,22 @@ describe("createStudioBridge", () => {
         args: { path: "/tmp/dynasty-embers", policy: safetyPolicy },
       },
       {
+        command: "read_visual_bible",
+        args: { path: "/tmp/dynasty-embers" },
+      },
+      {
+        command: "update_visual_bible",
+        args: { path: "/tmp/dynasty-embers", visual_bible: visualBible },
+      },
+      {
+        command: "read_audio_bible",
+        args: { path: "/tmp/dynasty-embers" },
+      },
+      {
+        command: "update_audio_bible",
+        args: { path: "/tmp/dynasty-embers", audio_bible: audioBible },
+      },
+      {
         command: "play_once_project",
         args: { path: "/tmp/dynasty-embers", player_input: "continue" },
       },
@@ -365,6 +419,10 @@ describe("createStudioBridge", () => {
           output_dir: "/tmp/export",
           archive_path: "/tmp/export.zip",
         },
+      },
+      {
+        command: "list_asset_records",
+        args: { path: "/tmp/dynasty-embers" },
       },
       {
         command: "read_source_file",

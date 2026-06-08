@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 10;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 11;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -442,6 +442,63 @@ pub struct AssetRecord {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MediaAssetReference {
+    #[serde(default)]
+    pub asset_id: Option<String>,
+    pub kind: AssetKind,
+    pub source: AssetSourceKind,
+    pub project_path: String,
+    pub export_path: String,
+    pub slot: String,
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct VisualBible {
+    #[serde(default)]
+    pub style_cards: Vec<VisualStyleCard>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct VisualStyleCard {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub palette: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub reference_asset_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AudioBible {
+    #[serde(default)]
+    pub voice_cards: Vec<AudioVoiceCard>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AudioVoiceCard {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub voice: String,
+    pub delivery: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub sample_text: Option<String>,
+    #[serde(default)]
+    pub reference_asset_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Scene {
     pub key: String,
     pub title: String,
@@ -449,6 +506,8 @@ pub struct Scene {
     pub dramatic_purpose: String,
     pub hook: String,
     pub background_asset: String,
+    #[serde(default)]
+    pub audio_refs: Vec<MediaAssetReference>,
     pub character_ids: Vec<String>,
     pub plot_thread_updates: BTreeMap<String, String>,
     pub beats: Vec<Beat>,
@@ -460,6 +519,12 @@ pub struct Scene {
 pub struct Beat {
     pub id: String,
     pub text: String,
+    #[serde(default)]
+    pub speaker: Option<String>,
+    #[serde(default)]
+    pub line_delivery: Option<String>,
+    #[serde(default)]
+    pub audio_refs: Vec<MediaAssetReference>,
     pub choices: Vec<Choice>,
     #[serde(default)]
     pub next: BeatNext,
@@ -1175,6 +1240,12 @@ pub struct ProjectData {
     pub rules: Vec<Rule>,
     pub scenes: Vec<Scene>,
     #[serde(default)]
+    pub visual_bible: VisualBible,
+    #[serde(default)]
+    pub audio_bible: AudioBible,
+    #[serde(default)]
+    pub asset_records: Vec<AssetRecord>,
+    #[serde(default)]
     pub ai_safety_policy: AiSafetyPolicy,
 }
 
@@ -1456,6 +1527,8 @@ pub struct ExportManifest {
     pub entry_scene: String,
     pub scenes: Vec<Scene>,
     pub assets: Vec<String>,
+    #[serde(default)]
+    pub asset_records: Vec<AssetRecord>,
     #[serde(default = "ExportProfile::static_web")]
     pub profile: ExportProfile,
     #[serde(default = "default_ai_usage_manifest_path")]
@@ -1493,6 +1566,9 @@ pub struct ContractRootSchemas {
     pub character_portrait_request: CharacterPortraitRequest,
     pub reference_analysis: ReferenceAnalysis,
     pub asset_record: AssetRecord,
+    pub media_asset_reference: MediaAssetReference,
+    pub visual_bible: VisualBible,
+    pub audio_bible: AudioBible,
     pub ai_safety_policy: AiSafetyPolicy,
     pub ai_usage_manifest: AiUsageManifest,
     pub workshop_item_package: WorkshopItemPackage,
@@ -1589,6 +1665,11 @@ export type AssetReferenceKind = "project" | "scene" | "character" | "export_pro
 export interface AssetReference { reference_kind: AssetReferenceKind; reference_id: string; slot: string; }
 export interface AssetProviderMetadata { provider: string; model?: string | null; request_id?: string | null; prompt_hash?: string | null; fallback_used: boolean; }
 export interface AssetRecord { id: string; kind: AssetKind; source: AssetSourceKind; project_path: string; export_path: string; content_hash: string; hash_algorithm: string; byte_length: number; provider_metadata?: AssetProviderMetadata | null; references: AssetReference[]; }
+export interface MediaAssetReference { asset_id?: string | null; kind: AssetKind; source: AssetSourceKind; project_path: string; export_path: string; slot: string; }
+export interface VisualBible { style_cards: VisualStyleCard[]; }
+export interface VisualStyleCard { id: string; title: string; summary: string; prompt: string; palette: string[]; tags: string[]; reference_asset_ids: string[]; }
+export interface AudioBible { voice_cards: AudioVoiceCard[]; }
+export interface AudioVoiceCard { id: string; title: string; summary: string; voice: string; delivery: string; tags: string[]; sample_text?: string | null; reference_asset_ids: string[]; }
 export type ExportProfileTarget = "static_web" | "dynamic_web" | "desktop_bundle" | "steam_workshop";
 export type ExportProfileCapability = "local_http" | "no_network_player" | "static_assets" | "standalone_package" | "runtime_save_restore" | "provider_backed_generation" | "desktop_shell" | "steam_workshop_metadata";
 export interface ExportProfile { id: string; target: ExportProfileTarget; intent: string; capabilities: ExportProfileCapability[]; requires_network_at_runtime: boolean; includes_provider_config: boolean; includes_private_traces: boolean; platform_submission_ready: boolean; notes: string[]; }
@@ -1603,8 +1684,8 @@ export interface WorkshopPackageFile { path: string; content_hash: string; hash_
 export interface WorkshopItemPackage { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; export_profile: ExportProfile; ai_usage_manifest_path: string; content_files: WorkshopPackageFile[]; notices: string[]; }
 export interface SteamSubmissionKitRequest { product_name: string; desktop_build_path?: string | null; store_short_description: string; screenshot_paths: string[]; capsule_asset_paths: string[]; content_warnings: string[]; safety_guardrails: string[]; user_reporting_path: string; moderation_policy: string; build_notes: string[]; }
 export interface SteamSubmissionKitDraft { manifest_version: string; product_name: string; workshop_package_id: string; generated_by: string; source_workshop_manifest_path: string; checklist_markdown: string; ai_disclosure_markdown: string; content_warnings_markdown: string; packaging_notes_markdown: string; official_reference_urls: string[]; notices: string[]; }
-export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; entry_beat_id?: string | null; }
-export interface Beat { id: string; text: string; choices: Choice[]; next?: BeatNext; }
+export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; audio_refs: MediaAssetReference[]; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; entry_beat_id?: string | null; }
+export interface Beat { id: string; text: string; speaker?: string | null; line_delivery?: string | null; audio_refs: MediaAssetReference[]; choices: Choice[]; next?: BeatNext; }
 export type BeatNext = { kind: "beat"; payload: string } | { kind: "scene" } | { kind: "end" } | { kind: "none" };
 export interface Choice { id: string; label: string; action_type: string; input_terms: string[]; dramatic_purpose: string; change_scene: boolean; }
 
@@ -1657,9 +1738,9 @@ export interface JobCost { estimated_units: number; spent_units: number; }
 export interface JobFailure { code: string; message: string; retryable: boolean; }
 export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
 
-export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; ai_safety_policy: AiSafetyPolicy; }
-export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
+export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; visual_bible: VisualBible; audio_bible: AudioBible; asset_records: AssetRecord[]; ai_safety_policy: AiSafetyPolicy; }
+export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; asset_records: AssetRecord[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -2101,12 +2182,16 @@ mod tests {
                 dramatic_purpose: "Keep runtime restore deterministic.".into(),
                 hook: "A saved crisis returns exactly where it paused.".into(),
                 background_asset: "assets/generated/court-crisis-001.png".into(),
+                audio_refs: Vec::new(),
                 character_ids: Vec::new(),
                 plot_thread_updates: BTreeMap::new(),
                 entry_beat_id: Some("court-crisis-001-beat-001".into()),
                 beats: vec![Beat {
                     id: "court-crisis-001-beat-001".into(),
                     text: "The court resumes from the saved beat.".into(),
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
                     choices: vec![Choice {
                         id: "raise-tax".into(),
                         label: "Raise taxes".into(),
@@ -2336,6 +2421,9 @@ mod tests {
                 }],
             }],
             scenes: Vec::new(),
+            visual_bible: VisualBible::default(),
+            audio_bible: AudioBible::default(),
+            asset_records: Vec::new(),
             ai_safety_policy: Default::default(),
         };
         let manifest = ExportManifest {
@@ -2343,6 +2431,7 @@ mod tests {
             entry_scene: project.story_state.current_scene_key.clone(),
             scenes: project.scenes.clone(),
             assets: vec!["assets/generated/placeholder.png".into()],
+            asset_records: Vec::new(),
             profile: ExportProfile::static_web(),
             ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
             generated_by: "test".into(),
@@ -2548,6 +2637,9 @@ mod tests {
                 }],
             }],
             scenes: Vec::new(),
+            visual_bible: VisualBible::default(),
+            audio_bible: AudioBible::default(),
+            asset_records: Vec::new(),
             ai_safety_policy: Default::default(),
         }
     }

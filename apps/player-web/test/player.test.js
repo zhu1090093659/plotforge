@@ -233,6 +233,162 @@ describe("PlotForge static player", () => {
     ).toBe(3);
   });
 
+  it("keeps player readable and clickable when no audio refs exist", () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+
+    renderPlayer(sampleManifest(), dom.window.document);
+
+    expect(dom.window.document.querySelector("[data-player-root]")?.dataset.audioState).toBe(
+      "none",
+    );
+    expect(dom.window.document.querySelector('[data-field="scene-audio"]')).toBeNull();
+
+    const continueChoice = dom.window.document.querySelector(
+      '[data-choice-id="continue-council"]',
+    );
+    if (!continueChoice) {
+      throw new Error("expected continue choice button");
+    }
+    continueChoice.click();
+
+    expect(dom.window.document.querySelector('[data-field="beat"]')?.textContent).toBe(
+      "The war minister asks whether delay is now policy or merely fear.",
+    );
+  });
+
+  it("lazy loads local audio refs only for the active scene and beat", () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+    const manifest = sampleManifest();
+    manifest.scenes[0].audio_refs = [
+      {
+        asset_id: "asset-audio-court-theme",
+        kind: "audio",
+        source: "generated",
+        project_path: "assets/audio/court-theme.ogg",
+        export_path: "assets/audio/court-theme.ogg",
+        slot: "scene_audio",
+      },
+    ];
+    manifest.scenes[0].beats[1].audio_refs = [
+      {
+        asset_id: "asset-audio-court-beat-002",
+        kind: "audio",
+        source: "generated",
+        project_path: "assets/audio/court-beat-002.ogg",
+        export_path: "assets/audio/court-beat-002.ogg",
+        slot: "narration",
+      },
+    ];
+    manifest.asset_records.push({
+      kind: "audio",
+      id: "asset-audio-court-theme",
+      source: "generated",
+      project_path: "assets/audio/court-theme.ogg",
+      export_path: "assets/audio/court-theme.ogg",
+      content_hash: "0".repeat(64),
+      hash_algorithm: "sha256",
+      byte_length: 12,
+      references: [],
+    });
+    manifest.asset_records.push({
+      kind: "audio",
+      id: "asset-audio-court-beat-002",
+      source: "generated",
+      project_path: "assets/audio/court-beat-002.ogg",
+      export_path: "assets/audio/court-beat-002.ogg",
+      content_hash: "1".repeat(64),
+      hash_algorithm: "sha256",
+      byte_length: 12,
+      references: [],
+    });
+    manifest.assets.push("assets/audio/court-theme.ogg");
+    manifest.assets.push("assets/audio/court-beat-002.ogg");
+
+    renderPlayer(manifest, dom.window.document);
+
+    const mount = dom.window.document.querySelector("[data-player-root]");
+    const audio = dom.window.document.querySelector('[data-field="scene-audio"]');
+    expect(audio).not.toBeNull();
+    expect(audio?.getAttribute("preload")).toBe("none");
+    expect(audio?.hasAttribute("autoplay")).toBe(false);
+    expect(audio?.getAttribute("src")).toBe("assets/audio/court-theme.ogg");
+    expect(mount?.dataset.audioSrc).toBe("assets/audio/court-theme.ogg");
+
+    const continueChoice = dom.window.document.querySelector(
+      '[data-choice-id="continue-council"]',
+    );
+    if (!continueChoice) {
+      throw new Error("expected continue choice button");
+    }
+    continueChoice.click();
+
+    const updatedAudio = dom.window.document.querySelector('[data-field="scene-audio"]');
+    expect(updatedAudio?.getAttribute("src")).toBe("assets/audio/court-beat-002.ogg");
+    expect(mount?.dataset.audioSrc).toBe("assets/audio/court-beat-002.ogg");
+  });
+
+  it("does not load audio refs missing from exported asset records", () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+    const manifest = sampleManifest();
+    manifest.scenes[0].beats[0].audio_refs = [
+      {
+        asset_id: "missing-audio",
+        kind: "audio",
+        source: "generated",
+        project_path: "assets/audio/missing.ogg",
+        export_path: "assets/audio/missing.ogg",
+        slot: "narration",
+      },
+    ];
+
+    renderPlayer(manifest, dom.window.document);
+
+    expect(dom.window.document.querySelector("[data-player-root]")?.dataset.audioState).toBe(
+      "missing-asset",
+    );
+    expect(dom.window.document.querySelector('[data-field="scene-audio"]')).toBeNull();
+
+    const continueChoice = dom.window.document.querySelector(
+      '[data-choice-id="continue-council"]',
+    );
+    if (!continueChoice) {
+      throw new Error("expected continue choice button");
+    }
+    continueChoice.click();
+
+    expect(dom.window.document.querySelector("[data-player-root]")?.dataset.currentBeatId).toBe(
+      "court-crisis-001-beat-002",
+    );
+  });
+
+  it("ignores non-schema audio fields instead of guessing local paths", () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+    const manifest = sampleManifest();
+    manifest.scenes[0].audio_ref = "assets/audio/legacy-scene.ogg";
+    manifest.scenes[0].beats[0].audio_asset = "assets/audio/legacy-beat.ogg";
+    manifest.assets.push("assets/audio/legacy-scene.ogg");
+    manifest.assets.push("assets/audio/legacy-beat.ogg");
+
+    renderPlayer(manifest, dom.window.document);
+
+    expect(dom.window.document.querySelector("[data-player-root]")?.dataset.audioState).toBe(
+      "none",
+    );
+    expect(dom.window.document.querySelector('[data-field="scene-audio"]')).toBeNull();
+  });
+
   it("ships static player files without external network URLs", () => {
     expect(indexHtml).toContain('name="viewport"');
     expect(indexHtml).toContain('src="./player.js"');
@@ -347,6 +503,7 @@ function sampleManifest() {
       "assets/generated/court-crisis-001.png",
       "assets/generated/tax-riot-002.png",
     ],
+    asset_records: [],
     generated_by: "plotforge-export 0.1.0",
   };
 }

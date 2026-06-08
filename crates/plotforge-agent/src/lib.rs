@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::BTreeMap, env};
+use std::{cell::RefCell, collections::BTreeMap, env, path::Path};
 
 use plotforge_job::{JobClock, JobQueue, JobQueueError, JobRequest};
 use plotforge_media::{AssetRecordInput, AssetRegistry, MediaError};
@@ -8,12 +8,12 @@ use plotforge_schema::{
     BeatDraftProposal, BeatDraftsProposal, BeatNext, CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION,
     Character, CharacterGenerationReport, CharacterGenerationRequest, CharacterPortraitRequest,
     CharacterProposal, Choice, EmotionalArcPoint, GenerationEvidence, GenerationStatus, JobFailure,
-    JobKind, JobRecord, NarrativeFunction, NarrativeReview, PlotThread, PlotThreadStatus,
-    PlotThreadType, ProjectData, ReproducibilityMetadata, ReviewProposal, RuntimeError, Scene,
-    ScenePlanProposal, StoryCraftGenerationReport, StoryCraftGenerationRequest,
-    StoryCraftPlanProposal, StoryState, WorldEditDocument, WorldExpansionProposal,
-    WorldGenerationReport, WorldGenerationRequest, WorldState, contains_secret_marker_text,
-    redact_trace_text,
+    JobKind, JobRecord, MediaAssetReference, NarrativeFunction, NarrativeReview, PlotThread,
+    PlotThreadStatus, PlotThreadType, ProjectData, ReproducibilityMetadata, ReviewProposal,
+    RuntimeError, Scene, ScenePlanProposal, StoryCraftGenerationReport,
+    StoryCraftGenerationRequest, StoryCraftPlanProposal, StoryState, WorldEditDocument,
+    WorldExpansionProposal, WorldGenerationReport, WorldGenerationRequest, WorldState,
+    contains_secret_marker_text, redact_trace_text,
 };
 use plotforge_storycraft::review_scene;
 use sha2::{Digest, Sha256};
@@ -21,6 +21,9 @@ use sha2::{Digest, Sha256};
 const IMAGE_JOB_TIMEOUT_MS: u64 = 60_000;
 const IMAGE_JOB_MAX_ATTEMPTS: u32 = 2;
 const IMAGE_JOB_ESTIMATED_COST_UNITS: u64 = 1;
+const TTS_JOB_TIMEOUT_MS: u64 = 30_000;
+const TTS_JOB_MAX_ATTEMPTS: u32 = 2;
+const TTS_JOB_ESTIMATED_COST_UNITS: u64 = 1;
 const SCENE_BACKGROUND_SLOT: &str = "background_asset";
 const TEXT_PROMPT_VERSION: &str = "plotforge-agent-text-prompt-v1";
 const FAKE_TEXT_MODEL_VERSION: &str = "fake-text-model-v1";
@@ -256,6 +259,7 @@ pub fn scene_from_proposals(
             .background_asset
             .clone()
             .unwrap_or_else(|| format!("assets/generated/{}.png", scene_plan.scene_key)),
+        audio_refs: Vec::new(),
         character_ids: scene_plan.cast.clone(),
         plot_thread_updates: BTreeMap::new(),
         entry_beat_id: Some(scene_plan.entry_beat_id.clone()),
@@ -266,6 +270,9 @@ pub fn scene_from_proposals(
             .map(|(index, beat)| Beat {
                 id: beat.id.clone(),
                 text: beat.text.clone(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: beat.choices.clone(),
                 next: beat_drafts
                     .beats
@@ -1336,6 +1343,37 @@ where
     where
         C: JobClock,
     {
+        self.generate_scene_background_with_project_root(request, None, registry, jobs)
+    }
+
+    pub fn generate_scene_background_for_project<C>(
+        &self,
+        project_root: impl AsRef<Path>,
+        request: SceneImageRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+    ) -> Result<SceneImageResult, SceneImagePipelineError>
+    where
+        C: JobClock,
+    {
+        self.generate_scene_background_with_project_root(
+            request,
+            Some(project_root.as_ref()),
+            registry,
+            jobs,
+        )
+    }
+
+    fn generate_scene_background_with_project_root<C>(
+        &self,
+        request: SceneImageRequest,
+        project_root: Option<&Path>,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+    ) -> Result<SceneImageResult, SceneImagePipelineError>
+    where
+        C: JobClock,
+    {
         let prompt_hash = stable_prompt_hash(&request.prompt);
         if let Some(asset_record) =
             cached_scene_background(registry, &request.scene_key, &prompt_hash)
@@ -1372,7 +1410,9 @@ where
         };
         match self.provider.generate(&provider_request) {
             Ok(response) => {
-                let asset_id = registry.insert_bytes(
+                let asset_id = insert_media_bytes(
+                    registry,
+                    project_root,
                     AssetRecordInput {
                         kind: AssetKind::Image,
                         source: AssetSourceKind::Generated,
@@ -1415,7 +1455,9 @@ where
                     },
                 )?;
                 let placeholder_bytes = placeholder_image_bytes(&request.scene_key, &prompt_hash);
-                let asset_id = registry.insert_bytes(
+                let asset_id = insert_media_bytes(
+                    registry,
+                    project_root,
                     AssetRecordInput {
                         kind: AssetKind::Image,
                         source: AssetSourceKind::Placeholder,
@@ -1509,6 +1551,466 @@ impl ImageProvider for FakeImageProvider {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum FakeImageFailureKind {
+    ProviderError,
+    Timeout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TtsTarget {
+    Scene { scene_key: String },
+    Beat { scene_key: String, beat_id: String },
+    Character { character_id: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TtsRequest {
+    pub target: TtsTarget,
+    pub text: String,
+    pub voice: String,
+    pub output_path: String,
+    pub asset_kind: AssetKind,
+}
+
+impl TtsRequest {
+    pub fn scene_narration(
+        scene: &Scene,
+        text: impl Into<String>,
+        voice: impl Into<String>,
+    ) -> Self {
+        Self {
+            target: TtsTarget::Scene {
+                scene_key: scene.key.clone(),
+            },
+            text: text.into(),
+            voice: voice.into(),
+            output_path: format!("assets/generated/audio/{}-scene.wav", scene.key),
+            asset_kind: AssetKind::Audio,
+        }
+    }
+
+    pub fn beat_narration(
+        scene_key: impl Into<String>,
+        beat: &Beat,
+        voice: impl Into<String>,
+    ) -> Self {
+        let scene_key = scene_key.into();
+        Self {
+            target: TtsTarget::Beat {
+                scene_key: scene_key.clone(),
+                beat_id: beat.id.clone(),
+            },
+            text: beat.text.clone(),
+            voice: voice.into(),
+            output_path: format!("assets/generated/audio/{}-{}.wav", scene_key, beat.id),
+            asset_kind: AssetKind::Audio,
+        }
+    }
+
+    pub fn character_voice(character: &Character, sample_text: impl Into<String>) -> Self {
+        Self {
+            target: TtsTarget::Character {
+                character_id: character.id.clone(),
+            },
+            text: sample_text.into(),
+            voice: character.voice_card.clone(),
+            output_path: format!("assets/generated/voices/{}.wav", character.id),
+            asset_kind: AssetKind::Voice,
+        }
+    }
+
+    fn prompt_hash(&self) -> String {
+        stable_prompt_hash(&format!(
+            "target={:?}; voice={}; text={}",
+            self.target, self.voice, self.text
+        ))
+    }
+
+    fn reference(&self) -> AssetReference {
+        match &self.target {
+            TtsTarget::Scene { scene_key } => AssetReference {
+                reference_kind: AssetReferenceKind::Scene,
+                reference_id: scene_key.clone(),
+                slot: "scene_audio".into(),
+            },
+            TtsTarget::Beat { scene_key, beat_id } => AssetReference {
+                reference_kind: AssetReferenceKind::Scene,
+                reference_id: scene_key.clone(),
+                slot: format!("beat_audio:{beat_id}:narration"),
+            },
+            TtsTarget::Character { character_id } => AssetReference {
+                reference_kind: AssetReferenceKind::Character,
+                reference_id: character_id.clone(),
+                slot: "voice".into(),
+            },
+        }
+    }
+
+    fn media_reference(&self, asset_record: &AssetRecord) -> MediaAssetReference {
+        MediaAssetReference {
+            asset_id: Some(asset_record.id.clone()),
+            kind: asset_record.kind.clone(),
+            source: asset_record.source.clone(),
+            project_path: asset_record.project_path.clone(),
+            export_path: asset_record.export_path.clone(),
+            slot: match &self.target {
+                TtsTarget::Scene { .. } => "scene_audio".into(),
+                TtsTarget::Beat { .. } => "narration".into(),
+                TtsTarget::Character { .. } => "voice".into(),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TtsProviderOutput {
+    pub bytes: Vec<u8>,
+    pub provider: String,
+    pub model: Option<String>,
+    pub request_id: Option<String>,
+    pub spent_cost_units: u64,
+}
+
+impl TtsProviderOutput {
+    pub fn audio(
+        bytes: impl Into<Vec<u8>>,
+        provider: impl Into<String>,
+        model: Option<String>,
+        request_id: Option<String>,
+        spent_cost_units: u64,
+    ) -> Self {
+        Self {
+            bytes: bytes.into(),
+            provider: provider.into(),
+            model,
+            request_id,
+            spent_cost_units,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TtsProviderErrorKind {
+    Provider,
+    Timeout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TtsProviderError {
+    pub kind: TtsProviderErrorKind,
+    pub code: String,
+    pub message: String,
+}
+
+impl TtsProviderError {
+    pub fn provider(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: TtsProviderErrorKind::Provider,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self {
+            kind: TtsProviderErrorKind::Timeout,
+            code: "tts_provider_timeout".into(),
+            message: message.into(),
+        }
+    }
+
+    fn retryable(&self) -> bool {
+        matches!(
+            self.kind,
+            TtsProviderErrorKind::Provider | TtsProviderErrorKind::Timeout
+        )
+    }
+
+    fn into_runtime_error(self) -> RuntimeError {
+        match self.kind {
+            TtsProviderErrorKind::Provider => RuntimeError::redacted(self.code, self.message),
+            TtsProviderErrorKind::Timeout => RuntimeError::redacted(
+                "tts_provider_timeout",
+                format!("tts provider timed out: {}", self.message),
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for TtsProviderError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for TtsProviderError {}
+
+pub trait TtsProvider {
+    fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TtsPipelineResult {
+    pub asset_record: AssetRecord,
+    pub media_reference: MediaAssetReference,
+    pub job_record: Option<JobRecord>,
+    pub fallback_used: bool,
+    pub error: Option<RuntimeError>,
+}
+
+#[derive(Debug)]
+pub enum TtsPipelineError {
+    Job(JobQueueError),
+    Media(MediaError),
+    MissingAssetRecord(String),
+}
+
+impl std::fmt::Display for TtsPipelineError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Job(error) => write!(formatter, "{error}"),
+            Self::Media(error) => write!(formatter, "{error}"),
+            Self::MissingAssetRecord(id) => {
+                write!(
+                    formatter,
+                    "asset registry did not return inserted record {id}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for TtsPipelineError {}
+
+impl From<JobQueueError> for TtsPipelineError {
+    fn from(error: JobQueueError) -> Self {
+        Self::Job(error)
+    }
+}
+
+impl From<MediaError> for TtsPipelineError {
+    fn from(error: MediaError) -> Self {
+        Self::Media(error)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TtsPipeline<P> {
+    provider: P,
+}
+
+impl<P> TtsPipeline<P> {
+    pub fn new(provider: P) -> Self {
+        Self { provider }
+    }
+}
+
+impl<P> TtsPipeline<P>
+where
+    P: TtsProvider,
+{
+    pub fn synthesize<C>(
+        &self,
+        request: TtsRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+    ) -> Result<TtsPipelineResult, TtsPipelineError>
+    where
+        C: JobClock,
+    {
+        self.synthesize_with_project_root(request, None, registry, jobs)
+    }
+
+    pub fn synthesize_for_project<C>(
+        &self,
+        project_root: impl AsRef<Path>,
+        request: TtsRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+    ) -> Result<TtsPipelineResult, TtsPipelineError>
+    where
+        C: JobClock,
+    {
+        self.synthesize_with_project_root(request, Some(project_root.as_ref()), registry, jobs)
+    }
+
+    fn synthesize_with_project_root<C>(
+        &self,
+        request: TtsRequest,
+        project_root: Option<&Path>,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+    ) -> Result<TtsPipelineResult, TtsPipelineError>
+    where
+        C: JobClock,
+    {
+        let prompt_hash = request.prompt_hash();
+        let reference = request.reference();
+        if let Some(asset_record) =
+            cached_tts_asset(registry, &request.asset_kind, &reference, &prompt_hash)
+        {
+            let media_reference = request.media_reference(&asset_record);
+            return Ok(TtsPipelineResult {
+                asset_record,
+                media_reference,
+                job_record: None,
+                fallback_used: false,
+                error: None,
+            });
+        }
+
+        let job = jobs.enqueue(JobRequest {
+            kind: JobKind::TtsGeneration,
+            timeout_ms: TTS_JOB_TIMEOUT_MS,
+            max_attempts: TTS_JOB_MAX_ATTEMPTS,
+            estimated_cost_units: TTS_JOB_ESTIMATED_COST_UNITS,
+        })?;
+        jobs.start(&job.id)?;
+        jobs.report_progress(&job.id, 0, 1, Some(tts_progress_message(&request)))?;
+
+        match self.provider.synthesize(&request) {
+            Ok(output) => {
+                let asset_id = insert_media_bytes(
+                    registry,
+                    project_root,
+                    AssetRecordInput {
+                        kind: request.asset_kind.clone(),
+                        source: AssetSourceKind::Generated,
+                        project_path: request.output_path.clone(),
+                        export_path: Some(request.output_path.clone()),
+                        provider_metadata: Some(AssetProviderMetadata {
+                            provider: output.provider,
+                            model: output.model,
+                            request_id: output.request_id,
+                            prompt_hash: Some(prompt_hash),
+                            fallback_used: false,
+                        }),
+                        references: vec![reference],
+                    },
+                    &output.bytes,
+                )?;
+                jobs.report_progress(&job.id, 1, 1, None)?;
+                let job_record = jobs.succeed(&job.id, output.spent_cost_units)?;
+                let asset_record = registry
+                    .get(&asset_id)
+                    .cloned()
+                    .ok_or(TtsPipelineError::MissingAssetRecord(asset_id))?;
+                let media_reference = request.media_reference(&asset_record);
+
+                Ok(TtsPipelineResult {
+                    asset_record,
+                    media_reference,
+                    job_record: Some(job_record),
+                    fallback_used: false,
+                    error: None,
+                })
+            }
+            Err(error) => {
+                let retryable = error.retryable();
+                let runtime_error = error.into_runtime_error();
+                let job_record = jobs.fail(
+                    &job.id,
+                    JobFailure {
+                        code: runtime_error.code.clone(),
+                        message: redact_trace_text(&runtime_error.message),
+                        retryable,
+                    },
+                )?;
+                let fallback_bytes = silent_audio_bytes(&request, &prompt_hash);
+                let asset_id = insert_media_bytes(
+                    registry,
+                    project_root,
+                    AssetRecordInput {
+                        kind: request.asset_kind.clone(),
+                        source: AssetSourceKind::Placeholder,
+                        project_path: request.output_path.clone(),
+                        export_path: Some(request.output_path.clone()),
+                        provider_metadata: Some(AssetProviderMetadata {
+                            provider: "plotforge-silent-fallback".into(),
+                            model: Some("silent-audio-v1".into()),
+                            request_id: None,
+                            prompt_hash: Some(prompt_hash),
+                            fallback_used: true,
+                        }),
+                        references: vec![reference],
+                    },
+                    &fallback_bytes,
+                )?;
+                let asset_record = registry
+                    .get(&asset_id)
+                    .cloned()
+                    .ok_or(TtsPipelineError::MissingAssetRecord(asset_id))?;
+                let media_reference = request.media_reference(&asset_record);
+
+                Ok(TtsPipelineResult {
+                    asset_record,
+                    media_reference,
+                    job_record: Some(job_record),
+                    fallback_used: true,
+                    error: Some(runtime_error),
+                })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FakeTtsProvider {
+    failure: Option<FakeTtsFailureKind>,
+    calls: std::rc::Rc<std::cell::Cell<u32>>,
+}
+
+impl FakeTtsProvider {
+    pub fn success() -> Self {
+        Self::default()
+    }
+
+    pub fn provider_error() -> Self {
+        Self::with_failure(FakeTtsFailureKind::ProviderError)
+    }
+
+    pub fn timeout() -> Self {
+        Self::with_failure(FakeTtsFailureKind::Timeout)
+    }
+
+    pub fn call_count(&self) -> u32 {
+        self.calls.get()
+    }
+
+    fn with_failure(kind: FakeTtsFailureKind) -> Self {
+        Self {
+            failure: Some(kind),
+            calls: std::rc::Rc::new(std::cell::Cell::new(0)),
+        }
+    }
+}
+
+impl TtsProvider for FakeTtsProvider {
+    fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError> {
+        self.calls.set(self.calls.get() + 1);
+        if let Some(failure) = &self.failure {
+            return match failure {
+                FakeTtsFailureKind::ProviderError => Err(TtsProviderError::provider(
+                    "tts_provider_error",
+                    "fake tts provider failed OPENAI_API_KEY=sk-tts-secret",
+                )),
+                FakeTtsFailureKind::Timeout => Err(TtsProviderError::timeout(
+                    "fake tts provider timeout token=tts-secret",
+                )),
+            };
+        }
+
+        Ok(TtsProviderOutput::audio(
+            fake_tts_bytes(request),
+            "fake-tts",
+            Some("fake-tts-v1".into()),
+            Some(format!("fake-tts-{}", tts_request_id_suffix(request))),
+            1,
+        ))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FakeTtsFailureKind {
     ProviderError,
     Timeout,
 }
@@ -1646,6 +2148,18 @@ struct SceneImagePipelineState<C> {
     job_queue: JobQueue<C>,
 }
 
+fn insert_media_bytes(
+    registry: &mut AssetRegistry,
+    project_root: Option<&Path>,
+    input: AssetRecordInput,
+    bytes: &[u8],
+) -> Result<String, MediaError> {
+    match project_root {
+        Some(project_root) => registry.insert_project_bytes(project_root, input, bytes),
+        None => registry.insert_bytes(input, bytes),
+    }
+}
+
 fn cached_scene_background(
     registry: &AssetRegistry,
     scene_key: &str,
@@ -1661,6 +2175,31 @@ fn cached_scene_background(
                     .references
                     .iter()
                     .any(|reference| reference.slot == SCENE_BACKGROUND_SLOT)
+        })
+        .find(|record| {
+            record.provider_metadata.as_ref().is_some_and(|metadata| {
+                !metadata.fallback_used && metadata.prompt_hash.as_deref() == Some(prompt_hash)
+            })
+        })
+        .cloned()
+}
+
+fn cached_tts_asset(
+    registry: &AssetRegistry,
+    asset_kind: &AssetKind,
+    reference: &AssetReference,
+    prompt_hash: &str,
+) -> Option<AssetRecord> {
+    registry
+        .records_referenced_by(reference.reference_kind.clone(), &reference.reference_id)
+        .into_iter()
+        .filter(|record| {
+            record.kind == *asset_kind
+                && record.source == AssetSourceKind::Generated
+                && record
+                    .references
+                    .iter()
+                    .any(|existing| existing == reference)
         })
         .find(|record| {
             record.provider_metadata.as_ref().is_some_and(|metadata| {
@@ -1705,6 +2244,44 @@ fn fake_image_bytes(request: &ImageGenerationRequest) -> Vec<u8> {
 fn placeholder_image_bytes(scene_key: &str, prompt_hash: &str) -> Vec<u8> {
     format!("plotforge-placeholder-png\nscene={scene_key}\nprompt_hash={prompt_hash}\n")
         .into_bytes()
+}
+
+fn tts_progress_message(request: &TtsRequest) -> String {
+    match &request.target {
+        TtsTarget::Scene { scene_key } => {
+            format!("generating scene narration audio for {scene_key}")
+        }
+        TtsTarget::Beat { scene_key, beat_id } => {
+            format!("generating beat narration audio for {scene_key}/{beat_id}")
+        }
+        TtsTarget::Character { character_id } => {
+            format!("generating character voice audio for {character_id}")
+        }
+    }
+}
+
+fn tts_request_id_suffix(request: &TtsRequest) -> String {
+    match &request.target {
+        TtsTarget::Scene { scene_key } => format!("scene-{scene_key}"),
+        TtsTarget::Beat { scene_key, beat_id } => format!("beat-{scene_key}-{beat_id}"),
+        TtsTarget::Character { character_id } => format!("character-{character_id}"),
+    }
+}
+
+fn fake_tts_bytes(request: &TtsRequest) -> Vec<u8> {
+    format!(
+        "plotforge-fake-wav\ntarget={:?}\nvoice={}\ntext={}\n",
+        request.target, request.voice, request.text
+    )
+    .into_bytes()
+}
+
+fn silent_audio_bytes(request: &TtsRequest, prompt_hash: &str) -> Vec<u8> {
+    format!(
+        "plotforge-silent-wav\ntarget={:?}\nprompt_hash={prompt_hash}\n",
+        request.target
+    )
+    .into_bytes()
 }
 
 #[derive(Clone, Debug)]
@@ -2508,6 +3085,7 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
         ),
         hook: hook.into(),
         background_asset: format!("assets/generated/{scene_key}.png"),
+        audio_refs: Vec::new(),
         character_ids: vec!["grand-secretary".into(), "eunuch-director".into()],
         plot_thread_updates: BTreeMap::from([(
             thread_for_action(request.action_type).into(),
@@ -2524,6 +3102,9 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
                     resource(request.world_state, "public_order"),
                     resource(request.world_state, "army_morale")
                 ),
+                speaker: Some("grand-secretary".into()),
+                line_delivery: Some("controlled alarm".into()),
+                audio_refs: Vec::new(),
                 choices: vec![
                     Choice {
                         id: "raise-tax".into(),
@@ -2559,6 +3140,9 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
                 text:
                     "A second minister adds a sharper warning: every answer now has a visible cost."
                         .into(),
+                speaker: Some("war-minister".into()),
+                line_delivery: Some("terse warning".into()),
+                audio_refs: Vec::new(),
                 choices: vec![
                     Choice {
                         id: "raise-tax".into(),
@@ -2603,6 +3187,7 @@ fn fallback_scene(turn: u32, action_type: &str) -> Scene {
         dramatic_purpose: "Keep the deterministic mock loop visible after a missing scene.".into(),
         hook: "A fallback council forms because the requested scene was missing.".into(),
         background_asset: format!("assets/generated/{scene_key}.png"),
+        audio_refs: Vec::new(),
         character_ids: Vec::new(),
         plot_thread_updates: BTreeMap::from([(
             "tax-disorder".into(),
@@ -2613,6 +3198,9 @@ fn fallback_scene(turn: u32, action_type: &str) -> Scene {
             Beat {
                 id: first_beat_id,
                 text: "The court waits for the engine to recover a valid scene.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: vec![Choice {
                     id: "continue".into(),
                     label: "Continue".into(),
@@ -2627,6 +3215,9 @@ fn fallback_scene(turn: u32, action_type: &str) -> Scene {
                 id: second_beat_id,
                 text: "The recovery beat has no new scene request; the fallback remains visible."
                     .into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: Vec::new(),
                 next: BeatNext::End,
             },
@@ -2660,28 +3251,28 @@ fn choice_input_terms(action_type: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::RefCell, fs, rc::Rc};
 
     use plotforge_job::{JobClock, JobQueue};
     use plotforge_media::AssetRegistry;
     use plotforge_schema::{
-        AgentOutputProposal, AgentProposalPayload, AgentRole, AssetReferenceKind, AssetSourceKind,
-        BeatDraftProposal, BeatDraftsProposal, CharacterGenerationRequest, Choice, GameProject,
-        GenerationStatus, JobStatus, NarrativeFunction, NarrativeReview, REDACTED_TRACE_SECRET,
-        ReviewProposal, ScenePlanProposal, Severity, StoryCraftEditDocument,
+        AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind, AssetReferenceKind,
+        AssetSourceKind, BeatDraftProposal, BeatDraftsProposal, CharacterGenerationRequest, Choice,
+        GameProject, GenerationStatus, JobStatus, NarrativeFunction, NarrativeReview,
+        REDACTED_TRACE_SECRET, ReviewProposal, ScenePlanProposal, Severity, StoryCraftEditDocument,
         StoryCraftGenerationRequest, StoryState, WorldEditDocument, WorldGenerationRequest,
         WorldState,
     };
 
     use super::{
         AgentProposalValidationError, ConfiguredTextModelProvider, FakeImageProvider,
-        FakeTextModelProvider, ImageProviderAgentPipeline, MockAgentPipeline,
+        FakeTextModelProvider, FakeTtsProvider, ImageProviderAgentPipeline, MockAgentPipeline,
         ProviderAgentPipeline, ProviderCredentialError, ProviderCredentialResolver,
         SceneImagePipeline, SceneImageRequest, ScenePlanRequest, ScenePlanner, TextModelClient,
         TextModelClientRequest, TextModelProviderError, TextModelResponse, TextProviderConfig,
-        fake_success_response, generate_character, generate_character_with_provider,
-        generate_story_craft, generate_story_craft_with_provider, generate_world_expansion,
-        generate_world_expansion_with_provider, scene_from_proposals,
+        TtsPipeline, TtsRequest, fake_success_response, generate_character,
+        generate_character_with_provider, generate_story_craft, generate_story_craft_with_provider,
+        generate_world_expansion, generate_world_expansion_with_provider, scene_from_proposals,
         validate_agent_output_proposal,
     };
 
@@ -2825,6 +3416,9 @@ mod tests {
             ],
             rules: Vec::new(),
             scenes: Vec::new(),
+            visual_bible: plotforge_schema::VisualBible::default(),
+            audio_bible: plotforge_schema::AudioBible::default(),
+            asset_records: Vec::new(),
             ai_safety_policy: plotforge_schema::AiSafetyPolicy::default(),
         };
 
@@ -2866,6 +3460,9 @@ mod tests {
             characters: Vec::new(),
             rules: Vec::new(),
             scenes: Vec::new(),
+            visual_bible: plotforge_schema::VisualBible::default(),
+            audio_bible: plotforge_schema::AudioBible::default(),
+            asset_records: Vec::new(),
             ai_safety_policy: plotforge_schema::AiSafetyPolicy::default(),
         };
 
@@ -3531,6 +4128,221 @@ mod tests {
             .expect("placeholder fallback");
         let generated = success_pipeline
             .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("generated retry");
+
+        assert_eq!(fallback.asset_record.source, AssetSourceKind::Placeholder);
+        assert_eq!(generated.asset_record.source, AssetSourceKind::Generated);
+        assert_eq!(success_provider.call_count(), 1);
+        assert_eq!(jobs.records().count(), 2);
+    }
+
+    #[test]
+    fn fake_tts_provider_registers_scene_audio_and_successful_job() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let scene = &project.scenes[0];
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(360));
+        let pipeline = TtsPipeline::new(FakeTtsProvider::success());
+
+        let result = pipeline
+            .synthesize(
+                TtsRequest::scene_narration(scene, scene.hook.clone(), "calm narrator"),
+                &mut registry,
+                &mut jobs,
+            )
+            .expect("tts generation");
+
+        assert!(!result.fallback_used);
+        assert!(result.error.is_none());
+        assert_eq!(result.asset_record.kind, AssetKind::Audio);
+        assert_eq!(result.asset_record.source, AssetSourceKind::Generated);
+        let metadata = result
+            .asset_record
+            .provider_metadata
+            .as_ref()
+            .expect("metadata");
+        assert_eq!(metadata.provider, "fake-tts");
+        assert!(!metadata.fallback_used);
+        assert!(result.asset_record.references.iter().any(|reference| {
+            reference.reference_kind == AssetReferenceKind::Scene
+                && reference.reference_id == scene.key
+                && reference.slot == "scene_audio"
+        }));
+        let job = result.job_record.expect("job");
+        assert_eq!(job.kind, plotforge_schema::JobKind::TtsGeneration);
+        assert_eq!(job.status, JobStatus::Succeeded);
+        assert_eq!(job.cost.spent_units, 1);
+    }
+
+    #[test]
+    fn fake_tts_provider_registers_character_voice_asset() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let character = &project.characters[0];
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(365));
+        let pipeline = TtsPipeline::new(FakeTtsProvider::success());
+
+        let result = pipeline
+            .synthesize(
+                TtsRequest::character_voice(character, "The treasury crisis has a price."),
+                &mut registry,
+                &mut jobs,
+            )
+            .expect("voice generation");
+
+        assert_eq!(result.asset_record.kind, AssetKind::Voice);
+        assert_eq!(result.asset_record.source, AssetSourceKind::Generated);
+        assert!(result.asset_record.references.iter().any(|reference| {
+            reference.reference_kind == AssetReferenceKind::Character
+                && reference.reference_id == character.id
+                && reference.slot == "voice"
+        }));
+        assert_eq!(
+            result
+                .asset_record
+                .provider_metadata
+                .as_ref()
+                .expect("metadata")
+                .provider,
+            "fake-tts"
+        );
+        assert_eq!(result.job_record.expect("job").status, JobStatus::Succeeded);
+    }
+
+    #[test]
+    fn fake_tts_provider_failure_registers_silent_fallback_and_failed_job() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let scene = &project.scenes[0];
+        let beat = &scene.beats[0];
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(370));
+        let pipeline = TtsPipeline::new(FakeTtsProvider::provider_error());
+
+        let result = pipeline
+            .synthesize(
+                TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator"),
+                &mut registry,
+                &mut jobs,
+            )
+            .expect("silent fallback");
+
+        assert!(result.fallback_used);
+        assert_eq!(
+            result.error.as_ref().expect("runtime error").code,
+            "tts_provider_error"
+        );
+        assert!(
+            result
+                .error
+                .as_ref()
+                .expect("runtime error")
+                .message
+                .contains(REDACTED_TRACE_SECRET)
+        );
+        assert_eq!(result.asset_record.kind, AssetKind::Audio);
+        assert_eq!(result.asset_record.source, AssetSourceKind::Placeholder);
+        let metadata = result
+            .asset_record
+            .provider_metadata
+            .as_ref()
+            .expect("metadata");
+        assert_eq!(metadata.provider, "plotforge-silent-fallback");
+        assert!(metadata.fallback_used);
+        assert!(result.asset_record.references.iter().any(|reference| {
+            reference.reference_kind == AssetReferenceKind::Scene
+                && reference.reference_id == scene.key
+                && reference.slot == format!("beat_audio:{}:narration", beat.id)
+        }));
+        let job = result.job_record.expect("job");
+        assert_eq!(job.status, JobStatus::Failed);
+        assert_eq!(
+            job.failure.as_ref().expect("failure").code,
+            "tts_provider_error"
+        );
+        assert!(
+            job.failure
+                .as_ref()
+                .expect("failure")
+                .message
+                .contains(REDACTED_TRACE_SECRET)
+        );
+    }
+
+    #[test]
+    fn tts_pipeline_for_project_writes_audio_asset_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let project_path = temp.path().join("dynasty-embers");
+        plotforge_storage::create_demo_project(&project_path, false).expect("create project");
+        let project = plotforge_storage::load_project(&project_path).expect("load project");
+        let scene = &project.scenes[0];
+        let beat = &scene.beats[0];
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(373));
+        let pipeline = TtsPipeline::new(FakeTtsProvider::success());
+
+        let result = pipeline
+            .synthesize_for_project(
+                &project_path,
+                TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator"),
+                &mut registry,
+                &mut jobs,
+            )
+            .expect("project tts generation");
+
+        let asset_path = project_path.join(&result.asset_record.project_path);
+        let bytes = fs::read(&asset_path).expect("written audio bytes");
+        assert!(asset_path.is_file());
+        assert!(String::from_utf8_lossy(&bytes).contains("plotforge-fake-wav"));
+        assert_eq!(result.asset_record.byte_length, bytes.len() as u64);
+        assert_eq!(
+            result.media_reference.project_path,
+            result.asset_record.project_path
+        );
+        assert_eq!(result.media_reference.slot, "narration");
+        assert_eq!(result.job_record.expect("job").status, JobStatus::Succeeded);
+    }
+
+    #[test]
+    fn tts_pipeline_reuses_matching_cached_asset_without_new_job() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let scene = &project.scenes[0];
+        let beat = &scene.beats[0];
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(375));
+        let provider = FakeTtsProvider::success();
+        let pipeline = TtsPipeline::new(provider.clone());
+        let request = TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator");
+
+        let first = pipeline
+            .synthesize(request.clone(), &mut registry, &mut jobs)
+            .expect("first voice");
+        let second = pipeline
+            .synthesize(request, &mut registry, &mut jobs)
+            .expect("cached voice");
+
+        assert_eq!(provider.call_count(), 1);
+        assert_eq!(registry.len(), 1);
+        assert_eq!(first.asset_record.id, second.asset_record.id);
+        assert!(second.job_record.is_none());
+    }
+
+    #[test]
+    fn tts_pipeline_does_not_cache_silent_fallback_as_success() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let scene = &project.scenes[0];
+        let beat = &scene.beats[0];
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(380));
+        let failing_pipeline = TtsPipeline::new(FakeTtsProvider::provider_error());
+        let success_provider = FakeTtsProvider::success();
+        let success_pipeline = TtsPipeline::new(success_provider.clone());
+        let request = TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator");
+
+        let fallback = failing_pipeline
+            .synthesize(request.clone(), &mut registry, &mut jobs)
+            .expect("silent fallback");
+        let generated = success_pipeline
+            .synthesize(request, &mut registry, &mut jobs)
             .expect("generated retry");
 
         assert_eq!(fallback.asset_record.source, AssetSourceKind::Placeholder);

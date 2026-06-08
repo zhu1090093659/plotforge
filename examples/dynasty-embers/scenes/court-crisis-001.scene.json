@@ -5,6 +5,7 @@
   "dramatic_purpose": "Force the player to choose between revenue, order, and military loyalty.",
   "hook": "The border payroll ledger arrives with a fresh red deficit mark beside the army columns.",
   "background_asset": "assets/generated/court-crisis-001.png",
+  "audio_refs": [],
   "character_ids": [
     "grand-secretary",
     "war-minister",
@@ -17,6 +18,9 @@
     {
       "id": "court-crisis-001-beat-001",
       "text": "The court kneels around a ledger that says the border army is two months from mutiny.",
+      "speaker": "grand-secretary",
+      "line_delivery": "measured court alarm",
+      "audio_refs": [],
       "choices": [
         {
           "id": "continue-council",
@@ -85,6 +89,9 @@
     {
       "id": "court-crisis-001-beat-002",
       "text": "The war minister steps forward: delay will keep the court calm today, but the frontier will remember it tomorrow.",
+      "speaker": "war-minister",
+      "line_delivery": "terse warning",
+      "audio_refs": [],
       "choices": [
         {
           "id": "raise-tax",

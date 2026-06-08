@@ -304,12 +304,16 @@ mod tests {
             dramatic_purpose: String::new(),
             hook: "flat".into(),
             background_asset: "assets/generated/placeholder.png".into(),
+            audio_refs: Vec::new(),
             character_ids: vec!["unknown".into()],
             plot_thread_updates: BTreeMap::from([("missing-thread".into(), "update".into())]),
             entry_beat_id: Some("beat-1".into()),
             beats: vec![Beat {
                 id: "beat-1".into(),
                 text: "Nothing changes.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: vec![
                     Choice {
                         id: "a".into(),
@@ -363,6 +367,7 @@ mod tests {
                 .into(),
             hook: "The border payroll ledger arrives with a fresh red deficit mark.".into(),
             background_asset: "assets/generated/court-crisis-001.png".into(),
+            audio_refs: Vec::new(),
             character_ids: vec!["grand-secretary".into()],
             plot_thread_updates: BTreeMap::from([(
                 "border-payroll".into(),
@@ -372,6 +377,9 @@ mod tests {
             beats: vec![Beat {
                 id: "beat-1".into(),
                 text: "The court waits.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: vec![Choice {
                     id: "raise-tax".into(),
                     label: "Raise the Liao levy".into(),
@@ -412,12 +420,16 @@ mod tests {
             dramatic_purpose: String::new(),
             hook: "weak".into(),
             background_asset: "assets/generated/placeholder.png".into(),
+            audio_refs: Vec::new(),
             character_ids: vec!["ghost".into()],
             plot_thread_updates: BTreeMap::from([("ghost-thread".into(), "missing".into())]),
             entry_beat_id: Some("beat-1".into()),
             beats: vec![Beat {
                 id: "beat-1".into(),
                 text: "Flat.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: vec![
                     Choice {
                         id: "a".into(),

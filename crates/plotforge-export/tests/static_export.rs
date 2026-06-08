@@ -8,10 +8,12 @@ use std::{
 use plotforge_export::{ExportError, export_static_web, export_static_web_zip};
 use plotforge_media::MediaError;
 use plotforge_schema::{
-    AI_USAGE_MANIFEST_FILE, AiSafetyPolicy, AiUsageContentKind, AiUsageManifest, ExportManifest,
-    contains_secret_marker_text,
+    AI_USAGE_MANIFEST_FILE, AiSafetyPolicy, AiUsageContentKind, AiUsageManifest, AssetKind,
+    AssetSourceKind, ExportManifest, MediaAssetReference, contains_secret_marker_text,
 };
-use plotforge_storage::{create_demo_project, update_ai_safety_policy};
+use plotforge_storage::{
+    attach_beat_audio_reference, create_demo_project, load_project, update_ai_safety_policy,
+};
 
 #[test]
 fn export_manifest_contains_entry_scene_and_assets() {
@@ -227,6 +229,85 @@ fn export_copies_only_referenced_media_registry_assets() {
             .audit
             .files_found
             .contains(&PathBuf::from("assets/generated/unused-generated.png"))
+    );
+}
+
+#[test]
+fn export_copies_referenced_audio_assets_and_records_them_in_manifest() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    create_demo_project(&project_path, false).expect("create");
+    let audio_path = "assets/generated/court-crisis-001-beat-001.wav";
+    fs::write(project_path.join(audio_path), b"fake wav bytes").expect("write audio");
+    attach_beat_audio_reference(
+        &project_path,
+        "court-crisis-001",
+        "court-crisis-001-beat-001",
+        MediaAssetReference {
+            asset_id: None,
+            kind: AssetKind::Audio,
+            source: AssetSourceKind::Generated,
+            project_path: audio_path.into(),
+            export_path: audio_path.into(),
+            slot: "narration".into(),
+        },
+    )
+    .expect("attach audio reference");
+    assert_eq!(
+        load_project(&project_path)
+            .expect("load project before export")
+            .scenes[0]
+            .beats[0]
+            .audio_refs,
+        vec![MediaAssetReference {
+            asset_id: None,
+            kind: AssetKind::Audio,
+            source: AssetSourceKind::Generated,
+            project_path: audio_path.into(),
+            export_path: audio_path.into(),
+            slot: "narration".into(),
+        }]
+    );
+
+    export_static_web(&project_path, &output_dir).expect("export");
+
+    let manifest: ExportManifest = serde_json::from_str(
+        &fs::read_to_string(output_dir.join("game.json")).expect("read manifest"),
+    )
+    .expect("manifest");
+    assert!(
+        output_dir
+            .join("assets/generated/court-crisis-001-beat-001.wav")
+            .is_file()
+    );
+    assert!(
+        manifest
+            .assets
+            .contains(&"assets/generated/court-crisis-001-beat-001.wav".into())
+    );
+    let audio_record = manifest
+        .asset_records
+        .iter()
+        .find(|record| record.kind == AssetKind::Audio)
+        .expect("audio asset record");
+    assert_eq!(
+        audio_record.export_path,
+        "assets/generated/court-crisis-001-beat-001.wav"
+    );
+    assert!(audio_record.references.iter().any(|reference| {
+        reference.reference_kind == plotforge_schema::AssetReferenceKind::Scene
+            && reference.reference_id == "court-crisis-001"
+            && reference.slot == "beat_audio:court-crisis-001-beat-001:narration"
+    }));
+    assert_eq!(
+        load_project(&project_path)
+            .expect("load project")
+            .asset_records
+            .iter()
+            .filter(|record| record.kind == AssetKind::Audio)
+            .count(),
+        1
     );
 }
 

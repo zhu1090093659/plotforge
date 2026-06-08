@@ -1,5 +1,6 @@
 import type {
   AiSafetyPolicy,
+  AssetRecord,
   ProjectData,
   ReproducibilityMetadata,
 } from "../../../contracts/plotforge";
@@ -40,6 +41,59 @@ export const demoAiSafetyPolicy: AiSafetyPolicy = {
     "This local policy is descriptive evidence only and is not platform approval.",
   ],
 };
+
+export const demoAssetRecords: AssetRecord[] = [
+  {
+    id: "asset-image-court-crisis-001",
+    kind: "image",
+    source: "generated",
+    project_path: "assets/generated/court-crisis-001.png",
+    export_path: "assets/generated/court-crisis-001.png",
+    content_hash:
+      "sha256:2c60d8f6f2f16f4ff6b5a5e4f7a20c2c6a18f3c4d9d3b7319dd6127a98d8a501",
+    hash_algorithm: "sha256",
+    byte_length: 4096,
+    provider_metadata: {
+      provider: "plotforge-local-mock",
+      model: "plotforge-local-mock-image-v1",
+      request_id: "mock-image-court-crisis-001",
+      prompt_hash: "sha256:demo-court-crisis-prompt",
+      fallback_used: false,
+    },
+    references: [
+      {
+        reference_kind: "scene",
+        reference_id: "court-crisis-001",
+        slot: "background_asset",
+      },
+    ],
+  },
+  {
+    id: "asset-voice-censor-001",
+    kind: "voice",
+    source: "placeholder",
+    project_path: "assets/audio/censor-voice-placeholder.ogg",
+    export_path: "assets/audio/censor-voice-placeholder.ogg",
+    content_hash:
+      "sha256:81f2df63f32eaa1b8da68d83256be60ab7e8bbca95dd6e4247eb9df0dbf208c4",
+    hash_algorithm: "sha256",
+    byte_length: 1024,
+    provider_metadata: {
+      provider: "plotforge-local-mock",
+      model: null,
+      request_id: "mock-voice-censor-001",
+      prompt_hash: "sha256:demo-censor-voice-prompt",
+      fallback_used: true,
+    },
+    references: [
+      {
+        reference_kind: "character",
+        reference_id: "censor",
+        slot: "voice_card",
+      },
+    ],
+  },
+];
 
 export const demoProjectData: ProjectData = {
   game: {
@@ -164,6 +218,7 @@ export const demoProjectData: ProjectData = {
       dramatic_purpose: "Expose the first crisis.",
       hook: "The treasury report contradicts the war ledger.",
       background_asset: "assets/generated/court-crisis-001.png",
+      audio_refs: [],
       character_ids: ["censor", "war-minister"],
       plot_thread_updates: {},
       entry_beat_id: "court-crisis-001-beat-001",
@@ -171,6 +226,9 @@ export const demoProjectData: ProjectData = {
         {
           id: "court-crisis-001-beat-001",
           text: "Memorials arrive before dawn, each asking for silver the treasury cannot admit is missing.",
+          speaker: "censor",
+          line_delivery: "clipped formal pressure",
+          audio_refs: [],
           choices: [
             {
               id: "continue-council",
@@ -194,6 +252,9 @@ export const demoProjectData: ProjectData = {
         {
           id: "court-crisis-001-beat-002",
           text: "The war minister points at the unpaid garrison columns and waits for an order.",
+          speaker: "war-minister",
+          line_delivery: "terse urgency",
+          audio_refs: [],
           choices: [
             {
               id: "raise-tax",
@@ -218,6 +279,58 @@ export const demoProjectData: ProjectData = {
     },
   ],
   ai_safety_policy: demoAiSafetyPolicy,
+  asset_records: demoAssetRecords,
+  visual_bible: {
+    style_cards: [
+      {
+        id: "winter-court-ink",
+        title: "Winter court ink wash",
+        summary:
+          "Cold parchment, controlled brush texture, and restrained imperial color.",
+        prompt:
+          "Winter court chamber in restrained ink wash, cold parchment, controlled brush texture, muted imperial color.",
+        palette: ["soot", "aged jade", "muted vermilion"],
+        tags: ["court", "ink", "historical"],
+        reference_asset_ids: ["asset-image-court-crisis-001"],
+      },
+      {
+        id: "official-portrait",
+        title: "Official portrait restraint",
+        summary:
+          "Half-length figures with clear rank signals and no ornamental fantasy armor.",
+        prompt:
+          "Grounded half-length official portrait with clear rank signals, restrained expression, no fantasy armor.",
+        palette: ["lampblack", "faded silk", "seal red"],
+        tags: ["portrait", "historical", "grounded"],
+        reference_asset_ids: [],
+      },
+    ],
+  },
+  audio_bible: {
+    voice_cards: [
+      {
+        id: "court-censor",
+        title: "Court Censor",
+        summary: "Precise, public-minded, and clipped under pressure.",
+        voice: "precise formal court diction",
+        delivery: "clipped and public-minded under pressure",
+        tags: ["voice", "court", "discipline"],
+        sample_text:
+          "Your Majesty, the ledgers do not accuse by accident.",
+        reference_asset_ids: ["asset-voice-censor-001"],
+      },
+      {
+        id: "war-minister",
+        title: "Minister of War",
+        summary: "Terse logistics language with visible urgency.",
+        voice: "low command register",
+        delivery: "terse logistics language with visible urgency",
+        tags: ["voice", "military"],
+        sample_text: "The border army has counted the missing silver already.",
+        reference_asset_ids: [],
+      },
+    ],
+  },
 };
 
 export const demoSourceFiles: SourceFileSummary[] = [

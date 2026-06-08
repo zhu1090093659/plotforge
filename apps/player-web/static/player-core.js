@@ -63,6 +63,7 @@ function renderSceneBeat(manifest, scene, beat, root, mount, saveStore) {
   text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length));
   image.setAttribute("src", scene.background_asset);
   image.setAttribute("alt", `${scene.title} scene artwork`);
+  renderAudio(manifest, scene, beat, root, mount);
   saveStore.save({ sceneKey: scene.key, beatId: beat?.id ?? null });
   renderChoices(manifest, beat, scene, root, mount, saveStore);
 }
@@ -126,6 +127,7 @@ function renderEndState(manifest, scene, beat, choice, root, mount, saveStore) {
   const sceneIndex = manifest.scenes.findIndex((candidate) => candidate.key === scene.key);
   const beatIndex = scene.beats.findIndex((candidate) => candidate.id === beat?.id);
   text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length));
+  renderAudio(manifest, scene, beat, root, mount);
   field(root, "choices").replaceChildren();
   saveStore.save({ sceneKey: scene.key, beatId: beat?.id ?? null });
 }
@@ -263,6 +265,143 @@ function progressLabel(sceneIndex, sceneCount, beatIndex, beatCount) {
     sceneIndex >= 0 ? `Scene ${sceneIndex + 1} of ${sceneCount}` : "Scene";
   const beatPart = beatIndex >= 0 ? `Beat ${beatIndex + 1} of ${beatCount}` : "Beat";
   return `${scenePart} · ${beatPart}`;
+}
+
+function renderAudio(manifest, scene, beat, root, mount) {
+  const panel = field(root, "audio-panel");
+  const audioReference = audioReferenceFor(manifest, scene, beat);
+  if (!audioReference) {
+    panel.replaceChildren();
+    panel.hidden = true;
+    mount.dataset.audioState = "none";
+    delete mount.dataset.audioSrc;
+    return;
+  }
+
+  if (audioReference.status !== "ready") {
+    panel.replaceChildren();
+    panel.hidden = true;
+    mount.dataset.audioState = audioReference.status;
+    delete mount.dataset.audioSrc;
+    return;
+  }
+
+  const audioPath = audioReference.path;
+  const audio = ensureAudioElement(panel, root);
+  if (audio.getAttribute("src") !== audioPath) {
+    audio.setAttribute("src", audioPath);
+  }
+  panel.hidden = false;
+  mount.dataset.audioState = "ready";
+  mount.dataset.audioSrc = audioPath;
+}
+
+function ensureAudioElement(panel, root) {
+  const existing = panel.querySelector("audio");
+  if (existing) {
+    return existing;
+  }
+  const audio = root.createElement("audio");
+  audio.controls = true;
+  audio.preload = "none";
+  audio.dataset.field = "scene-audio";
+  audio.setAttribute("aria-label", "Scene audio");
+  audio.addEventListener("error", () => {
+    const mount = playerRoot(root);
+    mount.dataset.audioState = "error";
+  });
+  panel.replaceChildren(audio);
+  return audio;
+}
+
+function audioReferenceFor(manifest, scene, beat) {
+  return (
+    resolveAudioRefs(manifest, beat?.audio_refs) ??
+    resolveAudioRefs(manifest, scene?.audio_refs) ??
+    null
+  );
+}
+
+function resolveAudioRefs(manifest, refs) {
+  if (!Array.isArray(refs)) {
+    return null;
+  }
+  for (const ref of refs) {
+    const resolved = resolveAudioRef(manifest, ref);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
+function resolveAudioRef(manifest, ref) {
+  if (!ref || typeof ref !== "object") {
+    return null;
+  }
+  if (ref.kind !== "audio" && ref.kind !== "voice") {
+    return null;
+  }
+  const record = assetRecordForReference(manifest, ref);
+  if (!record) {
+    return { status: "missing-asset" };
+  }
+  const path = record.export_path;
+  if (!isReachableAudioPath(manifest, path)) {
+    return { status: "missing-asset" };
+  }
+  if (!isLocalAssetPath(path)) {
+    return { status: "blocked-external" };
+  }
+  return { status: "ready", path };
+}
+
+function assetRecordForReference(manifest, ref) {
+  const records = Array.isArray(manifest.asset_records) ? manifest.asset_records : [];
+  return (
+    records.find((record) => {
+      const idMatches = typeof ref.asset_id === "string" && record.id === ref.asset_id;
+      const pathMatches =
+        typeof ref.export_path === "string" && record.export_path === ref.export_path;
+      return (
+        (idMatches || pathMatches) &&
+        (record.kind === "audio" || record.kind === "voice")
+      );
+    }) ?? null
+  );
+}
+
+function isReachableAudioPath(manifest, path) {
+  if (typeof path !== "string") {
+    return false;
+  }
+  const assets = Array.isArray(manifest.assets) ? manifest.assets : [];
+  if (!assets.includes(path)) {
+    return false;
+  }
+  if (!path.startsWith("assets/")) {
+    return false;
+  }
+  for (const part of path.split("/")) {
+    if (!part || part === "." || part === "..") {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isLocalAssetPath(path) {
+  if (typeof path !== "string") {
+    return false;
+  }
+  const trimmed = path.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  if (trimmed.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return false;
+  }
+  return trimmed === path;
 }
 
 function createSaveStore(root, manifest) {

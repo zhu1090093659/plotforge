@@ -1,0 +1,26 @@
+[[voice_cards]]
+id = "court-censor"
+title = "Court Censor"
+summary = "Precise, public-minded, and clipped under pressure."
+voice = "formal senior court official"
+delivery = "measured accusation, low volume, hard consonants"
+tags = [
+    "voice",
+    "court",
+    "discipline",
+]
+sample_text = "The law remembers what favor tries to hide."
+reference_asset_ids = []
+
+[[voice_cards]]
+id = "war-minister"
+title = "Minister of War"
+summary = "Terse logistics language with visible urgency."
+voice = "military administrator"
+delivery = "short phrases, controlled urgency"
+tags = [
+    "voice",
+    "military",
+]
+sample_text = "A payroll delay becomes a frontier order."
+reference_asset_ids = []

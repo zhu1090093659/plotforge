@@ -20,6 +20,7 @@ describe("summarizeProject", () => {
           dramatic_purpose: "Expose the first crisis.",
           hook: "The treasury report contradicts the war ledger.",
           background_asset: "assets/generated/court-crisis-001.png",
+          audio_refs: [],
           character_ids: ["censor"],
           plot_thread_updates: {},
           beats: [],

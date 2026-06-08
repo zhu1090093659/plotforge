@@ -5,9 +5,10 @@ use std::{
 };
 
 use plotforge_schema::{
-    ActionIntent, AiSafetyPolicy, AiUsageContentKind, Character, CharacterGenerationReport,
-    CharacterPortraitRequest, Effect, GenerationEvidence, GenerationStatus, ProjectCreationRequest,
-    ProjectTemplateId, ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
+    ActionIntent, AiSafetyPolicy, AiUsageContentKind, AssetKind, AssetSourceKind, Character,
+    CharacterGenerationReport, CharacterPortraitRequest, Effect, GenerationEvidence,
+    GenerationStatus, MediaAssetReference, ProjectCreationRequest, ProjectTemplateId,
+    ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
     ReferenceStructureNote, ReproducibilityMetadata, ResourceDefinition, Rule,
     RuntimePlannerResult, RuntimeRuleResult, RuntimeSnapshot, RuntimeTrace, RuntimeTraceDiagnostic,
     RuntimeTraceStage, RuntimeTraceStageStatus, StoryCraftGenerationReport, StoryState, WorldDelta,
@@ -16,10 +17,10 @@ use plotforge_schema::{
 use plotforge_storage::{
     SQLITE_CACHE_SCHEMA_VERSION, StorageError, apply_character_generation_report,
     apply_story_craft_generation_report, apply_world_generation_report,
-    build_character_generation_request, build_story_craft_generation_request,
-    build_world_generation_request, create_character, create_demo_project,
-    create_project_from_request, create_resource, create_rule, dynasty_embers_project,
-    load_project, read_ai_safety_policy, read_character_edit_document,
+    attach_beat_audio_reference, attach_scene_audio_reference, build_character_generation_request,
+    build_story_craft_generation_request, build_world_generation_request, create_character,
+    create_demo_project, create_project_from_request, create_resource, create_rule,
+    dynasty_embers_project, load_project, read_ai_safety_policy, read_character_edit_document,
     read_latest_runtime_snapshot, read_rules_edit_document, read_runtime_snapshot,
     read_sqlite_cache_summary, read_state_variables_edit_document, read_story_craft_edit_document,
     read_world_edit_document, rebuild_sqlite_cache, sqlite_cache_path, update_ai_safety_policy,
@@ -213,6 +214,100 @@ fn structured_edit_documents_roundtrip_and_persist_source_files() {
             .iter()
             .any(|rule| rule.id == "restore-legitimacy")
     );
+}
+
+#[test]
+fn audio_references_attach_persist_and_rebuild_asset_records() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+    let audio_path = "assets/generated/audio/court-crisis-001-beat-001.wav";
+    fs::create_dir_all(project.join("assets/generated/audio")).expect("audio dir");
+    fs::write(project.join(audio_path), b"fake beat wav bytes").expect("write audio");
+    let reference = MediaAssetReference {
+        asset_id: None,
+        kind: AssetKind::Audio,
+        source: AssetSourceKind::Generated,
+        project_path: audio_path.into(),
+        export_path: audio_path.into(),
+        slot: "narration".into(),
+    };
+
+    let updated = attach_beat_audio_reference(
+        &project,
+        "court-crisis-001",
+        "court-crisis-001-beat-001",
+        reference.clone(),
+    )
+    .expect("attach beat audio");
+
+    assert_eq!(updated.beats[0].audio_refs, vec![reference.clone()]);
+    let loaded = load_project(&project).expect("reload project");
+    assert_eq!(loaded.scenes[0].beats[0].audio_refs, vec![reference]);
+    let audio_record = loaded
+        .asset_records
+        .iter()
+        .find(|record| record.kind == AssetKind::Audio)
+        .expect("audio asset record");
+    assert_eq!(audio_record.project_path, audio_path);
+    assert_eq!(audio_record.export_path, audio_path);
+    assert_eq!(
+        audio_record.byte_length,
+        b"fake beat wav bytes".len() as u64
+    );
+    assert!(audio_record.references.iter().any(|record_reference| {
+        record_reference.reference_id == "court-crisis-001"
+            && record_reference.slot == "beat_audio:court-crisis-001-beat-001:narration"
+    }));
+}
+
+#[test]
+fn audio_reference_attach_rejects_non_audio_external_and_unsafe_paths() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    let mut reference = MediaAssetReference {
+        asset_id: None,
+        kind: AssetKind::Image,
+        source: AssetSourceKind::Generated,
+        project_path: "assets/generated/not-audio.png".into(),
+        export_path: "assets/generated/not-audio.png".into(),
+        slot: "narration".into(),
+    };
+    let error = attach_beat_audio_reference(
+        &project,
+        "court-crisis-001",
+        "court-crisis-001-beat-001",
+        reference.clone(),
+    )
+    .expect_err("image audio ref should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, .. }
+            if surface == "beat_audio" && field == "audio_refs.kind"
+    ));
+
+    reference.kind = AssetKind::Audio;
+    reference.source = AssetSourceKind::External;
+    let error = attach_scene_audio_reference(&project, "court-crisis-001", reference.clone())
+        .expect_err("external audio ref should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, .. }
+            if surface == "scene_audio" && field == "audio_refs.source"
+    ));
+
+    reference.source = AssetSourceKind::Generated;
+    reference.project_path = "../outside.wav".into();
+    reference.export_path = "assets/generated/not-audio.wav".into();
+    let error = attach_scene_audio_reference(&project, "court-crisis-001", reference)
+        .expect_err("unsafe audio path should fail");
+    assert!(matches!(
+        error,
+        StorageError::InvalidStructuredEdit { surface, field, .. }
+            if surface == "scene_audio" && field == "audio_refs.project_path"
+    ));
 }
 
 #[test]

@@ -100,14 +100,14 @@ pub fn export_static_web(
     output_dir: impl AsRef<Path>,
 ) -> Result<ExportReport, ExportError> {
     let project_path = project_path.as_ref();
-    let project = load_project(project_path)?;
+    let project = load_project_for_export(project_path)?;
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir).map_io(output_dir)?;
     fs::create_dir_all(output_dir.join("assets/generated"))
         .map_io(output_dir.join("assets/generated"))?;
 
     let mut asset_registry = AssetRegistry::new();
-    asset_registry.register_scene_background_assets(project_path, &project)?;
+    asset_registry.register_project_assets(project_path, &project)?;
     let asset_records = asset_registry
         .reachable_records()
         .into_iter()
@@ -136,6 +136,7 @@ pub fn export_static_web(
         entry_scene: project.story_state.current_scene_key,
         scenes: project.scenes,
         assets: assets.clone(),
+        asset_records: asset_records.clone(),
         profile,
         ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
         generated_by: "plotforge-export 0.1.0".into(),
@@ -193,6 +194,15 @@ pub fn export_static_web_zip(
         archive_path: archive_path.to_path_buf(),
         source_report,
         archived_files,
+    })
+}
+
+fn load_project_for_export(
+    project_path: &Path,
+) -> Result<plotforge_schema::ProjectData, ExportError> {
+    load_project(project_path).map_err(|source| match source {
+        StorageError::Media { source, .. } => ExportError::Media(source),
+        source => ExportError::Storage(source),
     })
 }
 

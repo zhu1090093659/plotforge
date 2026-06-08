@@ -7,7 +7,10 @@ import {
   demoReproducibilityMetadata,
 } from "./demoStudioData";
 import type { StudioDataSource } from "./studioDataSource";
-import type { ProjectCreationRequest } from "../../../contracts/plotforge";
+import type {
+  AssetRecord,
+  ProjectCreationRequest,
+} from "../../../contracts/plotforge";
 import type {
   PlayOnceReport,
   SourceFileContent,
@@ -79,6 +82,137 @@ describe("App", () => {
           relativePath: "world/world.md",
           content: "# World Bible\n\nThe court has changed.\n",
         },
+      ]);
+    });
+  });
+
+  it("renders asset records and visual-audio bible cards before background fallback", async () => {
+    const dataSource = appTestDataSource();
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+
+    expect(screen.getByText("2 asset records")).toBeTruthy();
+    expect(screen.getAllByText("asset-image-court-crisis-001").length)
+      .toBeGreaterThan(0);
+    expect(screen.getByText("image / generated")).toBeTruthy();
+    expect(
+      screen.getAllByText("sha256:2c60d8f6f2f16f4ff6b5a5e4f7a20c2c6a18f3c4d9d3b7319dd6127a98d8a501")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("sha256").length).toBeGreaterThan(0);
+    expect(screen.getByText("plotforge-local-mock / plotforge-local-mock-image-v1")).toBeTruthy();
+    expect(screen.getByText("mock-image-court-crisis-001")).toBeTruthy();
+    expect(screen.getByText("sha256:demo-court-crisis-prompt")).toBeTruthy();
+    expect(
+      screen.getByText("scene:court-crisis-001:background_asset"),
+    ).toBeTruthy();
+    expect(screen.getAllByText("asset-voice-censor-001").length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
+    expect(screen.getByText("Visual Bible")).toBeTruthy();
+    expect(screen.getByText("Winter court ink wash")).toBeTruthy();
+    expect(screen.getByText("Official portrait restraint")).toBeTruthy();
+    expect(screen.getByText("Audio Bible")).toBeTruthy();
+    expect(screen.getByText("Court Censor")).toBeTruthy();
+    expect(screen.getByText("Minister of War")).toBeTruthy();
+    expect(screen.queryByText("Scene background fallback")).toBeNull();
+  });
+
+  it("keeps scene background fallback when no asset records are available", async () => {
+    const dataSource = appTestDataSource({
+      async listAssetRecords() {
+        return [];
+      },
+      async openProject() {
+        return {
+          ...demoProjectData,
+          asset_records: [] as AssetRecord[],
+        };
+      },
+    });
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+
+    expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
+    expect(screen.getByText("Scene background fallback")).toBeTruthy();
+    expect(screen.getByText("assets/generated/court-crisis-001.png")).toBeTruthy();
+  });
+
+  it("saves Visual Bible and Audio Bible structured controls through the data source", async () => {
+    const updates: string[] = [];
+    const dataSource = appTestDataSource({
+      async updateVisualBible(_path, visualBible) {
+        const card = visualBible.style_cards[0];
+        updates.push(
+          `visual:${card.prompt}:${card.palette.join("|")}:${card.tags.join("|")}:${card.reference_asset_ids.join("|")}`,
+        );
+        return visualBible;
+      },
+      async updateAudioBible(_path, audioBible) {
+        const card = audioBible.voice_cards[0];
+        updates.push(
+          `audio:${card.voice}:${card.delivery}:${card.tags.join("|")}:${card.sample_text ?? "none"}:${card.reference_asset_ids.join("|")}`,
+        );
+        return audioBible;
+      },
+    });
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+
+    fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
+      target: { value: "Ink court with harsher winter lanterns." },
+    });
+    fireEvent.change(screen.getByLabelText("Visual style palette 1"), {
+      target: { value: "bone white\nseal red" },
+    });
+    fireEvent.change(screen.getByLabelText("Visual style tags 1"), {
+      target: { value: "court\nwinter" },
+    });
+    fireEvent.change(screen.getByLabelText("Visual style reference asset ids 1"), {
+      target: { value: "asset-image-court-crisis-001\nasset-style-ref-002" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Visual Bible" }));
+
+    await waitFor(() => {
+      expect(updates).toHaveLength(1);
+    });
+
+    fireEvent.change(screen.getByLabelText("Audio voice 1"), {
+      target: { value: "dry formal court voice" },
+    });
+    fireEvent.change(screen.getByLabelText("Audio delivery 1"), {
+      target: { value: "quiet but cutting" },
+    });
+    fireEvent.change(screen.getByLabelText("Audio tags 1"), {
+      target: { value: "court\nformal" },
+    });
+    fireEvent.change(screen.getByLabelText("Audio sample text 1"), {
+      target: { value: "The ledgers do not accuse by accident." },
+    });
+    fireEvent.change(screen.getByLabelText("Audio reference asset ids 1"), {
+      target: { value: "asset-voice-censor-001\nasset-voice-ref-002" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Audio Bible" }));
+
+    await waitFor(() => {
+      expect(updates).toEqual([
+        "visual:Ink court with harsher winter lanterns.:bone white|seal red:court|winter:asset-image-court-crisis-001|asset-style-ref-002",
+        "audio:dry formal court voice:quiet but cutting:court|formal:The ledgers do not accuse by accident.:asset-voice-censor-001|asset-voice-ref-002",
       ]);
     });
   });
@@ -686,6 +820,9 @@ function appTestDataSource(
         character_count: 2,
       };
     },
+    async listAssetRecords() {
+      return demoProjectData.asset_records;
+    },
     async readWorldEditDocument() {
       return {
         world_bible_markdown: contents["world/world.md"].content,
@@ -837,6 +974,18 @@ function appTestDataSource(
     },
     async updateAiSafetyPolicy(_path, policy) {
       return policy;
+    },
+    async readVisualBible() {
+      return demoProjectData.visual_bible;
+    },
+    async updateVisualBible(_path, visualBible) {
+      return visualBible;
+    },
+    async readAudioBible() {
+      return demoProjectData.audio_bible;
+    },
+    async updateAudioBible(_path, audioBible) {
+      return audioBible;
     },
     async playOnceProject(_path, playerInput) {
       return demoPlayOnceReport(playerInput);
