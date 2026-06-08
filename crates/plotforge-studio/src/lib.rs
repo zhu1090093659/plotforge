@@ -8,13 +8,15 @@ use std::{
 use plotforge_export::{export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 pub use plotforge_schema::{
-    AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
+    AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
+    AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterEditDocument,
     CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect, ExportProfile,
     ProjectCreationReport, ProjectCreationRequest, ProjectData, ProjectTemplateId,
     ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
-    StateVariablesEditDocument, StoryCraftEditDocument, StoryCraftGenerationReport,
-    StoryCraftGenerationRequest, VisualBible, WorldEditDocument, WorldGenerationReport,
-    WorldGenerationRequest,
+    StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, VisualBible,
+    WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
+    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
 };
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
@@ -84,6 +86,80 @@ pub enum SourceFileKind {
     Prompt,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopPackageValidationReport {
+    pub package_dir: String,
+    pub manifest: WorkshopItemPackage,
+    pub ai_usage: AiUsageManifest,
+    pub files: Vec<StudioWorkshopValidatedFile>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopValidatedFile {
+    pub path: String,
+    pub content_hash: String,
+    pub byte_length: u64,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryItem {
+    pub local_id: String,
+    pub package_id: String,
+    pub title: String,
+    pub package_dir: String,
+    pub blocked: Option<StudioWorkshopLibraryBlock>,
+    pub reports: Vec<StudioWorkshopLibraryReport>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryBlock {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryReport {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryImportReport {
+    pub item: StudioWorkshopLibraryItem,
+    pub validation_report: StudioWorkshopPackageValidationReport,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryLoadReport {
+    pub item: StudioWorkshopLibraryItem,
+    pub validation_report: StudioWorkshopPackageValidationReport,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryRemixReport {
+    pub source_local_id: String,
+    pub item: StudioWorkshopLibraryItem,
+    pub validation_report: StudioWorkshopPackageValidationReport,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopLibraryDeleteReport {
+    pub local_id: String,
+    pub package_dir: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioWorkshopPublishDraftWriteReport {
+    pub output_dir: String,
+    pub draft: WorkshopPublishDraft,
+    pub files_written: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct StudioSteamSubmissionKitWriteReport {
+    pub output_dir: String,
+    pub draft: SteamSubmissionKitDraft,
+    pub files_written: Vec<String>,
+}
+
 pub fn create_project(
     path: impl AsRef<Path>,
     request: ProjectCreationRequest,
@@ -115,6 +191,140 @@ pub fn check_project(path: impl AsRef<Path>) -> StudioCommandResult<ProjectCheck
 
 pub fn list_export_profiles() -> Vec<ExportProfile> {
     plotforge_schema::supported_export_profiles()
+}
+
+pub fn validate_workshop_package(
+    package_dir: impl AsRef<Path>,
+) -> StudioCommandResult<StudioWorkshopPackageValidationReport> {
+    let package_dir = package_dir.as_ref();
+    plotforge_workshop::validate_workshop_package(package_dir)
+        .map(studio_workshop_validation_report)
+        .map_err(|source| command_error("validate_workshop_package", package_dir, source))
+}
+
+pub fn import_workshop_library_package(
+    library_root: impl AsRef<Path>,
+    package_dir: impl AsRef<Path>,
+) -> StudioCommandResult<StudioWorkshopLibraryImportReport> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::import_workshop_library_package(library_root, package_dir)
+        .map(|report| StudioWorkshopLibraryImportReport {
+            item: studio_workshop_library_item(report.item),
+            validation_report: studio_workshop_validation_report(report.validation_report),
+        })
+        .map_err(|source| command_error("import_workshop_library_package", library_root, source))
+}
+
+pub fn list_workshop_library(
+    library_root: impl AsRef<Path>,
+) -> StudioCommandResult<Vec<StudioWorkshopLibraryItem>> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::list_workshop_library(library_root)
+        .map(|items| {
+            items
+                .into_iter()
+                .map(studio_workshop_library_item)
+                .collect()
+        })
+        .map_err(|source| command_error("list_workshop_library", library_root, source))
+}
+
+pub fn load_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+) -> StudioCommandResult<StudioWorkshopLibraryLoadReport> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::load_workshop_library_item(library_root, local_id)
+        .map(|report| StudioWorkshopLibraryLoadReport {
+            item: studio_workshop_library_item(report.item),
+            validation_report: studio_workshop_validation_report(report.validation_report),
+        })
+        .map_err(|source| command_error("load_workshop_library_item", library_root, source))
+}
+
+pub fn remix_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    source_local_id: &str,
+    new_local_id: &str,
+    new_title: &str,
+) -> StudioCommandResult<StudioWorkshopLibraryRemixReport> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::remix_workshop_library_item(
+        library_root,
+        source_local_id,
+        new_local_id,
+        new_title,
+    )
+    .map(|report| StudioWorkshopLibraryRemixReport {
+        source_local_id: report.source_local_id,
+        item: studio_workshop_library_item(report.item),
+        validation_report: studio_workshop_validation_report(report.validation_report),
+    })
+    .map_err(|source| command_error("remix_workshop_library_item", library_root, source))
+}
+
+pub fn block_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+    reason: &str,
+) -> StudioCommandResult<StudioWorkshopLibraryItem> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::block_workshop_library_item(library_root, local_id, reason)
+        .map(studio_workshop_library_item)
+        .map_err(|source| command_error("block_workshop_library_item", library_root, source))
+}
+
+pub fn report_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+    reason: &str,
+) -> StudioCommandResult<StudioWorkshopLibraryItem> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::report_workshop_library_item(library_root, local_id, reason)
+        .map(studio_workshop_library_item)
+        .map_err(|source| command_error("report_workshop_library_item", library_root, source))
+}
+
+pub fn delete_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+) -> StudioCommandResult<StudioWorkshopLibraryDeleteReport> {
+    let library_root = library_root.as_ref();
+    plotforge_workshop::delete_workshop_library_item(library_root, local_id)
+        .map(|report| StudioWorkshopLibraryDeleteReport {
+            local_id: report.local_id,
+            package_dir: path_string(report.package_dir),
+        })
+        .map_err(|source| command_error("delete_workshop_library_item", library_root, source))
+}
+
+pub fn write_workshop_publish_draft(
+    package_dir: impl AsRef<Path>,
+    output_dir: impl AsRef<Path>,
+) -> StudioCommandResult<StudioWorkshopPublishDraftWriteReport> {
+    let package_dir = package_dir.as_ref();
+    plotforge_workshop::write_workshop_publish_draft(package_dir, output_dir)
+        .map(|report| StudioWorkshopPublishDraftWriteReport {
+            output_dir: path_string(report.output_dir),
+            draft: report.draft,
+            files_written: report.files_written.into_iter().map(path_string).collect(),
+        })
+        .map_err(|source| command_error("write_workshop_publish_draft", package_dir, source))
+}
+
+pub fn write_steam_submission_kit(
+    package_dir: impl AsRef<Path>,
+    output_dir: impl AsRef<Path>,
+    request: &SteamSubmissionKitRequest,
+) -> StudioCommandResult<StudioSteamSubmissionKitWriteReport> {
+    let package_dir = package_dir.as_ref();
+    plotforge_workshop::write_steam_submission_kit(package_dir, output_dir, request)
+        .map(|report| StudioSteamSubmissionKitWriteReport {
+            output_dir: path_string(report.output_dir),
+            draft: report.draft,
+            files_written: report.files_written.into_iter().map(path_string).collect(),
+        })
+        .map_err(|source| command_error("write_steam_submission_kit", package_dir, source))
 }
 
 pub fn read_world_edit_document(path: impl AsRef<Path>) -> StudioCommandResult<WorldEditDocument> {
@@ -544,6 +754,52 @@ fn command_error(code: impl Into<String>, path: &Path, source: impl Error) -> St
     }
 }
 
+fn studio_workshop_validation_report(
+    report: plotforge_workshop::WorkshopPackageValidationReport,
+) -> StudioWorkshopPackageValidationReport {
+    StudioWorkshopPackageValidationReport {
+        package_dir: path_string(report.package_dir),
+        manifest: report.manifest,
+        ai_usage: report.ai_usage,
+        files: report
+            .files
+            .into_iter()
+            .map(studio_workshop_validated_file)
+            .collect(),
+    }
+}
+
+fn studio_workshop_validated_file(
+    file: plotforge_workshop::WorkshopValidatedFile,
+) -> StudioWorkshopValidatedFile {
+    StudioWorkshopValidatedFile {
+        path: path_string(file.path),
+        content_hash: file.content_hash,
+        byte_length: file.byte_length,
+    }
+}
+
+fn studio_workshop_library_item(
+    item: plotforge_workshop::WorkshopLibraryItem,
+) -> StudioWorkshopLibraryItem {
+    StudioWorkshopLibraryItem {
+        local_id: item.local_id,
+        package_id: item.package_id,
+        title: item.title,
+        package_dir: path_string(item.package_dir),
+        blocked: item.blocked.map(|blocked| StudioWorkshopLibraryBlock {
+            reason: blocked.reason,
+        }),
+        reports: item
+            .reports
+            .into_iter()
+            .map(|report| StudioWorkshopLibraryReport {
+                reason: report.reason,
+            })
+            .collect(),
+    }
+}
+
 fn path_string(path: PathBuf) -> String {
     path.display().to_string()
 }
@@ -682,22 +938,28 @@ fn is_editable_source_file(path: &Path, kind: &SourceFileKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, path::Path};
 
     use plotforge_storage::create_demo_project;
     use tempfile::tempdir;
 
     use super::{
-        AiSafetyPolicy, Character, Effect, ResourceDefinition, Rule, check_project,
-        create_character, create_project, create_resource, create_rule, export_static_project,
-        export_static_project_zip, generate_character, generate_story_craft,
-        generate_world_expansion, list_asset_records, list_export_profiles, list_source_files,
+        AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
+        AiUsageSourceKind, Character, Effect, ExportProfile, ResourceDefinition, Rule,
+        SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
+        WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
+        create_project, create_resource, create_rule, delete_workshop_library_item,
+        export_static_project, export_static_project_zip, generate_character, generate_story_craft,
+        generate_world_expansion, import_workshop_library_package, list_asset_records,
+        list_export_profiles, list_source_files, list_workshop_library, load_workshop_library_item,
         open_project, play_once_project, play_once_project_from_latest_snapshot,
         play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
         read_character_edit_document, read_rules_edit_document, read_source_file,
         read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, write_source_file,
+        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
+        update_ai_safety_policy, update_story_craft_edit_document, update_world_edit_document,
+        validate_workshop_package, write_source_file, write_steam_submission_kit,
+        write_workshop_publish_draft,
     };
 
     #[test]
@@ -777,6 +1039,163 @@ mod tests {
                 .iter()
                 .all(|profile| !profile.platform_submission_ready)
         );
+    }
+
+    #[test]
+    fn workshop_adapter_validates_package_and_writes_local_draft_outputs() {
+        let package = tempdir().expect("package");
+        let publish_output = tempdir().expect("publish output");
+        let kit_output = tempdir().expect("kit output");
+        write_valid_workshop_package(package.path());
+
+        let validation = validate_workshop_package(package.path()).expect("validate package");
+
+        assert_eq!(validation.package_dir, package.path().display().to_string());
+        assert_eq!(validation.manifest.package_id, "studio-workshop-fixture");
+        assert_eq!(validation.ai_usage.project_id, "studio-workshop-fixture");
+        assert!(!validation.ai_usage.provider_credentials_included);
+        assert!(!validation.ai_usage.raw_provider_responses_included);
+        assert!(!validation.ai_usage.private_traces_included);
+        assert_eq!(
+            validation
+                .files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["content/game.json", "preview.png"]
+        );
+
+        let publish = write_workshop_publish_draft(package.path(), publish_output.path())
+            .expect("write publish draft");
+
+        assert_eq!(
+            publish.output_dir,
+            publish_output.path().display().to_string()
+        );
+        assert_eq!(publish.files_written.len(), 1);
+        assert!(publish.files_written[0].ends_with("workshop-publish-draft.json"));
+        assert_eq!(publish.draft.package_id, "studio-workshop-fixture");
+        assert!(!publish.draft.upload_enabled);
+        assert!(!publish.draft.steamworks_api_called);
+        assert!(publish.draft.requires_explicit_steamworks_credentials);
+        let publish_json = fs::read_to_string(&publish.files_written[0]).expect("publish json");
+        assert_redaction_safe_text(&publish_json);
+
+        let kit = write_steam_submission_kit(
+            package.path(),
+            kit_output.path(),
+            &sample_submission_kit_request(),
+        )
+        .expect("write submission kit");
+
+        assert_eq!(kit.output_dir, kit_output.path().display().to_string());
+        assert_eq!(kit.files_written.len(), 8);
+        assert_eq!(kit.draft.workshop_package_id, "studio-workshop-fixture");
+        assert_eq!(kit.draft.product_name, "Studio Workshop Fixture");
+        for file in &kit.files_written {
+            let text = fs::read_to_string(file).expect("kit text");
+            assert_redaction_safe_text(&text);
+        }
+    }
+
+    #[test]
+    fn workshop_adapter_manages_local_library_lifecycle() {
+        let package = tempdir().expect("package");
+        let library = tempdir().expect("library");
+        write_valid_workshop_package(package.path());
+
+        let import = import_workshop_library_package(library.path(), package.path())
+            .expect("import package");
+        assert_eq!(import.item.local_id, "studio-workshop-fixture");
+        assert!(
+            import
+                .item
+                .package_dir
+                .ends_with("studio-workshop-fixture/package")
+        );
+        assert_eq!(import.validation_report.files.len(), 2);
+
+        let listed = list_workshop_library(library.path()).expect("list library");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, "Studio Workshop Fixture");
+
+        let loaded =
+            load_workshop_library_item(library.path(), "studio-workshop-fixture").expect("load");
+        assert_eq!(loaded.item.package_id, "studio-workshop-fixture");
+        assert_eq!(
+            loaded.validation_report.manifest.title,
+            "Studio Workshop Fixture"
+        );
+
+        let remix = remix_workshop_library_item(
+            library.path(),
+            "studio-workshop-fixture",
+            "studio-workshop-remix",
+            "Studio Workshop Remix",
+        )
+        .expect("remix");
+        assert_eq!(remix.source_local_id, "studio-workshop-fixture");
+        assert_eq!(remix.item.local_id, "studio-workshop-remix");
+        assert_eq!(
+            remix.validation_report.manifest.title,
+            "Studio Workshop Remix"
+        );
+        assert_eq!(
+            remix.validation_report.manifest.visibility,
+            WorkshopDraftVisibility::PrivateDraft
+        );
+
+        let reported = report_workshop_library_item(
+            library.path(),
+            "studio-workshop-remix",
+            "Needs local content review.",
+        )
+        .expect("report");
+        assert_eq!(reported.reports[0].reason, "Needs local content review.");
+
+        let blocked = block_workshop_library_item(
+            library.path(),
+            "studio-workshop-remix",
+            "Local moderation block.",
+        )
+        .expect("block");
+        assert_eq!(
+            blocked.blocked.as_ref().map(|block| block.reason.as_str()),
+            Some("Local moderation block.")
+        );
+
+        let blocked_load = load_workshop_library_item(library.path(), "studio-workshop-remix")
+            .expect_err("blocked item should not load");
+        assert_eq!(blocked_load.code, "load_workshop_library_item");
+        assert!(blocked_load.message.contains("blocked"));
+
+        let deleted = delete_workshop_library_item(library.path(), "studio-workshop-fixture")
+            .expect("delete original");
+        assert_eq!(deleted.local_id, "studio-workshop-fixture");
+        assert!(!Path::new(&deleted.package_dir).exists());
+
+        let remaining = list_workshop_library(library.path()).expect("list after delete");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].local_id, "studio-workshop-remix");
+        assert!(remaining[0].blocked.is_some());
+        assert_eq!(remaining[0].reports.len(), 1);
+    }
+
+    #[test]
+    fn workshop_adapter_maps_workshop_errors_to_command_codes() {
+        let package = tempdir().expect("package");
+        write_valid_workshop_package(package.path());
+        fs::write(
+            package.path().join("content/game.json"),
+            b"{\"secret\":\"sk-test-secret-marker\"}\n",
+        )
+        .expect("secret content");
+
+        let error =
+            validate_workshop_package(package.path()).expect_err("secret marker should fail");
+
+        assert_eq!(error.code, "validate_workshop_package");
+        assert!(error.message.contains("sk-"));
     }
 
     #[test]
@@ -1345,5 +1764,139 @@ mod tests {
                 amount: -3,
             }],
         }
+    }
+
+    fn write_valid_workshop_package(package_dir: &Path) {
+        fs::create_dir_all(package_dir.join("content")).expect("content dir");
+        fs::write(package_dir.join("content/game.json"), workshop_game_json()).expect("game json");
+        fs::write(package_dir.join("preview.png"), workshop_preview_png()).expect("preview");
+        fs::write(
+            package_dir.join("ai-usage.json"),
+            serde_json::to_string_pretty(&sample_workshop_ai_usage())
+                .expect("ai usage")
+                .as_bytes(),
+        )
+        .expect("ai usage file");
+        fs::write(
+            package_dir.join("workshop-item.json"),
+            serde_json::to_string_pretty(&sample_workshop_package()).expect("manifest"),
+        )
+        .expect("manifest file");
+    }
+
+    fn sample_workshop_package() -> WorkshopItemPackage {
+        WorkshopItemPackage {
+            manifest_version: "2026-06-08".into(),
+            package_id: "studio-workshop-fixture".into(),
+            title: "Studio Workshop Fixture".into(),
+            description: "Local package draft for Studio adapter validation.".into(),
+            visibility: WorkshopDraftVisibility::PrivateDraft,
+            preview_image: "preview.png".into(),
+            content_root: "content".into(),
+            tags: vec!["story-game".into(), "local-fixture".into()],
+            export_profile: ExportProfile::steam_workshop(),
+            ai_usage_manifest_path: "ai-usage.json".into(),
+            content_files: vec![
+                workshop_file_record(
+                    "content/game.json",
+                    "166fe567ff09b79d66f8795dd9b8ba7319c80b9c55a1d369a1b00605f1442d55",
+                    workshop_game_json(),
+                ),
+                workshop_file_record(
+                    "preview.png",
+                    "8fbb1bf0b04cc6fef9f90571628a3cc5a0bbe2492647cb55979867fc035e21a7",
+                    workshop_preview_png(),
+                ),
+            ],
+            notices: vec!["Local package validation fixture.".into()],
+        }
+    }
+
+    fn sample_workshop_ai_usage() -> AiUsageManifest {
+        AiUsageManifest {
+            manifest_version: "2026-06-08".into(),
+            project_id: "studio-workshop-fixture".into(),
+            project_version: "0.1.0".into(),
+            export_profile: ExportProfile::steam_workshop(),
+            generated_by: "plotforge-studio-test".into(),
+            external_model_calls_during_export: false,
+            provider_credentials_included: false,
+            raw_provider_responses_included: false,
+            private_traces_included: false,
+            disclosures: vec![
+                AiUsageDisclosure {
+                    content_kind: AiUsageContentKind::Text,
+                    source_kind: AiUsageSourceKind::ProjectSource,
+                    summary: "Story text comes from canonical project files.".into(),
+                    asset_paths: Vec::new(),
+                },
+                AiUsageDisclosure {
+                    content_kind: AiUsageContentKind::Image,
+                    source_kind: AiUsageSourceKind::LocalMockProvider,
+                    summary: "Preview artwork is a local fixture asset.".into(),
+                    asset_paths: vec!["preview.png".into()],
+                },
+            ],
+            provider_summaries: vec![AiProviderSummary {
+                provider: "local-fixture-provider".into(),
+                model: None,
+                generated_asset_count: 1,
+                fallback_asset_count: 0,
+                prompt_hashes: vec!["sha256:studio-preview".into()],
+            }],
+            ai_safety_policy: Default::default(),
+            notices: vec!["No provider credentials or raw provider responses included.".into()],
+        }
+    }
+
+    fn sample_submission_kit_request() -> SteamSubmissionKitRequest {
+        SteamSubmissionKitRequest {
+            product_name: "Studio Workshop Fixture".into(),
+            desktop_build_path: Some("builds/studio-fixture-desktop.zip".into()),
+            store_short_description: "A local narrative package draft.".into(),
+            screenshot_paths: vec!["media/screenshots/scene.png".into()],
+            capsule_asset_paths: vec!["media/capsules/header.png".into()],
+            content_warnings: vec!["Political conflict".into()],
+            safety_guardrails: vec!["Review player-visible generated content.".into()],
+            user_reporting_path: "support@example.invalid".into(),
+            moderation_policy: "Creator review for player-visible text and images.".into(),
+            build_notes: vec!["Run desktop build checks in local QA.".into()],
+        }
+    }
+
+    fn workshop_file_record(
+        path: impl Into<String>,
+        content_hash: impl Into<String>,
+        bytes: &[u8],
+    ) -> WorkshopPackageFile {
+        WorkshopPackageFile {
+            path: path.into(),
+            content_hash: content_hash.into(),
+            hash_algorithm: "sha256".into(),
+            byte_length: bytes.len() as u64,
+        }
+    }
+
+    fn assert_redaction_safe_text(text: &str) {
+        for marker in [
+            "OPENAI_API_KEY",
+            "api_key",
+            "secret_key",
+            "sk-",
+            "raw_response",
+            "request_id",
+            "published_file_id",
+            "steam_app_id",
+        ] {
+            assert!(!text.contains(marker), "{marker} should not appear");
+        }
+    }
+
+    fn workshop_game_json() -> &'static [u8] {
+        b"{\"title\":\"Studio Workshop Fixture\"}\n"
+    }
+
+    fn workshop_preview_png() -> &'static [u8] {
+        b"studio-preview"
     }
 }

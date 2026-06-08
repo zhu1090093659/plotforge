@@ -2343,7 +2343,18 @@ dependencies = [
  "plotforge-runtime",
  "plotforge-schema",
  "plotforge-storage",
+ "plotforge-workshop",
  "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "plotforge-workshop"
+version = "0.1.0"
+dependencies = [
+ "plotforge-schema",
+ "serde_json",
+ "sha2",
  "thiserror 2.0.18",
 ]
 

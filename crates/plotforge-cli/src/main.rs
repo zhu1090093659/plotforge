@@ -6,12 +6,19 @@ use plotforge_export::{export_desktop_runtime_draft, export_static_web, export_s
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 use plotforge_schema::{
     DESKTOP_RUNTIME_DRAFT_FILE, ExportProfileTarget, ProjectCreationRequest, ProjectTemplateId,
-    supported_export_profiles,
+    SteamSubmissionKitRequest, WorkshopPublishDraft, supported_export_profiles,
 };
 use plotforge_storage::{
     create_demo_project, create_project_from_request, load_project, read_latest_runtime_snapshot,
     read_runtime_snapshot, validate_project, validate_runtime_snapshot_id, write_runtime_snapshot,
     write_trace,
+};
+use plotforge_workshop::{
+    LocalOnlySteamworksUploadPort, SteamworksUploadConfig, block_workshop_library_item,
+    delete_workshop_library_item, import_workshop_library_package, list_workshop_library,
+    load_workshop_library_item, remix_workshop_library_item, report_workshop_library_item,
+    upload_workshop_publish_draft, validate_workshop_package, write_steam_submission_kit,
+    write_workshop_publish_draft,
 };
 
 #[derive(Debug, Parser)]
@@ -29,6 +36,7 @@ enum Command {
     Play(PlayArgs),
     Trace(TraceCommand),
     Export(ExportCommand),
+    Workshop(WorkshopCommand),
 }
 
 #[derive(Debug, Args)]
@@ -153,6 +161,113 @@ struct ExportDesktopArgs {
     out: PathBuf,
 }
 
+#[derive(Debug, Args)]
+struct WorkshopCommand {
+    #[command(subcommand)]
+    command: WorkshopSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkshopSubcommand {
+    Validate(WorkshopPackageArgs),
+    Import(WorkshopImportArgs),
+    List(WorkshopLibraryArgs),
+    Load(WorkshopLibraryItemArgs),
+    Remix(WorkshopRemixArgs),
+    Block(WorkshopReasonArgs),
+    Report(WorkshopReasonArgs),
+    Delete(WorkshopLibraryItemArgs),
+    PublishDraft(WorkshopPublishDraftArgs),
+    UploadDraft(WorkshopUploadDraftArgs),
+    SubmissionKit(WorkshopSubmissionKitArgs),
+}
+
+#[derive(Debug, Args)]
+struct WorkshopPackageArgs {
+    package_dir: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopLibraryArgs {
+    library_root: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopImportArgs {
+    library_root: PathBuf,
+    package_dir: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopLibraryItemArgs {
+    library_root: PathBuf,
+    local_id: String,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopRemixArgs {
+    library_root: PathBuf,
+    source_local_id: String,
+    #[arg(long)]
+    new_id: String,
+    #[arg(long)]
+    title: String,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopReasonArgs {
+    library_root: PathBuf,
+    local_id: String,
+    #[arg(long)]
+    reason: String,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopPublishDraftArgs {
+    package_dir: PathBuf,
+    #[arg(long, default_value = "exports/workshop-publish-draft")]
+    out: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopUploadDraftArgs {
+    package_dir: PathBuf,
+    draft_json: PathBuf,
+    #[arg(long)]
+    enable: bool,
+    #[arg(long)]
+    app_access_confirmed: bool,
+    #[arg(long)]
+    credential_label: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct WorkshopSubmissionKitArgs {
+    package_dir: PathBuf,
+    #[arg(long, default_value = "exports/steam-submission-kit")]
+    out: PathBuf,
+    #[arg(long)]
+    product_name: String,
+    #[arg(long)]
+    desktop_build_path: Option<String>,
+    #[arg(long)]
+    store_short_description: String,
+    #[arg(long = "screenshot")]
+    screenshot_paths: Vec<String>,
+    #[arg(long = "capsule-asset")]
+    capsule_asset_paths: Vec<String>,
+    #[arg(long = "content-warning")]
+    content_warnings: Vec<String>,
+    #[arg(long = "safety-guardrail")]
+    safety_guardrails: Vec<String>,
+    #[arg(long)]
+    user_reporting_path: String,
+    #[arg(long)]
+    moderation_policy: String,
+    #[arg(long = "build-note")]
+    build_notes: Vec<String>,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -161,6 +276,7 @@ fn main() -> Result<()> {
         Command::Play(args) => handle_play(args),
         Command::Trace(command) => handle_trace(command),
         Command::Export(command) => handle_export(command),
+        Command::Workshop(command) => handle_workshop(command),
     }
 }
 
@@ -497,4 +613,222 @@ fn export_profile_target_label(target: &ExportProfileTarget) -> &'static str {
         ExportProfileTarget::SteamWorkshop => "steam_workshop",
         ExportProfileTarget::SteamSubmissionKit => "steam_submission_kit",
     }
+}
+
+fn handle_workshop(command: WorkshopCommand) -> Result<()> {
+    match command.command {
+        WorkshopSubcommand::Validate(args) => {
+            let report = validate_workshop_package(&args.package_dir).with_context(|| {
+                format!(
+                    "validate workshop package at {}",
+                    args.package_dir.display()
+                )
+            })?;
+            print_workshop_validation("workshop package ok", &report);
+        }
+        WorkshopSubcommand::Import(args) => {
+            let report = import_workshop_library_package(&args.library_root, &args.package_dir)
+                .with_context(|| {
+                    format!(
+                        "import workshop package {} into {}",
+                        args.package_dir.display(),
+                        args.library_root.display()
+                    )
+                })?;
+            println!(
+                "imported workshop item {} ({})",
+                report.item.local_id, report.item.title
+            );
+            print_workshop_validation("validated imported package", &report.validation_report);
+        }
+        WorkshopSubcommand::List(args) => {
+            let items = list_workshop_library(&args.library_root).with_context(|| {
+                format!("list workshop library {}", args.library_root.display())
+            })?;
+            println!("workshop library items: {}", items.len());
+            for item in items {
+                println!(
+                    "{} title={} blocked={} reports={}",
+                    item.local_id,
+                    item.title,
+                    item.blocked.is_some(),
+                    item.reports.len()
+                );
+            }
+        }
+        WorkshopSubcommand::Load(args) => {
+            let report = load_workshop_library_item(&args.library_root, &args.local_id)
+                .with_context(|| {
+                    format!(
+                        "load workshop library item {} from {}",
+                        args.local_id,
+                        args.library_root.display()
+                    )
+                })?;
+            println!(
+                "loaded workshop item {} ({})",
+                report.item.local_id, report.item.title
+            );
+            print_workshop_validation("validated loaded package", &report.validation_report);
+        }
+        WorkshopSubcommand::Remix(args) => {
+            let report = remix_workshop_library_item(
+                &args.library_root,
+                &args.source_local_id,
+                &args.new_id,
+                &args.title,
+            )
+            .with_context(|| {
+                format!(
+                    "remix workshop item {} into {} under {}",
+                    args.source_local_id,
+                    args.new_id,
+                    args.library_root.display()
+                )
+            })?;
+            println!(
+                "remixed workshop item {} -> {} ({})",
+                report.source_local_id, report.item.local_id, report.item.title
+            );
+            print_workshop_validation("validated remixed package", &report.validation_report);
+        }
+        WorkshopSubcommand::Block(args) => {
+            let item =
+                block_workshop_library_item(&args.library_root, &args.local_id, &args.reason)
+                    .with_context(|| {
+                        format!(
+                            "block workshop item {} under {}",
+                            args.local_id,
+                            args.library_root.display()
+                        )
+                    })?;
+            let reason = item
+                .blocked
+                .as_ref()
+                .map(|blocked| blocked.reason.as_str())
+                .unwrap_or("none");
+            println!("blocked workshop item {} reason={reason}", item.local_id);
+        }
+        WorkshopSubcommand::Report(args) => {
+            let item =
+                report_workshop_library_item(&args.library_root, &args.local_id, &args.reason)
+                    .with_context(|| {
+                        format!(
+                            "report workshop item {} under {}",
+                            args.local_id,
+                            args.library_root.display()
+                        )
+                    })?;
+            println!(
+                "reported workshop item {} reports={}",
+                item.local_id,
+                item.reports.len()
+            );
+        }
+        WorkshopSubcommand::Delete(args) => {
+            let report = delete_workshop_library_item(&args.library_root, &args.local_id)
+                .with_context(|| {
+                    format!(
+                        "delete workshop item {} under {}",
+                        args.local_id,
+                        args.library_root.display()
+                    )
+                })?;
+            println!(
+                "deleted workshop item {} package_dir={}",
+                report.local_id,
+                report.package_dir.display()
+            );
+        }
+        WorkshopSubcommand::PublishDraft(args) => {
+            let report =
+                write_workshop_publish_draft(&args.package_dir, &args.out).with_context(|| {
+                    format!(
+                        "write workshop publish draft from {} to {}",
+                        args.package_dir.display(),
+                        args.out.display()
+                    )
+                })?;
+            println!(
+                "wrote workshop publish draft for {} to {} ({} files)",
+                report.draft.package_id,
+                report.output_dir.display(),
+                report.files_written.len()
+            );
+            println!(
+                "upload_enabled={} steamworks_api_called={}",
+                report.draft.upload_enabled, report.draft.steamworks_api_called
+            );
+        }
+        WorkshopSubcommand::UploadDraft(args) => {
+            let text = fs::read_to_string(&args.draft_json)
+                .with_context(|| format!("read publish draft {}", args.draft_json.display()))?;
+            let draft: WorkshopPublishDraft =
+                serde_json::from_str(&text).context("parse workshop publish draft json")?;
+            let config = SteamworksUploadConfig {
+                enabled: args.enable,
+                credential_label: args.credential_label,
+                app_access_confirmed: args.app_access_confirmed,
+            };
+            let port = LocalOnlySteamworksUploadPort;
+            let report = upload_workshop_publish_draft(&port, &config, &args.package_dir, &draft)
+                .with_context(|| {
+                format!(
+                    "run gated local Workshop upload adapter for {}",
+                    args.package_dir.display()
+                )
+            })?;
+            println!(
+                "workshop upload adapter {} attempted={} steamworks_api_called={} package={}",
+                report.adapter_name,
+                report.upload_attempted,
+                report.steamworks_api_called,
+                report.package_id
+            );
+            println!("{}", report.message);
+        }
+        WorkshopSubcommand::SubmissionKit(args) => {
+            let request = SteamSubmissionKitRequest {
+                product_name: args.product_name,
+                desktop_build_path: args.desktop_build_path,
+                store_short_description: args.store_short_description,
+                screenshot_paths: args.screenshot_paths,
+                capsule_asset_paths: args.capsule_asset_paths,
+                content_warnings: args.content_warnings,
+                safety_guardrails: args.safety_guardrails,
+                user_reporting_path: args.user_reporting_path,
+                moderation_policy: args.moderation_policy,
+                build_notes: args.build_notes,
+            };
+            let report = write_steam_submission_kit(&args.package_dir, &args.out, &request)
+                .with_context(|| {
+                    format!(
+                        "write Steam Submission Kit drafts from {} to {}",
+                        args.package_dir.display(),
+                        args.out.display()
+                    )
+                })?;
+            println!(
+                "wrote Steam Submission Kit drafts for {} to {} ({} files)",
+                report.draft.workshop_package_id,
+                report.output_dir.display(),
+                report.files_written.len()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn print_workshop_validation(
+    label: &str,
+    report: &plotforge_workshop::WorkshopPackageValidationReport,
+) {
+    let byte_total: u64 = report.files.iter().map(|file| file.byte_length).sum();
+    println!(
+        "{label}: {} title={} files={} bytes={}",
+        report.manifest.package_id,
+        report.manifest.title,
+        report.files.len(),
+        byte_total
+    );
 }

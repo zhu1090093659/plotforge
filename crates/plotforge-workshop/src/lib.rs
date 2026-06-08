@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Component, Path, PathBuf},
 };
@@ -6,17 +7,28 @@ use std::{
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiProviderSummary, AiUsageContentKind, AiUsageManifest,
     AiUsageSourceKind, ExportProfileTarget, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
-    WORKSHOP_ITEM_MANIFEST_FILE, WorkshopItemPackage, WorkshopPackageFile,
+    WORKSHOP_ITEM_MANIFEST_FILE, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
+    WorkshopPublishDraft,
 };
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub const WORKSHOP_HASH_ALGORITHM: &str = "sha256";
+pub const WORKSHOP_LIBRARY_INDEX_FILE: &str = "library-index.json";
+pub const WORKSHOP_LIBRARY_ITEMS_DIR: &str = "items";
+pub const WORKSHOP_LIBRARY_PACKAGE_DIR: &str = "package";
+pub const WORKSHOP_PUBLISH_DRAFT_FILE: &str = "workshop-publish-draft.json";
+pub const STEAM_STORE_COPY_DRAFT_FILE: &str = "steam-store-copy-draft.md";
 pub const STEAM_SUBMISSION_CHECKLIST_FILE: &str = "steam-submission-checklist.md";
 pub const STEAM_AI_DISCLOSURE_DRAFT_FILE: &str = "steam-ai-disclosure-draft.md";
 pub const STEAM_CONTENT_WARNINGS_FILE: &str = "steam-content-warnings.md";
+pub const STEAM_ASSET_REFERENCES_FILE: &str = "steam-asset-references.md";
+pub const STEAM_DIRECT_CHECKLIST_FILE: &str = "steam-direct-checklist.md";
+pub const STEAM_CONTENT_SAFETY_CHECKLIST_FILE: &str = "steam-content-safety-checklist.md";
 pub const STEAM_PACKAGING_NOTES_FILE: &str = "steam-packaging-notes.md";
 
+const WORKSHOP_LIBRARY_MANIFEST_VERSION: &str = "2026-06-09";
 const STEAMWORKS_CONTENT_SURVEY_URL: &str =
     "https://partner.steamgames.com/doc/gettingstarted/contentsurvey";
 const STEAMWORKS_APP_FEE_URL: &str = "https://partner.steamgames.com/doc/gettingstarted/appfee";
@@ -62,6 +74,20 @@ pub enum WorkshopPackageError {
     InvalidSubmissionKitRequest(String),
     #[error("workshop package contains a blocked secret marker: {0}")]
     SecretMarker(String),
+    #[error("workshop library item already exists: {0}")]
+    LibraryItemExists(String),
+    #[error("workshop library item not found: {0}")]
+    LibraryItemNotFound(String),
+    #[error("workshop library item is blocked: {local_id}: {reason}")]
+    LibraryItemBlocked { local_id: String, reason: String },
+    #[error("invalid workshop library metadata: {0}")]
+    InvalidLibraryMetadata(String),
+    #[error("Steamworks upload is disabled; enable it explicitly before calling the upload port")]
+    SteamworksUploadDisabled,
+    #[error("Steamworks upload requires explicit credentials")]
+    SteamworksCredentialsMissing,
+    #[error("invalid Steamworks upload request: {0}")]
+    InvalidSteamworksUpload(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,6 +110,365 @@ pub struct SteamSubmissionKitWriteReport {
     pub output_dir: PathBuf,
     pub draft: SteamSubmissionKitDraft,
     pub files_written: Vec<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopPublishDraftWriteReport {
+    pub output_dir: PathBuf,
+    pub draft: WorkshopPublishDraft,
+    pub files_written: Vec<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryItem {
+    pub local_id: String,
+    pub package_id: String,
+    pub title: String,
+    pub package_dir: PathBuf,
+    pub blocked: Option<WorkshopLibraryBlock>,
+    pub reports: Vec<WorkshopLibraryReport>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryBlock {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryReport {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryImportReport {
+    pub item: WorkshopLibraryItem,
+    pub validation_report: WorkshopPackageValidationReport,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryLoadReport {
+    pub item: WorkshopLibraryItem,
+    pub validation_report: WorkshopPackageValidationReport,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryRemixReport {
+    pub source_local_id: String,
+    pub item: WorkshopLibraryItem,
+    pub validation_report: WorkshopPackageValidationReport,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkshopLibraryDeleteReport {
+    pub local_id: String,
+    pub package_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SteamworksUploadConfig {
+    pub enabled: bool,
+    pub credential_label: Option<String>,
+    pub app_access_confirmed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SteamworksUploadRequest {
+    pub package_dir: PathBuf,
+    pub draft: WorkshopPublishDraft,
+    pub credential_label: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SteamworksUploadReport {
+    pub package_id: String,
+    pub adapter_name: String,
+    pub upload_attempted: bool,
+    pub steamworks_api_called: bool,
+    pub message: String,
+}
+
+pub trait SteamworksUploadPort {
+    fn upload_workshop_draft(
+        &self,
+        request: &SteamworksUploadRequest,
+    ) -> Result<SteamworksUploadReport, WorkshopPackageError>;
+}
+
+pub struct LocalOnlySteamworksUploadPort;
+
+impl SteamworksUploadPort for LocalOnlySteamworksUploadPort {
+    fn upload_workshop_draft(
+        &self,
+        _request: &SteamworksUploadRequest,
+    ) -> Result<SteamworksUploadReport, WorkshopPackageError> {
+        Err(WorkshopPackageError::InvalidSteamworksUpload(
+            "no Steamworks upload adapter is configured for local-only builds".into(),
+        ))
+    }
+}
+
+pub fn import_workshop_library_package(
+    library_root: impl AsRef<Path>,
+    package_dir: impl AsRef<Path>,
+) -> Result<WorkshopLibraryImportReport, WorkshopPackageError> {
+    let library_root = library_root.as_ref();
+    let source_report = validate_workshop_package(package_dir)?;
+    let local_id = source_report.manifest.package_id.clone();
+    validate_library_id(&local_id)?;
+
+    let mut items = read_workshop_library_index(library_root)?;
+    if let Some(existing) = items.iter().find(|item| item.local_id == local_id) {
+        if let Some(blocked) = &existing.blocked {
+            return Err(WorkshopPackageError::LibraryItemBlocked {
+                local_id,
+                reason: blocked.reason.clone(),
+            });
+        }
+        return Err(WorkshopPackageError::LibraryItemExists(local_id));
+    }
+
+    let target_dir = library_item_package_dir(library_root, &local_id)?;
+    copy_validated_package(&source_report, &target_dir)?;
+    let validation_report = validate_workshop_package(&target_dir)?;
+    validate_library_item_matches_report(&local_id, &validation_report)?;
+
+    let item = library_item_from_report(library_root, &local_id, &validation_report, None, vec![])?;
+    items.push(item.clone());
+    write_workshop_library_index(library_root, &items)?;
+
+    Ok(WorkshopLibraryImportReport {
+        item,
+        validation_report,
+    })
+}
+
+pub fn list_workshop_library(
+    library_root: impl AsRef<Path>,
+) -> Result<Vec<WorkshopLibraryItem>, WorkshopPackageError> {
+    read_workshop_library_index(library_root.as_ref())
+}
+
+pub fn load_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+) -> Result<WorkshopLibraryLoadReport, WorkshopPackageError> {
+    let library_root = library_root.as_ref();
+    validate_library_id(local_id)?;
+    let item = find_library_item(library_root, local_id)?;
+    reject_blocked_library_item(&item)?;
+
+    let validation_report = validate_workshop_package(&item.package_dir)?;
+    validate_library_item_matches_report(local_id, &validation_report)?;
+
+    Ok(WorkshopLibraryLoadReport {
+        item,
+        validation_report,
+    })
+}
+
+pub fn remix_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    source_local_id: &str,
+    new_local_id: &str,
+    new_title: &str,
+) -> Result<WorkshopLibraryRemixReport, WorkshopPackageError> {
+    let library_root = library_root.as_ref();
+    let source = load_workshop_library_item(library_root, source_local_id)?;
+    validate_library_id(new_local_id)?;
+    validate_library_text(new_title, "remix title")?;
+
+    let mut items = read_workshop_library_index(library_root)?;
+    if items.iter().any(|item| item.local_id == new_local_id) {
+        return Err(WorkshopPackageError::LibraryItemExists(new_local_id.into()));
+    }
+
+    let target_dir = library_item_package_dir(library_root, new_local_id)?;
+    copy_validated_package(&source.validation_report, &target_dir)?;
+    rewrite_remix_manifest(&target_dir, &source.item, new_local_id, new_title.trim())?;
+
+    let validation_report = validate_workshop_package(&target_dir)?;
+    validate_library_item_matches_report(new_local_id, &validation_report)?;
+    let item =
+        library_item_from_report(library_root, new_local_id, &validation_report, None, vec![])?;
+    items.push(item.clone());
+    write_workshop_library_index(library_root, &items)?;
+
+    Ok(WorkshopLibraryRemixReport {
+        source_local_id: source_local_id.into(),
+        item,
+        validation_report,
+    })
+}
+
+pub fn block_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+    reason: &str,
+) -> Result<WorkshopLibraryItem, WorkshopPackageError> {
+    let library_root = library_root.as_ref();
+    validate_library_id(local_id)?;
+    validate_library_text(reason, "block reason")?;
+
+    let mut items = read_workshop_library_index(library_root)?;
+    let item = items
+        .iter_mut()
+        .find(|item| item.local_id == local_id)
+        .ok_or_else(|| WorkshopPackageError::LibraryItemNotFound(local_id.into()))?;
+    item.blocked = Some(WorkshopLibraryBlock {
+        reason: reason.trim().into(),
+    });
+    let updated = item.clone();
+    write_workshop_library_index(library_root, &items)?;
+    Ok(updated)
+}
+
+pub fn report_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+    reason: &str,
+) -> Result<WorkshopLibraryItem, WorkshopPackageError> {
+    let library_root = library_root.as_ref();
+    validate_library_id(local_id)?;
+    validate_library_text(reason, "report reason")?;
+
+    let mut items = read_workshop_library_index(library_root)?;
+    let item = items
+        .iter_mut()
+        .find(|item| item.local_id == local_id)
+        .ok_or_else(|| WorkshopPackageError::LibraryItemNotFound(local_id.into()))?;
+    item.reports.push(WorkshopLibraryReport {
+        reason: reason.trim().into(),
+    });
+    let updated = item.clone();
+    write_workshop_library_index(library_root, &items)?;
+    Ok(updated)
+}
+
+pub fn delete_workshop_library_item(
+    library_root: impl AsRef<Path>,
+    local_id: &str,
+) -> Result<WorkshopLibraryDeleteReport, WorkshopPackageError> {
+    let library_root = library_root.as_ref();
+    validate_library_id(local_id)?;
+
+    let mut items = read_workshop_library_index(library_root)?;
+    let position = items
+        .iter()
+        .position(|item| item.local_id == local_id)
+        .ok_or_else(|| WorkshopPackageError::LibraryItemNotFound(local_id.into()))?;
+    let item = items.remove(position);
+    if !item.package_dir.is_dir() {
+        return Err(WorkshopPackageError::MissingFile(item.package_dir));
+    }
+    fs::remove_dir_all(&item.package_dir).map_io(&item.package_dir)?;
+    write_workshop_library_index(library_root, &items)?;
+
+    Ok(WorkshopLibraryDeleteReport {
+        local_id: local_id.into(),
+        package_dir: item.package_dir,
+    })
+}
+
+pub fn generate_workshop_publish_draft(
+    report: &WorkshopPackageValidationReport,
+) -> Result<WorkshopPublishDraft, WorkshopPackageError> {
+    let draft = WorkshopPublishDraft {
+        manifest_version: WORKSHOP_LIBRARY_MANIFEST_VERSION.into(),
+        package_id: report.manifest.package_id.clone(),
+        title: report.manifest.title.clone(),
+        description: report.manifest.description.clone(),
+        visibility: report.manifest.visibility.clone(),
+        preview_image: report.manifest.preview_image.clone(),
+        content_root: report.manifest.content_root.clone(),
+        tags: report.manifest.tags.clone(),
+        ai_usage_manifest_path: report.manifest.ai_usage_manifest_path.clone(),
+        package_files: report
+            .files
+            .iter()
+            .map(|file| WorkshopPackageFile {
+                path: file.path.to_string_lossy().replace('\\', "/"),
+                content_hash: file.content_hash.clone(),
+                hash_algorithm: WORKSHOP_HASH_ALGORITHM.into(),
+                byte_length: file.byte_length,
+            })
+            .collect(),
+        generated_by: "plotforge-workshop 0.1.0".into(),
+        upload_enabled: false,
+        requires_explicit_steamworks_credentials: true,
+        steamworks_api_called: false,
+        notices: vec![
+            "Local Workshop publish draft only; no Steamworks API call was made.".into(),
+            "A future upload adapter must require explicit credentials, app access confirmation, and user action."
+                .into(),
+            "This draft does not decide platform acceptance, moderation outcome, or release status."
+                .into(),
+        ],
+    };
+    validate_workshop_publish_draft(&draft)?;
+    Ok(draft)
+}
+
+pub fn write_workshop_publish_draft(
+    package_dir: impl AsRef<Path>,
+    output_dir: impl AsRef<Path>,
+) -> Result<WorkshopPublishDraftWriteReport, WorkshopPackageError> {
+    let report = validate_workshop_package(package_dir)?;
+    let draft = generate_workshop_publish_draft(&report)?;
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir).map_io(output_dir)?;
+
+    let data =
+        serde_json::to_string_pretty(&draft).map_err(|source| WorkshopPackageError::Json {
+            path: output_dir.join(WORKSHOP_PUBLISH_DRAFT_FILE),
+            source,
+        })?;
+    assert_no_secret_markers(&data)?;
+    assert_no_submission_promise_markers(&data)?;
+    let output_path = output_dir.join(WORKSHOP_PUBLISH_DRAFT_FILE);
+    fs::write(&output_path, data + "\n").map_io(&output_path)?;
+
+    Ok(WorkshopPublishDraftWriteReport {
+        output_dir: output_dir.to_path_buf(),
+        draft,
+        files_written: vec![output_path],
+    })
+}
+
+pub fn upload_workshop_publish_draft<P: SteamworksUploadPort>(
+    port: &P,
+    config: &SteamworksUploadConfig,
+    package_dir: impl AsRef<Path>,
+    draft: &WorkshopPublishDraft,
+) -> Result<SteamworksUploadReport, WorkshopPackageError> {
+    if !config.enabled {
+        return Err(WorkshopPackageError::SteamworksUploadDisabled);
+    }
+    if !config.app_access_confirmed {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(
+            "app access must be explicitly confirmed before upload".into(),
+        ));
+    }
+    let credential_label = config
+        .credential_label
+        .as_deref()
+        .filter(|label| !label.trim().is_empty())
+        .ok_or(WorkshopPackageError::SteamworksCredentialsMissing)?;
+    validate_library_text(credential_label, "credential label")?;
+    validate_workshop_publish_draft(draft)?;
+    let validation_report = validate_workshop_package(package_dir.as_ref())?;
+    if validation_report.manifest.package_id != draft.package_id {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(format!(
+            "publish draft package id {} does not match package {}",
+            draft.package_id, validation_report.manifest.package_id
+        )));
+    }
+
+    let request = SteamworksUploadRequest {
+        package_dir: package_dir.as_ref().to_path_buf(),
+        draft: draft.clone(),
+        credential_label: credential_label.into(),
+    };
+    port.upload_workshop_draft(&request)
 }
 
 pub fn validate_workshop_package(
@@ -142,9 +527,13 @@ pub fn generate_steam_submission_kit(
         workshop_package_id: report.manifest.package_id.clone(),
         generated_by: "plotforge-workshop 0.1.0".into(),
         source_workshop_manifest_path: WORKSHOP_ITEM_MANIFEST_FILE.into(),
+        store_copy_markdown: build_store_copy_draft(report, request),
         checklist_markdown: build_submission_checklist(report, request),
         ai_disclosure_markdown: build_ai_disclosure_draft(report, request),
         content_warnings_markdown: build_content_warnings_draft(report, request),
+        asset_references_markdown: build_asset_references_draft(report, request),
+        steam_direct_checklist_markdown: build_steam_direct_checklist(report, request),
+        content_safety_checklist_markdown: build_content_safety_checklist(report, request),
         packaging_notes_markdown: build_packaging_notes(report, request),
         official_reference_urls: official_reference_urls(),
         notices: submission_kit_notices(),
@@ -165,6 +554,10 @@ pub fn write_steam_submission_kit(
 
     let files = [
         (
+            STEAM_STORE_COPY_DRAFT_FILE,
+            draft.store_copy_markdown.as_str(),
+        ),
+        (
             STEAM_SUBMISSION_CHECKLIST_FILE,
             draft.checklist_markdown.as_str(),
         ),
@@ -175,6 +568,18 @@ pub fn write_steam_submission_kit(
         (
             STEAM_CONTENT_WARNINGS_FILE,
             draft.content_warnings_markdown.as_str(),
+        ),
+        (
+            STEAM_ASSET_REFERENCES_FILE,
+            draft.asset_references_markdown.as_str(),
+        ),
+        (
+            STEAM_DIRECT_CHECKLIST_FILE,
+            draft.steam_direct_checklist_markdown.as_str(),
+        ),
+        (
+            STEAM_CONTENT_SAFETY_CHECKLIST_FILE,
+            draft.content_safety_checklist_markdown.as_str(),
         ),
         (
             STEAM_PACKAGING_NOTES_FILE,
@@ -195,6 +600,290 @@ pub fn write_steam_submission_kit(
         draft,
         files_written,
     })
+}
+
+fn read_workshop_library_index(
+    library_root: &Path,
+) -> Result<Vec<WorkshopLibraryItem>, WorkshopPackageError> {
+    let index_path = library_root.join(WORKSHOP_LIBRARY_INDEX_FILE);
+    if !index_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let data = read_utf8_file(&index_path)?;
+    assert_no_secret_markers(&data)?;
+    let value: Value = serde_json::from_str(&data).map_json(&index_path)?;
+    let object = value.as_object().ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata("library index must be a JSON object".into())
+    })?;
+    let version = required_json_string(object, "manifest_version")?;
+    if version != WORKSHOP_LIBRARY_MANIFEST_VERSION {
+        return Err(WorkshopPackageError::InvalidLibraryMetadata(format!(
+            "unsupported library index manifest_version: {version}"
+        )));
+    }
+
+    let items_value = object.get("items").ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata("library index is missing items".into())
+    })?;
+    let items_array = items_value.as_array().ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata("library index items must be an array".into())
+    })?;
+    let mut items = Vec::new();
+    for item_value in items_array {
+        items.push(parse_library_item(library_root, item_value)?);
+    }
+    items.sort_by(|left, right| left.local_id.cmp(&right.local_id));
+    Ok(items)
+}
+
+fn write_workshop_library_index(
+    library_root: &Path,
+    items: &[WorkshopLibraryItem],
+) -> Result<(), WorkshopPackageError> {
+    fs::create_dir_all(library_root).map_io(library_root)?;
+
+    let mut sorted = items.to_vec();
+    sorted.sort_by(|left, right| left.local_id.cmp(&right.local_id));
+    let value = serde_json::json!({
+        "manifest_version": WORKSHOP_LIBRARY_MANIFEST_VERSION,
+        "items": sorted.iter().map(library_item_to_json).collect::<Vec<_>>(),
+    });
+    let data =
+        serde_json::to_string_pretty(&value).map_err(|source| WorkshopPackageError::Json {
+            path: library_root.join(WORKSHOP_LIBRARY_INDEX_FILE),
+            source,
+        })?;
+    assert_no_secret_markers(&data)?;
+    let index_path = library_root.join(WORKSHOP_LIBRARY_INDEX_FILE);
+    fs::write(&index_path, data).map_io(&index_path)
+}
+
+fn parse_library_item(
+    library_root: &Path,
+    value: &Value,
+) -> Result<WorkshopLibraryItem, WorkshopPackageError> {
+    let object = value.as_object().ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata("library item must be a JSON object".into())
+    })?;
+    let local_id = required_json_string(object, "local_id")?.to_string();
+    validate_library_id(&local_id)?;
+    let package_id = required_json_string(object, "package_id")?.to_string();
+    validate_library_id(&package_id)?;
+    let title = required_json_string(object, "title")?.to_string();
+    validate_library_text(&title, "library item title")?;
+
+    let blocked = match object.get("blocked") {
+        Some(Value::Null) | None => None,
+        Some(blocked_value) => {
+            let blocked_object = blocked_value.as_object().ok_or_else(|| {
+                WorkshopPackageError::InvalidLibraryMetadata(
+                    "library item blocked metadata must be an object".into(),
+                )
+            })?;
+            let reason = required_json_string(blocked_object, "reason")?.to_string();
+            validate_library_text(&reason, "block reason")?;
+            Some(WorkshopLibraryBlock { reason })
+        }
+    };
+
+    let reports_value = object.get("reports").ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata("library item is missing reports".into())
+    })?;
+    let reports_array = reports_value.as_array().ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata("library item reports must be an array".into())
+    })?;
+    let mut reports = Vec::new();
+    for report_value in reports_array {
+        let report_object = report_value.as_object().ok_or_else(|| {
+            WorkshopPackageError::InvalidLibraryMetadata(
+                "library report metadata must be an object".into(),
+            )
+        })?;
+        let reason = required_json_string(report_object, "reason")?.to_string();
+        validate_library_text(&reason, "report reason")?;
+        reports.push(WorkshopLibraryReport { reason });
+    }
+
+    let package_dir = library_item_package_dir(library_root, &local_id)?;
+    Ok(WorkshopLibraryItem {
+        local_id,
+        package_id,
+        title,
+        package_dir,
+        blocked,
+        reports,
+    })
+}
+
+fn library_item_to_json(item: &WorkshopLibraryItem) -> Value {
+    serde_json::json!({
+        "local_id": item.local_id,
+        "package_id": item.package_id,
+        "title": item.title,
+        "blocked": item.blocked.as_ref().map(|blocked| {
+            serde_json::json!({ "reason": blocked.reason })
+        }),
+        "reports": item.reports.iter().map(|report| {
+            serde_json::json!({ "reason": report.reason })
+        }).collect::<Vec<_>>(),
+    })
+}
+
+fn required_json_string<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<&'a str, WorkshopPackageError> {
+    object.get(field).and_then(Value::as_str).ok_or_else(|| {
+        WorkshopPackageError::InvalidLibraryMetadata(format!(
+            "library metadata field must be a string: {field}"
+        ))
+    })
+}
+
+fn find_library_item(
+    library_root: &Path,
+    local_id: &str,
+) -> Result<WorkshopLibraryItem, WorkshopPackageError> {
+    read_workshop_library_index(library_root)?
+        .into_iter()
+        .find(|item| item.local_id == local_id)
+        .ok_or_else(|| WorkshopPackageError::LibraryItemNotFound(local_id.into()))
+}
+
+fn reject_blocked_library_item(item: &WorkshopLibraryItem) -> Result<(), WorkshopPackageError> {
+    if let Some(blocked) = &item.blocked {
+        return Err(WorkshopPackageError::LibraryItemBlocked {
+            local_id: item.local_id.clone(),
+            reason: blocked.reason.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn copy_validated_package(
+    source_report: &WorkshopPackageValidationReport,
+    target_dir: &Path,
+) -> Result<(), WorkshopPackageError> {
+    if target_dir.exists() {
+        return Err(WorkshopPackageError::LibraryItemExists(
+            target_dir.display().to_string(),
+        ));
+    }
+
+    let mut package_files = BTreeSet::new();
+    package_files.insert(safe_relative_path(WORKSHOP_ITEM_MANIFEST_FILE)?);
+    package_files.insert(safe_relative_path(
+        &source_report.manifest.ai_usage_manifest_path,
+    )?);
+    for file in &source_report.files {
+        package_files.insert(safe_relative_path(&file.path.to_string_lossy())?);
+    }
+
+    for relative_path in package_files {
+        reject_private_path(&relative_path)?;
+        let source_path = source_report.package_dir.join(&relative_path);
+        let target_path = target_dir.join(&relative_path);
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).map_io(parent)?;
+        }
+        fs::copy(&source_path, &target_path).map_io(&target_path)?;
+    }
+    Ok(())
+}
+
+fn rewrite_remix_manifest(
+    package_dir: &Path,
+    source_item: &WorkshopLibraryItem,
+    new_local_id: &str,
+    new_title: &str,
+) -> Result<(), WorkshopPackageError> {
+    let manifest_path = package_dir.join(WORKSHOP_ITEM_MANIFEST_FILE);
+    let mut manifest = source_item_manifest(package_dir)?;
+    manifest.package_id = new_local_id.into();
+    manifest.title = new_title.into();
+    manifest.visibility = WorkshopDraftVisibility::PrivateDraft;
+    manifest.notices.push(format!(
+        "Local remix draft copied from {} ({}); no platform moderation or publishing action was performed.",
+        source_item.title, source_item.local_id
+    ));
+    let data =
+        serde_json::to_string_pretty(&manifest).map_err(|source| WorkshopPackageError::Json {
+            path: manifest_path.clone(),
+            source,
+        })?;
+    assert_no_secret_markers(&data)?;
+    fs::write(&manifest_path, data).map_io(&manifest_path)
+}
+
+fn source_item_manifest(package_dir: &Path) -> Result<WorkshopItemPackage, WorkshopPackageError> {
+    let manifest_path = package_dir.join(WORKSHOP_ITEM_MANIFEST_FILE);
+    let manifest_data = read_utf8_file(&manifest_path)?;
+    assert_no_secret_markers(&manifest_data)?;
+    serde_json::from_str(&manifest_data).map_json(&manifest_path)
+}
+
+fn library_item_from_report(
+    library_root: &Path,
+    local_id: &str,
+    report: &WorkshopPackageValidationReport,
+    blocked: Option<WorkshopLibraryBlock>,
+    reports: Vec<WorkshopLibraryReport>,
+) -> Result<WorkshopLibraryItem, WorkshopPackageError> {
+    validate_library_item_matches_report(local_id, report)?;
+    Ok(WorkshopLibraryItem {
+        local_id: local_id.into(),
+        package_id: report.manifest.package_id.clone(),
+        title: report.manifest.title.clone(),
+        package_dir: library_item_package_dir(library_root, local_id)?,
+        blocked,
+        reports,
+    })
+}
+
+fn validate_library_item_matches_report(
+    local_id: &str,
+    report: &WorkshopPackageValidationReport,
+) -> Result<(), WorkshopPackageError> {
+    if report.manifest.package_id != local_id {
+        return Err(WorkshopPackageError::InvalidLibraryMetadata(format!(
+            "library item id {local_id} does not match package id {}",
+            report.manifest.package_id
+        )));
+    }
+    Ok(())
+}
+
+fn library_item_package_dir(
+    library_root: &Path,
+    local_id: &str,
+) -> Result<PathBuf, WorkshopPackageError> {
+    validate_library_id(local_id)?;
+    Ok(library_root
+        .join(WORKSHOP_LIBRARY_ITEMS_DIR)
+        .join(local_id)
+        .join(WORKSHOP_LIBRARY_PACKAGE_DIR))
+}
+
+fn validate_library_id(local_id: &str) -> Result<(), WorkshopPackageError> {
+    let trimmed = local_id.trim();
+    if trimmed.is_empty() || trimmed != local_id {
+        return Err(WorkshopPackageError::UnsafePath(local_id.into()));
+    }
+    let path = safe_relative_path(local_id)?;
+    if path.components().count() != 1 {
+        return Err(WorkshopPackageError::UnsafePath(local_id.into()));
+    }
+    reject_private_path(&path)
+}
+
+fn validate_library_text(text: &str, label: &str) -> Result<(), WorkshopPackageError> {
+    if text.trim().is_empty() {
+        return Err(WorkshopPackageError::InvalidLibraryMetadata(format!(
+            "{label} must not be empty"
+        )));
+    }
+    assert_no_secret_markers(text)
 }
 
 fn validate_submission_kit_request(
@@ -261,9 +950,13 @@ fn validate_submission_draft(draft: &SteamSubmissionKitDraft) -> Result<(), Work
         draft.workshop_package_id.as_str(),
         draft.generated_by.as_str(),
         draft.source_workshop_manifest_path.as_str(),
+        draft.store_copy_markdown.as_str(),
         draft.checklist_markdown.as_str(),
         draft.ai_disclosure_markdown.as_str(),
         draft.content_warnings_markdown.as_str(),
+        draft.asset_references_markdown.as_str(),
+        draft.steam_direct_checklist_markdown.as_str(),
+        draft.content_safety_checklist_markdown.as_str(),
         draft.packaging_notes_markdown.as_str(),
     ] {
         validate_submission_text(text)?;
@@ -286,6 +979,105 @@ fn validate_submission_text(text: &str) -> Result<(), WorkshopPackageError> {
 fn validate_submission_path(path: &str) -> Result<(), WorkshopPackageError> {
     let relative_path = safe_relative_path(path)?;
     reject_private_path(&relative_path)
+}
+
+fn validate_workshop_publish_draft(
+    draft: &WorkshopPublishDraft,
+) -> Result<(), WorkshopPackageError> {
+    validate_library_id(&draft.package_id)?;
+    for text in [
+        draft.manifest_version.as_str(),
+        draft.title.as_str(),
+        draft.description.as_str(),
+        draft.preview_image.as_str(),
+        draft.content_root.as_str(),
+        draft.ai_usage_manifest_path.as_str(),
+        draft.generated_by.as_str(),
+    ] {
+        validate_submission_text(text)?;
+    }
+    for value in draft.tags.iter().chain(draft.notices.iter()) {
+        validate_submission_text(value)?;
+    }
+    validate_submission_path(&draft.preview_image)?;
+    validate_submission_path(&draft.content_root)?;
+    if draft.ai_usage_manifest_path != AI_USAGE_MANIFEST_FILE {
+        return Err(WorkshopPackageError::InvalidMetadata(format!(
+            "publish draft ai_usage_manifest_path must be {AI_USAGE_MANIFEST_FILE}"
+        )));
+    }
+    if draft.upload_enabled || draft.steamworks_api_called {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(
+            "local publish drafts must not claim upload state".into(),
+        ));
+    }
+    if !draft.requires_explicit_steamworks_credentials {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(
+            "publish draft must require explicit Steamworks credentials".into(),
+        ));
+    }
+    for file in &draft.package_files {
+        validate_file_metadata(file)?;
+    }
+    Ok(())
+}
+
+fn validate_file_metadata(record: &WorkshopPackageFile) -> Result<(), WorkshopPackageError> {
+    if record.hash_algorithm != WORKSHOP_HASH_ALGORITHM {
+        return Err(WorkshopPackageError::InvalidMetadata(format!(
+            "unsupported hash_algorithm for {}: {}",
+            record.path, record.hash_algorithm
+        )));
+    }
+    let relative_path = safe_relative_path(&record.path)?;
+    reject_private_path(&relative_path)
+}
+
+fn build_store_copy_draft(
+    report: &WorkshopPackageValidationReport,
+    request: &SteamSubmissionKitRequest,
+) -> String {
+    let mut output = String::new();
+    push_line(&mut output, "# Store Copy Draft");
+    push_line(&mut output, "");
+    push_line(
+        &mut output,
+        "Draft support material only. The creator must edit this against implemented gameplay, screenshots, store page limits, and current Steamworks guidance.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Product Name");
+    push_line(&mut output, &request.product_name);
+    push_line(&mut output, "");
+    push_line(&mut output, "## Short Description Draft");
+    push_line(&mut output, &request.store_short_description);
+    push_line(&mut output, "");
+    push_line(&mut output, "## Workshop Package Context");
+    push_line(
+        &mut output,
+        &format!("- Package id: {}", report.manifest.package_id),
+    );
+    push_line(
+        &mut output,
+        &format!("- Workshop title: {}", report.manifest.title),
+    );
+    push_line(
+        &mut output,
+        &format!("- Workshop description: {}", report.manifest.description),
+    );
+    push_line(
+        &mut output,
+        &format!("- Tags: {}", report.manifest.tags.join(", ")),
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Creator Review Prompts");
+    for item in [
+        "Remove or rewrite any claim that is not visible in the current build.",
+        "Match screenshots, capsule assets, and tags to actual gameplay.",
+        "Keep Workshop/remix language separate from independent Steam store submission.",
+    ] {
+        push_line(&mut output, &format!("- {item}"));
+    }
+    output
 }
 
 fn build_submission_checklist(
@@ -486,6 +1278,140 @@ fn build_content_warnings_draft(
     push_line(
         &mut output,
         "- Keep warnings descriptive; this kit does not decide ratings, laws, or platform approval.",
+    );
+    output
+}
+
+fn build_asset_references_draft(
+    report: &WorkshopPackageValidationReport,
+    request: &SteamSubmissionKitRequest,
+) -> String {
+    let mut output = String::new();
+    push_line(&mut output, "# Screenshots And Capsule References");
+    push_line(&mut output, "");
+    push_line(
+        &mut output,
+        "Draft support material only. These paths are local references for creator review and are not uploaded by PlotForge.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Preview Image");
+    push_line(&mut output, &format!("- {}", report.manifest.preview_image));
+    push_line(&mut output, "");
+    push_line(&mut output, "## Screenshots");
+    append_plain_list(
+        &mut output,
+        &request.screenshot_paths,
+        "TODO: add screenshots that match actual gameplay.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Capsule / Cover Assets");
+    append_plain_list(
+        &mut output,
+        &request.capsule_asset_paths,
+        "TODO: add capsule/header assets that match the store page draft.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Validated Package Files");
+    for file in &report.files {
+        push_line(
+            &mut output,
+            &format!(
+                "- {} ({} bytes, sha256:{})",
+                file.path.display(),
+                file.byte_length,
+                file.content_hash
+            ),
+        );
+    }
+    output
+}
+
+fn build_steam_direct_checklist(
+    _report: &WorkshopPackageValidationReport,
+    request: &SteamSubmissionKitRequest,
+) -> String {
+    let mut output = String::new();
+    push_line(&mut output, "# Steam Direct Checklist Draft");
+    push_line(&mut output, "");
+    push_line(
+        &mut output,
+        "This checklist is a local reminder for the responsible developer. It does not replace Steamworks account, fee, store, build, review, or release workflows.",
+    );
+    push_line(&mut output, "");
+    for item in [
+        "Confirm Steamworks partner account access and permissions.",
+        "Review current Steam Direct fee and app setup requirements.",
+        "Prepare store page copy, screenshots, capsule assets, tags, supported OS, and build notes.",
+        "Upload and test builds through the creator-owned Steamworks workflow outside PlotForge.",
+        "Complete Steamworks questionnaires with the final build and policy evidence.",
+        "Archive this local kit with the build and store-page evidence used for review.",
+    ] {
+        push_line(&mut output, &format!("- [ ] {item}"));
+    }
+    push_line(&mut output, "");
+    push_line(&mut output, "## Current Draft Inputs");
+    push_line(
+        &mut output,
+        &format!(
+            "- Desktop build draft path: {}",
+            request
+                .desktop_build_path
+                .as_deref()
+                .unwrap_or("TODO: add a creator-owned desktop build artifact path")
+        ),
+    );
+    push_line(
+        &mut output,
+        &format!(
+            "- Store short description: {}",
+            request.store_short_description
+        ),
+    );
+    output
+}
+
+fn build_content_safety_checklist(
+    _report: &WorkshopPackageValidationReport,
+    request: &SteamSubmissionKitRequest,
+) -> String {
+    let mut output = String::new();
+    push_line(&mut output, "# Content Safety Checklist Draft");
+    push_line(&mut output, "");
+    push_line(
+        &mut output,
+        "Draft support material only. The creator must review final player-visible content, UGC policy, and current platform forms before external submission.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Content Warnings To Review");
+    append_plain_list(
+        &mut output,
+        &request.content_warnings,
+        "TODO: document mature content, sensitive themes, and regional restrictions.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Live-generation Guardrails");
+    append_plain_list(
+        &mut output,
+        &request.safety_guardrails,
+        "TODO: define guardrails before enabling live-generated content.",
+    );
+    push_line(&mut output, "");
+    push_line(&mut output, "## Reporting And Moderation");
+    push_line(
+        &mut output,
+        &format!("- User reporting path: {}", request.user_reporting_path),
+    );
+    push_line(
+        &mut output,
+        &format!("- Moderation policy: {}", request.moderation_policy),
+    );
+    push_line(
+        &mut output,
+        "- [ ] Confirm local block/report/delete workflow for Workshop-style packages.",
+    );
+    push_line(
+        &mut output,
+        "- [ ] Recheck any remix or user-generated content before external distribution.",
     );
     output
 }
@@ -893,18 +1819,26 @@ impl<T> JsonContext<T> for Result<T, serde_json::Error> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{cell::Cell, fs};
 
     use plotforge_schema::{
         AI_USAGE_MANIFEST_FILE, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
         AiUsageSourceKind, ExportProfile, SteamSubmissionKitRequest, WorkshopDraftVisibility,
-        WorkshopItemPackage, WorkshopPackageFile,
+        WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
     };
 
     use super::{
-        STEAM_AI_DISCLOSURE_DRAFT_FILE, STEAM_CONTENT_WARNINGS_FILE, STEAM_PACKAGING_NOTES_FILE,
-        STEAM_SUBMISSION_CHECKLIST_FILE, WorkshopPackageError, generate_steam_submission_kit,
-        sha256_hex, validate_workshop_package, write_steam_submission_kit,
+        LocalOnlySteamworksUploadPort, STEAM_AI_DISCLOSURE_DRAFT_FILE, STEAM_ASSET_REFERENCES_FILE,
+        STEAM_CONTENT_SAFETY_CHECKLIST_FILE, STEAM_CONTENT_WARNINGS_FILE,
+        STEAM_DIRECT_CHECKLIST_FILE, STEAM_PACKAGING_NOTES_FILE, STEAM_STORE_COPY_DRAFT_FILE,
+        STEAM_SUBMISSION_CHECKLIST_FILE, SteamworksUploadConfig, SteamworksUploadPort,
+        SteamworksUploadReport, SteamworksUploadRequest, WORKSHOP_ITEM_MANIFEST_FILE,
+        WORKSHOP_PUBLISH_DRAFT_FILE, WorkshopPackageError, block_workshop_library_item,
+        delete_workshop_library_item, generate_steam_submission_kit,
+        generate_workshop_publish_draft, import_workshop_library_package, list_workshop_library,
+        load_workshop_library_item, remix_workshop_library_item, report_workshop_library_item,
+        sha256_hex, upload_workshop_publish_draft, validate_workshop_package,
+        write_steam_submission_kit, write_workshop_publish_draft,
     };
 
     #[test]
@@ -1210,15 +2144,30 @@ Draft support material only. The creator must review the shipped build, screensh
         )
         .expect("write kit");
 
-        assert_eq!(report.files_written.len(), 4);
+        assert_eq!(report.files_written.len(), 8);
         for file in [
+            STEAM_STORE_COPY_DRAFT_FILE,
             STEAM_SUBMISSION_CHECKLIST_FILE,
             STEAM_AI_DISCLOSURE_DRAFT_FILE,
             STEAM_CONTENT_WARNINGS_FILE,
+            STEAM_ASSET_REFERENCES_FILE,
+            STEAM_DIRECT_CHECKLIST_FILE,
+            STEAM_CONTENT_SAFETY_CHECKLIST_FILE,
             STEAM_PACKAGING_NOTES_FILE,
         ] {
             assert!(output.path().join(file).is_file(), "{file} should exist");
         }
+        let store_copy =
+            fs::read_to_string(output.path().join(STEAM_STORE_COPY_DRAFT_FILE)).expect("copy");
+        assert!(store_copy.contains("Store Copy Draft"));
+        assert!(store_copy.contains("A branching court drama built with PlotForge."));
+        let steam_direct =
+            fs::read_to_string(output.path().join(STEAM_DIRECT_CHECKLIST_FILE)).expect("direct");
+        assert!(steam_direct.contains("Steam Direct Checklist Draft"));
+        let content_safety =
+            fs::read_to_string(output.path().join(STEAM_CONTENT_SAFETY_CHECKLIST_FILE))
+                .expect("safety");
+        assert!(content_safety.contains("Content Safety Checklist Draft"));
         let packaging_notes =
             fs::read_to_string(output.path().join(STEAM_PACKAGING_NOTES_FILE)).expect("notes");
         assert!(packaging_notes.contains("No Steamworks SDK, upload client"));
@@ -1266,6 +2215,337 @@ Draft support material only. The creator must review the shipped build, screensh
         ));
     }
 
+    #[test]
+    fn generate_workshop_publish_draft_keeps_upload_disabled_and_redaction_safe() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        write_valid_package(temp.path());
+        let report = validate_workshop_package(temp.path()).expect("valid package");
+
+        let draft = generate_workshop_publish_draft(&report).expect("publish draft");
+
+        assert_eq!(draft.manifest_version, "2026-06-09");
+        assert_eq!(draft.package_id, "dynasty-embers-workshop-draft");
+        assert_eq!(draft.title, "Dynasty Embers");
+        assert_eq!(draft.visibility, WorkshopDraftVisibility::PrivateDraft);
+        assert!(!draft.upload_enabled);
+        assert!(draft.requires_explicit_steamworks_credentials);
+        assert!(!draft.steamworks_api_called);
+        assert_eq!(draft.package_files.len(), 2);
+        assert_eq!(draft.package_files[0].path, "content/game.json");
+        assert_eq!(draft.package_files[0].content_hash, sha256_hex(game_json()));
+        assert!(
+            draft
+                .notices
+                .iter()
+                .any(|notice| notice.contains("no Steamworks API call was made"))
+        );
+
+        let data = serde_json::to_string(&draft).expect("draft json");
+        assert!(!data.contains("published_file_id"));
+        assert!(!data.contains("sk-"));
+        assert!(!data.contains("STEAM"));
+    }
+
+    #[test]
+    fn write_workshop_publish_draft_persists_local_json_without_upload_claims() {
+        let package = tempfile::tempdir().expect("package");
+        let output = tempfile::tempdir().expect("output");
+        write_valid_package(package.path());
+
+        let report = write_workshop_publish_draft(package.path(), output.path())
+            .expect("write publish draft");
+
+        let output_path = output.path().join(WORKSHOP_PUBLISH_DRAFT_FILE);
+        assert_eq!(report.files_written, vec![output_path.clone()]);
+        assert!(output_path.is_file());
+
+        let data = fs::read_to_string(&output_path).expect("read publish draft");
+        assert!(data.ends_with('\n'));
+        assert!(data.contains(r#""upload_enabled": false"#));
+        assert!(data.contains(r#""steamworks_api_called": false"#));
+        assert!(!data.contains("published_file_id"));
+        assert!(!data.contains("guaranteed approval"));
+
+        let written: WorkshopPublishDraft =
+            serde_json::from_str(&data).expect("publish draft json");
+        assert_eq!(written, report.draft);
+    }
+
+    #[test]
+    fn upload_workshop_publish_draft_is_disabled_by_default_before_adapter_call() {
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+        let draft = validated_publish_draft(package.path());
+        let adapter = FakeSteamworksUploadPort::default();
+        let disabled = SteamworksUploadConfig {
+            enabled: false,
+            credential_label: Some("steamworks-local-test-label".into()),
+            app_access_confirmed: true,
+        };
+
+        let error = upload_workshop_publish_draft(&adapter, &disabled, package.path(), &draft)
+            .expect_err("disabled upload");
+
+        assert!(matches!(
+            error,
+            WorkshopPackageError::SteamworksUploadDisabled
+        ));
+        assert_eq!(adapter.calls.get(), 0);
+    }
+
+    #[test]
+    fn upload_workshop_publish_draft_requires_app_access_and_credentials() {
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+        let draft = validated_publish_draft(package.path());
+        let adapter = FakeSteamworksUploadPort::default();
+
+        let missing_access = SteamworksUploadConfig {
+            enabled: true,
+            credential_label: Some("steamworks-local-test-label".into()),
+            app_access_confirmed: false,
+        };
+        let access_error =
+            upload_workshop_publish_draft(&adapter, &missing_access, package.path(), &draft)
+                .expect_err("missing app access confirmation");
+        assert!(matches!(
+            access_error,
+            WorkshopPackageError::InvalidSteamworksUpload(message)
+                if message.contains("app access must be explicitly confirmed")
+        ));
+
+        let missing_credentials = SteamworksUploadConfig {
+            enabled: true,
+            credential_label: None,
+            app_access_confirmed: true,
+        };
+        let credentials_error =
+            upload_workshop_publish_draft(&adapter, &missing_credentials, package.path(), &draft)
+                .expect_err("missing credentials");
+        assert!(matches!(
+            credentials_error,
+            WorkshopPackageError::SteamworksCredentialsMissing
+        ));
+        assert_eq!(adapter.calls.get(), 0);
+    }
+
+    #[test]
+    fn explicit_fake_adapter_success_stays_local_and_default_port_refuses_upload() {
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+        let draft = validated_publish_draft(package.path());
+        let enabled = SteamworksUploadConfig {
+            enabled: true,
+            credential_label: Some("steamworks-local-test-label".into()),
+            app_access_confirmed: true,
+        };
+
+        let local_only_error = upload_workshop_publish_draft(
+            &LocalOnlySteamworksUploadPort,
+            &enabled,
+            package.path(),
+            &draft,
+        )
+        .expect_err("local-only port refuses upload");
+        assert!(matches!(
+            local_only_error,
+            WorkshopPackageError::InvalidSteamworksUpload(message)
+                if message.contains("local-only builds")
+        ));
+
+        let adapter = FakeSteamworksUploadPort::default();
+        let report = upload_workshop_publish_draft(&adapter, &enabled, package.path(), &draft)
+            .expect("fake local upload");
+
+        assert_eq!(adapter.calls.get(), 1);
+        assert_eq!(report.package_id, "dynasty-embers-workshop-draft");
+        assert_eq!(report.adapter_name, "local-fake-workshop-upload-port");
+        assert!(report.upload_attempted);
+        assert!(!report.steamworks_api_called);
+        assert!(report.message.contains("no Steamworks API call was made"));
+        assert!(!report.message.contains("steamworks-local-test-label"));
+    }
+
+    #[test]
+    fn imports_loads_remixes_and_deletes_local_library_items() {
+        let package = tempfile::tempdir().expect("package");
+        let library = tempfile::tempdir().expect("library");
+        write_valid_package(package.path());
+
+        let import = import_workshop_library_package(library.path(), package.path())
+            .expect("import package");
+        assert_eq!(import.item.local_id, "dynasty-embers-workshop-draft");
+        assert!(
+            import
+                .item
+                .package_dir
+                .join(WORKSHOP_ITEM_MANIFEST_FILE)
+                .is_file()
+        );
+
+        let listed = list_workshop_library(library.path()).expect("list library");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, "Dynasty Embers");
+
+        let loaded = load_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+            .expect("load imported item");
+        assert_eq!(loaded.validation_report.files.len(), 2);
+
+        let remix = remix_workshop_library_item(
+            library.path(),
+            "dynasty-embers-workshop-draft",
+            "dynasty-embers-remix",
+            "Dynasty Embers Remix",
+        )
+        .expect("remix item");
+        assert_eq!(remix.source_local_id, "dynasty-embers-workshop-draft");
+        assert_eq!(remix.item.local_id, "dynasty-embers-remix");
+        assert_eq!(
+            remix.validation_report.manifest.title,
+            "Dynasty Embers Remix"
+        );
+        assert_eq!(
+            remix.validation_report.manifest.visibility,
+            WorkshopDraftVisibility::PrivateDraft
+        );
+        assert!(remix.item.package_dir.join("content/game.json").is_file());
+
+        let deleted = delete_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+            .expect("delete original");
+        assert_eq!(deleted.local_id, "dynasty-embers-workshop-draft");
+        assert!(!deleted.package_dir.exists());
+
+        let remaining = list_workshop_library(library.path()).expect("list after delete");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].local_id, "dynasty-embers-remix");
+        let missing = load_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+            .expect_err("deleted item is not loadable");
+        assert!(matches!(
+            missing,
+            WorkshopPackageError::LibraryItemNotFound(local_id)
+                if local_id == "dynasty-embers-workshop-draft"
+        ));
+    }
+
+    #[test]
+    fn local_library_rejects_unsafe_paths_and_secret_markers() {
+        let unsafe_package = tempfile::tempdir().expect("unsafe package");
+        let library = tempfile::tempdir().expect("library");
+        write_valid_package(unsafe_package.path());
+        let manifest_path = unsafe_package.path().join(WORKSHOP_ITEM_MANIFEST_FILE);
+        let mut manifest = sample_package(game_json(), preview_png());
+        manifest.preview_image = "../secret.png".into();
+        manifest.content_files[1].path = "../secret.png".into();
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).expect("json"),
+        )
+        .expect("write unsafe manifest");
+
+        let unsafe_error = import_workshop_library_package(library.path(), unsafe_package.path())
+            .expect_err("unsafe content path");
+        assert!(matches!(
+            unsafe_error,
+            WorkshopPackageError::UnsafePath(path) if path == "../secret.png"
+        ));
+
+        let secret_package = tempfile::tempdir().expect("secret package");
+        write_secret_content_package(secret_package.path());
+        let secret_error = import_workshop_library_package(library.path(), secret_package.path())
+            .expect_err("secret package content");
+        assert!(matches!(
+            secret_error,
+            WorkshopPackageError::SecretMarker(marker) if marker == "sk-"
+        ));
+    }
+
+    #[test]
+    fn block_and_report_metadata_remain_local_and_readable() {
+        let package = tempfile::tempdir().expect("package");
+        let library = tempfile::tempdir().expect("library");
+        write_valid_package(package.path());
+        import_workshop_library_package(library.path(), package.path()).expect("import package");
+
+        let reported = report_workshop_library_item(
+            library.path(),
+            "dynasty-embers-workshop-draft",
+            "Contains player-reported mature theme metadata.",
+        )
+        .expect("report item");
+        assert_eq!(reported.reports.len(), 1);
+        assert_eq!(
+            reported.reports[0].reason,
+            "Contains player-reported mature theme metadata."
+        );
+
+        let blocked = block_workshop_library_item(
+            library.path(),
+            "dynasty-embers-workshop-draft",
+            "Local moderation block pending creator review.",
+        )
+        .expect("block item");
+        assert_eq!(
+            blocked.blocked.as_ref().map(|block| block.reason.as_str()),
+            Some("Local moderation block pending creator review.")
+        );
+
+        let listed = list_workshop_library(library.path()).expect("read metadata");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].reports.len(), 1);
+        assert_eq!(
+            listed[0]
+                .blocked
+                .as_ref()
+                .map(|block| block.reason.as_str()),
+            Some("Local moderation block pending creator review.")
+        );
+    }
+
+    #[test]
+    fn blocked_items_reject_load_remix_and_duplicate_import_explicitly() {
+        let package = tempfile::tempdir().expect("package");
+        let library = tempfile::tempdir().expect("library");
+        write_valid_package(package.path());
+        import_workshop_library_package(library.path(), package.path()).expect("import package");
+        block_workshop_library_item(
+            library.path(),
+            "dynasty-embers-workshop-draft",
+            "Blocked by local moderation metadata.",
+        )
+        .expect("block item");
+
+        let load_error =
+            load_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+                .expect_err("blocked load");
+        assert!(matches!(
+            load_error,
+            WorkshopPackageError::LibraryItemBlocked { local_id, reason }
+                if local_id == "dynasty-embers-workshop-draft"
+                    && reason == "Blocked by local moderation metadata."
+        ));
+
+        let remix_error = remix_workshop_library_item(
+            library.path(),
+            "dynasty-embers-workshop-draft",
+            "blocked-remix",
+            "Blocked Remix",
+        )
+        .expect_err("blocked remix");
+        assert!(matches!(
+            remix_error,
+            WorkshopPackageError::LibraryItemBlocked { local_id, .. }
+                if local_id == "dynasty-embers-workshop-draft"
+        ));
+
+        let import_error = import_workshop_library_package(library.path(), package.path())
+            .expect_err("duplicate blocked import");
+        assert!(matches!(
+            import_error,
+            WorkshopPackageError::LibraryItemBlocked { local_id, .. }
+                if local_id == "dynasty-embers-workshop-draft"
+        ));
+    }
+
     fn write_valid_package(package_dir: &std::path::Path) {
         fs::create_dir_all(package_dir.join("content")).expect("content dir");
         write_file(package_dir.join("content/game.json"), game_json());
@@ -1282,6 +2562,67 @@ Draft support material only. The creator must review the shipped build, screensh
                 .expect("manifest")
                 .as_bytes(),
         );
+    }
+
+    fn write_secret_content_package(package_dir: &std::path::Path) {
+        let secret_game = b"{\"token\":\"sk-test-secret-marker\"}\n";
+        fs::create_dir_all(package_dir.join("content")).expect("content dir");
+        write_file(package_dir.join("content/game.json"), secret_game);
+        write_file(package_dir.join("preview.png"), preview_png());
+        write_file(
+            package_dir.join(AI_USAGE_MANIFEST_FILE),
+            serde_json::to_string_pretty(&sample_ai_usage())
+                .expect("ai usage")
+                .as_bytes(),
+        );
+        write_file(
+            package_dir.join(WORKSHOP_ITEM_MANIFEST_FILE),
+            serde_json::to_string_pretty(&sample_package(secret_game, preview_png()))
+                .expect("manifest")
+                .as_bytes(),
+        );
+    }
+
+    fn validated_publish_draft(package_dir: &std::path::Path) -> WorkshopPublishDraft {
+        let report = validate_workshop_package(package_dir).expect("valid package");
+        generate_workshop_publish_draft(&report).expect("publish draft")
+    }
+
+    #[derive(Default)]
+    struct FakeSteamworksUploadPort {
+        calls: Cell<u32>,
+    }
+
+    impl SteamworksUploadPort for FakeSteamworksUploadPort {
+        fn upload_workshop_draft(
+            &self,
+            request: &SteamworksUploadRequest,
+        ) -> Result<SteamworksUploadReport, WorkshopPackageError> {
+            self.calls.set(self.calls.get() + 1);
+            if request.credential_label != "steamworks-local-test-label" {
+                return Err(WorkshopPackageError::InvalidSteamworksUpload(
+                    "fake adapter received an unexpected credential label".into(),
+                ));
+            }
+            if !request
+                .package_dir
+                .join(WORKSHOP_ITEM_MANIFEST_FILE)
+                .is_file()
+            {
+                return Err(WorkshopPackageError::InvalidSteamworksUpload(
+                    "fake adapter requires a validated local package directory".into(),
+                ));
+            }
+            Ok(SteamworksUploadReport {
+                package_id: request.draft.package_id.clone(),
+                adapter_name: "local-fake-workshop-upload-port".into(),
+                upload_attempted: true,
+                steamworks_api_called: false,
+                message:
+                    "Local fake adapter accepted the redaction-safe draft; no Steamworks API call was made."
+                        .into(),
+            })
+        }
     }
 
     fn sample_package(game: &[u8], preview: &[u8]) -> WorkshopItemPackage {

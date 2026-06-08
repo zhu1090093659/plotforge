@@ -11,8 +11,10 @@ plotforge-export.workspace = true
 plotforge-runtime.workspace = true
 plotforge-schema.workspace = true
 plotforge-storage.workspace = true
+plotforge-workshop.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true

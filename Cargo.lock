@@ -411,7 +411,9 @@ dependencies = [
  "plotforge-runtime",
  "plotforge-schema",
  "plotforge-storage",
+ "plotforge-workshop",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 
@@ -513,7 +515,9 @@ dependencies = [
  "plotforge-runtime",
  "plotforge-schema",
  "plotforge-storage",
+ "plotforge-workshop",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]

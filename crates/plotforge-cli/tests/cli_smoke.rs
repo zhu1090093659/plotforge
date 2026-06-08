@@ -1,6 +1,12 @@
 use std::{fs, process::Command};
 
-use plotforge_schema::{AI_USAGE_MANIFEST_FILE, DESKTOP_RUNTIME_DRAFT_FILE, REDACTED_TRACE_SECRET};
+use plotforge_schema::{
+    AI_USAGE_MANIFEST_FILE, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
+    AiUsageSourceKind, DESKTOP_RUNTIME_DRAFT_FILE, ExportProfile, REDACTED_TRACE_SECRET,
+    SteamSubmissionKitRequest, WORKSHOP_ITEM_MANIFEST_FILE, WorkshopDraftVisibility,
+    WorkshopItemPackage, WorkshopPackageFile,
+};
+use sha2::{Digest, Sha256};
 
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_plotforge-cli")
@@ -120,6 +126,174 @@ fn cli_runs_full_demo_flow_in_tempdir() {
             .is_file()
     );
     assert_export_tree_excludes_private_paths(&desktop_export);
+}
+
+#[test]
+fn cli_runs_workshop_local_flow_in_tempdir() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let package = temp.path().join("workshop-package");
+    let library = temp.path().join("workshop-library");
+    let publish_out = temp.path().join("publish-draft");
+    let kit_out = temp.path().join("submission-kit");
+    write_valid_workshop_package(&package);
+
+    run(["workshop", "validate", package.to_str().unwrap()])
+        .assert_success_contains("workshop package ok: dynasty-embers-workshop-draft")
+        .assert_contains("files=2");
+
+    run([
+        "workshop",
+        "import",
+        library.to_str().unwrap(),
+        package.to_str().unwrap(),
+    ])
+    .assert_success_contains("imported workshop item dynasty-embers-workshop-draft")
+    .assert_contains("validated imported package");
+
+    run(["workshop", "list", library.to_str().unwrap()])
+        .assert_success_contains("workshop library items: 1")
+        .assert_contains(
+            "dynasty-embers-workshop-draft title=Dynasty Embers blocked=false reports=0",
+        );
+
+    run([
+        "workshop",
+        "load",
+        library.to_str().unwrap(),
+        "dynasty-embers-workshop-draft",
+    ])
+    .assert_success_contains("loaded workshop item dynasty-embers-workshop-draft")
+    .assert_contains("validated loaded package");
+
+    run([
+        "workshop",
+        "remix",
+        library.to_str().unwrap(),
+        "dynasty-embers-workshop-draft",
+        "--new-id",
+        "dynasty-embers-remix",
+        "--title",
+        "Dynasty Embers Remix",
+    ])
+    .assert_success_contains(
+        "remixed workshop item dynasty-embers-workshop-draft -> dynasty-embers-remix",
+    )
+    .assert_contains("validated remixed package");
+
+    run([
+        "workshop",
+        "report",
+        library.to_str().unwrap(),
+        "dynasty-embers-remix",
+        "--reason",
+        "Needs local creator review.",
+    ])
+    .assert_success_contains("reported workshop item dynasty-embers-remix reports=1");
+
+    run([
+        "workshop",
+        "block",
+        library.to_str().unwrap(),
+        "dynasty-embers-remix",
+        "--reason",
+        "Blocked in local library.",
+    ])
+    .assert_success_contains("blocked workshop item dynasty-embers-remix")
+    .assert_contains("reason=Blocked in local library.");
+
+    let blocked_load = Command::new(bin())
+        .args([
+            "workshop",
+            "load",
+            library.to_str().unwrap(),
+            "dynasty-embers-remix",
+        ])
+        .output()
+        .expect("run command");
+    assert!(!blocked_load.status.success());
+    let stderr = String::from_utf8_lossy(&blocked_load.stderr);
+    assert!(stderr.contains("workshop library item is blocked"));
+
+    run([
+        "workshop",
+        "delete",
+        library.to_str().unwrap(),
+        "dynasty-embers-remix",
+    ])
+    .assert_success_contains("deleted workshop item dynasty-embers-remix");
+
+    run([
+        "workshop",
+        "publish-draft",
+        package.to_str().unwrap(),
+        "--out",
+        publish_out.to_str().unwrap(),
+    ])
+    .assert_success_contains("wrote workshop publish draft for dynasty-embers-workshop-draft")
+    .assert_contains("upload_enabled=false steamworks_api_called=false");
+    let publish_draft = publish_out.join("workshop-publish-draft.json");
+    assert!(publish_draft.is_file());
+    let publish_json = fs::read_to_string(&publish_draft).expect("publish draft");
+    assert!(publish_json.contains("\"requires_explicit_steamworks_credentials\": true"));
+    assert!(!publish_json.contains("steam_app_id"));
+    assert!(!publish_json.contains("published_file_id"));
+
+    let disabled_upload = Command::new(bin())
+        .args([
+            "workshop",
+            "upload-draft",
+            package.to_str().unwrap(),
+            publish_draft.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run command");
+    assert!(!disabled_upload.status.success());
+    let stderr = String::from_utf8_lossy(&disabled_upload.stderr);
+    assert!(stderr.contains("Steamworks upload is disabled"));
+
+    let request = sample_submission_kit_request();
+    run([
+        "workshop",
+        "submission-kit",
+        package.to_str().unwrap(),
+        "--out",
+        kit_out.to_str().unwrap(),
+        "--product-name",
+        &request.product_name,
+        "--desktop-build-path",
+        request.desktop_build_path.as_deref().unwrap(),
+        "--store-short-description",
+        &request.store_short_description,
+        "--screenshot",
+        &request.screenshot_paths[0],
+        "--capsule-asset",
+        &request.capsule_asset_paths[0],
+        "--content-warning",
+        &request.content_warnings[0],
+        "--safety-guardrail",
+        &request.safety_guardrails[0],
+        "--user-reporting-path",
+        &request.user_reporting_path,
+        "--moderation-policy",
+        &request.moderation_policy,
+        "--build-note",
+        &request.build_notes[0],
+    ])
+    .assert_success_contains("wrote Steam Submission Kit drafts for dynasty-embers-workshop-draft")
+    .assert_contains("(8 files)");
+
+    for file in [
+        "steam-store-copy-draft.md",
+        "steam-submission-checklist.md",
+        "steam-ai-disclosure-draft.md",
+        "steam-content-warnings.md",
+        "steam-asset-references.md",
+        "steam-direct-checklist.md",
+        "steam-content-safety-checklist.md",
+        "steam-packaging-notes.md",
+    ] {
+        assert!(kit_out.join(file).is_file(), "missing {file}");
+    }
 }
 
 #[test]
@@ -465,6 +639,114 @@ fn collect_export_tree_paths(
             collect_export_tree_paths(root, &path, paths);
         }
     }
+}
+
+fn write_valid_workshop_package(package_dir: &std::path::Path) {
+    let game = br#"{"title":"Dynasty Embers"}"#;
+    let preview = b"preview-image\n";
+
+    fs::create_dir_all(package_dir.join("content")).expect("content dir");
+    fs::write(package_dir.join("content/game.json"), game).expect("game json");
+    fs::write(package_dir.join("preview.png"), preview).expect("preview");
+    fs::write(
+        package_dir.join(AI_USAGE_MANIFEST_FILE),
+        serde_json::to_string_pretty(&sample_ai_usage_manifest()).expect("ai usage json") + "\n",
+    )
+    .expect("ai usage manifest");
+    fs::write(
+        package_dir.join(WORKSHOP_ITEM_MANIFEST_FILE),
+        serde_json::to_string_pretty(&sample_workshop_package(game, preview))
+            .expect("workshop manifest json")
+            + "\n",
+    )
+    .expect("workshop manifest");
+}
+
+fn sample_workshop_package(game: &[u8], preview: &[u8]) -> WorkshopItemPackage {
+    WorkshopItemPackage {
+        manifest_version: "2026-06-09".into(),
+        package_id: "dynasty-embers-workshop-draft".into(),
+        title: "Dynasty Embers".into(),
+        description: "Offline Workshop package draft for local validation.".into(),
+        visibility: WorkshopDraftVisibility::PrivateDraft,
+        preview_image: "preview.png".into(),
+        content_root: "content".into(),
+        tags: vec!["story-game".into(), "strategy".into()],
+        export_profile: ExportProfile::steam_workshop(),
+        ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
+        content_files: vec![
+            workshop_file_record("content/game.json", game),
+            workshop_file_record("preview.png", preview),
+        ],
+        notices: vec![
+            "Local package validation only; no external platform action is included.".into(),
+            "Creator review remains responsible for distribution decisions.".into(),
+        ],
+    }
+}
+
+fn sample_ai_usage_manifest() -> AiUsageManifest {
+    AiUsageManifest {
+        manifest_version: "2026-06-09".into(),
+        project_id: "dynasty-embers".into(),
+        project_version: "0.1.0".into(),
+        export_profile: ExportProfile::steam_workshop(),
+        generated_by: "plotforge-cli-smoke-test".into(),
+        external_model_calls_during_export: false,
+        provider_credentials_included: false,
+        raw_provider_responses_included: false,
+        private_traces_included: false,
+        disclosures: vec![
+            AiUsageDisclosure {
+                content_kind: AiUsageContentKind::Text,
+                source_kind: AiUsageSourceKind::ProjectSource,
+                summary: "Story text is exported from canonical project source files.".into(),
+                asset_paths: Vec::new(),
+            },
+            AiUsageDisclosure {
+                content_kind: AiUsageContentKind::Image,
+                source_kind: AiUsageSourceKind::LocalMockProvider,
+                summary: "Preview art is represented by a local test asset.".into(),
+                asset_paths: vec!["preview.png".into()],
+            },
+        ],
+        provider_summaries: Vec::new(),
+        ai_safety_policy: Default::default(),
+        notices: vec!["No provider credentials or raw provider responses included.".into()],
+    }
+}
+
+fn sample_submission_kit_request() -> SteamSubmissionKitRequest {
+    SteamSubmissionKitRequest {
+        product_name: "Dynasty Embers".into(),
+        desktop_build_path: Some("builds/dynasty-embers-desktop.zip".into()),
+        store_short_description: "A branching court drama built with PlotForge.".into(),
+        screenshot_paths: vec!["media/screenshots/court-crisis.png".into()],
+        capsule_asset_paths: vec!["media/capsules/header.png".into()],
+        content_warnings: vec!["Political conflict".into()],
+        safety_guardrails: vec![
+            "Keep provider-backed runtime services disabled for this draft.".into(),
+        ],
+        user_reporting_path: "support@example.invalid".into(),
+        moderation_policy: "Human review of player-visible text and images before distribution."
+            .into(),
+        build_notes: vec!["Test launch, save-data creation, and offline play.".into()],
+    }
+}
+
+fn workshop_file_record(path: impl Into<String>, bytes: &[u8]) -> WorkshopPackageFile {
+    WorkshopPackageFile {
+        path: path.into(),
+        content_hash: sha256_hex(bytes),
+        hash_algorithm: "sha256".into(),
+        byte_length: bytes.len() as u64,
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 struct CommandOutput {
