@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { summarizeProject, type CreatorProjectSummary } from "./projectSummary";
+import { PlaytestPanel, RuntimeTracePanel } from "./runtimeTraceView";
 import {
   createDefaultStudioDataSource,
   defaultProjectPath,
@@ -17,6 +18,7 @@ import {
 } from "./studioDataSource";
 import { studioSections } from "./studioModel";
 import type {
+  PlayOnceReport,
   ProjectCheckReport,
   SourceFileContent,
   SourceFileSummary,
@@ -27,6 +29,9 @@ const boundaryChecks = [
   { label: "Rust core boundary", value: "UI adapter only", ok: true },
   { label: "Tauri bridge", value: "commands wired", ok: true },
 ];
+
+const defaultPlaytestInput =
+  "Raise emergency taxes while auditing corrupt officials.";
 
 export interface AppProps {
   dataSource?: StudioDataSource;
@@ -50,6 +55,12 @@ export function App({
   );
   const [editorContent, setEditorContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
+  const [playtestInput, setPlaytestInput] = useState(defaultPlaytestInput);
+  const [playtestReport, setPlaytestReport] = useState<PlayOnceReport | null>(
+    null,
+  );
+  const [playtesting, setPlaytesting] = useState(false);
+  const [playtestError, setPlaytestError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,10 +120,31 @@ export function App({
       setSelectedFile(firstContent);
       setEditorContent(firstContent?.content ?? "");
       setSavedContent(firstContent?.content ?? "");
+      setPlaytestReport(null);
+      setPlaytestError(null);
     } catch (source) {
       setError(source instanceof Error ? source.message : String(source));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runPlaytest() {
+    const input = playtestInput.trim();
+    if (!input) {
+      setPlaytestError("Playtest input is required.");
+      return;
+    }
+
+    setPlaytesting(true);
+    setPlaytestError(null);
+    try {
+      const report = await dataSource.playOnceProject(loadedPath, input);
+      setPlaytestReport(report);
+    } catch (source) {
+      setPlaytestError(source instanceof Error ? source.message : String(source));
+    } finally {
+      setPlaytesting(false);
     }
   }
 
@@ -257,9 +289,15 @@ export function App({
               </button>
               <button
                 type="button"
+                onClick={() => void runPlaytest()}
+                disabled={playtesting}
                 className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black"
               >
-                <Play aria-hidden size={16} />
+                {playtesting ? (
+                  <Loader2 aria-hidden size={16} className="animate-spin" />
+                ) : (
+                  <Play aria-hidden size={16} />
+                )}
                 Playtest
               </button>
             </div>
@@ -279,7 +317,22 @@ export function App({
             ))}
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <PlaytestPanel
+              input={playtestInput}
+              running={playtesting}
+              report={playtestReport}
+              error={playtestError}
+              onInputChange={setPlaytestInput}
+              onRun={() => void runPlaytest()}
+            />
+            <RuntimeTracePanel
+              report={playtestReport}
+              error={playtestError}
+            />
+          </div>
+
+          <section className="mt-5 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -368,7 +421,7 @@ export function App({
             </div>
 
             {error ? (
-              <div className="mt-4 rounded-md border border-signal/30 bg-signal/8 px-3 py-2 text-sm text-signal">
+              <div className="mt-4 rounded-md border border-signal/30 bg-signal/10 px-3 py-2 text-sm text-signal">
                 {error}
               </div>
             ) : null}
