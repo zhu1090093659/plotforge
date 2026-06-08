@@ -9,7 +9,7 @@ Build PlotForge as a CLI-first Rust engine with a creator desktop UI adapter. Re
 The current MVP contains:
 
 - Rust workspace crates for schema, storage, rule evaluation, story craft review, mock agent planning, runtime, static export, and CLI.
-- `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace.
+- `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace with dashboard, source editor, playtest, runtime trace views, and a thin Tauri command bridge.
 - Folder project source of truth using TOML, JSON, Markdown, and generated local assets.
 - `examples/dynasty-embers` as the committed demo fixture.
 - Static web export served from local files over HTTP.
@@ -58,6 +58,7 @@ Use the narrowest relevant checks during development, then run the full gate bef
 - `cargo test --workspace`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `npm run creator-desktop:qa`
+- `python3 scripts/qa/creator_desktop_build_smoke.py`
 - `scripts/qa/full_local.sh`
 - `scripts/contracts/check_contracts.sh`
 
@@ -81,6 +82,8 @@ Fixture validation commands:
 - GitHub Actions must keep separate jobs for static Rust checks, unit/integration tests, CLI smoke, and export smoke.
 - GitHub Actions must keep creator desktop typecheck/test/build in a separate frontend job.
 - `scripts/qa/full_local.sh` is the repeatable local quality gate.
+- Creator Desktop build smoke lives at `scripts/qa/creator_desktop_build_smoke.py` and must stay wired into `npm run creator-desktop:qa`.
+- Creator Desktop Browser/Computer Use smoke lives at `scripts/qa/computer_use_creator_desktop.md`; verify the Studio shell, source editor, playtest run, runtime trace id, narrative review, diagnostics, and mobile viewport reachability.
 - Codex Desktop Computer Use smoke is local desktop QA only and must not become a GitHub Actions dependency.
 - For Computer Use export smoke, serve static exports over localhost HTTP, then verify visible title, scene text, choice buttons, and post-click text changes.
 - Starting a server is not enough evidence; perform at least one real browser/app interaction when Computer Use validation is requested.
