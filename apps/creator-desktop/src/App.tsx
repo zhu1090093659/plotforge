@@ -1,28 +1,155 @@
 import {
-  AlertTriangle,
   CheckCircle2,
   ChevronRight,
   FolderOpen,
+  Loader2,
   Play,
   RefreshCcw,
+  Save,
   TerminalSquare,
 } from "lucide-react";
-import { sourceFiles, studioSections } from "./studioModel";
+import { useEffect, useMemo, useState } from "react";
+import { summarizeProject, type CreatorProjectSummary } from "./projectSummary";
+import {
+  createDefaultStudioDataSource,
+  defaultProjectPath,
+  type StudioDataSource,
+} from "./studioDataSource";
+import { studioSections } from "./studioModel";
+import type {
+  ProjectCheckReport,
+  SourceFileContent,
+  SourceFileSummary,
+} from "./tauriBridge";
 
-const metrics = [
-  { label: "Scenes", value: "1", tone: "border-jade/50 text-jade" },
-  { label: "Characters", value: "6", tone: "border-brass/50 text-brass" },
-  { label: "Rules", value: "3", tone: "border-signal/50 text-signal" },
-  { label: "Open Threads", value: "4", tone: "border-ink/30 text-ink" },
-];
-
-const checks = [
+const boundaryChecks = [
   { label: "Generated contracts", value: "plotforge.d.ts", ok: true },
   { label: "Rust core boundary", value: "UI adapter only", ok: true },
   { label: "Tauri bridge", value: "commands wired", ok: true },
 ];
 
-export function App() {
+export interface AppProps {
+  dataSource?: StudioDataSource;
+  initialProjectPath?: string;
+}
+
+export function App({
+  dataSource = createDefaultStudioDataSource(),
+  initialProjectPath = defaultProjectPath(),
+}: AppProps) {
+  const [projectPath, setProjectPath] = useState(initialProjectPath);
+  const [loadedPath, setLoadedPath] = useState(initialProjectPath);
+  const [projectSummary, setProjectSummary] =
+    useState<CreatorProjectSummary | null>(null);
+  const [checkReport, setCheckReport] = useState<ProjectCheckReport | null>(
+    null,
+  );
+  const [sourceFiles, setSourceFiles] = useState<SourceFileSummary[]>([]);
+  const [selectedFile, setSelectedFile] = useState<SourceFileContent | null>(
+    null,
+  );
+  const [editorContent, setEditorContent] = useState("");
+  const [savedContent, setSavedContent] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = Boolean(selectedFile?.editable && editorContent !== savedContent);
+  const metrics = useMemo(
+    () => [
+      {
+        label: "Scenes",
+        value: String(checkReport?.scene_count ?? projectSummary?.sceneCount ?? 0),
+        tone: "border-jade/50 text-jade",
+      },
+      {
+        label: "Characters",
+        value: String(
+          checkReport?.character_count ?? projectSummary?.characterCount ?? 0,
+        ),
+        tone: "border-brass/50 text-brass",
+      },
+      {
+        label: "Rules",
+        value: String(checkReport?.rule_count ?? projectSummary?.ruleCount ?? 0),
+        tone: "border-signal/50 text-signal",
+      },
+      {
+        label: "Open Threads",
+        value: String(projectSummary?.openThreadCount ?? 0),
+        tone: "border-ink/30 text-ink",
+      },
+    ],
+    [checkReport, projectSummary],
+  );
+
+  useEffect(() => {
+    void loadProject(initialProjectPath);
+  }, [initialProjectPath]);
+
+  async function loadProject(path: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const [project, report, files] = await Promise.all([
+        dataSource.openProject(path),
+        dataSource.checkProject(path),
+        dataSource.listSourceFiles(path),
+      ]);
+      const firstEditable = files.find((file) => file.editable) ?? files[0];
+      const firstContent = firstEditable
+        ? await dataSource.readSourceFile(path, firstEditable.path)
+        : null;
+
+      setLoadedPath(path);
+      setProjectPath(path);
+      setProjectSummary(summarizeProject(project));
+      setCheckReport(report);
+      setSourceFiles(files);
+      setSelectedFile(firstContent);
+      setEditorContent(firstContent?.content ?? "");
+      setSavedContent(firstContent?.content ?? "");
+    } catch (source) {
+      setError(source instanceof Error ? source.message : String(source));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function selectSourceFile(file: SourceFileSummary) {
+    setError(null);
+    try {
+      const content = await dataSource.readSourceFile(loadedPath, file.path);
+      setSelectedFile(content);
+      setEditorContent(content.content);
+      setSavedContent(content.content);
+    } catch (source) {
+      setError(source instanceof Error ? source.message : String(source));
+    }
+  }
+
+  async function saveSelectedFile() {
+    if (!selectedFile?.editable) {
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await dataSource.writeSourceFile(
+        loadedPath,
+        selectedFile.path,
+        editorContent,
+      );
+      setSelectedFile(updated);
+      setEditorContent(updated.content);
+      setSavedContent(updated.content);
+    } catch (source) {
+      setError(source instanceof Error ? source.message : String(source));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-parchment text-ink">
       <div className="grid min-h-screen grid-cols-[280px_1fr] max-lg:grid-cols-1">
@@ -44,14 +171,21 @@ export function App() {
               <p className="text-xs font-medium uppercase text-ink/60">
                 Open Project
               </p>
-              <p className="text-sm font-semibold">Dynasty Embers</p>
+              <p className="max-w-44 truncate text-sm font-semibold">
+                {loadedPath}
+              </p>
             </div>
             <button
               type="button"
-              title="Open project folder"
+              title="Open project"
+              onClick={() => void loadProject(projectPath)}
               className="grid h-9 w-9 place-items-center rounded-md border border-ink/15 bg-white text-ink transition hover:border-ink/40"
             >
-              <FolderOpen aria-hidden size={18} />
+              {loading ? (
+                <Loader2 aria-hidden size={18} className="animate-spin" />
+              ) : (
+                <FolderOpen aria-hidden size={18} />
+              )}
             </button>
           </div>
 
@@ -96,19 +230,30 @@ export function App() {
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-ink/10 pb-5">
             <div>
               <p className="text-sm font-medium uppercase text-ink/55">
-                Workspace
+                {dataSource.runtimeName}
               </p>
               <h2 className="mt-1 text-2xl font-semibold">
-                Dynasty Embers Dashboard
+                {projectSummary?.title ?? "PlotForge Dashboard"}
               </h2>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <input
+                aria-label="Project path"
+                value={projectPath}
+                onChange={(event) => setProjectPath(event.target.value)}
+                className="h-10 min-w-0 rounded-md border border-ink/15 bg-white px-3 text-sm text-ink outline-none transition focus:border-ink/45 sm:w-72"
+              />
               <button
                 type="button"
                 title="Refresh project files"
+                onClick={() => void loadProject(projectPath)}
                 className="grid h-10 w-10 place-items-center rounded-md border border-ink/15 bg-white text-ink transition hover:border-ink/40"
               >
-                <RefreshCcw aria-hidden size={18} />
+                {loading ? (
+                  <Loader2 aria-hidden size={18} className="animate-spin" />
+                ) : (
+                  <RefreshCcw aria-hidden size={18} />
+                )}
               </button>
               <button
                 type="button"
@@ -139,21 +284,40 @@ export function App() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold">Source Files</h3>
+                  <p className="mt-1 text-sm text-ink/55">
+                    {sourceFiles.length} files
+                  </p>
                 </div>
                 <TerminalSquare aria-hidden className="text-signal" size={22} />
               </div>
 
-              <div className="mt-4 grid gap-2">
+              <div className="mt-4 grid max-h-80 gap-2 overflow-auto pr-1">
                 {sourceFiles.map((file) => (
-                  <div
-                    key={file}
-                    className="flex items-center justify-between gap-3 rounded-md border border-ink/10 px-3 py-2"
+                  <button
+                    type="button"
+                    key={file.path}
+                    onClick={() => void selectSourceFile(file)}
+                    className={[
+                      "flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition",
+                      selectedFile?.path === file.path
+                        ? "border-ink/45 bg-parchment"
+                        : "border-ink/10 hover:border-ink/30",
+                    ].join(" ")}
                   >
-                    <code className="truncate text-sm text-ink/80">{file}</code>
-                    <span className="rounded-sm bg-jade/10 px-2 py-1 text-xs font-medium text-jade">
-                      source
+                    <code className="truncate text-sm text-ink/80">
+                      {file.path}
+                    </code>
+                    <span
+                      className={[
+                        "shrink-0 rounded-sm px-2 py-1 text-xs font-medium",
+                        file.editable
+                          ? "bg-jade/10 text-jade"
+                          : "bg-ink/5 text-ink/55",
+                      ].join(" ")}
+                    >
+                      {file.editable ? "editable" : file.kind}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -161,21 +325,13 @@ export function App() {
             <div className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
               <h3 className="text-lg font-semibold">Boundary Checks</h3>
               <div className="mt-4 grid gap-3">
-                {checks.map((check) => (
+                {boundaryChecks.map((check) => (
                   <div key={check.label} className="flex items-start gap-3">
-                    {check.ok ? (
-                      <CheckCircle2
-                        aria-hidden
-                        className="mt-0.5 shrink-0 text-jade"
-                        size={18}
-                      />
-                    ) : (
-                      <AlertTriangle
-                        aria-hidden
-                        className="mt-0.5 shrink-0 text-brass"
-                        size={18}
-                      />
-                    )}
+                    <CheckCircle2
+                      aria-hidden
+                      className="mt-0.5 shrink-0 text-jade"
+                      size={18}
+                    />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{check.label}</p>
                       <p className="truncate text-sm text-ink/55">
@@ -189,25 +345,47 @@ export function App() {
           </section>
 
           <section className="mt-5 rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-              <div>
-                <h3 className="text-lg font-semibold">Story Craft Queue</h3>
-                <p className="mt-1 text-sm text-ink/60">
-                  Hooks, promises, arcs, and review notes
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold">Source Editor</h3>
+                <p className="truncate text-sm text-ink/55">
+                  {selectedFile?.path ?? "No source file selected"}
                 </p>
               </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {["Open hook", "Foreshadowing", "Narrative review"].map(
-                  (label) => (
-                    <div
-                      key={label}
-                      className="rounded-md border border-ink/10 px-3 py-3"
-                    >
-                      <p className="text-sm font-semibold">{label}</p>
-                      <p className="mt-1 text-xs text-ink/55">pending adapter</p>
-                    </div>
-                  ),
+              <button
+                type="button"
+                disabled={!dirty || saving}
+                onClick={() => void saveSelectedFile()}
+                className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+              >
+                {saving ? (
+                  <Loader2 aria-hidden size={16} className="animate-spin" />
+                ) : (
+                  <Save aria-hidden size={16} />
                 )}
+                Save
+              </button>
+            </div>
+
+            {error ? (
+              <div className="mt-4 rounded-md border border-signal/30 bg-signal/8 px-3 py-2 text-sm text-signal">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="mt-4">
+              <textarea
+                aria-label="Source editor"
+                value={editorContent}
+                readOnly={!selectedFile?.editable}
+                onChange={(event) => setEditorContent(event.target.value)}
+                spellCheck={false}
+                className="min-h-72 w-full resize-y rounded-md border border-ink/15 bg-parchment px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-ink/45 read-only:bg-ink/5"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-ink/55">
+                <span>{selectedFile?.kind ?? "none"}</span>
+                <span>{selectedFile?.editable ? "editable" : "read only"}</span>
+                {dirty ? <span className="text-brass">modified</span> : null}
               </div>
             </div>
           </section>

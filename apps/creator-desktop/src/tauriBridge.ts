@@ -1,11 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ProjectData, RuntimeTrace, Scene } from "../../../contracts/plotforge";
+import type {
+  ProjectData,
+  RuntimeTrace,
+  Scene,
+} from "../../../contracts/plotforge";
 
 export const studioCommandNames = {
   openProject: "open_project",
   checkProject: "check_project",
   playOnceProject: "play_once_project",
   exportStaticProject: "export_static_project",
+  listSourceFiles: "list_source_files",
+  readSourceFile: "read_source_file",
+  writeSourceFile: "write_source_file",
 } as const;
 
 export interface StudioCommandError {
@@ -33,6 +40,22 @@ export interface StaticExportReport {
   files_written: string[];
   allowed_files: string[];
   files_found: string[];
+}
+
+export type SourceFileKind = "toml" | "json" | "markdown" | "prompt";
+
+export interface SourceFileSummary {
+  path: string;
+  kind: SourceFileKind;
+  bytes: number;
+  editable: boolean;
+}
+
+export interface SourceFileContent {
+  path: string;
+  kind: SourceFileKind;
+  editable: boolean;
+  content: string;
 }
 
 export type StudioInvoke = <T>(
@@ -65,6 +88,35 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
         {
           path,
           output_dir: outputDir,
+        },
+      );
+    },
+    listSourceFiles(path: string): Promise<SourceFileSummary[]> {
+      return invokeCommand<SourceFileSummary[]>(
+        studioCommandNames.listSourceFiles,
+        { path },
+      );
+    },
+    readSourceFile(
+      path: string,
+      relativePath: string,
+    ): Promise<SourceFileContent> {
+      return invokeCommand<SourceFileContent>(studioCommandNames.readSourceFile, {
+        path,
+        relative_path: relativePath,
+      });
+    },
+    writeSourceFile(
+      path: string,
+      relativePath: string,
+      content: string,
+    ): Promise<SourceFileContent> {
+      return invokeCommand<SourceFileContent>(
+        studioCommandNames.writeSourceFile,
+        {
+          path,
+          relative_path: relativePath,
+          content,
         },
       );
     },

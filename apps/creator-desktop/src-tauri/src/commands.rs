@@ -1,5 +1,6 @@
 use plotforge_studio::{
     PlayOnceReport, ProjectCheckReport, ProjectData, StaticExportReport, StudioCommandError,
+    SourceFileContent, SourceFileSummary,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -26,4 +27,26 @@ pub fn export_static_project(
     output_dir: String,
 ) -> Result<StaticExportReport, StudioCommandError> {
     plotforge_studio::export_static_project(path, output_dir)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_source_files(path: String) -> Result<Vec<SourceFileSummary>, StudioCommandError> {
+    plotforge_studio::list_source_files(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_source_file(
+    path: String,
+    relative_path: String,
+) -> Result<SourceFileContent, StudioCommandError> {
+    plotforge_studio::read_source_file(path, &relative_path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn write_source_file(
+    path: String,
+    relative_path: String,
+    content: String,
+) -> Result<SourceFileContent, StudioCommandError> {
+    plotforge_studio::write_source_file(path, &relative_path, &content)
 }

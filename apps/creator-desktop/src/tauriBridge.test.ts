@@ -39,6 +39,12 @@ describe("createStudioBridge", () => {
     await bridge.checkProject("/tmp/dynasty-embers");
     await bridge.playOnceProject("/tmp/dynasty-embers", "continue");
     await bridge.exportStaticProject("/tmp/dynasty-embers", "/tmp/export");
+    await bridge.readSourceFile("/tmp/dynasty-embers", "world/world.md");
+    await bridge.writeSourceFile(
+      "/tmp/dynasty-embers",
+      "world/world.md",
+      "# World Bible\n",
+    );
 
     expect(calls).toEqual([
       {
@@ -52,6 +58,21 @@ describe("createStudioBridge", () => {
       {
         command: "export_static_project",
         args: { path: "/tmp/dynasty-embers", output_dir: "/tmp/export" },
+      },
+      {
+        command: "read_source_file",
+        args: {
+          path: "/tmp/dynasty-embers",
+          relative_path: "world/world.md",
+        },
+      },
+      {
+        command: "write_source_file",
+        args: {
+          path: "/tmp/dynasty-embers",
+          relative_path: "world/world.md",
+          content: "# World Bible\n",
+        },
       },
     ]);
   });
