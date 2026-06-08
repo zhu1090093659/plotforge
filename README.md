@@ -10,6 +10,7 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Static web export with prebaked scenes and placeholder PNG assets.
 - No-network static player package sourced from `apps/player-web/static` and copied into exports.
 - Export profiles and `ai-usage.json` package disclosure for static exports; these describe capabilities and AI usage evidence without legal or platform approval guarantees.
+- Local-only Workshop item package schema and validator in `plotforge-workshop`; no Steam API, upload, or release-readiness integration is included.
 - Media asset registry foundation with typed records, SHA-256 hashes, runtime references, provider metadata, and exportable paths.
 - Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
@@ -21,6 +22,7 @@ PlotForge is an AI story game creation engine. This repository currently contain
 ```bash
 cargo check --workspace
 cargo test --workspace
+cargo test -p plotforge-workshop
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 
@@ -59,6 +61,7 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - `plotforge-agent` owns provider ports and image pipeline orchestration; image generation writes through `plotforge-media` and `plotforge-job`.
 - `plotforge-export` packages only reachable referenced assets from the media registry.
 - Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal guarantees, or platform approval promises.
+- `plotforge-workshop` owns local Workshop draft package validation. It must not call Steamworks APIs, upload content, or claim release readiness.
 - `apps/player-web/static` owns the exported static player surface and consumes `ExportManifest` without duplicating runtime/rule logic.
 - Static exports must not include API keys, provider config, raw provider responses, or private traces.
 

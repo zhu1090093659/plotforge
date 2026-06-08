@@ -2271,6 +2271,105 @@
       ],
       "type": "object"
     },
+    "WorkshopDraftVisibility": {
+      "enum": [
+        "private_draft",
+        "friends_only_draft",
+        "unlisted_draft"
+      ],
+      "type": "string"
+    },
+    "WorkshopItemPackage": {
+      "additionalProperties": false,
+      "properties": {
+        "ai_usage_manifest_path": {
+          "type": "string"
+        },
+        "content_files": {
+          "items": {
+            "$ref": "#/$defs/WorkshopPackageFile"
+          },
+          "type": "array"
+        },
+        "content_root": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "export_profile": {
+          "$ref": "#/$defs/ExportProfile"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "notices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "package_id": {
+          "type": "string"
+        },
+        "preview_image": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/WorkshopDraftVisibility"
+        }
+      },
+      "required": [
+        "manifest_version",
+        "package_id",
+        "title",
+        "description",
+        "visibility",
+        "preview_image",
+        "content_root",
+        "tags",
+        "export_profile",
+        "ai_usage_manifest_path",
+        "content_files",
+        "notices"
+      ],
+      "type": "object"
+    },
+    "WorkshopPackageFile": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_length": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content_hash",
+        "hash_algorithm",
+        "byte_length"
+      ],
+      "type": "object"
+    },
     "WorldDelta": {
       "properties": {
         "flags": {
@@ -2366,6 +2465,9 @@
     },
     "runtime_trace": {
       "$ref": "#/$defs/RuntimeTrace"
+    },
+    "workshop_item_package": {
+      "$ref": "#/$defs/WorkshopItemPackage"
     }
   },
   "required": [
@@ -2377,6 +2479,7 @@
     "reference_analysis",
     "asset_record",
     "ai_usage_manifest",
+    "workshop_item_package",
     "export_manifest"
   ],
   "title": "ContractRootSchemas",

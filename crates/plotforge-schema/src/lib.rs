@@ -7,9 +7,10 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 2;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 3;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
+pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GameProject {
@@ -1069,6 +1070,40 @@ pub struct AiUsageManifest {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkshopDraftVisibility {
+    PrivateDraft,
+    FriendsOnlyDraft,
+    UnlistedDraft,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkshopPackageFile {
+    pub path: String,
+    pub content_hash: String,
+    pub hash_algorithm: String,
+    pub byte_length: u64,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkshopItemPackage {
+    pub manifest_version: String,
+    pub package_id: String,
+    pub title: String,
+    pub description: String,
+    pub visibility: WorkshopDraftVisibility,
+    pub preview_image: String,
+    pub content_root: String,
+    pub tags: Vec<String>,
+    pub export_profile: ExportProfile,
+    pub ai_usage_manifest_path: String,
+    pub content_files: Vec<WorkshopPackageFile>,
+    pub notices: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportManifest {
     pub game: GameProject,
     pub entry_scene: String,
@@ -1095,6 +1130,7 @@ pub struct ContractRootSchemas {
     pub reference_analysis: ReferenceAnalysis,
     pub asset_record: AssetRecord,
     pub ai_usage_manifest: AiUsageManifest,
+    pub workshop_item_package: WorkshopItemPackage,
     pub export_manifest: ExportManifest,
 }
 
@@ -1185,6 +1221,9 @@ export type AiUsageSourceKind = "project_source" | "local_mock_provider" | "exte
 export interface AiUsageDisclosure { content_kind: AiUsageContentKind; source_kind: AiUsageSourceKind; summary: string; asset_paths: string[]; }
 export interface AiProviderSummary { provider: string; model?: string | null; generated_asset_count: number; fallback_asset_count: number; prompt_hashes: string[]; }
 export interface AiUsageManifest { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; generated_by: string; external_model_calls_during_export: boolean; provider_credentials_included: boolean; raw_provider_responses_included: boolean; private_traces_included: boolean; disclosures: AiUsageDisclosure[]; provider_summaries: AiProviderSummary[]; notices: string[]; }
+export type WorkshopDraftVisibility = "private_draft" | "friends_only_draft" | "unlisted_draft";
+export interface WorkshopPackageFile { path: string; content_hash: string; hash_algorithm: string; byte_length: number; }
+export interface WorkshopItemPackage { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; export_profile: ExportProfile; ai_usage_manifest_path: string; content_files: WorkshopPackageFile[]; notices: string[]; }
 export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
 export interface Beat { id: string; text: string; choices: Choice[]; }
 export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
@@ -1227,7 +1266,7 @@ export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attem
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_usage_manifest: AiUsageManifest; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -1877,6 +1916,27 @@ mod tests {
     }
 
     #[test]
+    fn workshop_item_package_roundtrips_and_rejects_upload_fields() {
+        let package = sample_workshop_item_package();
+        let encoded = serde_json::to_string_pretty(&package).expect("serialize workshop package");
+        let decoded: WorkshopItemPackage =
+            serde_json::from_str(&encoded).expect("deserialize workshop package");
+        assert_eq!(decoded, package);
+        assert_eq!(
+            decoded.export_profile.target,
+            ExportProfileTarget::SteamWorkshop
+        );
+        assert_eq!(decoded.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
+
+        let mut value = serde_json::to_value(package).expect("workshop package value");
+        value["published_file_id"] = serde_json::json!("1234567890");
+        let error = serde_json::from_value::<WorkshopItemPackage>(value)
+            .expect_err("upload fields should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn tagged_rule_enums_use_snake_case_contracts() {
         let condition = serde_json::to_value(Condition::FlagEquals {
             key: "tax_resistance".into(),
@@ -1928,6 +1988,31 @@ mod tests {
             notices: vec![
                 "No provider credentials, raw provider responses, or private traces are included."
                     .into(),
+            ],
+        }
+    }
+
+    fn sample_workshop_item_package() -> WorkshopItemPackage {
+        WorkshopItemPackage {
+            manifest_version: "2026-06-08".into(),
+            package_id: "dynasty-embers-workshop-draft".into(),
+            title: "Dynasty Embers".into(),
+            description: "Offline Workshop package draft for local validation.".into(),
+            visibility: WorkshopDraftVisibility::PrivateDraft,
+            preview_image: "preview.png".into(),
+            content_root: "content".into(),
+            tags: vec!["story-game".into(), "strategy".into()],
+            export_profile: ExportProfile::steam_workshop(),
+            ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
+            content_files: vec![WorkshopPackageFile {
+                path: "content/game.json".into(),
+                content_hash: "sha256:abc".into(),
+                hash_algorithm: "sha256".into(),
+                byte_length: 42,
+            }],
+            notices: vec![
+                "Local package validation only; no upload integration is included.".into(),
+                "This package does not promise platform approval or release readiness.".into(),
             ],
         }
     }
