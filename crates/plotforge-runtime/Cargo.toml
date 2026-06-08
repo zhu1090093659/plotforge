@@ -13,5 +13,6 @@ plotforge-storycraft.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+plotforge-job.workspace = true
 plotforge-storage.workspace = true
 serde_json.workspace = true

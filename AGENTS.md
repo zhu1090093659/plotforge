@@ -24,6 +24,7 @@ The current MVP contains:
 - Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
 - Media asset records must use structured, redaction-safe provider metadata only; store prompt hashes/request ids when needed, never raw provider responses or secrets.
 - Job records must use typed state, explicit failure objects, injected clocks for deterministic tests, and no hidden global async state.
+- Image provider fallbacks must remain trace-visible and must register placeholder assets as fallback metadata, not as successful generated-cache hits.
 - Spec-driven planning artifacts belong under `docs/archives/<initiative>/` after completion.
 
 ## Architecture Boundaries
@@ -35,6 +36,7 @@ The current MVP contains:
 - Keep static export behavior in `plotforge-export`; exported bundles must not include private traces, provider config, raw provider responses, or secrets.
 - Keep asset registry records, content hashes, references, provider metadata, and reachability in `plotforge-media`; as export, runtime, Studio, and future providers integrate media, consume this boundary instead of adding a second media registry implementation.
 - Keep long-running task state transitions, cancel/retry/timeout/progress, and cost accounting in `plotforge-job`; provider/runtime/export adapters should not own parallel job state machines.
+- Keep image provider ports and scene image pipeline orchestration in `plotforge-agent`; image providers should feed `plotforge-media` and `plotforge-job` instead of bypassing those boundaries.
 - Keep CLI behavior in `plotforge-cli`; CLI should orchestrate crates instead of owning business logic.
 - Keep `apps/creator-desktop` as an adapter over generated contracts and future Tauri commands. TypeScript UI code may import types from `contracts/plotforge.d.ts`, but must not reimplement rule, runtime, storage, storycraft, or agent business logic.
 - Keep Tauri command behavior in testable Rust adapter crates such as `plotforge-studio`; `apps/creator-desktop/src-tauri` should stay a thin IPC wrapper.

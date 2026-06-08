@@ -308,10 +308,13 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "plotforge-agent"
 version = "0.1.0"
 dependencies = [
+ "plotforge-job",
+ "plotforge-media",
  "plotforge-schema",
  "plotforge-storage",
  "plotforge-storycraft",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -373,6 +376,7 @@ name = "plotforge-runtime"
 version = "0.1.0"
 dependencies = [
  "plotforge-agent",
+ "plotforge-job",
  "plotforge-rule",
  "plotforge-schema",
  "plotforge-storage",

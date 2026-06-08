@@ -6,9 +6,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+plotforge-job.workspace = true
+plotforge-media.workspace = true
 plotforge-schema.workspace = true
 plotforge-storycraft.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 plotforge-storage.workspace = true

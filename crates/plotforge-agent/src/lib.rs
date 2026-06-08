@@ -1,11 +1,21 @@
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap};
 
+use plotforge_job::{JobClock, JobQueue, JobQueueError, JobRequest};
+use plotforge_media::{AssetRecordInput, AssetRegistry, MediaError};
 use plotforge_schema::{
-    AgentOutputProposal, AgentProposalPayload, AgentRole, Beat, BeatDraftProposal,
-    BeatDraftsProposal, Choice, NarrativeFunction, NarrativeReview, ProjectData, ReviewProposal,
-    RuntimeError, Scene, ScenePlanProposal, StoryState, WorldState,
+    AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind, AssetProviderMetadata,
+    AssetRecord, AssetReference, AssetReferenceKind, AssetSourceKind, Beat, BeatDraftProposal,
+    BeatDraftsProposal, Choice, JobFailure, JobKind, JobRecord, NarrativeFunction, NarrativeReview,
+    ProjectData, ReviewProposal, RuntimeError, Scene, ScenePlanProposal, StoryState, WorldState,
+    redact_trace_text,
 };
 use plotforge_storycraft::review_scene;
+use sha2::{Digest, Sha256};
+
+const IMAGE_JOB_TIMEOUT_MS: u64 = 60_000;
+const IMAGE_JOB_MAX_ATTEMPTS: u32 = 2;
+const IMAGE_JOB_ESTIMATED_COST_UNITS: u64 = 1;
+const SCENE_BACKGROUND_SLOT: &str = "background_asset";
 
 #[derive(Clone, Debug)]
 pub struct ScenePlanRequest<'a> {
@@ -333,6 +343,552 @@ pub trait TextModelProvider {
     ) -> Result<TextModelResponse, TextModelProviderError>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageGenerationRequest {
+    pub scene_key: String,
+    pub prompt: String,
+    pub output_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageGenerationResponse {
+    pub bytes: Vec<u8>,
+    pub provider: String,
+    pub model: Option<String>,
+    pub request_id: Option<String>,
+    pub spent_cost_units: u64,
+}
+
+impl ImageGenerationResponse {
+    pub fn png(
+        bytes: impl Into<Vec<u8>>,
+        provider: impl Into<String>,
+        model: Option<String>,
+        request_id: Option<String>,
+        spent_cost_units: u64,
+    ) -> Self {
+        Self {
+            bytes: bytes.into(),
+            provider: provider.into(),
+            model,
+            request_id,
+            spent_cost_units,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImageProviderErrorKind {
+    Provider,
+    Timeout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageProviderError {
+    pub kind: ImageProviderErrorKind,
+    pub code: String,
+    pub message: String,
+}
+
+impl ImageProviderError {
+    pub fn provider(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: ImageProviderErrorKind::Provider,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self {
+            kind: ImageProviderErrorKind::Timeout,
+            code: "image_provider_timeout".into(),
+            message: message.into(),
+        }
+    }
+
+    fn retryable(&self) -> bool {
+        matches!(
+            self.kind,
+            ImageProviderErrorKind::Provider | ImageProviderErrorKind::Timeout
+        )
+    }
+
+    fn into_runtime_error(self) -> RuntimeError {
+        match self.kind {
+            ImageProviderErrorKind::Provider => RuntimeError::redacted(self.code, self.message),
+            ImageProviderErrorKind::Timeout => RuntimeError::redacted(
+                "image_provider_timeout",
+                format!("image provider timed out: {}", self.message),
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for ImageProviderError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ImageProviderError {}
+
+pub trait ImageProvider {
+    fn generate(
+        &self,
+        request: &ImageGenerationRequest,
+    ) -> Result<ImageGenerationResponse, ImageProviderError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SceneImageRequest {
+    pub scene_key: String,
+    pub prompt: String,
+    pub output_path: String,
+}
+
+impl SceneImageRequest {
+    pub fn background(scene: &Scene) -> Self {
+        Self {
+            scene_key: scene.key.clone(),
+            prompt: scene_image_prompt(scene),
+            output_path: format!("assets/generated/{}.png", scene.key),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SceneImageResult {
+    pub asset_record: AssetRecord,
+    pub job_record: Option<JobRecord>,
+    pub fallback_used: bool,
+    pub error: Option<RuntimeError>,
+}
+
+#[derive(Debug)]
+pub enum SceneImagePipelineError {
+    Job(JobQueueError),
+    Media(MediaError),
+    MissingAssetRecord(String),
+}
+
+impl std::fmt::Display for SceneImagePipelineError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Job(error) => write!(formatter, "{error}"),
+            Self::Media(error) => write!(formatter, "{error}"),
+            Self::MissingAssetRecord(id) => {
+                write!(
+                    formatter,
+                    "asset registry did not return inserted record {id}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for SceneImagePipelineError {}
+
+impl From<JobQueueError> for SceneImagePipelineError {
+    fn from(error: JobQueueError) -> Self {
+        Self::Job(error)
+    }
+}
+
+impl From<MediaError> for SceneImagePipelineError {
+    fn from(error: MediaError) -> Self {
+        Self::Media(error)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SceneImagePipeline<P> {
+    provider: P,
+}
+
+impl<P> SceneImagePipeline<P> {
+    pub fn new(provider: P) -> Self {
+        Self { provider }
+    }
+}
+
+impl<P> SceneImagePipeline<P>
+where
+    P: ImageProvider,
+{
+    pub fn generate_scene_background<C>(
+        &self,
+        request: SceneImageRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+    ) -> Result<SceneImageResult, SceneImagePipelineError>
+    where
+        C: JobClock,
+    {
+        let prompt_hash = stable_prompt_hash(&request.prompt);
+        if let Some(asset_record) =
+            cached_scene_background(registry, &request.scene_key, &prompt_hash)
+        {
+            return Ok(SceneImageResult {
+                asset_record,
+                job_record: None,
+                fallback_used: false,
+                error: None,
+            });
+        }
+
+        let job = jobs.enqueue(JobRequest {
+            kind: JobKind::ImageGeneration,
+            timeout_ms: IMAGE_JOB_TIMEOUT_MS,
+            max_attempts: IMAGE_JOB_MAX_ATTEMPTS,
+            estimated_cost_units: IMAGE_JOB_ESTIMATED_COST_UNITS,
+        })?;
+        jobs.start(&job.id)?;
+        jobs.report_progress(
+            &job.id,
+            0,
+            1,
+            Some(format!(
+                "generating background image for {}",
+                request.scene_key
+            )),
+        )?;
+
+        let provider_request = ImageGenerationRequest {
+            scene_key: request.scene_key.clone(),
+            prompt: request.prompt.clone(),
+            output_path: request.output_path.clone(),
+        };
+        match self.provider.generate(&provider_request) {
+            Ok(response) => {
+                let asset_id = registry.insert_bytes(
+                    AssetRecordInput {
+                        kind: AssetKind::Image,
+                        source: AssetSourceKind::Generated,
+                        project_path: request.output_path.clone(),
+                        export_path: Some(request.output_path),
+                        provider_metadata: Some(AssetProviderMetadata {
+                            provider: response.provider,
+                            model: response.model,
+                            request_id: response.request_id,
+                            prompt_hash: Some(prompt_hash),
+                            fallback_used: false,
+                        }),
+                        references: vec![scene_background_reference(&request.scene_key)],
+                    },
+                    &response.bytes,
+                )?;
+                jobs.report_progress(&job.id, 1, 1, None)?;
+                let job_record = jobs.succeed(&job.id, response.spent_cost_units)?;
+                let asset_record = registry
+                    .get(&asset_id)
+                    .cloned()
+                    .ok_or(SceneImagePipelineError::MissingAssetRecord(asset_id))?;
+
+                Ok(SceneImageResult {
+                    asset_record,
+                    job_record: Some(job_record),
+                    fallback_used: false,
+                    error: None,
+                })
+            }
+            Err(error) => {
+                let retryable = error.retryable();
+                let runtime_error = error.into_runtime_error();
+                let job_record = jobs.fail(
+                    &job.id,
+                    JobFailure {
+                        code: runtime_error.code.clone(),
+                        message: redact_trace_text(&runtime_error.message),
+                        retryable,
+                    },
+                )?;
+                let placeholder_bytes = placeholder_image_bytes(&request.scene_key, &prompt_hash);
+                let asset_id = registry.insert_bytes(
+                    AssetRecordInput {
+                        kind: AssetKind::Image,
+                        source: AssetSourceKind::Placeholder,
+                        project_path: request.output_path.clone(),
+                        export_path: Some(request.output_path),
+                        provider_metadata: Some(AssetProviderMetadata {
+                            provider: "plotforge-placeholder".into(),
+                            model: Some("placeholder-image-v1".into()),
+                            request_id: None,
+                            prompt_hash: Some(prompt_hash),
+                            fallback_used: true,
+                        }),
+                        references: vec![scene_background_reference(&request.scene_key)],
+                    },
+                    &placeholder_bytes,
+                )?;
+                let asset_record = registry
+                    .get(&asset_id)
+                    .cloned()
+                    .ok_or(SceneImagePipelineError::MissingAssetRecord(asset_id))?;
+
+                Ok(SceneImageResult {
+                    asset_record,
+                    job_record: Some(job_record),
+                    fallback_used: true,
+                    error: Some(runtime_error),
+                })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FakeImageProvider {
+    failure: Option<FakeImageFailureKind>,
+    calls: std::rc::Rc<std::cell::Cell<u32>>,
+}
+
+impl FakeImageProvider {
+    pub fn success() -> Self {
+        Self::default()
+    }
+
+    pub fn provider_error() -> Self {
+        Self::with_failure(FakeImageFailureKind::ProviderError)
+    }
+
+    pub fn timeout() -> Self {
+        Self::with_failure(FakeImageFailureKind::Timeout)
+    }
+
+    pub fn call_count(&self) -> u32 {
+        self.calls.get()
+    }
+
+    fn with_failure(kind: FakeImageFailureKind) -> Self {
+        Self {
+            failure: Some(kind),
+            calls: std::rc::Rc::new(std::cell::Cell::new(0)),
+        }
+    }
+}
+
+impl ImageProvider for FakeImageProvider {
+    fn generate(
+        &self,
+        request: &ImageGenerationRequest,
+    ) -> Result<ImageGenerationResponse, ImageProviderError> {
+        self.calls.set(self.calls.get() + 1);
+        if let Some(failure) = &self.failure {
+            return match failure {
+                FakeImageFailureKind::ProviderError => Err(ImageProviderError::provider(
+                    "image_provider_error",
+                    "fake image provider failed OPENAI_API_KEY=sk-image-secret",
+                )),
+                FakeImageFailureKind::Timeout => Err(ImageProviderError::timeout(
+                    "fake image provider timeout token=image-secret",
+                )),
+            };
+        }
+
+        Ok(ImageGenerationResponse::png(
+            fake_image_bytes(request),
+            "fake-image",
+            Some("placeholder-v1".into()),
+            Some(format!("fake-image-{}", request.scene_key)),
+            1,
+        ))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FakeImageFailureKind {
+    ProviderError,
+    Timeout,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageProviderAgentPipeline<T, I, C> {
+    text_provider: T,
+    image_pipeline: SceneImagePipeline<I>,
+    state: RefCell<SceneImagePipelineState<C>>,
+}
+
+impl<T, I, C> ImageProviderAgentPipeline<T, I, C>
+where
+    C: JobClock,
+{
+    pub fn new(text_provider: T, image_provider: I, clock: C) -> Self {
+        Self {
+            text_provider,
+            image_pipeline: SceneImagePipeline::new(image_provider),
+            state: RefCell::new(SceneImagePipelineState {
+                asset_registry: AssetRegistry::new(),
+                job_queue: JobQueue::new(clock),
+            }),
+        }
+    }
+
+    pub fn asset_records(&self) -> Vec<AssetRecord> {
+        self.state
+            .borrow()
+            .asset_registry
+            .records()
+            .cloned()
+            .collect()
+    }
+
+    pub fn job_records(&self) -> Vec<JobRecord> {
+        self.state.borrow().job_queue.records().cloned().collect()
+    }
+}
+
+impl<T, I, C> ScenePlanner for ImageProviderAgentPipeline<T, I, C>
+where
+    T: TextModelProvider,
+    I: ImageProvider,
+    C: JobClock,
+{
+    fn plan_next_scene(
+        &self,
+        request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
+        let next_turn = request.story_state.turn + 1;
+        let scene_key = format!("provider-scene-{next_turn:03}");
+
+        if request.action_type == "continue" {
+            let (scene, fallback_used, error) = if let Some(scene) = request
+                .project
+                .scene(&request.story_state.current_scene_key)
+            {
+                (scene.clone(), false, None)
+            } else {
+                (
+                    fallback_scene(next_turn, request.action_type),
+                    true,
+                    Some(RuntimeError::redacted(
+                        "fallback_scene",
+                        "Image provider pipeline used a fallback scene because the requested scene was missing.",
+                    )),
+                )
+            };
+            let review = review_scene(
+                &scene,
+                &request.project.story_craft,
+                &request.project.characters,
+            );
+            return Ok(ScenePlan {
+                scene,
+                review,
+                fallback_used,
+                error,
+            });
+        }
+
+        match provider_scene_plan(&self.text_provider, &request, &scene_key) {
+            Ok((mut scene, review)) => {
+                let image_request = SceneImageRequest::background(&scene);
+                let image_result = {
+                    let mut state = self.state.borrow_mut();
+                    let SceneImagePipelineState {
+                        asset_registry,
+                        job_queue,
+                    } = &mut *state;
+                    self.image_pipeline.generate_scene_background(
+                        image_request,
+                        asset_registry,
+                        job_queue,
+                    )
+                }
+                .map_err(|error| {
+                    ScenePlannerError::new("image_pipeline_error", error.to_string())
+                })?;
+                scene.background_asset = image_result.asset_record.export_path.clone();
+
+                Ok(ScenePlan {
+                    scene,
+                    review,
+                    fallback_used: image_result.fallback_used,
+                    error: image_result.error,
+                })
+            }
+            Err(error) => {
+                let runtime_error = error.into_runtime_error();
+                let scene = fallback_scene(next_turn, request.action_type);
+                let review = review_scene(
+                    &scene,
+                    &request.project.story_craft,
+                    &request.project.characters,
+                );
+                Ok(ScenePlan {
+                    scene,
+                    review,
+                    fallback_used: true,
+                    error: Some(runtime_error),
+                })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SceneImagePipelineState<C> {
+    asset_registry: AssetRegistry,
+    job_queue: JobQueue<C>,
+}
+
+fn cached_scene_background(
+    registry: &AssetRegistry,
+    scene_key: &str,
+    prompt_hash: &str,
+) -> Option<AssetRecord> {
+    registry
+        .records_referenced_by(AssetReferenceKind::Scene, scene_key)
+        .into_iter()
+        .filter(|record| {
+            record.kind == AssetKind::Image
+                && record.source == AssetSourceKind::Generated
+                && record
+                    .references
+                    .iter()
+                    .any(|reference| reference.slot == SCENE_BACKGROUND_SLOT)
+        })
+        .find(|record| {
+            record.provider_metadata.as_ref().is_some_and(|metadata| {
+                !metadata.fallback_used && metadata.prompt_hash.as_deref() == Some(prompt_hash)
+            })
+        })
+        .cloned()
+}
+
+fn scene_background_reference(scene_key: &str) -> AssetReference {
+    AssetReference {
+        reference_kind: AssetReferenceKind::Scene,
+        reference_id: scene_key.into(),
+        slot: SCENE_BACKGROUND_SLOT.into(),
+    }
+}
+
+fn scene_image_prompt(scene: &Scene) -> String {
+    format!(
+        "scene_key={}; title={}; location={}; hook={}; dramatic_purpose={}",
+        scene.key, scene.title, scene.location, scene.hook, scene.dramatic_purpose
+    )
+}
+
+fn stable_prompt_hash(prompt: &str) -> String {
+    let digest = Sha256::digest(prompt.as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn fake_image_bytes(request: &ImageGenerationRequest) -> Vec<u8> {
+    format!(
+        "plotforge-fake-png\nscene={}\nprompt={}\n",
+        request.scene_key, request.prompt
+    )
+    .into_bytes()
+}
+
+fn placeholder_image_bytes(scene_key: &str, prompt_hash: &str) -> Vec<u8> {
+    format!("plotforge-placeholder-png\nscene={scene_key}\nprompt_hash={prompt_hash}\n")
+        .into_bytes()
+}
+
 #[derive(Clone, Debug)]
 pub struct ProviderAgentPipeline<P> {
     provider: P,
@@ -419,22 +975,36 @@ where
         request: &ScenePlanRequest<'_>,
         scene_key: &str,
     ) -> Result<(Scene, NarrativeReview), ProviderPipelineError> {
-        let scene_plan = match self
-            .complete_agent_output(AgentRole::ScenePlanner, request, scene_key)?
-            .output
-        {
-            AgentProposalPayload::ScenePlan(scene_plan) => scene_plan,
-            output => {
-                return Err(ProviderPipelineError::Validation {
-                    agent: AgentRole::ScenePlanner,
-                    message: format!("unexpected payload `{}`", payload_kind(&output)),
-                });
-            }
-        };
-        let beat_drafts = match self
-            .complete_agent_output(AgentRole::BeatWriter, request, scene_key)?
-            .output
-        {
+        provider_scene_plan(&self.provider, request, scene_key)
+    }
+}
+
+fn provider_scene_plan<P>(
+    provider: &P,
+    request: &ScenePlanRequest<'_>,
+    scene_key: &str,
+) -> Result<(Scene, NarrativeReview), ProviderPipelineError>
+where
+    P: TextModelProvider,
+{
+    let scene_plan = match complete_agent_output(
+        provider,
+        AgentRole::ScenePlanner,
+        request,
+        scene_key,
+    )?
+    .output
+    {
+        AgentProposalPayload::ScenePlan(scene_plan) => scene_plan,
+        output => {
+            return Err(ProviderPipelineError::Validation {
+                agent: AgentRole::ScenePlanner,
+                message: format!("unexpected payload `{}`", payload_kind(&output)),
+            });
+        }
+    };
+    let beat_drafts =
+        match complete_agent_output(provider, AgentRole::BeatWriter, request, scene_key)?.output {
             AgentProposalPayload::BeatDrafts(beat_drafts) => beat_drafts,
             output => {
                 return Err(ProviderPipelineError::Validation {
@@ -443,10 +1013,8 @@ where
                 });
             }
         };
-        let review = match self
-            .complete_agent_output(AgentRole::PlotDoctor, request, scene_key)?
-            .output
-        {
+    let review =
+        match complete_agent_output(provider, AgentRole::PlotDoctor, request, scene_key)?.output {
             AgentProposalPayload::Review(review) => review,
             output => {
                 return Err(ProviderPipelineError::Validation {
@@ -455,49 +1023,50 @@ where
                 });
             }
         };
-        let scene =
-            scene_from_proposals(&scene_plan, &beat_drafts, Some(&review)).map_err(|error| {
-                ProviderPipelineError::Validation {
-                    agent: AgentRole::ScenePlanner,
-                    message: format!("scene assembly rejected provider proposals: {error:?}"),
-                }
-            })?;
-
-        Ok((scene, review.review))
-    }
-
-    fn complete_agent_output(
-        &self,
-        agent: AgentRole,
-        request: &ScenePlanRequest<'_>,
-        scene_key: &str,
-    ) -> Result<AgentOutputProposal, ProviderPipelineError> {
-        let model_request = TextModelRequest {
-            call_id: format!("{}-{}", scene_key, payload_call_suffix(&agent)),
-            agent: agent.clone(),
-            scene_key: scene_key.to_string(),
-            prompt: text_model_prompt(&agent, request, scene_key),
-        };
-        let response = self
-            .provider
-            .complete(&model_request)
-            .map_err(ProviderPipelineError::Provider)?;
-        let proposal =
-            serde_json::from_str::<AgentOutputProposal>(&response.raw_json).map_err(|error| {
-                ProviderPipelineError::InvalidJson {
-                    agent: agent.clone(),
-                    message: error.to_string(),
-                }
-            })?;
-        validate_agent_output_proposal(&proposal).map_err(|error| {
+    let scene =
+        scene_from_proposals(&scene_plan, &beat_drafts, Some(&review)).map_err(|error| {
             ProviderPipelineError::Validation {
-                agent,
-                message: format!("{error:?}"),
+                agent: AgentRole::ScenePlanner,
+                message: format!("scene assembly rejected provider proposals: {error:?}"),
             }
         })?;
 
-        Ok(proposal)
-    }
+    Ok((scene, review.review))
+}
+
+fn complete_agent_output<P>(
+    provider: &P,
+    agent: AgentRole,
+    request: &ScenePlanRequest<'_>,
+    scene_key: &str,
+) -> Result<AgentOutputProposal, ProviderPipelineError>
+where
+    P: TextModelProvider,
+{
+    let model_request = TextModelRequest {
+        call_id: format!("{}-{}", scene_key, payload_call_suffix(&agent)),
+        agent: agent.clone(),
+        scene_key: scene_key.to_string(),
+        prompt: text_model_prompt(&agent, request, scene_key),
+    };
+    let response = provider
+        .complete(&model_request)
+        .map_err(ProviderPipelineError::Provider)?;
+    let proposal =
+        serde_json::from_str::<AgentOutputProposal>(&response.raw_json).map_err(|error| {
+            ProviderPipelineError::InvalidJson {
+                agent: agent.clone(),
+                message: error.to_string(),
+            }
+        })?;
+    validate_agent_output_proposal(&proposal).map_err(|error| {
+        ProviderPipelineError::Validation {
+            agent,
+            message: format!("{error:?}"),
+        }
+    })?;
+
+    Ok(proposal)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -946,17 +1515,38 @@ fn thread_for_action(action_type: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use plotforge_job::{JobClock, JobQueue};
+    use plotforge_media::AssetRegistry;
     use plotforge_schema::{
-        AgentOutputProposal, AgentProposalPayload, AgentRole, BeatDraftProposal,
-        BeatDraftsProposal, Choice, GameProject, NarrativeFunction, NarrativeReview,
-        ReviewProposal, ScenePlanProposal, Severity, StoryState, WorldState,
+        AgentOutputProposal, AgentProposalPayload, AgentRole, AssetReferenceKind, AssetSourceKind,
+        BeatDraftProposal, BeatDraftsProposal, Choice, GameProject, JobStatus, NarrativeFunction,
+        NarrativeReview, REDACTED_TRACE_SECRET, ReviewProposal, ScenePlanProposal, Severity,
+        StoryState, WorldState,
     };
 
     use super::{
-        AgentProposalValidationError, FakeTextModelProvider, MockAgentPipeline,
-        ProviderAgentPipeline, ScenePlanRequest, ScenePlanner, scene_from_proposals,
+        AgentProposalValidationError, FakeImageProvider, FakeTextModelProvider,
+        ImageProviderAgentPipeline, MockAgentPipeline, ProviderAgentPipeline, SceneImagePipeline,
+        SceneImageRequest, ScenePlanRequest, ScenePlanner, scene_from_proposals,
         validate_agent_output_proposal,
     };
+
+    #[derive(Clone, Debug)]
+    struct FakeClock {
+        now_ms: u64,
+    }
+
+    impl FakeClock {
+        fn new(now_ms: u64) -> Self {
+            Self { now_ms }
+        }
+    }
+
+    impl JobClock for FakeClock {
+        fn now_ms(&self) -> u64 {
+            self.now_ms
+        }
+    }
 
     #[test]
     fn mock_pipeline_returns_valid_scene_and_review() {
@@ -1235,6 +1825,194 @@ mod tests {
         );
     }
 
+    #[test]
+    fn fake_image_provider_registers_generated_asset_and_successful_job() {
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(100));
+        let pipeline = SceneImagePipeline::new(FakeImageProvider::success());
+
+        let result = pipeline
+            .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("image generation");
+
+        assert!(!result.fallback_used);
+        assert!(result.error.is_none());
+        assert_eq!(result.asset_record.source, AssetSourceKind::Generated);
+        assert_eq!(
+            result.asset_record.project_path,
+            "assets/generated/scene-one.png"
+        );
+        assert_eq!(
+            result
+                .asset_record
+                .provider_metadata
+                .as_ref()
+                .expect("metadata")
+                .provider,
+            "fake-image"
+        );
+        assert!(
+            !result
+                .asset_record
+                .provider_metadata
+                .as_ref()
+                .expect("metadata")
+                .fallback_used
+        );
+        assert_eq!(
+            result
+                .asset_record
+                .references
+                .iter()
+                .filter(|reference| {
+                    reference.reference_kind == AssetReferenceKind::Scene
+                        && reference.reference_id == "scene-one"
+                })
+                .count(),
+            1
+        );
+        let job = result.job_record.expect("job");
+        assert_eq!(job.status, JobStatus::Succeeded);
+        assert_eq!(job.cost.spent_units, 1);
+    }
+
+    #[test]
+    fn fake_image_provider_failure_registers_placeholder_and_failed_job() {
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(200));
+        let pipeline = SceneImagePipeline::new(FakeImageProvider::provider_error());
+
+        let result = pipeline
+            .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("placeholder fallback");
+
+        assert!(result.fallback_used);
+        assert_eq!(
+            result.error.as_ref().expect("runtime error").code,
+            "image_provider_error"
+        );
+        assert!(
+            result
+                .error
+                .as_ref()
+                .expect("runtime error")
+                .message
+                .contains(REDACTED_TRACE_SECRET)
+        );
+        assert_eq!(result.asset_record.source, AssetSourceKind::Placeholder);
+        let metadata = result
+            .asset_record
+            .provider_metadata
+            .as_ref()
+            .expect("metadata");
+        assert_eq!(metadata.provider, "plotforge-placeholder");
+        assert!(metadata.fallback_used);
+        let job = result.job_record.expect("job");
+        assert_eq!(job.status, JobStatus::Failed);
+        assert_eq!(
+            job.failure.as_ref().expect("failure").code,
+            "image_provider_error"
+        );
+        assert!(
+            job.failure
+                .as_ref()
+                .expect("failure")
+                .message
+                .contains(REDACTED_TRACE_SECRET)
+        );
+    }
+
+    #[test]
+    fn scene_image_pipeline_reuses_matching_cached_asset_without_new_job() {
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(300));
+        let provider = FakeImageProvider::success();
+        let pipeline = SceneImagePipeline::new(provider.clone());
+
+        let first = pipeline
+            .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("first image");
+        let second = pipeline
+            .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("cached image");
+
+        assert_eq!(provider.call_count(), 1);
+        assert_eq!(registry.len(), 1);
+        assert_eq!(first.asset_record.id, second.asset_record.id);
+        assert!(second.job_record.is_none());
+    }
+
+    #[test]
+    fn scene_image_pipeline_does_not_cache_placeholder_as_success() {
+        let mut registry = AssetRegistry::new();
+        let mut jobs = JobQueue::new(FakeClock::new(350));
+        let failing_pipeline = SceneImagePipeline::new(FakeImageProvider::provider_error());
+        let success_provider = FakeImageProvider::success();
+        let success_pipeline = SceneImagePipeline::new(success_provider.clone());
+
+        let fallback = failing_pipeline
+            .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("placeholder fallback");
+        let generated = success_pipeline
+            .generate_scene_background(scene_image_request(), &mut registry, &mut jobs)
+            .expect("generated retry");
+
+        assert_eq!(fallback.asset_record.source, AssetSourceKind::Placeholder);
+        assert_eq!(generated.asset_record.source, AssetSourceKind::Generated);
+        assert_eq!(success_provider.call_count(), 1);
+        assert_eq!(jobs.records().count(), 2);
+    }
+
+    #[test]
+    fn image_provider_agent_pipeline_generates_scene_background_asset() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let planner = ImageProviderAgentPipeline::new(
+            FakeTextModelProvider::success(),
+            FakeImageProvider::success(),
+            FakeClock::new(400),
+        );
+
+        let plan = planner
+            .plan_next_scene(provider_request(&project))
+            .expect("image-aware plan");
+
+        assert_eq!(plan.scene.key, "provider-scene-001");
+        assert_eq!(
+            plan.scene.background_asset,
+            "assets/generated/provider-scene-001.png"
+        );
+        assert!(!plan.fallback_used);
+        assert!(plan.error.is_none());
+        assert_eq!(planner.asset_records().len(), 1);
+        assert_eq!(planner.job_records()[0].status, JobStatus::Succeeded);
+    }
+
+    #[test]
+    fn image_provider_agent_pipeline_marks_image_fallback_visible() {
+        let project = plotforge_storage::dynasty_embers_project();
+        let planner = ImageProviderAgentPipeline::new(
+            FakeTextModelProvider::success(),
+            FakeImageProvider::timeout(),
+            FakeClock::new(500),
+        );
+
+        let plan = planner
+            .plan_next_scene(provider_request(&project))
+            .expect("image fallback plan");
+
+        assert_eq!(plan.scene.key, "provider-scene-001");
+        assert!(plan.fallback_used);
+        assert_eq!(
+            plan.error.as_ref().expect("image error").code,
+            "image_provider_timeout"
+        );
+        assert_eq!(
+            planner.asset_records()[0].source,
+            AssetSourceKind::Placeholder
+        );
+        assert_eq!(planner.job_records()[0].status, JobStatus::Failed);
+    }
+
     fn sample_scene_plan_output_proposal() -> AgentOutputProposal {
         AgentOutputProposal {
             id: "scene-plan-proposal-001".into(),
@@ -1328,6 +2106,14 @@ mod tests {
             world_state: &project.world_state,
             player_input: "Raise the levy",
             action_type: "raise_tax",
+        }
+    }
+
+    fn scene_image_request() -> SceneImageRequest {
+        SceneImageRequest {
+            scene_key: "scene-one".into(),
+            prompt: "paint a tense court hearing".into(),
+            output_path: "assets/generated/scene-one.png".into(),
         }
     }
 }

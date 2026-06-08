@@ -1,15 +1,27 @@
 use std::collections::BTreeMap;
 
 use plotforge_agent::{
-    FakeTextModelProvider, ProviderAgentPipeline, ScenePlan, ScenePlanRequest, ScenePlanner,
-    ScenePlannerError,
+    FakeImageProvider, FakeTextModelProvider, ImageProviderAgentPipeline, ProviderAgentPipeline,
+    ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
 };
+use plotforge_job::JobClock;
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
 use plotforge_schema::{
     ActionIntentStatus, AgentRole, Beat, Choice, NarrativeReview, REDACTED_TRACE_SECRET,
     RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
 };
 use plotforge_storage::dynasty_embers_project;
+
+#[derive(Clone, Debug)]
+struct FakeClock {
+    now_ms: u64,
+}
+
+impl JobClock for FakeClock {
+    fn now_ms(&self) -> u64 {
+        self.now_ms
+    }
+}
 
 #[test]
 fn continue_action_does_not_advance_scene_or_turn() {
@@ -169,6 +181,40 @@ fn provider_pipeline_errors_are_trace_visible() {
         diagnostic.stage == RuntimeTraceStage::PlanScene
             && diagnostic.status == RuntimeTraceStageStatus::Fallback
             && diagnostic.message.contains("text_provider_timeout")
+    }));
+}
+
+#[test]
+fn image_provider_failures_are_trace_visible() {
+    let planner = ImageProviderAgentPipeline::new(
+        FakeTextModelProvider::success(),
+        FakeImageProvider::timeout(),
+        FakeClock { now_ms: 1_000 },
+    );
+    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), planner);
+
+    let step = session
+        .play_once("朕决定加征辽饷")
+        .expect("image fallback play");
+
+    assert_eq!(step.scene.key, "provider-scene-001");
+    assert!(step.trace.fallback_used);
+    assert!(
+        step.trace
+            .errors
+            .iter()
+            .any(|error| error.code == "image_provider_timeout")
+    );
+    let planner_result = step.trace.planner_result.as_ref().expect("planner result");
+    assert!(planner_result.fallback_used);
+    assert_eq!(
+        planner_result.error.as_ref().expect("planner error").code,
+        "image_provider_timeout"
+    );
+    assert!(step.trace.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == RuntimeTraceStage::PlanScene
+            && diagnostic.status == RuntimeTraceStageStatus::Fallback
+            && diagnostic.message.contains("image_provider_timeout")
     }));
 }
 
