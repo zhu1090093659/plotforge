@@ -11,6 +11,7 @@ members = [
   "crates/plotforge-studio",
   "crates/plotforge-storage",
   "crates/plotforge-storycraft",
+  "crates/plotforge-workshop",
 ]
 exclude = ["apps/creator-desktop/src-tauri"]
 resolver = "3"
@@ -34,6 +35,7 @@ plotforge-schema = { path = "crates/plotforge-schema" }
 plotforge-studio = { path = "crates/plotforge-studio" }
 plotforge-storage = { path = "crates/plotforge-storage" }
 plotforge-storycraft = { path = "crates/plotforge-storycraft" }
+plotforge-workshop = { path = "crates/plotforge-workshop" }
 schemars = "1.2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

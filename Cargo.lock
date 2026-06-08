@@ -486,6 +486,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "plotforge-workshop"
+version = "0.1.0"
+dependencies = [
+ "plotforge-schema",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
