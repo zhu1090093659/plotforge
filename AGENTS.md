@@ -8,7 +8,7 @@ Build PlotForge as a CLI-first Rust engine with a creator desktop UI adapter. Re
 
 The current MVP contains:
 
-- Rust workspace crates for schema, storage, rule evaluation, story craft review, mock agent planning, runtime, static export, and CLI.
+- Rust workspace crates for schema, storage, rule evaluation, story craft review, mock agent planning, runtime, media asset registry, static export, and CLI.
 - `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace with dashboard, source editor, playtest, runtime trace views, and a thin Tauri command bridge.
 - Folder project source of truth using TOML, JSON, Markdown, and generated local assets.
 - `examples/dynasty-embers` as the committed demo fixture.
@@ -22,6 +22,7 @@ The current MVP contains:
 - `examples/dynasty-embers` must remain a valid fixture and must stay semantically aligned with `create_demo_project`.
 - Runtime traces are generated evidence, not committed fixture state.
 - Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
+- Media asset records must use structured, redaction-safe provider metadata only; store prompt hashes/request ids when needed, never raw provider responses or secrets.
 - Spec-driven planning artifacts belong under `docs/archives/<initiative>/` after completion.
 
 ## Architecture Boundaries
@@ -31,6 +32,7 @@ The current MVP contains:
 - Player/freeform input must resolve to a typed `ActionIntent`; unsupported input must not mutate runtime state or silently map to a default action.
 - Keep persistence and fixture file layout in `plotforge-storage`.
 - Keep static export behavior in `plotforge-export`; exported bundles must not include private traces, provider config, raw provider responses, or secrets.
+- Keep asset registry records, content hashes, references, provider metadata, and reachability in `plotforge-media`; as export, runtime, Studio, and future providers integrate media, consume this boundary instead of adding a second media registry implementation.
 - Keep CLI behavior in `plotforge-cli`; CLI should orchestrate crates instead of owning business logic.
 - Keep `apps/creator-desktop` as an adapter over generated contracts and future Tauri commands. TypeScript UI code may import types from `contracts/plotforge.d.ts`, but must not reimplement rule, runtime, storage, storycraft, or agent business logic.
 - Keep Tauri command behavior in testable Rust adapter crates such as `plotforge-studio`; `apps/creator-desktop/src-tauri` should stay a thin IPC wrapper.
@@ -41,7 +43,7 @@ The current MVP contains:
 - Every new feature must include corresponding tests in the same change.
 - Every bug fix should include a regression test that fails before the fix when feasible.
 - Schema or serialization changes must include roundtrip/contract tests in `plotforge-schema` and affected integration tests.
-- Rule, runtime, storage, export, storycraft, and agent behavior changes must include crate-level tests for the changed boundary.
+- Rule, runtime, storage, export, media, storycraft, and agent behavior changes must include crate-level tests for the changed boundary.
 - CLI command changes must update black-box tests under `crates/plotforge-cli/tests/`.
 - Export/player behavior changes must update export tests and, when rendering or interaction matters, the HTTP smoke path.
 - Creator desktop changes must run `npm run creator-desktop:qa`; user-visible UI adapters should add or update TypeScript/Vitest coverage for contract-backed behavior.
