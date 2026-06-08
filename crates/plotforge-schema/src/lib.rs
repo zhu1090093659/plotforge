@@ -7,8 +7,9 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 1;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 2;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
+pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GameProject {
@@ -870,12 +871,218 @@ impl ProjectData {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportProfileTarget {
+    StaticWeb,
+    DynamicWeb,
+    DesktopBundle,
+    SteamWorkshop,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportProfileCapability {
+    LocalHttp,
+    NoNetworkPlayer,
+    StaticAssets,
+    StandalonePackage,
+    RuntimeSaveRestore,
+    ProviderBackedGeneration,
+    DesktopShell,
+    SteamWorkshopMetadata,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ExportProfile {
+    pub id: String,
+    pub target: ExportProfileTarget,
+    pub intent: String,
+    pub capabilities: Vec<ExportProfileCapability>,
+    pub requires_network_at_runtime: bool,
+    pub includes_provider_config: bool,
+    pub includes_private_traces: bool,
+    pub platform_submission_ready: bool,
+    pub notes: Vec<String>,
+}
+
+impl Default for ExportProfile {
+    fn default() -> Self {
+        Self::static_web()
+    }
+}
+
+impl ExportProfile {
+    pub fn static_web() -> Self {
+        Self {
+            id: "static-web".into(),
+            target: ExportProfileTarget::StaticWeb,
+            intent: "Package a local/self-hosted static player with prebaked project content."
+                .into(),
+            capabilities: vec![
+                ExportProfileCapability::LocalHttp,
+                ExportProfileCapability::NoNetworkPlayer,
+                ExportProfileCapability::StaticAssets,
+                ExportProfileCapability::StandalonePackage,
+            ],
+            requires_network_at_runtime: false,
+            includes_provider_config: false,
+            includes_private_traces: false,
+            platform_submission_ready: false,
+            notes: vec![
+                "Runs from copied player files and local asset references.".into(),
+                "Does not include provider credentials, raw provider responses, or private traces."
+                    .into(),
+                "This profile is an engineering disclosure surface, not a legal compliance guarantee."
+                    .into(),
+            ],
+        }
+    }
+
+    pub fn dynamic_web() -> Self {
+        Self {
+            id: "dynamic-web".into(),
+            target: ExportProfileTarget::DynamicWeb,
+            intent: "Describe a future hosted player that may call provider-backed services."
+                .into(),
+            capabilities: vec![
+                ExportProfileCapability::ProviderBackedGeneration,
+                ExportProfileCapability::RuntimeSaveRestore,
+            ],
+            requires_network_at_runtime: true,
+            includes_provider_config: false,
+            includes_private_traces: false,
+            platform_submission_ready: false,
+            notes: vec![
+                "Provider credentials must stay server-side and outside export packages.".into(),
+                "Raw provider responses are never part of this profile contract.".into(),
+            ],
+        }
+    }
+
+    pub fn desktop_bundle() -> Self {
+        Self {
+            id: "desktop-bundle".into(),
+            target: ExportProfileTarget::DesktopBundle,
+            intent: "Describe a future desktop runtime package with local persistence.".into(),
+            capabilities: vec![
+                ExportProfileCapability::DesktopShell,
+                ExportProfileCapability::RuntimeSaveRestore,
+                ExportProfileCapability::StaticAssets,
+            ],
+            requires_network_at_runtime: false,
+            includes_provider_config: false,
+            includes_private_traces: false,
+            platform_submission_ready: false,
+            notes: vec![
+                "Desktop runtime state must stay separate from private debug traces.".into(),
+                "Provider credentials are not bundled into distributable packages.".into(),
+            ],
+        }
+    }
+
+    pub fn steam_workshop() -> Self {
+        Self {
+            id: "steam-workshop".into(),
+            target: ExportProfileTarget::SteamWorkshop,
+            intent: "Describe a future Workshop metadata/package candidate.".into(),
+            capabilities: vec![
+                ExportProfileCapability::SteamWorkshopMetadata,
+                ExportProfileCapability::StaticAssets,
+            ],
+            requires_network_at_runtime: false,
+            includes_provider_config: false,
+            includes_private_traces: false,
+            platform_submission_ready: false,
+            notes: vec![
+                "Workshop support is a metadata/package exploration profile only.".into(),
+                "This profile does not upload content or promise platform approval.".into(),
+            ],
+        }
+    }
+}
+
+pub fn supported_export_profiles() -> Vec<ExportProfile> {
+    vec![
+        ExportProfile::static_web(),
+        ExportProfile::dynamic_web(),
+        ExportProfile::desktop_bundle(),
+        ExportProfile::steam_workshop(),
+    ]
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AiUsageContentKind {
+    Text,
+    Image,
+    Audio,
+    Voice,
+    Data,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AiUsageSourceKind {
+    ProjectSource,
+    LocalMockProvider,
+    ExternalProvider,
+    Placeholder,
+    UserImport,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AiUsageDisclosure {
+    pub content_kind: AiUsageContentKind,
+    pub source_kind: AiUsageSourceKind,
+    pub summary: String,
+    pub asset_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AiProviderSummary {
+    pub provider: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    pub generated_asset_count: u32,
+    pub fallback_asset_count: u32,
+    pub prompt_hashes: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AiUsageManifest {
+    pub manifest_version: String,
+    pub project_id: String,
+    pub project_version: String,
+    pub export_profile: ExportProfile,
+    pub generated_by: String,
+    pub external_model_calls_during_export: bool,
+    pub provider_credentials_included: bool,
+    pub raw_provider_responses_included: bool,
+    pub private_traces_included: bool,
+    pub disclosures: Vec<AiUsageDisclosure>,
+    pub provider_summaries: Vec<AiProviderSummary>,
+    pub notices: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportManifest {
     pub game: GameProject,
     pub entry_scene: String,
     pub scenes: Vec<Scene>,
     pub assets: Vec<String>,
+    #[serde(default = "ExportProfile::static_web")]
+    pub profile: ExportProfile,
+    #[serde(default = "default_ai_usage_manifest_path")]
+    pub ai_usage_manifest_path: String,
     pub generated_by: String,
+}
+
+fn default_ai_usage_manifest_path() -> String {
+    AI_USAGE_MANIFEST_FILE.into()
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -887,6 +1094,7 @@ pub struct ContractRootSchemas {
     pub agent_output_proposal: AgentOutputProposal,
     pub reference_analysis: ReferenceAnalysis,
     pub asset_record: AssetRecord,
+    pub ai_usage_manifest: AiUsageManifest,
     pub export_manifest: ExportManifest,
 }
 
@@ -969,6 +1177,14 @@ export type AssetReferenceKind = "project" | "scene" | "character" | "export_pro
 export interface AssetReference { reference_kind: AssetReferenceKind; reference_id: string; slot: string; }
 export interface AssetProviderMetadata { provider: string; model?: string | null; request_id?: string | null; prompt_hash?: string | null; fallback_used: boolean; }
 export interface AssetRecord { id: string; kind: AssetKind; source: AssetSourceKind; project_path: string; export_path: string; content_hash: string; hash_algorithm: string; byte_length: number; provider_metadata?: AssetProviderMetadata | null; references: AssetReference[]; }
+export type ExportProfileTarget = "static_web" | "dynamic_web" | "desktop_bundle" | "steam_workshop";
+export type ExportProfileCapability = "local_http" | "no_network_player" | "static_assets" | "standalone_package" | "runtime_save_restore" | "provider_backed_generation" | "desktop_shell" | "steam_workshop_metadata";
+export interface ExportProfile { id: string; target: ExportProfileTarget; intent: string; capabilities: ExportProfileCapability[]; requires_network_at_runtime: boolean; includes_provider_config: boolean; includes_private_traces: boolean; platform_submission_ready: boolean; notes: string[]; }
+export type AiUsageContentKind = "text" | "image" | "audio" | "voice" | "data";
+export type AiUsageSourceKind = "project_source" | "local_mock_provider" | "external_provider" | "placeholder" | "user_import";
+export interface AiUsageDisclosure { content_kind: AiUsageContentKind; source_kind: AiUsageSourceKind; summary: string; asset_paths: string[]; }
+export interface AiProviderSummary { provider: string; model?: string | null; generated_asset_count: number; fallback_asset_count: number; prompt_hashes: string[]; }
+export interface AiUsageManifest { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; generated_by: string; external_model_calls_during_export: boolean; provider_credentials_included: boolean; raw_provider_responses_included: boolean; private_traces_included: boolean; disclosures: AiUsageDisclosure[]; provider_summaries: AiProviderSummary[]; notices: string[]; }
 export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
 export interface Beat { id: string; text: string; choices: Choice[]; }
 export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
@@ -1010,8 +1226,8 @@ export interface JobFailure { code: string; message: string; retryable: boolean;
 export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
-export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
+export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_usage_manifest: AiUsageManifest; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -1564,11 +1780,15 @@ mod tests {
             entry_scene: project.story_state.current_scene_key.clone(),
             scenes: project.scenes.clone(),
             assets: vec!["assets/generated/placeholder.png".into()],
+            profile: ExportProfile::static_web(),
+            ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
             generated_by: "test".into(),
         };
+        let ai_usage = sample_ai_usage_manifest(&project.game);
 
         let project_json = serde_json::to_string(&project).expect("serialize project");
         let manifest_json = serde_json::to_string(&manifest).expect("serialize manifest");
+        let ai_usage_json = serde_json::to_string(&ai_usage).expect("serialize ai usage");
         assert_eq!(
             serde_json::from_str::<ProjectData>(&project_json).expect("deserialize project"),
             project
@@ -1577,6 +1797,83 @@ mod tests {
             serde_json::from_str::<ExportManifest>(&manifest_json).expect("deserialize manifest"),
             manifest
         );
+        assert_eq!(
+            serde_json::from_str::<AiUsageManifest>(&ai_usage_json).expect("deserialize ai usage"),
+            ai_usage
+        );
+    }
+
+    #[test]
+    fn legacy_export_manifest_defaults_profile_fields() {
+        let legacy = r#"{
+            "game": {
+                "id": "dynasty-embers",
+                "title": "Dynasty Embers",
+                "version": "0.1.0",
+                "description": "Demo",
+                "entry_scene": "court-crisis-001",
+                "run_seed": 7
+            },
+            "entry_scene": "court-crisis-001",
+            "scenes": [],
+            "assets": ["assets/generated/placeholder.png"],
+            "generated_by": "test"
+        }"#;
+
+        let decoded: ExportManifest = serde_json::from_str(legacy).expect("legacy export manifest");
+
+        assert_eq!(decoded.profile, ExportProfile::static_web());
+        assert_eq!(decoded.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
+    }
+
+    #[test]
+    fn export_profiles_describe_supported_intents_without_secrets_or_submission_guarantees() {
+        let profiles = supported_export_profiles();
+        let ids = profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec![
+                "static-web",
+                "dynamic-web",
+                "desktop-bundle",
+                "steam-workshop"
+            ]
+        );
+        for profile in profiles {
+            assert!(!profile.includes_provider_config);
+            assert!(!profile.includes_private_traces);
+            assert!(!profile.platform_submission_ready);
+            let serialized = serde_json::to_string(&profile).expect("profile json");
+            assert!(!serialized.contains("OPENAI_API_KEY"));
+            assert!(!serialized.contains("api_key"));
+            assert!(!serialized.contains("secret_key"));
+            assert!(!serialized.contains("sk-"));
+        }
+    }
+
+    #[test]
+    fn ai_usage_manifest_rejects_raw_provider_fields() {
+        let project = GameProject {
+            id: "dynasty-embers".into(),
+            title: "Dynasty Embers".into(),
+            version: "0.1.0".into(),
+            description: "Demo".into(),
+            entry_scene: "court-crisis-001".into(),
+            run_seed: 7,
+        };
+        let mut manifest =
+            serde_json::to_value(sample_ai_usage_manifest(&project)).expect("usage value");
+        manifest["provider_summaries"][0]["raw_response"] =
+            serde_json::json!("provider body with sk-test-secret-marker");
+
+        let error = serde_json::from_value::<AiUsageManifest>(manifest)
+            .expect_err("raw provider response should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -1601,6 +1898,37 @@ mod tests {
             id: "scene-plan-proposal-001".into(),
             agent: AgentRole::ScenePlanner,
             output: AgentProposalPayload::ScenePlan(sample_scene_plan_proposal()),
+        }
+    }
+
+    fn sample_ai_usage_manifest(game: &GameProject) -> AiUsageManifest {
+        AiUsageManifest {
+            manifest_version: "2026-06-08".into(),
+            project_id: game.id.clone(),
+            project_version: game.version.clone(),
+            export_profile: ExportProfile::static_web(),
+            generated_by: "test".into(),
+            external_model_calls_during_export: false,
+            provider_credentials_included: false,
+            raw_provider_responses_included: false,
+            private_traces_included: false,
+            disclosures: vec![AiUsageDisclosure {
+                content_kind: AiUsageContentKind::Image,
+                source_kind: AiUsageSourceKind::LocalMockProvider,
+                summary: "Placeholder scene artwork generated by a local fake provider.".into(),
+                asset_paths: vec!["assets/generated/placeholder.png".into()],
+            }],
+            provider_summaries: vec![AiProviderSummary {
+                provider: "fake-image-provider".into(),
+                model: None,
+                generated_asset_count: 1,
+                fallback_asset_count: 0,
+                prompt_hashes: vec!["sha256:abc".into()],
+            }],
+            notices: vec![
+                "No provider credentials, raw provider responses, or private traces are included."
+                    .into(),
+            ],
         }
     }
 
