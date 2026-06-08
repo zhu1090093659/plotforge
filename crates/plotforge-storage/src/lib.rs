@@ -5,15 +5,17 @@ use std::{
 };
 
 use plotforge_schema::{
-    AiSafetyPolicy, AiUsageContentKind, Beat, BeatNext, Character, CharacterEditDocument,
+    AiSafetyPolicy, AiUsageContentKind, AssetKind, AssetRecord, AssetReference, AssetReferenceKind,
+    AssetSourceKind, AudioBible, AudioVoiceCard, Beat, BeatNext, Character, CharacterEditDocument,
     CharacterGenerationReport, CharacterGenerationRequest, Choice, Condition, Effect, GameProject,
     GenerationEvidence, GenerationStatus, MAX_REFERENCE_STRUCTURE_NOTE_CHARS,
-    MAX_REFERENCE_SUMMARY_CHARS, PlotThread, ProjectCreationReport, ProjectCreationRequest,
-    ProjectData, ProjectTemplateId, ReferenceAnalysis, ReferenceRights, ReferenceSource,
-    ReferenceSourceType, ReferenceStructureNote, ResourceDefinition, Rule, RulesEditDocument,
-    RuntimeSnapshot, Scene, StateVariablesEditDocument, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, StoryState, WorldEditDocument,
-    WorldGenerationReport, WorldGenerationRequest, WorldState, contains_secret_marker_text,
+    MAX_REFERENCE_SUMMARY_CHARS, MediaAssetReference, PlotThread, ProjectCreationReport,
+    ProjectCreationRequest, ProjectData, ProjectTemplateId, ReferenceAnalysis, ReferenceRights,
+    ReferenceSource, ReferenceSourceType, ReferenceStructureNote, ResourceDefinition, Rule,
+    RulesEditDocument, RuntimeSnapshot, Scene, StateVariablesEditDocument, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StoryCraftGenerationRequest, StoryState, VisualBible,
+    VisualStyleCard, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, WorldState,
+    contains_secret_marker_text,
 };
 use plotforge_storycraft::dynasty_embers_story_craft;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -92,6 +94,8 @@ pub enum StorageError {
 
 pub const MAX_REFERENCE_RAW_TEXT_BYTES: u64 = 4096;
 const AI_SAFETY_POLICY_PATH: &str = "safety/ai_safety_policy.toml";
+const VISUAL_BIBLE_PATH: &str = "media/visual_bible.toml";
+const AUDIO_BIBLE_PATH: &str = "media/audio_bible.toml";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ResourceFile {
@@ -128,7 +132,7 @@ pub fn create_demo_project(
     fs::create_dir_all(path).map_io(path)?;
     create_project_dirs(path)?;
     write_project(path, &project, None)?;
-    Ok(project)
+    load_project(path)
 }
 
 pub fn create_project_from_request(
@@ -147,6 +151,7 @@ pub fn create_project_from_request(
         .into_iter()
         .map(|path| path.display().to_string())
         .collect();
+    let project = load_project(path)?;
 
     Ok(ProjectCreationReport {
         project_path: path.display().to_string(),
@@ -171,9 +176,11 @@ pub fn load_project(path: impl AsRef<Path>) -> Result<ProjectData, StorageError>
     let characters = read_collection(path.join("characters"), ".character.toml")?;
     let rules = read_toml::<RulesFile>(&path.join("rules/rules.toml"))?.rules;
     let scenes = read_collection(path.join("scenes"), ".scene.json")?;
+    validate_scene_audio_references(&scenes)?;
+    let visual_bible = read_visual_bible(path)?;
+    let audio_bible = read_audio_bible(path)?;
     let ai_safety_policy = read_ai_safety_policy(path)?;
-
-    Ok(ProjectData {
+    let mut project = ProjectData {
         game,
         resources,
         world_state,
@@ -182,8 +189,14 @@ pub fn load_project(path: impl AsRef<Path>) -> Result<ProjectData, StorageError>
         characters,
         rules,
         scenes,
+        visual_bible,
+        audio_bible,
+        asset_records: Vec::new(),
         ai_safety_policy,
-    })
+    };
+    project.asset_records = rebuild_asset_records(path, &project)?;
+
+    Ok(project)
 }
 
 pub fn validate_project(path: impl AsRef<Path>) -> Result<ProjectData, StorageError> {
@@ -526,6 +539,88 @@ pub fn update_ai_safety_policy(
     Ok(policy)
 }
 
+pub fn read_visual_bible(project_path: impl AsRef<Path>) -> Result<VisualBible, StorageError> {
+    let path = project_path.as_ref().join(VISUAL_BIBLE_PATH);
+    if !path.exists() {
+        return Ok(VisualBible::default());
+    }
+    read_toml::<VisualBible>(&path)
+}
+
+pub fn update_visual_bible(
+    project_path: impl AsRef<Path>,
+    visual_bible: VisualBible,
+) -> Result<VisualBible, StorageError> {
+    write_toml(
+        &project_path.as_ref().join(VISUAL_BIBLE_PATH),
+        &visual_bible,
+    )?;
+    Ok(visual_bible)
+}
+
+pub fn read_audio_bible(project_path: impl AsRef<Path>) -> Result<AudioBible, StorageError> {
+    let path = project_path.as_ref().join(AUDIO_BIBLE_PATH);
+    if !path.exists() {
+        return Ok(AudioBible::default());
+    }
+    read_toml::<AudioBible>(&path)
+}
+
+pub fn update_audio_bible(
+    project_path: impl AsRef<Path>,
+    audio_bible: AudioBible,
+) -> Result<AudioBible, StorageError> {
+    write_toml(&project_path.as_ref().join(AUDIO_BIBLE_PATH), &audio_bible)?;
+    Ok(audio_bible)
+}
+
+pub fn list_asset_records(
+    project_path: impl AsRef<Path>,
+) -> Result<Vec<AssetRecord>, StorageError> {
+    let project_path = project_path.as_ref();
+    let project = load_project(project_path)?;
+    Ok(project.asset_records)
+}
+
+pub fn attach_scene_audio_reference(
+    project_path: impl AsRef<Path>,
+    scene_key: &str,
+    reference: MediaAssetReference,
+) -> Result<Scene, StorageError> {
+    let project_path = project_path.as_ref();
+    validate_identifier("scene_audio", "scene_key", scene_key)?;
+    validate_audio_reference("scene_audio", &reference)?;
+    let mut scene = read_scene_file(project_path, scene_key)?;
+    upsert_media_reference(&mut scene.audio_refs, reference);
+    write_scene_file(project_path, &scene)?;
+    Ok(scene)
+}
+
+pub fn attach_beat_audio_reference(
+    project_path: impl AsRef<Path>,
+    scene_key: &str,
+    beat_id: &str,
+    reference: MediaAssetReference,
+) -> Result<Scene, StorageError> {
+    let project_path = project_path.as_ref();
+    validate_identifier("beat_audio", "scene_key", scene_key)?;
+    validate_identifier("beat_audio", "beat_id", beat_id)?;
+    validate_audio_reference("beat_audio", &reference)?;
+    let mut scene = read_scene_file(project_path, scene_key)?;
+    let beat = scene
+        .beats
+        .iter_mut()
+        .find(|beat| beat.id == beat_id)
+        .ok_or_else(|| {
+            StorageError::MissingFile(PathBuf::from(format!(
+                "scenes/{scene_key}.scene.json#{beat_id}"
+            )))
+        })?;
+    upsert_media_reference(&mut beat.audio_refs, reference);
+    write_scene_file(project_path, &scene)?;
+    Ok(scene)
+}
+
 fn ensure_project_path_available(path: &Path, force: bool) -> Result<(), StorageError> {
     if path.exists() && !force && path.read_dir().map_io(path)?.next().is_some() {
         Err(StorageError::ProjectExists(path.to_path_buf()))
@@ -695,6 +790,100 @@ fn default_ai_safety_policy() -> AiSafetyPolicy {
     }
 }
 
+fn default_visual_bible() -> VisualBible {
+    VisualBible {
+        style_cards: vec![
+            VisualStyleCard {
+                id: "winter-court-ink".into(),
+                title: "Winter court ink wash".into(),
+                summary: "Cold parchment, controlled brush texture, and restrained imperial color."
+                    .into(),
+                prompt: "Restrained historical court drama, ink wash texture, clear rank signals."
+                    .into(),
+                palette: vec!["soot".into(), "aged jade".into(), "muted vermilion".into()],
+                tags: vec!["court".into(), "historical".into(), "grounded".into()],
+                reference_asset_ids: Vec::new(),
+            },
+            VisualStyleCard {
+                id: "official-portrait".into(),
+                title: "Official portrait restraint".into(),
+                summary: "Half-length figures with clear office markers and no fantasy armor."
+                    .into(),
+                prompt: "Grounded official portrait, reserved posture, simple palace background."
+                    .into(),
+                palette: vec!["ink".into(), "paper".into(), "dark red".into()],
+                tags: vec!["portrait".into(), "character".into()],
+                reference_asset_ids: Vec::new(),
+            },
+        ],
+    }
+}
+
+fn default_audio_bible() -> AudioBible {
+    AudioBible {
+        voice_cards: vec![
+            AudioVoiceCard {
+                id: "court-censor".into(),
+                title: "Court Censor".into(),
+                summary: "Precise, public-minded, and clipped under pressure.".into(),
+                voice: "formal senior court official".into(),
+                delivery: "measured accusation, low volume, hard consonants".into(),
+                tags: vec!["voice".into(), "court".into(), "discipline".into()],
+                sample_text: Some("The law remembers what favor tries to hide.".into()),
+                reference_asset_ids: Vec::new(),
+            },
+            AudioVoiceCard {
+                id: "war-minister".into(),
+                title: "Minister of War".into(),
+                summary: "Terse logistics language with visible urgency.".into(),
+                voice: "military administrator".into(),
+                delivery: "short phrases, controlled urgency".into(),
+                tags: vec!["voice".into(), "military".into()],
+                sample_text: Some("A payroll delay becomes a frontier order.".into()),
+                reference_asset_ids: Vec::new(),
+            },
+        ],
+    }
+}
+
+fn rebuild_asset_records(
+    project_path: &Path,
+    project: &ProjectData,
+) -> Result<Vec<AssetRecord>, StorageError> {
+    let mut registry = plotforge_media::AssetRegistry::new();
+    registry
+        .register_project_assets(project_path, project)
+        .map_err(|source| StorageError::Media {
+            path: project_path.to_path_buf(),
+            source,
+        })?;
+    Ok(registry.records().cloned().collect())
+}
+
+fn rebuild_asset_records_from_project_files(project: &ProjectData) -> Vec<AssetRecord> {
+    let mut registry = plotforge_media::AssetRegistry::new();
+    for scene in &project.scenes {
+        registry
+            .insert_bytes(
+                plotforge_media::AssetRecordInput {
+                    kind: AssetKind::Image,
+                    source: AssetSourceKind::Generated,
+                    project_path: scene.background_asset.clone(),
+                    export_path: Some(scene.background_asset.clone()),
+                    provider_metadata: None,
+                    references: vec![AssetReference {
+                        reference_kind: AssetReferenceKind::Scene,
+                        reference_id: scene.key.clone(),
+                        slot: "background_asset".into(),
+                    }],
+                },
+                PLACEHOLDER_PNG,
+            )
+            .expect("built-in demo asset path and bytes are valid");
+    }
+    registry.records().cloned().collect()
+}
+
 fn validate_world_edit_document(document: &WorldEditDocument) -> Result<(), StorageError> {
     validate_structured_text(
         "world",
@@ -773,6 +962,74 @@ fn validate_character_edit_document(document: &CharacterEditDocument) -> Result<
                 "characters.portrait_request.reference_asset_ids",
                 &portrait_request.reference_asset_ids,
             )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_audio_reference(
+    surface: &str,
+    reference: &MediaAssetReference,
+) -> Result<(), StorageError> {
+    if !matches!(reference.kind, AssetKind::Audio | AssetKind::Voice) {
+        return Err(structured_edit_error(
+            surface,
+            "audio_refs.kind",
+            "must be audio or voice",
+        ));
+    }
+    if reference.source == AssetSourceKind::External {
+        return Err(structured_edit_error(
+            surface,
+            "audio_refs.source",
+            "external audio references are not allowed in local project source",
+        ));
+    }
+    validate_optional_structured_text(
+        surface,
+        "audio_refs.asset_id",
+        reference.asset_id.as_deref(),
+    )?;
+    validate_asset_reference_path(surface, "audio_refs.project_path", &reference.project_path)?;
+    validate_asset_reference_path(surface, "audio_refs.export_path", &reference.export_path)?;
+    validate_structured_text(surface, "audio_refs.slot", &reference.slot)
+}
+
+fn validate_scene_audio_references(scenes: &[Scene]) -> Result<(), StorageError> {
+    for scene in scenes {
+        for reference in &scene.audio_refs {
+            validate_audio_reference("scene_audio", reference)?;
+        }
+        for beat in &scene.beats {
+            for reference in &beat.audio_refs {
+                validate_audio_reference("beat_audio", reference)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_asset_reference_path(
+    surface: &str,
+    field: &str,
+    value: &str,
+) -> Result<(), StorageError> {
+    validate_structured_text(surface, field, value)?;
+    let path = Path::new(value);
+    if path.is_absolute() || !path.starts_with("assets") {
+        return Err(structured_edit_error(
+            surface,
+            field,
+            "must be a relative assets path",
+        ));
+    }
+    for component in path.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            return Err(structured_edit_error(
+                surface,
+                field,
+                "must not contain parent or special components",
+            ));
         }
     }
     Ok(())
@@ -1424,7 +1681,7 @@ pub fn dynasty_embers_project() -> ProjectData {
         turn: 0,
     };
 
-    ProjectData {
+    let mut project = ProjectData {
         game,
         resources,
         world_state,
@@ -1433,8 +1690,13 @@ pub fn dynasty_embers_project() -> ProjectData {
         characters: dynasty_characters(),
         rules: dynasty_rules(),
         scenes: vec![initial_scene()],
+        visual_bible: default_visual_bible(),
+        audio_bible: default_audio_bible(),
+        asset_records: Vec::new(),
         ai_safety_policy: default_ai_safety_policy(),
-    }
+    };
+    project.asset_records = rebuild_asset_records_from_project_files(&project);
+    project
 }
 
 fn create_project_dirs(path: &Path) -> Result<(), StorageError> {
@@ -1446,6 +1708,7 @@ fn create_project_dirs(path: &Path) -> Result<(), StorageError> {
         "locations",
         "rules",
         "events",
+        "media",
         "agents",
         "references/methods",
         "references/user_imports",
@@ -1512,6 +1775,8 @@ fn write_project(
         &normalize_ai_safety_policy(project.ai_safety_policy.clone()),
         &mut files,
     )?;
+    write_toml_tracked(path, VISUAL_BIBLE_PATH, &project.visual_bible, &mut files)?;
+    write_toml_tracked(path, AUDIO_BIBLE_PATH, &project.audio_bible, &mut files)?;
     write_toml_tracked(
         path,
         "story/story_craft.toml",
@@ -1667,6 +1932,32 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StorageError> 
         source,
     })?;
     write_text(path, &(encoded + "\n"))
+}
+
+fn read_scene_file(project_path: &Path, scene_key: &str) -> Result<Scene, StorageError> {
+    read_json(&project_path.join(format!("scenes/{scene_key}.scene.json")))
+}
+
+fn write_scene_file(project_path: &Path, scene: &Scene) -> Result<(), StorageError> {
+    validate_identifier("scene", "scene.key", &scene.key)?;
+    write_json(
+        &project_path.join(format!("scenes/{}.scene.json", scene.key)),
+        scene,
+    )
+}
+
+fn upsert_media_reference(
+    references: &mut Vec<MediaAssetReference>,
+    reference: MediaAssetReference,
+) {
+    if let Some(existing) = references
+        .iter_mut()
+        .find(|existing| existing.slot == reference.slot)
+    {
+        *existing = reference;
+        return;
+    }
+    references.push(reference);
 }
 
 fn write_text(path: &Path, text: &str) -> Result<(), StorageError> {
@@ -2120,6 +2411,7 @@ fn initial_scene() -> Scene {
         dramatic_purpose: "Force the player to choose between revenue, order, and military loyalty.".into(),
         hook: "The border payroll ledger arrives with a fresh red deficit mark beside the army columns.".into(),
         background_asset: "assets/generated/court-crisis-001.png".into(),
+        audio_refs: Vec::new(),
         character_ids: vec![
             "grand-secretary".into(),
             "war-minister".into(),
@@ -2133,6 +2425,9 @@ fn initial_scene() -> Scene {
         beats: vec![Beat {
             id: first_beat_id,
             text: "The court kneels around a ledger that says the border army is two months from mutiny.".into(),
+            speaker: Some("grand-secretary".into()),
+            line_delivery: Some("measured court alarm".into()),
+            audio_refs: Vec::new(),
             choices: vec![
                 Choice {
                     id: "continue-council".into(),
@@ -2197,6 +2492,9 @@ fn initial_scene() -> Scene {
         }, Beat {
             id: second_beat_id,
             text: "The war minister steps forward: delay will keep the court calm today, but the frontier will remember it tomorrow.".into(),
+            speaker: Some("war-minister".into()),
+            line_delivery: Some("terse warning".into()),
+            audio_refs: Vec::new(),
             choices: vec![
                 Choice {
                     id: "raise-tax".into(),

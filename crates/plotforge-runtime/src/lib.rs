@@ -313,7 +313,10 @@ where
             story_state_before,
             story_state_after: self.story_state.clone(),
             narrative_review: review.map(|review| review.redacted()),
-            media_references: scene_media_references(&next_scene),
+            media_references: scene_media_references(
+                &next_scene,
+                self.story_state.current_beat_id.as_deref(),
+            ),
             errors: planner_error.into_iter().collect(),
             fallback_used: planner_fallback_used,
         };
@@ -483,15 +486,48 @@ fn fallback_errors(fallback_used: bool) -> Vec<RuntimeError> {
     }
 }
 
-fn scene_media_references(scene: &Scene) -> Vec<RuntimeMediaReference> {
-    vec![RuntimeMediaReference {
+fn scene_media_references(scene: &Scene, beat_id: Option<&str>) -> Vec<RuntimeMediaReference> {
+    let mut references = vec![RuntimeMediaReference {
         reference: AssetReference {
             reference_kind: AssetReferenceKind::Scene,
             reference_id: redact_trace_text(&scene.key),
             slot: "background_asset".into(),
         },
         project_path: redact_trace_text(&scene.background_asset),
-    }]
+    }];
+    references.extend(
+        scene
+            .audio_refs
+            .iter()
+            .map(|media_reference| RuntimeMediaReference {
+                reference: AssetReference {
+                    reference_kind: AssetReferenceKind::Scene,
+                    reference_id: redact_trace_text(&scene.key),
+                    slot: redact_trace_text(&media_reference.slot),
+                },
+                project_path: redact_trace_text(&media_reference.project_path),
+            }),
+    );
+    if let Some(beat) =
+        beat_id.and_then(|beat_id| scene.beats.iter().find(|beat| beat.id == beat_id))
+    {
+        references.extend(
+            beat.audio_refs
+                .iter()
+                .map(|media_reference| RuntimeMediaReference {
+                    reference: AssetReference {
+                        reference_kind: AssetReferenceKind::Scene,
+                        reference_id: redact_trace_text(&scene.key),
+                        slot: redact_trace_text(&format!(
+                            "beat_audio:{}:{}",
+                            beat.id, media_reference.slot
+                        )),
+                    },
+                    project_path: redact_trace_text(&media_reference.project_path),
+                }),
+        );
+    }
+    references
 }
 
 pub fn summarize_delta(delta: &WorldDelta) -> Vec<String> {

@@ -7,9 +7,9 @@ use plotforge_agent::{
 use plotforge_job::JobClock;
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
 use plotforge_schema::{
-    ActionIntentStatus, AgentRole, Beat, BeatNext, Choice, Effect, NarrativeReview,
-    REDACTED_TRACE_SECRET, ReproducibilityMetadata, Rule, RuntimeTraceStage,
-    RuntimeTraceStageStatus, Scene,
+    ActionIntentStatus, AgentRole, AssetKind, AssetSourceKind, Beat, BeatNext, Choice, Effect,
+    MediaAssetReference, NarrativeReview, REDACTED_TRACE_SECRET, ReproducibilityMetadata, Rule,
+    RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
 };
 use plotforge_storage::dynasty_embers_project;
 
@@ -62,6 +62,55 @@ fn continue_action_does_not_advance_scene_or_turn() {
         diagnostic.stage == RuntimeTraceStage::PlanScene
             && diagnostic.status == RuntimeTraceStageStatus::Completed
             && diagnostic.message.contains("planner skipped")
+    }));
+}
+
+#[test]
+fn runtime_trace_records_scene_and_current_beat_audio_references() {
+    let mut project = dynasty_embers_project();
+    project.scenes[0].audio_refs.push(MediaAssetReference {
+        asset_id: None,
+        kind: AssetKind::Audio,
+        source: AssetSourceKind::Generated,
+        project_path: "assets/generated/audio/court-crisis-001-scene.wav".into(),
+        export_path: "assets/generated/audio/court-crisis-001-scene.wav".into(),
+        slot: "scene_audio".into(),
+    });
+    project.scenes[0].beats[0]
+        .audio_refs
+        .push(MediaAssetReference {
+            asset_id: None,
+            kind: AssetKind::Audio,
+            source: AssetSourceKind::Generated,
+            project_path: "assets/generated/audio/court-crisis-001-beat-001.wav".into(),
+            export_path: "assets/generated/audio/court-crisis-001-beat-001.wav".into(),
+            slot: "narration".into(),
+        });
+    project.scenes[0].beats[1]
+        .audio_refs
+        .push(MediaAssetReference {
+            asset_id: None,
+            kind: AssetKind::Audio,
+            source: AssetSourceKind::Generated,
+            project_path: "assets/generated/audio/court-crisis-001-beat-002.wav".into(),
+            export_path: "assets/generated/audio/court-crisis-001-beat-002.wav".into(),
+            slot: "narration".into(),
+        });
+    let mut session = RuntimeSession::with_scene_planner(project, ErrorPlanner);
+
+    let step = session.play_once("听一位大臣继续陈情").expect("play");
+
+    assert!(step.trace.media_references.iter().any(|reference| {
+        reference.reference.slot == "scene_audio"
+            && reference.project_path == "assets/generated/audio/court-crisis-001-scene.wav"
+    }));
+    assert!(step.trace.media_references.iter().any(|reference| {
+        reference.reference.slot == "beat_audio:court-crisis-001-beat-002:narration"
+            && reference.project_path == "assets/generated/audio/court-crisis-001-beat-002.wav"
+    }));
+    assert!(!step.trace.media_references.iter().any(|reference| {
+        reference.reference.slot == "beat_audio:court-crisis-001-beat-001:narration"
+            || reference.project_path == "assets/generated/audio/court-crisis-001-beat-001.wav"
     }));
 }
 
@@ -527,6 +576,7 @@ impl ScenePlanner for FakePlanner {
             dramatic_purpose: "Prove runtime uses the injected planner.".into(),
             hook: "A test planner interrupts the court protocol.".into(),
             background_asset: format!("assets/generated/{scene_key}.png"),
+            audio_refs: Vec::new(),
             character_ids: Vec::new(),
             plot_thread_updates: BTreeMap::from([(
                 "tax-disorder".into(),
@@ -537,6 +587,9 @@ impl ScenePlanner for FakePlanner {
                 Beat {
                     id: first_beat_id,
                     text: format!("Injected response to {}", request.player_input),
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
                     choices: vec![
                         Choice {
                             id: "raise-tax".into(),
@@ -577,6 +630,9 @@ impl ScenePlanner for FakePlanner {
                     id: second_beat_id,
                     text: "The injected planner leaves the council with a sharper second beat."
                         .into(),
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
                     choices: vec![
                         Choice {
                             id: "raise-tax".into(),
@@ -670,12 +726,16 @@ impl ScenePlanner for MissingEntryBeatPlanner {
             dramatic_purpose: "Prove invalid planner beat graphs fail before commit.".into(),
             hook: "The scene points at a missing entry beat.".into(),
             background_asset: "assets/generated/invalid-entry-scene.png".into(),
+            audio_refs: Vec::new(),
             character_ids: Vec::new(),
             plot_thread_updates: BTreeMap::new(),
             entry_beat_id: Some("missing-entry-beat".into()),
             beats: vec![Beat {
                 id: "valid-but-not-entry".into(),
                 text: "This beat exists but is not the declared entry beat.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
                 choices: Vec::new(),
                 next: BeatNext::End,
             }],

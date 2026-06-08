@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AiSafetyPolicy,
+  AssetRecord,
+  AudioBible,
   Character,
   CharacterEditDocument,
   CharacterGenerationReport,
@@ -16,6 +18,7 @@ import type {
   StateVariablesEditDocument,
   StoryCraftEditDocument,
   StoryCraftGenerationReport,
+  VisualBible,
   WorldEditDocument,
   WorldGenerationReport,
 } from "../../../contracts/plotforge";
@@ -42,12 +45,17 @@ export const studioCommandNames = {
   generateCharacter: "generate_character",
   readAiSafetyPolicy: "read_ai_safety_policy",
   updateAiSafetyPolicy: "update_ai_safety_policy",
+  readVisualBible: "read_visual_bible",
+  updateVisualBible: "update_visual_bible",
+  readAudioBible: "read_audio_bible",
+  updateAudioBible: "update_audio_bible",
   playOnceProject: "play_once_project",
   playOnceProjectWithSave: "play_once_project_with_save",
   playOnceProjectFromSnapshot: "play_once_project_from_snapshot",
   playOnceProjectFromLatestSnapshot: "play_once_project_from_latest_snapshot",
   exportStaticProject: "export_static_project",
   exportStaticProjectZip: "export_static_project_zip",
+  listAssetRecords: "list_asset_records",
   listSourceFiles: "list_source_files",
   readSourceFile: "read_source_file",
   writeSourceFile: "write_source_file",
@@ -285,6 +293,37 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
         },
       );
     },
+    readVisualBible(path: string): Promise<VisualBible> {
+      return invokeCommand<VisualBible>(studioCommandNames.readVisualBible, {
+        path,
+      });
+    },
+    updateVisualBible(
+      path: string,
+      visualBible: VisualBible,
+    ): Promise<VisualBible> {
+      return invokeCommand<VisualBible>(
+        studioCommandNames.updateVisualBible,
+        {
+          path,
+          visual_bible: visualBible,
+        },
+      );
+    },
+    readAudioBible(path: string): Promise<AudioBible> {
+      return invokeCommand<AudioBible>(studioCommandNames.readAudioBible, {
+        path,
+      });
+    },
+    updateAudioBible(
+      path: string,
+      audioBible: AudioBible,
+    ): Promise<AudioBible> {
+      return invokeCommand<AudioBible>(studioCommandNames.updateAudioBible, {
+        path,
+        audio_bible: audioBible,
+      });
+    },
     playOnceProject(path: string, playerInput: string): Promise<PlayOnceReport> {
       return invokeCommand<PlayOnceReport>(studioCommandNames.playOnceProject, {
         path,
@@ -360,6 +399,11 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
           archive_path: archivePath,
         },
       );
+    },
+    listAssetRecords(path: string): Promise<AssetRecord[]> {
+      return invokeCommand<AssetRecord[]>(studioCommandNames.listAssetRecords, {
+        path,
+      });
     },
     listSourceFiles(path: string): Promise<SourceFileSummary[]> {
       return invokeCommand<SourceFileSummary[]>(

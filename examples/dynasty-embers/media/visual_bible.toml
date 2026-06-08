@@ -1,0 +1,32 @@
+[[style_cards]]
+id = "winter-court-ink"
+title = "Winter court ink wash"
+summary = "Cold parchment, controlled brush texture, and restrained imperial color."
+prompt = "Restrained historical court drama, ink wash texture, clear rank signals."
+palette = [
+    "soot",
+    "aged jade",
+    "muted vermilion",
+]
+tags = [
+    "court",
+    "historical",
+    "grounded",
+]
+reference_asset_ids = []
+
+[[style_cards]]
+id = "official-portrait"
+title = "Official portrait restraint"
+summary = "Half-length figures with clear office markers and no fantasy armor."
+prompt = "Grounded official portrait, reserved posture, simple palace background."
+palette = [
+    "ink",
+    "paper",
+    "dark red",
+]
+tags = [
+    "portrait",
+    "character",
+]
+reference_asset_ids = []

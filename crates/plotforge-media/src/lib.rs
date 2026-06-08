@@ -6,7 +6,7 @@ use std::{
 
 use plotforge_schema::{
     AssetKind, AssetProviderMetadata, AssetRecord, AssetReference, AssetReferenceKind,
-    AssetSourceKind, ProjectData,
+    AssetSourceKind, MediaAssetReference, ProjectData,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -19,6 +19,8 @@ pub enum MediaError {
     UnsafeAssetPath(String),
     #[error("asset file is empty: {0}")]
     EmptyAsset(String),
+    #[error("audio reference must point to an audio or voice asset: {0}")]
+    InvalidAudioAssetKind(String),
     #[error("io error at {path}: {source}")]
     Io {
         path: PathBuf,
@@ -121,6 +123,25 @@ impl AssetRegistry {
         self.insert_bytes(input, &bytes)
     }
 
+    pub fn insert_project_bytes(
+        &mut self,
+        project_root: impl AsRef<Path>,
+        input: AssetRecordInput,
+        bytes: &[u8],
+    ) -> Result<String, MediaError> {
+        if bytes.is_empty() {
+            return Err(MediaError::EmptyAsset(input.project_path));
+        }
+
+        let relative_path = AssetPath::new(&input.project_path)?;
+        let file_path = project_root.as_ref().join(relative_path.as_path());
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent).map_io(parent)?;
+        }
+        fs::write(&file_path, bytes).map_io(&file_path)?;
+        self.insert_bytes(input, bytes)
+    }
+
     pub fn register_scene_background_assets(
         &mut self,
         project_root: impl AsRef<Path>,
@@ -146,6 +167,66 @@ impl AssetRegistry {
             )?;
         }
         Ok(())
+    }
+
+    pub fn register_project_assets(
+        &mut self,
+        project_root: impl AsRef<Path>,
+        project: &ProjectData,
+    ) -> Result<(), MediaError> {
+        let project_root = project_root.as_ref();
+        self.register_scene_background_assets(project_root, project)?;
+        for scene in &project.scenes {
+            for reference in &scene.audio_refs {
+                self.register_media_asset_reference(
+                    project_root,
+                    reference,
+                    AssetReference {
+                        reference_kind: AssetReferenceKind::Scene,
+                        reference_id: scene.key.clone(),
+                        slot: reference.slot.clone(),
+                    },
+                )?;
+            }
+            for beat in &scene.beats {
+                for reference in &beat.audio_refs {
+                    self.register_media_asset_reference(
+                        project_root,
+                        reference,
+                        AssetReference {
+                            reference_kind: AssetReferenceKind::Scene,
+                            reference_id: scene.key.clone(),
+                            slot: format!("beat_audio:{}:{}", beat.id, reference.slot),
+                        },
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn register_media_asset_reference(
+        &mut self,
+        project_root: &Path,
+        media_reference: &MediaAssetReference,
+        reference: AssetReference,
+    ) -> Result<String, MediaError> {
+        if !matches!(media_reference.kind, AssetKind::Audio | AssetKind::Voice) {
+            return Err(MediaError::InvalidAudioAssetKind(
+                media_reference.project_path.clone(),
+            ));
+        }
+        self.insert_file(
+            project_root,
+            AssetRecordInput {
+                kind: media_reference.kind.clone(),
+                source: media_reference.source.clone(),
+                project_path: media_reference.project_path.clone(),
+                export_path: Some(media_reference.export_path.clone()),
+                provider_metadata: None,
+                references: vec![reference],
+            },
+        )
     }
 
     pub fn reachable_records(&self) -> Vec<&AssetRecord> {
@@ -254,9 +335,11 @@ impl AssetKindId for AssetKind {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use plotforge_schema::{
         AssetKind, AssetProviderMetadata, AssetRecord, AssetReference, AssetReferenceKind,
-        AssetSourceKind,
+        AssetSourceKind, MediaAssetReference,
     };
     use plotforge_storage::{create_demo_project, load_project};
 
@@ -356,6 +439,51 @@ mod tests {
         assert_eq!(record.source, AssetSourceKind::Generated);
         assert_eq!(record.references, vec![scene_reference("court-crisis-001")]);
         assert_eq!(record.content_hash.len(), 64);
+    }
+
+    #[test]
+    fn registers_project_audio_references_with_scene_and_beat_slots() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let project_path = temp.path().join("project");
+        create_demo_project(&project_path, false).expect("create demo");
+        let mut project = load_project(&project_path).expect("load project");
+        let audio_path = project_path.join("assets/generated/court-crisis-001-beat-001.wav");
+        fs::write(&audio_path, b"fake wav bytes").expect("write audio");
+        let audio_reference = MediaAssetReference {
+            asset_id: None,
+            kind: AssetKind::Audio,
+            source: AssetSourceKind::Generated,
+            project_path: "assets/generated/court-crisis-001-beat-001.wav".into(),
+            export_path: "assets/generated/court-crisis-001-beat-001.wav".into(),
+            slot: "narration".into(),
+        };
+        project.scenes[0].beats[0].audio_refs.push(audio_reference);
+        let mut registry = AssetRegistry::new();
+
+        registry
+            .register_project_assets(&project_path, &project)
+            .expect("register project assets");
+
+        let scene_records =
+            registry.records_referenced_by(AssetReferenceKind::Scene, "court-crisis-001");
+        assert!(
+            scene_records
+                .iter()
+                .any(|record| record.kind == AssetKind::Image)
+        );
+        let audio = scene_records
+            .iter()
+            .find(|record| record.kind == AssetKind::Audio)
+            .expect("audio record");
+        assert_eq!(
+            audio.export_path,
+            "assets/generated/court-crisis-001-beat-001.wav"
+        );
+        assert!(
+            audio.references
+                .iter()
+                .any(|reference| reference.slot == "beat_audio:court-crisis-001-beat-001:narration")
+        );
     }
 
     #[test]

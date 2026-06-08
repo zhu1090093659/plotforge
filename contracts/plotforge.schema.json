@@ -595,8 +595,77 @@
       ],
       "type": "string"
     },
+    "AudioBible": {
+      "additionalProperties": false,
+      "properties": {
+        "voice_cards": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AudioVoiceCard"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AudioVoiceCard": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reference_asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sample_text": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "voice": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "summary",
+        "voice",
+        "delivery"
+      ],
+      "type": "object"
+    },
     "Beat": {
       "properties": {
+        "audio_refs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MediaAssetReference"
+          },
+          "type": "array"
+        },
         "choices": {
           "items": {
             "$ref": "#/$defs/Choice"
@@ -606,11 +675,25 @@
         "id": {
           "type": "string"
         },
+        "line_delivery": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "next": {
           "$ref": "#/$defs/BeatNext",
           "default": {
             "kind": "none"
           }
+        },
+        "speaker": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "text": {
           "type": "string"
@@ -1145,6 +1228,13 @@
           "default": "ai-usage.json",
           "type": "string"
         },
+        "asset_records": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssetRecord"
+          },
+          "type": "array"
+        },
         "assets": {
           "items": {
             "type": "string"
@@ -1546,6 +1636,41 @@
       ],
       "type": "string"
     },
+    "MediaAssetReference": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "export_path": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssetKind"
+        },
+        "project_path": {
+          "type": "string"
+        },
+        "slot": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/AssetSourceKind"
+        }
+      },
+      "required": [
+        "kind",
+        "source",
+        "project_path",
+        "export_path",
+        "slot"
+      ],
+      "type": "object"
+    },
     "NarrativeFunction": {
       "enum": [
         "hook",
@@ -1886,6 +2011,19 @@
             "user_reporting_path": ""
           }
         },
+        "asset_records": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssetRecord"
+          },
+          "type": "array"
+        },
+        "audio_bible": {
+          "$ref": "#/$defs/AudioBible",
+          "default": {
+            "voice_cards": []
+          }
+        },
         "characters": {
           "items": {
             "$ref": "#/$defs/Character"
@@ -1918,6 +2056,12 @@
         },
         "story_state": {
           "$ref": "#/$defs/StoryState"
+        },
+        "visual_bible": {
+          "$ref": "#/$defs/VisualBible",
+          "default": {
+            "style_cards": []
+          }
         },
         "world_state": {
           "$ref": "#/$defs/WorldState"
@@ -2521,6 +2665,13 @@
     },
     "Scene": {
       "properties": {
+        "audio_refs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MediaAssetReference"
+          },
+          "type": "array"
+        },
         "background_asset": {
           "type": "string"
         },
@@ -3117,6 +3268,64 @@
       ],
       "type": "object"
     },
+    "VisualBible": {
+      "additionalProperties": false,
+      "properties": {
+        "style_cards": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VisualStyleCard"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "VisualStyleCard": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "palette": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "reference_asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "summary",
+        "prompt"
+      ],
+      "type": "object"
+    },
     "WorkshopDraftVisibility": {
       "enum": [
         "private_draft",
@@ -3378,6 +3587,9 @@
     "asset_record": {
       "$ref": "#/$defs/AssetRecord"
     },
+    "audio_bible": {
+      "$ref": "#/$defs/AudioBible"
+    },
     "character_edit_document": {
       "$ref": "#/$defs/CharacterEditDocument"
     },
@@ -3398,6 +3610,9 @@
     },
     "job_record": {
       "$ref": "#/$defs/JobRecord"
+    },
+    "media_asset_reference": {
+      "$ref": "#/$defs/MediaAssetReference"
     },
     "project_creation_report": {
       "$ref": "#/$defs/ProjectCreationReport"
@@ -3441,6 +3656,9 @@
     "story_craft_generation_request": {
       "$ref": "#/$defs/StoryCraftGenerationRequest"
     },
+    "visual_bible": {
+      "$ref": "#/$defs/VisualBible"
+    },
     "workshop_item_package": {
       "$ref": "#/$defs/WorkshopItemPackage"
     },
@@ -3479,6 +3697,9 @@
     "character_portrait_request",
     "reference_analysis",
     "asset_record",
+    "media_asset_reference",
+    "visual_bible",
+    "audio_bible",
     "ai_safety_policy",
     "ai_usage_manifest",
     "workshop_item_package",

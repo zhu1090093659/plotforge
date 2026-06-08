@@ -1,5 +1,7 @@
 import type {
   AiSafetyPolicy,
+  AssetRecord,
+  AudioBible,
   Character,
   CharacterEditDocument,
   CharacterGenerationReport,
@@ -12,11 +14,13 @@ import type {
   StateVariablesEditDocument,
   StoryCraftEditDocument,
   StoryCraftGenerationReport,
+  VisualBible,
   WorldEditDocument,
   WorldGenerationReport,
 } from "../../../contracts/plotforge";
 import {
   demoAiSafetyPolicy,
+  demoAssetRecords,
   demoPlayOnceReport,
   demoProjectData,
   demoProjectPath,
@@ -96,6 +100,10 @@ export interface StudioDataSource {
     path: string,
     policy: AiSafetyPolicy,
   ): Promise<AiSafetyPolicy>;
+  readVisualBible(path: string): Promise<VisualBible>;
+  updateVisualBible(path: string, visualBible: VisualBible): Promise<VisualBible>;
+  readAudioBible(path: string): Promise<AudioBible>;
+  updateAudioBible(path: string, audioBible: AudioBible): Promise<AudioBible>;
   playOnceProject(path: string, playerInput: string): Promise<PlayOnceReport>;
   playOnceProjectWithSave(
     path: string,
@@ -118,6 +126,7 @@ export interface StudioDataSource {
     outputDir: string,
     archivePath: string,
   ): Promise<StaticExportReport>;
+  listAssetRecords(path: string): Promise<AssetRecord[]>;
   listSourceFiles(path: string): Promise<SourceFileSummary[]>;
   readSourceFile(path: string, relativePath: string): Promise<SourceFileContent>;
   writeSourceFile(
@@ -151,11 +160,16 @@ export function createTauriStudioDataSource(): StudioDataSource {
     generateCharacter: studioBridge.generateCharacter,
     readAiSafetyPolicy: studioBridge.readAiSafetyPolicy,
     updateAiSafetyPolicy: studioBridge.updateAiSafetyPolicy,
+    readVisualBible: studioBridge.readVisualBible,
+    updateVisualBible: studioBridge.updateVisualBible,
+    readAudioBible: studioBridge.readAudioBible,
+    updateAudioBible: studioBridge.updateAudioBible,
     playOnceProject: studioBridge.playOnceProject,
     playOnceProjectWithSave: studioBridge.playOnceProjectWithSave,
     playOnceProjectFromSnapshot: studioBridge.playOnceProjectFromSnapshot,
     playOnceProjectFromLatestSnapshot: studioBridge.playOnceProjectFromLatestSnapshot,
     exportStaticProjectZip: studioBridge.exportStaticProjectZip,
+    listAssetRecords: studioBridge.listAssetRecords,
     listSourceFiles: studioBridge.listSourceFiles,
     readSourceFile: studioBridge.readSourceFile,
     writeSourceFile: studioBridge.writeSourceFile,
@@ -188,6 +202,8 @@ export function createBrowserPreviewDataSource(): StudioDataSource {
     rules: structuredClone(demoProjectData.rules),
   };
   let aiSafetyPolicy = structuredClone(demoAiSafetyPolicy);
+  let visualBible = structuredClone(demoProjectData.visual_bible);
+  let audioBible = structuredClone(demoProjectData.audio_bible);
   const files = new Map(
     Object.entries(demoSourceContents).map(([path, file]) => [
       path,
@@ -236,9 +252,13 @@ export function createBrowserPreviewDataSource(): StudioDataSource {
         rules: structuredClone(previewProject.rules),
       };
       aiSafetyPolicy = structuredClone(demoAiSafetyPolicy);
+      visualBible = structuredClone(previewProject.visual_bible);
+      audioBible = structuredClone(previewProject.audio_bible);
       previewProject = {
         ...previewProject,
         ai_safety_policy: structuredClone(aiSafetyPolicy),
+        visual_bible: structuredClone(visualBible),
+        audio_bible: structuredClone(audioBible),
       };
 
       return {
@@ -261,7 +281,12 @@ export function createBrowserPreviewDataSource(): StudioDataSource {
       return structuredClone({
         ...previewProject,
         ai_safety_policy: aiSafetyPolicy,
+        visual_bible: visualBible,
+        audio_bible: audioBible,
       });
+    },
+    async listAssetRecords() {
+      return structuredClone(demoAssetRecords);
     },
     async checkProject() {
       return {
@@ -507,6 +532,28 @@ export function createBrowserPreviewDataSource(): StudioDataSource {
         ai_safety_policy: structuredClone(aiSafetyPolicy),
       };
       return structuredClone(aiSafetyPolicy);
+    },
+    async readVisualBible() {
+      return structuredClone(visualBible);
+    },
+    async updateVisualBible(_path, nextVisualBible) {
+      visualBible = structuredClone(nextVisualBible);
+      previewProject = {
+        ...previewProject,
+        visual_bible: structuredClone(visualBible),
+      };
+      return structuredClone(visualBible);
+    },
+    async readAudioBible() {
+      return structuredClone(audioBible);
+    },
+    async updateAudioBible(_path, nextAudioBible) {
+      audioBible = structuredClone(nextAudioBible);
+      previewProject = {
+        ...previewProject,
+        audio_bible: structuredClone(audioBible),
+      };
+      return structuredClone(audioBible);
     },
     async playOnceProject(_path, playerInput) {
       return demoPlayOnceReport(playerInput);

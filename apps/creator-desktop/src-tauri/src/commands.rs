@@ -1,9 +1,10 @@
 use plotforge_studio::{
-    AiSafetyPolicy, Character, CharacterEditDocument, CharacterGenerationReport, PlayOnceReport,
-    ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData,
-    ResourceDefinition, Rule, RulesEditDocument, StaticExportReport, StateVariablesEditDocument,
-    StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError, SourceFileContent,
-    SourceFileSummary, WorldEditDocument, WorldGenerationReport,
+    AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
+    CharacterGenerationReport, PlayOnceReport, ProjectCheckReport, ProjectCreationReport,
+    ProjectCreationRequest, ProjectData, ResourceDefinition, Rule, RulesEditDocument,
+    StaticExportReport, StateVariablesEditDocument, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StudioCommandError, SourceFileContent, SourceFileSummary,
+    VisualBible, WorldEditDocument, WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -156,6 +157,32 @@ pub fn update_ai_safety_policy(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn read_visual_bible(path: String) -> Result<VisualBible, StudioCommandError> {
+    plotforge_studio::read_visual_bible(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_visual_bible(
+    path: String,
+    visual_bible: VisualBible,
+) -> Result<VisualBible, StudioCommandError> {
+    plotforge_studio::update_visual_bible(path, visual_bible)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_audio_bible(path: String) -> Result<AudioBible, StudioCommandError> {
+    plotforge_studio::read_audio_bible(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_audio_bible(
+    path: String,
+    audio_bible: AudioBible,
+) -> Result<AudioBible, StudioCommandError> {
+    plotforge_studio::update_audio_bible(path, audio_bible)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn play_once_project(
     path: String,
     player_input: String,
@@ -211,6 +238,11 @@ pub fn export_static_project_zip(
     archive_path: String,
 ) -> Result<StaticExportReport, StudioCommandError> {
     plotforge_studio::export_static_project_zip(path, output_dir, archive_path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_asset_records(path: String) -> Result<Vec<AssetRecord>, StudioCommandError> {
+    plotforge_studio::list_asset_records(path)
 }
 
 #[tauri::command(rename_all = "snake_case")]

@@ -8,12 +8,13 @@ use std::{
 use plotforge_export::{export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 pub use plotforge_schema::{
-    AiSafetyPolicy, Character, CharacterEditDocument, CharacterGenerationReport,
-    CharacterGenerationRequest, Condition, Effect, ProjectCreationReport, ProjectCreationRequest,
-    ProjectData, ProjectTemplateId, ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot,
-    RuntimeTrace, Scene, StateVariablesEditDocument, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, WorldEditDocument,
-    WorldGenerationReport, WorldGenerationRequest,
+    AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
+    CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect,
+    ProjectCreationReport, ProjectCreationRequest, ProjectData, ProjectTemplateId,
+    ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
+    StateVariablesEditDocument, StoryCraftEditDocument, StoryCraftGenerationReport,
+    StoryCraftGenerationRequest, VisualBible, WorldEditDocument, WorldGenerationReport,
+    WorldGenerationRequest,
 };
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
@@ -275,6 +276,36 @@ pub fn update_ai_safety_policy(
         .map_err(|source| command_error("update_ai_safety_policy", path, source))
 }
 
+pub fn read_visual_bible(path: impl AsRef<Path>) -> StudioCommandResult<VisualBible> {
+    let path = path.as_ref();
+    plotforge_storage::read_visual_bible(path)
+        .map_err(|source| command_error("read_visual_bible", path, source))
+}
+
+pub fn update_visual_bible(
+    path: impl AsRef<Path>,
+    visual_bible: VisualBible,
+) -> StudioCommandResult<VisualBible> {
+    let path = path.as_ref();
+    plotforge_storage::update_visual_bible(path, visual_bible)
+        .map_err(|source| command_error("update_visual_bible", path, source))
+}
+
+pub fn read_audio_bible(path: impl AsRef<Path>) -> StudioCommandResult<AudioBible> {
+    let path = path.as_ref();
+    plotforge_storage::read_audio_bible(path)
+        .map_err(|source| command_error("read_audio_bible", path, source))
+}
+
+pub fn update_audio_bible(
+    path: impl AsRef<Path>,
+    audio_bible: AudioBible,
+) -> StudioCommandResult<AudioBible> {
+    let path = path.as_ref();
+    plotforge_storage::update_audio_bible(path, audio_bible)
+        .map_err(|source| command_error("update_audio_bible", path, source))
+}
+
 pub fn play_once_project(
     path: impl AsRef<Path>,
     player_input: &str,
@@ -426,6 +457,12 @@ pub fn export_static_project_zip(
     })
 }
 
+pub fn list_asset_records(path: impl AsRef<Path>) -> StudioCommandResult<Vec<AssetRecord>> {
+    let path = path.as_ref();
+    plotforge_storage::list_asset_records(path)
+        .map_err(|source| command_error("list_asset_records", path, source))
+}
+
 pub fn list_source_files(path: impl AsRef<Path>) -> StudioCommandResult<Vec<SourceFileSummary>> {
     let path = path.as_ref();
     validate_project(path).map_err(|source| command_error("list_source_files", path, source))?;
@@ -550,6 +587,8 @@ fn source_file_paths(project_path: &Path) -> std::io::Result<Vec<PathBuf>> {
         PathBuf::from("story/plot_threads.toml"),
         PathBuf::from("story/story_bible.md"),
         PathBuf::from("story/style_guide.md"),
+        PathBuf::from("media/visual_bible.toml"),
+        PathBuf::from("media/audio_bible.toml"),
         PathBuf::from("rules/rules.toml"),
         PathBuf::from("saves/initial_story_state.json"),
     ];
@@ -648,8 +687,8 @@ mod tests {
         AiSafetyPolicy, Character, Effect, ResourceDefinition, Rule, check_project,
         create_character, create_project, create_resource, create_rule, export_static_project,
         export_static_project_zip, generate_character, generate_story_craft,
-        generate_world_expansion, list_source_files, open_project, play_once_project,
-        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
+        generate_world_expansion, list_asset_records, list_source_files, open_project,
+        play_once_project, play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
         play_once_project_with_save, read_ai_safety_policy, read_character_edit_document,
         read_rules_edit_document, read_source_file, read_state_variables_edit_document,
         read_story_craft_edit_document, read_world_edit_document, update_ai_safety_policy,
@@ -874,6 +913,20 @@ mod tests {
         assert_eq!(project.game.title, "Dynasty Embers");
         assert_eq!(project.game.entry_scene, "court-crisis-001");
         assert_eq!(project.scenes.len(), 1);
+    }
+
+    #[test]
+    fn list_asset_records_returns_rebuilt_media_registry_records() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("dynasty-embers");
+        create_demo_project(&project_path, true).expect("demo");
+
+        let records = list_asset_records(&project_path).expect("asset records");
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].kind, plotforge_schema::AssetKind::Image);
+        assert_eq!(records[0].references[0].reference_id, "court-crisis-001");
+        assert_eq!(records[0].references[0].slot, "background_asset");
     }
 
     #[test]
