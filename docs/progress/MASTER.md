@@ -28,7 +28,7 @@
 | 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 0 | 5 | 5 |
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 0 | 5 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 0 | 5 | 5 |
-| 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 2 | 2 | 4 |
+| 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 1 | 3 | 4 |
 | 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 4 | 0 | 4 |
 | 6 | Steam and Workshop Exploration | https://github.com/zhu1090093659/plotforge/milestone/14 | 3 | 0 | 3 |
 
@@ -53,7 +53,7 @@
 | T3.5 | #35 | Add Studio local QA runbook and smoke path | closed by PR #61 |
 | T4.1 | #36 | Add plotforge-media asset registry | closed by PR #62 |
 | T4.2 | #37 | Add job queue core | closed by PR #63 |
-| T4.3 | #38 | Add image provider port and fake image pipeline | open |
+| T4.3 | #38 | Add image provider port and fake image pipeline | closed by PR #64 |
 | T4.4 | #39 | Integrate media references into runtime and export | open |
 | T5.1 | #40 | Add save and restore runtime snapshots | open |
 | T5.2 | #41 | Add SQLite cache and index as non-source-of-truth | open |
@@ -76,14 +76,14 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 - [x] Phase 1: Core Runtime Hardening (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
 - [x] Phase 2: Story Craft and Provider Contracts (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [x] Phase 3: Desktop Studio Skeleton (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
-- [ ] Phase 4: Media and Job Pipeline (2/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
+- [ ] Phase 4: Media and Job Pipeline (3/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
 - [ ] Phase 5: Persistence, Debugger, and Export v2 (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
 - [ ] Phase 6: Steam and Workshop Exploration (0/3 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/14)
 
 ## Current Status
 
 **Active Phase**: Phase 4 — Media and Job Pipeline
-**Active Task**: T4.3 Add image provider port and fake image pipeline (Issue #38)
+**Active Task**: T4.4 Integrate media references into runtime and export (Issue #39)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #38: add the image provider port and fake image pipeline.
+1. Implement #39: integrate media references into runtime and export.
 2. Keep media/job contracts in Rust crates and expose UI/runtime behavior through typed ports.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -126,3 +126,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-08 | Execution | Completed #35 via PR #61: added Creator Desktop build smoke wired into `creator-desktop:qa`, Studio Browser/Computer Use local runbook, README/AGENTS QA updates, full local QA, and desktop/mobile Browser smoke. Phase 3 milestone closed with drift_score 0. |
 | 2026-06-08 | Execution | Completed #36 via PR #62: added `plotforge-media` asset registry foundation with typed asset records, SHA-256 hashes, dedupe, refs, provider metadata, reachability/exportable paths, contract snapshots, AGENTS/README boundary updates, full local QA, and green GitHub Actions. |
 | 2026-06-08 | Execution | Completed #37 via PR #63: added `plotforge-job` queue core with typed states, explicit failures, injected-clock tests, cancel/retry/timeout/progress, cost accounting, contract snapshots, AGENTS/README invariants, full local QA, and green GitHub Actions. |
+| 2026-06-08 | Execution | Completed #38 via PR #64: added image provider ports, fake image provider, scene image pipeline over `plotforge-media` and `plotforge-job`, trace-visible placeholder fallback, cache reuse tests, runtime image failure trace coverage, AGENTS/README boundary updates, full local QA, and green GitHub Actions. |
