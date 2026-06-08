@@ -2043,6 +2043,130 @@
       ],
       "type": "string"
     },
+    "SteamSubmissionKitDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "ai_disclosure_markdown": {
+          "type": "string"
+        },
+        "checklist_markdown": {
+          "type": "string"
+        },
+        "content_warnings_markdown": {
+          "type": "string"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "notices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "official_reference_urls": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "packaging_notes_markdown": {
+          "type": "string"
+        },
+        "product_name": {
+          "type": "string"
+        },
+        "source_workshop_manifest_path": {
+          "type": "string"
+        },
+        "workshop_package_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest_version",
+        "product_name",
+        "workshop_package_id",
+        "generated_by",
+        "source_workshop_manifest_path",
+        "checklist_markdown",
+        "ai_disclosure_markdown",
+        "content_warnings_markdown",
+        "packaging_notes_markdown",
+        "official_reference_urls",
+        "notices"
+      ],
+      "type": "object"
+    },
+    "SteamSubmissionKitRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "build_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capsule_asset_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "content_warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "desktop_build_path": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "moderation_policy": {
+          "type": "string"
+        },
+        "product_name": {
+          "type": "string"
+        },
+        "safety_guardrails": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "screenshot_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "store_short_description": {
+          "type": "string"
+        },
+        "user_reporting_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_name",
+        "store_short_description",
+        "screenshot_paths",
+        "capsule_asset_paths",
+        "content_warnings",
+        "safety_guardrails",
+        "user_reporting_path",
+        "moderation_policy",
+        "build_notes"
+      ],
+      "type": "object"
+    },
     "StoryCraftBible": {
       "properties": {
         "banned_cliches": {
@@ -2466,6 +2590,12 @@
     "runtime_trace": {
       "$ref": "#/$defs/RuntimeTrace"
     },
+    "steam_submission_kit_draft": {
+      "$ref": "#/$defs/SteamSubmissionKitDraft"
+    },
+    "steam_submission_kit_request": {
+      "$ref": "#/$defs/SteamSubmissionKitRequest"
+    },
     "workshop_item_package": {
       "$ref": "#/$defs/WorkshopItemPackage"
     }
@@ -2480,6 +2610,8 @@
     "asset_record",
     "ai_usage_manifest",
     "workshop_item_package",
+    "steam_submission_kit_request",
+    "steam_submission_kit_draft",
     "export_manifest"
   ],
   "title": "ContractRootSchemas",
