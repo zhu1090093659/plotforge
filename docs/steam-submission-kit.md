@@ -9,7 +9,7 @@ Generated files:
 - `steam-content-warnings.md`
 - `steam-packaging-notes.md`
 
-The drafts are support material for a responsible developer. Before any external submission, recheck current Steamworks requirements and edit the drafts against the actual build, store page, screenshots, capsule assets, AI policy, moderation policy, and content warnings.
+The drafts are support material for a responsible developer. Before any external submission, recheck current Steamworks requirements and edit the drafts against the actual build, store page, screenshots, capsule assets, AI policy, moderation policy, and content warnings. The project QA boundary for Steam-facing text is documented in [Steam Compliance QA Boundary](steam-compliance-qa.md).
 
 Official references to recheck:
 

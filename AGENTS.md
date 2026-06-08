@@ -13,9 +13,10 @@ The current MVP contains:
 - `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace with dashboard, source editor, playtest, runtime trace views, and a thin Tauri command bridge.
 - Folder project source of truth using TOML, JSON, Markdown, and generated local assets.
 - Rebuildable SQLite cache/index under `.plotforge/cache.sqlite` for project summary, source file hashes, trace metadata, and asset metadata.
-- Export profiles and `ai-usage.json` as redaction-safe package disclosure surfaces; they describe capabilities and AI usage evidence but do not provide legal or platform approval guarantees.
+- Export profiles and `ai-usage.json` as redaction-safe package disclosure surfaces; they describe capabilities and AI usage evidence but do not provide legal conclusions or platform approval promises.
 - `plotforge-workshop` as a local-only Workshop package schema and validator; it validates draft package metadata, file hashes, and disclosure files without Steam API or upload dependencies.
 - Steam Submission Kit draft generation in `plotforge-workshop`; it emits local checklist, AI disclosure, content warning, and packaging-note Markdown drafts without legal, approval, or upload claims.
+- Steam compliance QA boundary in `docs/steam-compliance-qa.md`, enforced by `scripts/qa/no_launch_promise_lint.py` for active project-facing guidance surfaces.
 - `examples/dynasty-embers` as the committed demo fixture.
 - Static web export served from local files over HTTP.
 
@@ -41,9 +42,10 @@ The current MVP contains:
 - Keep persistence and fixture file layout in `plotforge-storage`.
 - Keep SQLite cache/index behavior in `plotforge-storage`; it may index project summaries, source file hashes, trace metadata, and asset metadata, but must not become a second project loader or source of truth.
 - Keep static export behavior in `plotforge-export`; exported bundles must copy only reachable referenced assets from `plotforge-media` and must not include private traces, provider config, raw provider responses, unreferenced assets, or secrets.
-- Export profiles and AI usage manifests must stay schema-defined, redaction-safe, and capability/descriptive only; do not put provider credentials, raw provider responses, private traces, legal guarantees, or platform approval promises into them.
+- Export profiles and AI usage manifests must stay schema-defined, redaction-safe, and capability/descriptive only; do not put provider credentials, raw provider responses, private traces, legal conclusions, or platform approval promises into them.
 - Keep Workshop package validation in `plotforge-workshop`; it must remain local/offline validation of draft package metadata and file hashes, not a Steamworks SDK wrapper, upload client, or release-readiness oracle.
 - Keep Steam Submission Kit generation in `plotforge-workshop`; it may generate local draft documents from validated package evidence, but must not claim compliance, approval, publishing automation, or legal conclusions.
+- Keep Steam-facing docs and generated guidance under the no-launch-promise QA boundary; do not promise automatic publishing, platform outcomes, legal conclusions, or ownership of a creator's Steamworks workflow.
 - Keep static player package behavior in `apps/player-web/static`; it must consume `ExportManifest`, run without external network URLs, and must not duplicate rule/runtime state machines.
 - Keep asset registry records, content hashes, references, provider metadata, and reachability in `plotforge-media`; as export, runtime, Studio, and future providers integrate media, consume this boundary instead of adding a second media registry implementation.
 - Keep long-running task state transitions, cancel/retry/timeout/progress, and cost accounting in `plotforge-job`; provider/runtime/export adapters should not own parallel job state machines.
