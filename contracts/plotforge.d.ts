@@ -34,6 +34,12 @@ export type CharacterArcStatus = "setup" | "pressured" | "changed" | "resolved";
 export interface NarrativeReviewNote { id: string; scene_key?: string | null; severity: Severity; message: string; resolved: boolean; }
 
 export interface Character { id: string; name: string; role: string; traits: string[]; visual_card: string; voice_card: string; }
+export type AssetKind = "image" | "audio" | "voice" | "data";
+export type AssetSourceKind = "user_import" | "generated" | "placeholder" | "external";
+export type AssetReferenceKind = "project" | "scene" | "character" | "export_profile";
+export interface AssetReference { reference_kind: AssetReferenceKind; reference_id: string; slot: string; }
+export interface AssetProviderMetadata { provider: string; model?: string | null; request_id?: string | null; prompt_hash?: string | null; fallback_used: boolean; }
+export interface AssetRecord { id: string; kind: AssetKind; source: AssetSourceKind; project_path: string; export_path: string; content_hash: string; hash_algorithm: string; byte_length: number; provider_metadata?: AssetProviderMetadata | null; references: AssetReference[]; }
 export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
 export interface Beat { id: string; text: string; choices: Choice[]; }
 export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
@@ -67,4 +73,4 @@ export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?:
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }

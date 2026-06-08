@@ -288,6 +288,72 @@ pub struct Character {
     pub voice_card: String,
 }
 
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetKind {
+    Image,
+    Audio,
+    Voice,
+    Data,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetSourceKind {
+    UserImport,
+    Generated,
+    Placeholder,
+    External,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetReferenceKind {
+    Project,
+    Scene,
+    Character,
+    ExportProfile,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct AssetReference {
+    pub reference_kind: AssetReferenceKind,
+    pub reference_id: String,
+    pub slot: String,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AssetProviderMetadata {
+    pub provider: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub prompt_hash: Option<String>,
+    #[serde(default)]
+    pub fallback_used: bool,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AssetRecord {
+    pub id: String,
+    pub kind: AssetKind,
+    pub source: AssetSourceKind,
+    pub project_path: String,
+    pub export_path: String,
+    pub content_hash: String,
+    pub hash_algorithm: String,
+    pub byte_length: u64,
+    #[serde(default)]
+    pub provider_metadata: Option<AssetProviderMetadata>,
+    #[serde(default)]
+    pub references: Vec<AssetReference>,
+}
+
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Scene {
     pub key: String,
@@ -727,6 +793,7 @@ pub struct ContractRootSchemas {
     pub runtime_trace: RuntimeTrace,
     pub agent_output_proposal: AgentOutputProposal,
     pub reference_analysis: ReferenceAnalysis,
+    pub asset_record: AssetRecord,
     pub export_manifest: ExportManifest,
 }
 
@@ -803,6 +870,12 @@ export type CharacterArcStatus = "setup" | "pressured" | "changed" | "resolved";
 export interface NarrativeReviewNote { id: string; scene_key?: string | null; severity: Severity; message: string; resolved: boolean; }
 
 export interface Character { id: string; name: string; role: string; traits: string[]; visual_card: string; voice_card: string; }
+export type AssetKind = "image" | "audio" | "voice" | "data";
+export type AssetSourceKind = "user_import" | "generated" | "placeholder" | "external";
+export type AssetReferenceKind = "project" | "scene" | "character" | "export_profile";
+export interface AssetReference { reference_kind: AssetReferenceKind; reference_id: string; slot: string; }
+export interface AssetProviderMetadata { provider: string; model?: string | null; request_id?: string | null; prompt_hash?: string | null; fallback_used: boolean; }
+export interface AssetRecord { id: string; kind: AssetKind; source: AssetSourceKind; project_path: string; export_path: string; content_hash: string; hash_algorithm: string; byte_length: number; provider_metadata?: AssetProviderMetadata | null; references: AssetReference[]; }
 export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
 export interface Beat { id: string; text: string; choices: Choice[]; }
 export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
@@ -836,7 +909,7 @@ export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?:
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -980,6 +1053,38 @@ mod tests {
         analysis["raw_text"] = serde_json::json!("large copyrighted body");
         let error = serde_json::from_value::<ReferenceAnalysis>(analysis)
             .expect_err("raw text should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn asset_record_roundtrips_json() {
+        let record = sample_asset_record();
+
+        let encoded = serde_json::to_string_pretty(&record).expect("serialize asset record");
+        let decoded: AssetRecord =
+            serde_json::from_str(&encoded).expect("deserialize asset record");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("asset value");
+
+        assert_eq!(decoded, record);
+        assert_eq!(value["kind"], "image");
+        assert_eq!(value["source"], "generated");
+        assert_eq!(value["references"][0]["reference_kind"], "scene");
+        assert_eq!(
+            value["provider_metadata"]["provider"],
+            "fake-image-provider"
+        );
+        assert!(value["provider_metadata"].get("raw_response").is_none());
+    }
+
+    #[test]
+    fn asset_provider_metadata_rejects_raw_response_fields() {
+        let mut record = serde_json::to_value(sample_asset_record()).expect("asset record");
+        record["provider_metadata"]["raw_response"] =
+            serde_json::json!("raw provider body with sk-test-secret-marker");
+
+        let error = serde_json::from_value::<AssetRecord>(record)
+            .expect_err("raw provider response should be rejected");
 
         assert!(error.to_string().contains("unknown field"));
     }
@@ -1414,6 +1519,31 @@ mod tests {
                     .into(),
             }],
             tags: vec!["political".into(), "pacing".into()],
+        }
+    }
+
+    fn sample_asset_record() -> AssetRecord {
+        AssetRecord {
+            id: "asset-image-abcdef0123456789".into(),
+            kind: AssetKind::Image,
+            source: AssetSourceKind::Generated,
+            project_path: "assets/generated/court-crisis-001.png".into(),
+            export_path: "assets/generated/court-crisis-001.png".into(),
+            content_hash: "a".repeat(64),
+            hash_algorithm: "sha256".into(),
+            byte_length: 256,
+            provider_metadata: Some(AssetProviderMetadata {
+                provider: "fake-image-provider".into(),
+                model: Some("placeholder-v1".into()),
+                request_id: Some("request-1".into()),
+                prompt_hash: Some("prompt-hash".into()),
+                fallback_used: false,
+            }),
+            references: vec![AssetReference {
+                reference_kind: AssetReferenceKind::Scene,
+                reference_id: "court-crisis-001".into(),
+                slot: "background_asset".into(),
+            }],
         }
     }
 }

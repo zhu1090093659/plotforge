@@ -1,0 +1,17 @@
+[package]
+name = "plotforge-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+plotforge-schema.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+plotforge-storage.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

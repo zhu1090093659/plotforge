@@ -124,6 +124,150 @@
       ],
       "type": "string"
     },
+    "AssetKind": {
+      "enum": [
+        "image",
+        "audio",
+        "voice",
+        "data"
+      ],
+      "type": "string"
+    },
+    "AssetProviderMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "fallback_used": {
+          "default": false,
+          "type": "boolean"
+        },
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_hash": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "type": "string"
+        },
+        "request_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "type": "object"
+    },
+    "AssetRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_length": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "export_path": {
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssetKind"
+        },
+        "project_path": {
+          "type": "string"
+        },
+        "provider_metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssetProviderMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssetReference"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/AssetSourceKind"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "project_path",
+        "export_path",
+        "content_hash",
+        "hash_algorithm",
+        "byte_length"
+      ],
+      "type": "object"
+    },
+    "AssetReference": {
+      "additionalProperties": false,
+      "properties": {
+        "reference_id": {
+          "type": "string"
+        },
+        "reference_kind": {
+          "$ref": "#/$defs/AssetReferenceKind"
+        },
+        "slot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reference_kind",
+        "reference_id",
+        "slot"
+      ],
+      "type": "object"
+    },
+    "AssetReferenceKind": {
+      "enum": [
+        "project",
+        "scene",
+        "character",
+        "export_profile"
+      ],
+      "type": "string"
+    },
+    "AssetSourceKind": {
+      "enum": [
+        "user_import",
+        "generated",
+        "placeholder",
+        "external"
+      ],
+      "type": "string"
+    },
     "Beat": {
       "properties": {
         "choices": {
@@ -1710,6 +1854,9 @@
     "agent_output_proposal": {
       "$ref": "#/$defs/AgentOutputProposal"
     },
+    "asset_record": {
+      "$ref": "#/$defs/AssetRecord"
+    },
     "export_manifest": {
       "$ref": "#/$defs/ExportManifest"
     },
@@ -1728,6 +1875,7 @@
     "runtime_trace",
     "agent_output_proposal",
     "reference_analysis",
+    "asset_record",
     "export_manifest"
   ],
   "title": "ContractRootSchemas",

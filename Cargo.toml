@@ -3,6 +3,7 @@ members = [
   "crates/plotforge-agent",
   "crates/plotforge-cli",
   "crates/plotforge-export",
+  "crates/plotforge-media",
   "crates/plotforge-rule",
   "crates/plotforge-runtime",
   "crates/plotforge-schema",
@@ -24,6 +25,7 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 plotforge-agent = { path = "crates/plotforge-agent" }
 plotforge-export = { path = "crates/plotforge-export" }
+plotforge-media = { path = "crates/plotforge-media" }
 plotforge-rule = { path = "crates/plotforge-rule" }
 plotforge-runtime = { path = "crates/plotforge-runtime" }
 plotforge-schema = { path = "crates/plotforge-schema" }
@@ -33,6 +35,7 @@ plotforge-storycraft = { path = "crates/plotforge-storycraft" }
 schemars = "1.2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 tempfile = "3.10"
 thiserror = "2.0"
 toml = "0.9"
