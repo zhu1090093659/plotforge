@@ -10,12 +10,16 @@
 
 # Local agent state
 .claude/worktrees/
+.codegraph/
 
 # Secrets and machine-local config
 .env
 .env.*
 !.env.example
 .envrc
+**/providers/
+**/provider_config.*
+!**/provider_config.example.*
 .npmrc
 *.pem
 *.key

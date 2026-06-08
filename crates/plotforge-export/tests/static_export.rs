@@ -1,13 +1,17 @@
 use std::{
     collections::BTreeSet,
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
-use plotforge_export::{ExportError, export_static_web};
+use plotforge_export::{ExportError, export_static_web, export_static_web_zip};
 use plotforge_media::MediaError;
-use plotforge_schema::{AI_USAGE_MANIFEST_FILE, AiUsageManifest, ExportManifest};
-use plotforge_storage::create_demo_project;
+use plotforge_schema::{
+    AI_USAGE_MANIFEST_FILE, AiSafetyPolicy, AiUsageContentKind, AiUsageManifest, ExportManifest,
+    contains_secret_marker_text,
+};
+use plotforge_storage::{create_demo_project, update_ai_safety_policy};
 
 #[test]
 fn export_manifest_contains_entry_scene_and_assets() {
@@ -49,6 +53,23 @@ fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
     create_demo_project(&project_path, false).expect("create");
+    let policy = update_ai_safety_policy(
+        &project_path,
+        AiSafetyPolicy {
+            live_generated_content_enabled: true,
+            content_kinds: vec![AiUsageContentKind::Text],
+            safety_guardrails: vec!["Review generated text before package distribution.".into()],
+            user_reporting_path: "studio://moderation-queue".into(),
+            moderation_policy: "Creator reviews live-generated text before export.".into(),
+            human_review_required: true,
+            moderation_queue_enabled: true,
+            policy_source_path: None,
+            evidence_ids: vec!["export-policy-evidence".into()],
+            policy_hash: Some("sha256:export-policy-fixture".into()),
+            notices: vec!["Local policy evidence only.".into()],
+        },
+    )
+    .expect("update policy");
 
     let report = export_static_web(&project_path, &output_dir).expect("export");
 
@@ -61,6 +82,7 @@ fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
     assert!(!usage.provider_credentials_included);
     assert!(!usage.raw_provider_responses_included);
     assert!(!usage.private_traces_included);
+    assert_eq!(usage.ai_safety_policy, policy);
     assert!(usage.disclosures.iter().any(|disclosure| {
         disclosure
             .asset_paths
@@ -89,8 +111,11 @@ fn export_package_includes_player_web_surface_without_network_urls() {
     assert!(index.contains("data-player-root"));
     assert!(index.contains("src=\"./player.js\""));
     assert!(index.contains("href=\"./styles.css\""));
+    assert!(index.contains("data-field=\"progress\""));
+    assert!(index.contains("data-field=\"outcome\""));
     assert!(player.contains("bootPlayer"));
     assert!(player_core.contains("fetch(\"./game.json\""));
+    assert!(player_core.contains("resolveChoiceTransition"));
     for file in [index, player, player_core, styles] {
         assert!(!file.contains("https://"));
         assert!(!file.contains("http://"));
@@ -110,7 +135,7 @@ fn export_rejects_secret_markers_in_manifest_data() {
     let mut game = fs::read_to_string(&game_path).expect("read game");
     game = game.replace(
         "Historical crisis simulation about a collapsing dynasty.",
-        "sk-test-secret-marker",
+        "Authorization: bearer token=value",
     );
     fs::write(&game_path, game).expect("write game");
 
@@ -139,6 +164,11 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
     )
     .expect("write provider config");
     fs::write(
+        project_path.join("provider_config.local.toml"),
+        r#"api_key = "sk-test-secret-marker""#,
+    )
+    .expect("write local provider config");
+    fs::write(
         project_path.join("agents/raw_responses/scene.json"),
         r#"{"raw":"RAW_PROVIDER_BODY_SHOULD_NOT_EXPORT"}"#,
     )
@@ -148,6 +178,7 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
 
     assert!(!output_dir.join("traces/latest.json").exists());
     assert!(!output_dir.join("providers/config.json").exists());
+    assert!(!output_dir.join("provider_config.local.toml").exists());
     assert!(!output_dir.join("agents/raw_responses/scene.json").exists());
     assert_eq!(
         report
@@ -197,6 +228,62 @@ fn export_copies_only_referenced_media_registry_assets() {
             .files_found
             .contains(&PathBuf::from("assets/generated/unused-generated.png"))
     );
+}
+
+#[test]
+fn export_static_zip_contains_only_audited_package_files() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    let archive_path = temp.path().join("dynasty-embers-static.zip");
+    create_demo_project(&project_path, false).expect("create");
+    fs::create_dir_all(project_path.join("traces")).expect("traces dir");
+    fs::write(project_path.join("traces/latest.json"), "{}").expect("private trace");
+
+    let report =
+        export_static_web_zip(&project_path, &output_dir, &archive_path).expect("export zip");
+
+    assert_eq!(
+        report.source_report.audit.files_found,
+        expected_export_files()
+    );
+    assert_eq!(report.archived_files, expected_export_files());
+    let names = zip_file_names(&archive_path);
+    assert_eq!(
+        names,
+        expected_export_files()
+            .into_iter()
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
+            .collect::<Vec<_>>()
+    );
+    assert!(!names.iter().any(|name| name.starts_with("traces/")));
+    assert!(!names.iter().any(|name| name.starts_with("providers/")));
+    assert!(!names.iter().any(|name| name.contains("raw_responses")));
+    let manifest = zip_file_text(&archive_path, "game.json");
+    let usage = zip_file_text(&archive_path, AI_USAGE_MANIFEST_FILE);
+    assert_secret_free(&manifest);
+    assert_secret_free(&usage);
+}
+
+#[test]
+fn export_static_zip_refuses_to_include_stale_output_files() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    let archive_path = temp.path().join("dynasty-embers-static.zip");
+    create_demo_project(&project_path, false).expect("create");
+    fs::create_dir_all(output_dir.join("providers")).expect("output providers");
+    fs::write(output_dir.join("providers/config.json"), "{}").expect("stale config");
+
+    let error = export_static_web_zip(&project_path, &output_dir, &archive_path)
+        .expect_err("stale output should fail");
+
+    assert!(matches!(
+        error,
+        ExportError::DisallowedPackageFile(path)
+            if path.as_path() == Path::new("providers/config.json")
+    ));
+    assert!(!archive_path.exists());
 }
 
 #[test]
@@ -254,8 +341,24 @@ fn expected_export_files() -> Vec<PathBuf> {
 }
 
 fn assert_secret_free(text: &str) {
-    assert!(!text.contains("OPENAI_API_KEY"));
-    assert!(!text.contains("api_key"));
-    assert!(!text.contains("secret_key"));
-    assert!(!text.contains("sk-"));
+    assert!(!contains_secret_marker_text(text));
+}
+
+fn zip_file_names(archive_path: &Path) -> Vec<String> {
+    let archive = fs::File::open(archive_path).expect("open zip");
+    let mut zip = zip::ZipArchive::new(archive).expect("read zip");
+    let mut names = (0..zip.len())
+        .map(|index| zip.by_index(index).expect("zip entry").name().to_string())
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+fn zip_file_text(archive_path: &Path, name: &str) -> String {
+    let archive = fs::File::open(archive_path).expect("open zip");
+    let mut zip = zip::ZipArchive::new(archive).expect("read zip");
+    let mut file = zip.by_name(name).expect("zip entry");
+    let mut text = String::new();
+    file.read_to_string(&mut text).expect("read zip text");
+    text
 }

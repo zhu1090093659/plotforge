@@ -276,7 +276,7 @@ fn issue(kind: NarrativeIssueKind, severity: Severity, message: &str) -> Narrati
 mod tests {
     use std::collections::BTreeMap;
 
-    use plotforge_schema::{Beat, Character, Choice, Scene};
+    use plotforge_schema::{Beat, BeatNext, Character, Choice, Scene};
 
     use super::{dynasty_embers_story_craft, review_scene};
 
@@ -306,6 +306,7 @@ mod tests {
             background_asset: "assets/generated/placeholder.png".into(),
             character_ids: vec!["unknown".into()],
             plot_thread_updates: BTreeMap::from([("missing-thread".into(), "update".into())]),
+            entry_beat_id: Some("beat-1".into()),
             beats: vec![Beat {
                 id: "beat-1".into(),
                 text: "Nothing changes.".into(),
@@ -314,6 +315,7 @@ mod tests {
                         id: "a".into(),
                         label: "Wait".into(),
                         action_type: "continue".into(),
+                        input_terms: vec!["wait".into()],
                         dramatic_purpose: String::new(),
                         change_scene: false,
                     },
@@ -321,10 +323,12 @@ mod tests {
                         id: "b".into(),
                         label: "Wait".into(),
                         action_type: "continue".into(),
+                        input_terms: vec!["wait".into()],
                         dramatic_purpose: String::new(),
                         change_scene: false,
                     },
                 ],
+                next: BeatNext::None,
             }],
         };
         let review = review_scene(&scene, &dynasty_embers_story_craft(), &[]);
@@ -364,6 +368,7 @@ mod tests {
                 "border-payroll".into(),
                 "The army pay gap becomes visible.".into(),
             )]),
+            entry_beat_id: Some("beat-1".into()),
             beats: vec![Beat {
                 id: "beat-1".into(),
                 text: "The court waits.".into(),
@@ -371,9 +376,11 @@ mod tests {
                     id: "raise-tax".into(),
                     label: "Raise the Liao levy".into(),
                     action_type: "raise_tax".into(),
+                    input_terms: vec!["raise".into(), "levy".into()],
                     dramatic_purpose: "Trade public order for treasury relief.".into(),
                     change_scene: true,
                 }],
+                next: BeatNext::Scene,
             }],
         };
         let characters = vec![Character {
@@ -383,6 +390,7 @@ mod tests {
             traits: vec!["cautious".into()],
             visual_card: "elder official".into(),
             voice_card: "restrained".into(),
+            portrait_request: None,
         }];
 
         let review = review_scene(&scene, &dynasty_embers_story_craft(), &characters);
@@ -406,6 +414,7 @@ mod tests {
             background_asset: "assets/generated/placeholder.png".into(),
             character_ids: vec!["ghost".into()],
             plot_thread_updates: BTreeMap::from([("ghost-thread".into(), "missing".into())]),
+            entry_beat_id: Some("beat-1".into()),
             beats: vec![Beat {
                 id: "beat-1".into(),
                 text: "Flat.".into(),
@@ -414,6 +423,7 @@ mod tests {
                         id: "a".into(),
                         label: "Wait".into(),
                         action_type: "continue".into(),
+                        input_terms: vec!["wait".into()],
                         dramatic_purpose: String::new(),
                         change_scene: false,
                     },
@@ -421,10 +431,12 @@ mod tests {
                         id: "b".into(),
                         label: "Wait".into(),
                         action_type: "continue".into(),
+                        input_terms: vec!["wait".into()],
                         dramatic_purpose: "Duplicate label.".into(),
                         change_scene: false,
                     },
                 ],
+                next: BeatNext::None,
             }],
         };
 

@@ -1,4 +1,8 @@
-import type { ProjectData } from "../../../contracts/plotforge";
+import type {
+  AiSafetyPolicy,
+  ProjectData,
+  ReproducibilityMetadata,
+} from "../../../contracts/plotforge";
 import type {
   PlayOnceReport,
   SourceFileContent,
@@ -6,6 +10,36 @@ import type {
 } from "./tauriBridge";
 
 export const demoProjectPath = "examples/dynasty-embers";
+
+export const demoReproducibilityMetadata: ReproducibilityMetadata = {
+  run_seed: 7,
+  prompt_version: "plotforge-local-mock-prompt-v1",
+  model_version: "plotforge-local-mock-model-v1",
+  provider_config_hash: "sha256:plotforge-local-mock-provider-config-v1",
+  trace_id: null,
+  snapshot_id: null,
+};
+
+export const demoAiSafetyPolicy: AiSafetyPolicy = {
+  live_generated_content_enabled: false,
+  content_kinds: ["text", "image", "voice"],
+  safety_guardrails: [
+    "Provider credentials stay outside project source, traces, and exports.",
+    "Raw provider responses are not stored in project files.",
+    "Generated content requires creator review before distribution.",
+  ],
+  user_reporting_path: "local-creator-review",
+  moderation_policy:
+    "Live provider-backed generation is disabled by default; generated output must be reviewed before export.",
+  human_review_required: true,
+  moderation_queue_enabled: false,
+  policy_source_path: "safety/ai_safety_policy.toml",
+  evidence_ids: [],
+  policy_hash: null,
+  notices: [
+    "This local policy is descriptive evidence only and is not platform approval.",
+  ],
+};
 
 export const demoProjectData: ProjectData = {
   game: {
@@ -28,6 +62,7 @@ export const demoProjectData: ProjectData = {
   },
   story_state: {
     current_scene_key: "court-crisis-001",
+    current_beat_id: "court-crisis-001-beat-001",
     completed_scene_keys: [],
     turn: 0,
   },
@@ -101,6 +136,7 @@ export const demoProjectData: ProjectData = {
       traits: ["severe", "public-minded"],
       visual_card: "ink portrait",
       voice_card: "precise",
+      portrait_request: null,
     },
     {
       id: "war-minister",
@@ -109,6 +145,7 @@ export const demoProjectData: ProjectData = {
       traits: ["urgent", "pragmatic"],
       visual_card: "armored court official",
       voice_card: "terse",
+      portrait_request: null,
     },
   ],
   rules: [
@@ -129,27 +166,63 @@ export const demoProjectData: ProjectData = {
       background_asset: "assets/generated/court-crisis-001.png",
       character_ids: ["censor", "war-minister"],
       plot_thread_updates: {},
+      entry_beat_id: "court-crisis-001-beat-001",
       beats: [
         {
-          id: "opening-council",
+          id: "court-crisis-001-beat-001",
           text: "Memorials arrive before dawn, each asking for silver the treasury cannot admit is missing.",
+          choices: [
+            {
+              id: "continue-council",
+              label: "Hear one more minister",
+              action_type: "continue",
+              input_terms: ["continue", "hear", "minister", "听", "继续", "陈情"],
+              dramatic_purpose: "Stay in the council scene before committing an order.",
+              change_scene: false,
+            },
+            {
+              id: "raise-tax",
+              label: "Raise emergency taxes",
+              action_type: "raise_tax",
+              input_terms: ["raise", "tax", "levy", "加征", "辽饷"],
+              dramatic_purpose: "Trade public order for treasury relief.",
+              change_scene: true,
+            },
+          ],
+          next: { kind: "beat", payload: "court-crisis-001-beat-002" },
+        },
+        {
+          id: "court-crisis-001-beat-002",
+          text: "The war minister points at the unpaid garrison columns and waits for an order.",
           choices: [
             {
               id: "raise-tax",
               label: "Raise emergency taxes",
               action_type: "raise_tax",
+              input_terms: ["raise", "tax", "levy", "加征", "辽饷"],
               dramatic_purpose: "Trade public order for treasury relief.",
-              change_scene: false,
+              change_scene: true,
+            },
+            {
+              id: "pay-army",
+              label: "Pay the army",
+              action_type: "pay_army",
+              input_terms: ["pay", "army", "军饷", "拨", "内帑", "边军"],
+              dramatic_purpose: "Spend scarce treasury to buy military time.",
+              change_scene: true,
             },
           ],
+          next: { kind: "scene" },
         },
       ],
     },
   ],
+  ai_safety_policy: demoAiSafetyPolicy,
 };
 
 export const demoSourceFiles: SourceFileSummary[] = [
   { path: "game.toml", kind: "toml", bytes: 164, editable: false },
+  { path: "world/forbidden_facts.json", kind: "json", bytes: 28, editable: false },
   { path: "world/world.md", kind: "markdown", bytes: 92, editable: true },
   { path: "story/story_bible.md", kind: "markdown", bytes: 88, editable: true },
   { path: "rules/rules.toml", kind: "toml", bytes: 420, editable: false },
@@ -176,6 +249,12 @@ export const demoSourceContents: Record<string, SourceFileContent> = {
     content:
       "# World Bible\n\nThe dynasty is still standing, but every resource is under pressure.\n",
   },
+  "world/forbidden_facts.json": {
+    path: "world/forbidden_facts.json",
+    kind: "json",
+    editable: false,
+    content: '{\n  "forbidden_facts": []\n}\n',
+  },
   "story/story_bible.md": {
     path: "story/story_bible.md",
     kind: "markdown",
@@ -201,6 +280,8 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
   return {
     scene: demoProjectData.scenes[0],
     trace_path: `${demoProjectPath}/traces/trace-001.json`,
+    snapshot: null,
+    snapshot_path: null,
     delta_summary: [
       "public_order: -8",
       "treasury: +12",
@@ -209,10 +290,15 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
     trace: {
       id: "trace-001",
       timestamp_ms: 1,
+      reproducibility: {
+        ...demoReproducibilityMetadata,
+        trace_id: "trace-001",
+      },
       player_input: playerInput,
       selected_choice: "raise-tax",
       action_intent: {
         status: "supported",
+        choice_id: "raise-tax",
         action_type: "raise_tax",
         matched_terms: ["tax"],
         reason: null,
@@ -271,6 +357,7 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
       story_state_before: demoProjectData.story_state,
       story_state_after: {
         current_scene_key: "court-crisis-001",
+        current_beat_id: "court-crisis-001-beat-001",
         completed_scene_keys: ["court-crisis-001"],
         turn: 1,
       },

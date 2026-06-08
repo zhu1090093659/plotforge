@@ -1341,6 +1341,7 @@ Draft support material only. The creator must review the shipped build, screensh
                 fallback_asset_count: 0,
                 prompt_hashes: vec!["sha256:preview".into()],
             }],
+            ai_safety_policy: Default::default(),
             notices: vec!["No provider credentials or raw provider responses included.".into()],
         }
     }

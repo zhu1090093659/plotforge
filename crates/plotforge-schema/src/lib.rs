@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 4;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 10;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -20,6 +20,73 @@ pub struct GameProject {
     pub description: String,
     pub entry_scene: String,
     pub run_seed: u64,
+}
+
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectTemplateId {
+    #[default]
+    HistoricalCrisis,
+    DynastyEmbers,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectCreationRequest {
+    pub template: ProjectTemplateId,
+    pub concept: String,
+    pub visual_style: String,
+    pub voice_enabled: bool,
+    pub initial_scene_request: String,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectCreationReport {
+    pub project_path: String,
+    pub template: ProjectTemplateId,
+    pub concept: String,
+    pub visual_style: String,
+    pub voice_enabled: bool,
+    pub initial_scene_request: String,
+    pub files_created: Vec<String>,
+    pub project: ProjectData,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorldEditDocument {
+    pub world_bible_markdown: String,
+    pub canon_markdown: String,
+    pub forbidden_facts: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct StoryCraftEditDocument {
+    pub story_bible_markdown: String,
+    pub style_guide_markdown: String,
+    pub story_craft: StoryCraftState,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterEditDocument {
+    pub characters: Vec<Character>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct StateVariablesEditDocument {
+    pub resources: Vec<ResourceDefinition>,
+    pub initial_world_state: WorldState,
+    pub initial_story_state: StoryState,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RulesEditDocument {
+    pub rules: Vec<Rule>,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -58,6 +125,8 @@ impl WorldDelta {
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoryState {
     pub current_scene_key: String,
+    #[serde(default)]
+    pub current_beat_id: Option<String>,
     pub completed_scene_keys: Vec<String>,
     pub turn: u32,
 }
@@ -288,6 +357,22 @@ pub struct Character {
     pub traits: Vec<String>,
     pub visual_card: String,
     pub voice_card: String,
+    #[serde(default)]
+    pub portrait_request: Option<CharacterPortraitRequest>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterPortraitRequest {
+    pub prompt_summary: String,
+    pub style: String,
+    pub target_asset_slot: String,
+    pub prompt_hash: String,
+    pub provider_config_hash: String,
+    #[serde(default)]
+    pub reference_asset_ids: Vec<String>,
+    #[serde(default)]
+    pub fallback_allowed: bool,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -367,6 +452,8 @@ pub struct Scene {
     pub character_ids: Vec<String>,
     pub plot_thread_updates: BTreeMap<String, String>,
     pub beats: Vec<Beat>,
+    #[serde(default)]
+    pub entry_beat_id: Option<String>,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -374,6 +461,23 @@ pub struct Beat {
     pub id: String,
     pub text: String,
     pub choices: Vec<Choice>,
+    #[serde(default)]
+    pub next: BeatNext,
+}
+
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(
+    tag = "kind",
+    content = "payload",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum BeatNext {
+    Beat(String),
+    Scene,
+    End,
+    #[default]
+    None,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -381,6 +485,8 @@ pub struct Choice {
     pub id: String,
     pub label: String,
     pub action_type: String,
+    #[serde(default)]
+    pub input_terms: Vec<String>,
     pub dramatic_purpose: String,
     pub change_scene: bool,
 }
@@ -390,6 +496,7 @@ pub struct Choice {
 pub enum AgentRole {
     StoryArchitect,
     StoryCraftPlanner,
+    CharacterDesigner,
     ScenePlanner,
     BeatWriter,
     PlotDoctor,
@@ -406,6 +513,59 @@ pub struct AgentOutputProposal {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReproducibilityMetadata {
+    pub run_seed: u64,
+    pub prompt_version: String,
+    pub model_version: String,
+    pub provider_config_hash: String,
+    #[serde(default)]
+    pub trace_id: Option<String>,
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
+}
+
+impl Default for ReproducibilityMetadata {
+    fn default() -> Self {
+        Self::local_mock(0)
+    }
+}
+
+impl ReproducibilityMetadata {
+    pub fn local_mock(run_seed: u64) -> Self {
+        Self {
+            run_seed,
+            prompt_version: "plotforge-local-mock-prompt-v1".into(),
+            model_version: "plotforge-local-mock-model-v1".into(),
+            provider_config_hash: "sha256:plotforge-local-mock-provider-config-v1".into(),
+            trace_id: None,
+            snapshot_id: None,
+        }
+    }
+
+    pub fn with_trace_id(mut self, trace_id: impl Into<String>) -> Self {
+        self.trace_id = Some(trace_id.into());
+        self
+    }
+
+    pub fn with_snapshot_id(mut self, snapshot_id: impl Into<String>) -> Self {
+        self.snapshot_id = Some(snapshot_id.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentOutputEnvelope {
+    pub id: String,
+    pub contract_version: String,
+    pub schema_version: u32,
+    pub agent: AgentRole,
+    pub reproducibility: ReproducibilityMetadata,
+    pub proposal: AgentOutputProposal,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(
     tag = "kind",
     content = "payload",
@@ -413,9 +573,103 @@ pub struct AgentOutputProposal {
     deny_unknown_fields
 )]
 pub enum AgentProposalPayload {
-    ScenePlan(ScenePlanProposal),
-    BeatDrafts(BeatDraftsProposal),
-    Review(ReviewProposal),
+    WorldExpansion(Box<WorldExpansionProposal>),
+    StoryCraftPlan(Box<StoryCraftPlanProposal>),
+    CharacterProfile(Box<CharacterProposal>),
+    ScenePlan(Box<ScenePlanProposal>),
+    BeatDrafts(Box<BeatDraftsProposal>),
+    Review(Box<ReviewProposal>),
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorldGenerationRequest {
+    pub expansion_goal: String,
+    pub document: WorldEditDocument,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorldExpansionProposal {
+    pub world_bible_markdown: String,
+    pub canon_markdown: String,
+    pub forbidden_facts: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorldGenerationReport {
+    pub document: WorldEditDocument,
+    pub evidence: GenerationEvidence,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct StoryCraftGenerationRequest {
+    pub concept: String,
+    pub world_bible_markdown: String,
+    pub canon_markdown: String,
+    pub forbidden_facts: Vec<String>,
+    pub document: StoryCraftEditDocument,
+    pub characters: Vec<Character>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct StoryCraftPlanProposal {
+    pub story_bible_markdown: String,
+    pub style_guide_markdown: String,
+    pub story_craft: StoryCraftState,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct StoryCraftGenerationReport {
+    pub document: StoryCraftEditDocument,
+    pub evidence: GenerationEvidence,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterGenerationRequest {
+    pub concept: String,
+    pub role_hint: String,
+    pub world_bible_markdown: String,
+    pub story_bible_markdown: String,
+    pub existing_characters: Vec<Character>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterProposal {
+    pub character: Character,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterGenerationReport {
+    pub character: Character,
+    pub evidence: GenerationEvidence,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GenerationEvidence {
+    pub status: GenerationStatus,
+    pub fallback_used: bool,
+    #[serde(default)]
+    pub error: Option<RuntimeError>,
+    pub reproducibility: ReproducibilityMetadata,
+    #[serde(default)]
+    pub envelopes: Vec<AgentOutputEnvelope>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationStatus {
+    Succeeded,
+    Fallback,
+    Failed,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -474,6 +728,8 @@ pub struct ReviewProposal {
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActionIntent {
     pub status: ActionIntentStatus,
+    #[serde(default)]
+    pub choice_id: Option<String>,
     pub action_type: Option<String>,
     pub matched_terms: Vec<String>,
     pub reason: Option<String>,
@@ -483,6 +739,21 @@ impl ActionIntent {
     pub fn supported(action_type: impl Into<String>, matched_terms: Vec<String>) -> Self {
         Self {
             status: ActionIntentStatus::Supported,
+            choice_id: None,
+            action_type: Some(action_type.into()),
+            matched_terms,
+            reason: None,
+        }
+    }
+
+    pub fn for_choice(
+        choice_id: impl Into<String>,
+        action_type: impl Into<String>,
+        matched_terms: Vec<String>,
+    ) -> Self {
+        Self {
+            status: ActionIntentStatus::Supported,
+            choice_id: Some(choice_id.into()),
             action_type: Some(action_type.into()),
             matched_terms,
             reason: None,
@@ -492,6 +763,7 @@ impl ActionIntent {
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             status: ActionIntentStatus::Unsupported,
+            choice_id: None,
             action_type: None,
             matched_terms: Vec::new(),
             reason: Some(reason.into()),
@@ -505,6 +777,10 @@ impl ActionIntent {
     pub fn redacted(&self) -> Self {
         Self {
             status: self.status.clone(),
+            choice_id: self
+                .choice_id
+                .as_ref()
+                .map(|choice_id| redact_trace_text(choice_id)),
             action_type: self
                 .action_type
                 .as_ref()
@@ -718,6 +994,8 @@ pub enum RuntimeTraceStageStatus {
 pub struct RuntimeTrace {
     pub id: String,
     pub timestamp_ms: u64,
+    #[serde(default)]
+    pub reproducibility: ReproducibilityMetadata,
     pub player_input: Option<String>,
     pub selected_choice: Option<String>,
     #[serde(default)]
@@ -744,6 +1022,8 @@ pub struct RuntimeTrace {
 pub struct RuntimeSnapshot {
     pub id: String,
     pub timestamp_ms: u64,
+    #[serde(default)]
+    pub reproducibility: ReproducibilityMetadata,
     pub project_id: String,
     pub project_version: String,
     pub story_state: StoryState,
@@ -838,19 +1118,50 @@ pub fn redact_trace_text(text: &str) -> String {
         .join(" ")
 }
 
+pub fn contains_secret_marker_text(text: &str) -> bool {
+    text.split_whitespace().any(contains_secret_marker)
+}
+
 fn contains_secret_marker(token: &str) -> bool {
     let normalized = token.to_ascii_lowercase();
-    [
-        "sk-",
-        "api_key",
-        "secret_key",
-        "openai_api_key",
-        "authorization:",
-        "bearer",
-        "token=",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
+    normalized.starts_with("sk-")
+        || [
+            "api_key",
+            "secret_key",
+            "openai_api_key",
+            "authorization:",
+            "bearer",
+            "token=",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker))
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AiSafetyPolicy {
+    #[serde(default)]
+    pub live_generated_content_enabled: bool,
+    #[serde(default)]
+    pub content_kinds: Vec<AiUsageContentKind>,
+    #[serde(default)]
+    pub safety_guardrails: Vec<String>,
+    #[serde(default)]
+    pub user_reporting_path: String,
+    #[serde(default)]
+    pub moderation_policy: String,
+    #[serde(default)]
+    pub human_review_required: bool,
+    #[serde(default)]
+    pub moderation_queue_enabled: bool,
+    #[serde(default)]
+    pub policy_source_path: Option<String>,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
+    #[serde(default)]
+    pub policy_hash: Option<String>,
+    #[serde(default)]
+    pub notices: Vec<String>,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -863,6 +1174,8 @@ pub struct ProjectData {
     pub characters: Vec<Character>,
     pub rules: Vec<Rule>,
     pub scenes: Vec<Scene>,
+    #[serde(default)]
+    pub ai_safety_policy: AiSafetyPolicy,
 }
 
 impl ProjectData {
@@ -1066,6 +1379,8 @@ pub struct AiUsageManifest {
     pub private_traces_included: bool,
     pub disclosures: Vec<AiUsageDisclosure>,
     pub provider_summaries: Vec<AiProviderSummary>,
+    #[serde(default)]
+    pub ai_safety_policy: AiSafetyPolicy,
     pub notices: Vec<String>,
 }
 
@@ -1154,13 +1469,31 @@ fn default_ai_usage_manifest_path() -> String {
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContractRootSchemas {
+    pub project_creation_request: ProjectCreationRequest,
+    pub project_creation_report: ProjectCreationReport,
+    pub world_edit_document: WorldEditDocument,
+    pub story_craft_edit_document: StoryCraftEditDocument,
+    pub character_edit_document: CharacterEditDocument,
+    pub state_variables_edit_document: StateVariablesEditDocument,
+    pub rules_edit_document: RulesEditDocument,
     pub project_data: ProjectData,
     pub runtime_trace: RuntimeTrace,
     pub runtime_snapshot: RuntimeSnapshot,
     pub job_record: JobRecord,
     pub agent_output_proposal: AgentOutputProposal,
+    pub agent_output_envelope: AgentOutputEnvelope,
+    pub reproducibility_metadata: ReproducibilityMetadata,
+    pub generation_evidence: GenerationEvidence,
+    pub world_generation_request: WorldGenerationRequest,
+    pub world_generation_report: WorldGenerationReport,
+    pub story_craft_generation_request: StoryCraftGenerationRequest,
+    pub story_craft_generation_report: StoryCraftGenerationReport,
+    pub character_generation_request: CharacterGenerationRequest,
+    pub character_generation_report: CharacterGenerationReport,
+    pub character_portrait_request: CharacterPortraitRequest,
     pub reference_analysis: ReferenceAnalysis,
     pub asset_record: AssetRecord,
+    pub ai_safety_policy: AiSafetyPolicy,
     pub ai_usage_manifest: AiUsageManifest,
     pub workshop_item_package: WorkshopItemPackage,
     pub steam_submission_kit_request: SteamSubmissionKitRequest,
@@ -1212,12 +1545,20 @@ pub fn contract_typescript() -> String {
         r#"export type ResourceMap = { [key: string]: number };
 export type FlagMap = { [key: string]: boolean };
 export type ContractEnvelope<T> = { contract_version: typeof PLOTFORGE_CONTRACT_VERSION; schema_version: typeof PLOTFORGE_CONTRACT_SCHEMA_VERSION; payload: T };
+export type ProjectTemplateId = "historical_crisis" | "dynasty_embers";
+export interface ProjectCreationRequest { template: ProjectTemplateId; concept: string; visual_style: string; voice_enabled: boolean; initial_scene_request: string; }
+export interface ProjectCreationReport { project_path: string; template: ProjectTemplateId; concept: string; visual_style: string; voice_enabled: boolean; initial_scene_request: string; files_created: string[]; project: ProjectData; }
+export interface WorldEditDocument { world_bible_markdown: string; canon_markdown: string; forbidden_facts: string[]; }
+export interface StoryCraftEditDocument { story_bible_markdown: string; style_guide_markdown: string; story_craft: StoryCraftState; }
+export interface CharacterEditDocument { characters: Character[]; }
+export interface StateVariablesEditDocument { resources: ResourceDefinition[]; initial_world_state: WorldState; initial_story_state: StoryState; }
+export interface RulesEditDocument { rules: Rule[]; }
 
 export interface GameProject { id: string; title: string; version: string; description: string; entry_scene: string; run_seed: number; }
 export interface ResourceDefinition { key: string; label: string; initial: number; min: number; max: number; }
 export interface WorldState { resources: ResourceMap; flags: FlagMap; triggered_events: string[]; }
 export interface WorldDelta { resource_changes: ResourceMap; resource_sets: ResourceMap; flags: FlagMap; triggered_events: string[]; }
-export interface StoryState { current_scene_key: string; completed_scene_keys: string[]; turn: number; }
+export interface StoryState { current_scene_key: string; current_beat_id?: string | null; completed_scene_keys: string[]; turn: number; }
 
 export interface StoryCraftBible { target_audience?: string | null; genre_promise: string; central_question: string; target_emotions: string[]; core_foreshadowing: string[]; emotional_contract: string[]; pacing_profile: PacingProfile; hook_strategy: HookStrategy; reversal_strategy?: ReversalStrategy | null; prose_style_guide?: string | null; banned_cliches: string[]; reference_modules: ReferenceModule[]; }
 export interface PacingProfile { escalation_interval_scenes: number; target_tension_curve: number[]; breather_scene_frequency?: number | null; }
@@ -1240,7 +1581,8 @@ export interface CharacterArc { id: string; character_id: string; desire: string
 export type CharacterArcStatus = "setup" | "pressured" | "changed" | "resolved";
 export interface NarrativeReviewNote { id: string; scene_key?: string | null; severity: Severity; message: string; resolved: boolean; }
 
-export interface Character { id: string; name: string; role: string; traits: string[]; visual_card: string; voice_card: string; }
+export interface CharacterPortraitRequest { prompt_summary: string; style: string; target_asset_slot: string; prompt_hash: string; provider_config_hash: string; reference_asset_ids: string[]; fallback_allowed: boolean; }
+export interface Character { id: string; name: string; role: string; traits: string[]; visual_card: string; voice_card: string; portrait_request?: CharacterPortraitRequest | null; }
 export type AssetKind = "image" | "audio" | "voice" | "data";
 export type AssetSourceKind = "user_import" | "generated" | "placeholder" | "external";
 export type AssetReferenceKind = "project" | "scene" | "character" | "export_profile";
@@ -1254,26 +1596,41 @@ export type AiUsageContentKind = "text" | "image" | "audio" | "voice" | "data";
 export type AiUsageSourceKind = "project_source" | "local_mock_provider" | "external_provider" | "placeholder" | "user_import";
 export interface AiUsageDisclosure { content_kind: AiUsageContentKind; source_kind: AiUsageSourceKind; summary: string; asset_paths: string[]; }
 export interface AiProviderSummary { provider: string; model?: string | null; generated_asset_count: number; fallback_asset_count: number; prompt_hashes: string[]; }
-export interface AiUsageManifest { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; generated_by: string; external_model_calls_during_export: boolean; provider_credentials_included: boolean; raw_provider_responses_included: boolean; private_traces_included: boolean; disclosures: AiUsageDisclosure[]; provider_summaries: AiProviderSummary[]; notices: string[]; }
+export interface AiSafetyPolicy { live_generated_content_enabled: boolean; content_kinds: AiUsageContentKind[]; safety_guardrails: string[]; user_reporting_path: string; moderation_policy: string; human_review_required: boolean; moderation_queue_enabled: boolean; policy_source_path?: string | null; evidence_ids: string[]; policy_hash?: string | null; notices: string[]; }
+export interface AiUsageManifest { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; generated_by: string; external_model_calls_during_export: boolean; provider_credentials_included: boolean; raw_provider_responses_included: boolean; private_traces_included: boolean; disclosures: AiUsageDisclosure[]; provider_summaries: AiProviderSummary[]; ai_safety_policy: AiSafetyPolicy; notices: string[]; }
 export type WorkshopDraftVisibility = "private_draft" | "friends_only_draft" | "unlisted_draft";
 export interface WorkshopPackageFile { path: string; content_hash: string; hash_algorithm: string; byte_length: number; }
 export interface WorkshopItemPackage { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; export_profile: ExportProfile; ai_usage_manifest_path: string; content_files: WorkshopPackageFile[]; notices: string[]; }
 export interface SteamSubmissionKitRequest { product_name: string; desktop_build_path?: string | null; store_short_description: string; screenshot_paths: string[]; capsule_asset_paths: string[]; content_warnings: string[]; safety_guardrails: string[]; user_reporting_path: string; moderation_policy: string; build_notes: string[]; }
 export interface SteamSubmissionKitDraft { manifest_version: string; product_name: string; workshop_package_id: string; generated_by: string; source_workshop_manifest_path: string; checklist_markdown: string; ai_disclosure_markdown: string; content_warnings_markdown: string; packaging_notes_markdown: string; official_reference_urls: string[]; notices: string[]; }
-export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
-export interface Beat { id: string; text: string; choices: Choice[]; }
-export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
+export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; entry_beat_id?: string | null; }
+export interface Beat { id: string; text: string; choices: Choice[]; next?: BeatNext; }
+export type BeatNext = { kind: "beat"; payload: string } | { kind: "scene" } | { kind: "end" } | { kind: "none" };
+export interface Choice { id: string; label: string; action_type: string; input_terms: string[]; dramatic_purpose: string; change_scene: boolean; }
 
-export type AgentRole = "story_architect" | "story_craft_planner" | "scene_planner" | "beat_writer" | "plot_doctor" | "consistency_checker" | "deslop_refiner";
+export type AgentRole = "story_architect" | "story_craft_planner" | "character_designer" | "scene_planner" | "beat_writer" | "plot_doctor" | "consistency_checker" | "deslop_refiner";
 export interface AgentOutputProposal { id: string; agent: AgentRole; output: AgentProposalPayload; }
-export type AgentProposalPayload = { kind: "scene_plan"; payload: ScenePlanProposal } | { kind: "beat_drafts"; payload: BeatDraftsProposal } | { kind: "review"; payload: ReviewProposal };
+export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; trace_id?: string | null; snapshot_id?: string | null; }
+export interface AgentOutputEnvelope { id: string; contract_version: string; schema_version: number; agent: AgentRole; reproducibility: ReproducibilityMetadata; proposal: AgentOutputProposal; }
+export type AgentProposalPayload = { kind: "world_expansion"; payload: WorldExpansionProposal } | { kind: "story_craft_plan"; payload: StoryCraftPlanProposal } | { kind: "character_profile"; payload: CharacterProposal } | { kind: "scene_plan"; payload: ScenePlanProposal } | { kind: "beat_drafts"; payload: BeatDraftsProposal } | { kind: "review"; payload: ReviewProposal };
+export interface WorldGenerationRequest { expansion_goal: string; document: WorldEditDocument; }
+export interface WorldExpansionProposal { world_bible_markdown: string; canon_markdown: string; forbidden_facts: string[]; }
+export interface WorldGenerationReport { document: WorldEditDocument; evidence: GenerationEvidence; }
+export interface StoryCraftGenerationRequest { concept: string; world_bible_markdown: string; canon_markdown: string; forbidden_facts: string[]; document: StoryCraftEditDocument; characters: Character[]; }
+export interface StoryCraftPlanProposal { story_bible_markdown: string; style_guide_markdown: string; story_craft: StoryCraftState; }
+export interface StoryCraftGenerationReport { document: StoryCraftEditDocument; evidence: GenerationEvidence; }
+export interface CharacterGenerationRequest { concept: string; role_hint: string; world_bible_markdown: string; story_bible_markdown: string; existing_characters: Character[]; }
+export interface CharacterProposal { character: Character; }
+export interface CharacterGenerationReport { character: Character; evidence: GenerationEvidence; }
+export interface GenerationEvidence { status: GenerationStatus; fallback_used: boolean; error?: RuntimeError | null; reproducibility: ReproducibilityMetadata; envelopes: AgentOutputEnvelope[]; }
+export type GenerationStatus = "succeeded" | "fallback" | "failed";
 export interface ScenePlanProposal { scene_key: string; title: string; location: string; scene_summary: string; dramatic_purpose: string; hook: string; emotional_goal?: string | null; cast: string[]; entry_beat_id: string; background_asset?: string | null; }
 export interface BeatDraftsProposal { scene_key: string; beats: BeatDraftProposal[]; }
 export interface BeatDraftProposal { id: string; scene_key: string; text: string; choices: Choice[]; narrative_function: NarrativeFunction; }
 export type NarrativeFunction = "hook" | "setup" | "payoff" | "reversal" | "choice" | "cliffhanger";
 export interface ReviewProposal { scene_key: string; review: NarrativeReview; notes: NarrativeReviewNote[]; }
 
-export interface ActionIntent { status: ActionIntentStatus; action_type?: string | null; matched_terms: string[]; reason?: string | null; }
+export interface ActionIntent { status: ActionIntentStatus; choice_id?: string | null; action_type?: string | null; matched_terms: string[]; reason?: string | null; }
 export type ActionIntentStatus = "supported" | "unsupported";
 export interface Rule { id: string; action_type: string; conditions: Condition[]; effects: Effect[]; }
 export type Condition = { kind: "resource_at_least"; key: string; value: number } | { kind: "resource_at_most"; key: string; value: number } | { kind: "flag_equals"; key: string; value: boolean };
@@ -1290,8 +1647,8 @@ export interface RuntimeMediaReference { reference: AssetReference; project_path
 export interface RuntimeTraceDiagnostic { stage: RuntimeTraceStage; status: RuntimeTraceStageStatus; message: string; }
 export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate_rules" | "plan_scene" | "commit_state";
 export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
-export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
-export interface RuntimeSnapshot { id: string; timestamp_ms: number; project_id: string; project_version: string; story_state: StoryState; world_state: WorldState; scenes: Scene[]; }
+export interface RuntimeTrace { id: string; timestamp_ms: number; reproducibility: ReproducibilityMetadata; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
+export interface RuntimeSnapshot { id: string; timestamp_ms: number; reproducibility: ReproducibilityMetadata; project_id: string; project_version: string; story_state: StoryState; world_state: WorldState; scenes: Scene[]; }
 
 export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";
@@ -1300,9 +1657,9 @@ export interface JobCost { estimated_units: number; spent_units: number; }
 export interface JobFailure { code: string; message: string; retryable: boolean; }
 export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
 
-export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
+export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; ai_safety_policy: AiSafetyPolicy; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -1352,6 +1709,85 @@ mod tests {
     }
 
     #[test]
+    fn project_creation_contracts_roundtrip_and_reject_unknown_fields() {
+        let request = ProjectCreationRequest {
+            template: ProjectTemplateId::HistoricalCrisis,
+            concept: "A regency court must survive a winter coup.".into(),
+            visual_style: "ink wash court drama".into(),
+            voice_enabled: true,
+            initial_scene_request: "Open on an empty granary ledger.".into(),
+        };
+        let report = ProjectCreationReport {
+            project_path: "/tmp/winter-regency".into(),
+            template: request.template.clone(),
+            concept: request.concept.clone(),
+            visual_style: request.visual_style.clone(),
+            voice_enabled: request.voice_enabled,
+            initial_scene_request: request.initial_scene_request.clone(),
+            files_created: vec!["game.toml".into(), "story/story_craft.toml".into()],
+            project: sample_project_data(),
+        };
+
+        let request_json = serde_json::to_string_pretty(&request).expect("serialize request");
+        let report_json = serde_json::to_string_pretty(&report).expect("serialize report");
+        let request_value: serde_json::Value =
+            serde_json::from_str(&request_json).expect("request value");
+
+        assert_eq!(
+            serde_json::from_str::<ProjectCreationRequest>(&request_json)
+                .expect("deserialize request"),
+            request
+        );
+        assert_eq!(
+            serde_json::from_str::<ProjectCreationReport>(&report_json)
+                .expect("deserialize report"),
+            report
+        );
+        assert_eq!(request_value["template"], "historical_crisis");
+
+        let mut with_unknown = request_value;
+        with_unknown["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<ProjectCreationRequest>(with_unknown)
+            .expect_err("unknown creation fields should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn structured_edit_contracts_roundtrip_and_reject_unknown_fields() {
+        let project = sample_project_data();
+
+        assert_contract_roundtrip_rejects_unknown(WorldEditDocument {
+            world_bible_markdown: "# World Bible\n\nA winter court crisis.\n".into(),
+            canon_markdown: "# Canon\n\n- Consequences stay visible.\n".into(),
+            forbidden_facts: vec!["The emperor is not secretly immortal.".into()],
+        });
+        assert_contract_roundtrip_rejects_unknown(StoryCraftEditDocument {
+            story_bible_markdown: "# Story Bible\n\nThe court cannot buy every ally.\n".into(),
+            style_guide_markdown: "# Style Guide\n\nConcrete political pressure.\n".into(),
+            story_craft: project.story_craft.clone(),
+        });
+        assert_contract_roundtrip_rejects_unknown(CharacterEditDocument {
+            characters: vec![Character {
+                id: "regent".into(),
+                name: "Regent".into(),
+                role: "Temporary court authority".into(),
+                traits: vec!["cautious".into(), "clear".into()],
+                visual_card: "ink portrait with winter robes".into(),
+                voice_card: "measured court speech".into(),
+                portrait_request: None,
+            }],
+        });
+        assert_contract_roundtrip_rejects_unknown(StateVariablesEditDocument {
+            resources: project.resources.clone(),
+            initial_world_state: project.world_state.clone(),
+            initial_story_state: project.story_state.clone(),
+        });
+        assert_contract_roundtrip_rejects_unknown(RulesEditDocument {
+            rules: project.rules.clone(),
+        });
+    }
+
+    #[test]
     fn action_intent_roundtrips_json() {
         let intent = ActionIntent::supported("raise_tax", vec!["加征".into(), "辽饷".into()]);
 
@@ -1387,10 +1823,43 @@ mod tests {
 
         assert_eq!(value["agent"], "scene_planner");
         assert_eq!(value["output"]["kind"], "scene_plan");
-        assert!(matches!(
-            decoded.output,
-            AgentProposalPayload::ScenePlan(ScenePlanProposal { .. })
-        ));
+        assert!(matches!(decoded.output, AgentProposalPayload::ScenePlan(_)));
+    }
+
+    #[test]
+    fn agent_output_envelope_roundtrips_reproducibility_metadata() {
+        let envelope = sample_agent_output_envelope();
+
+        let encoded = serde_json::to_string_pretty(&envelope).expect("serialize envelope");
+        let decoded: AgentOutputEnvelope =
+            serde_json::from_str(&encoded).expect("deserialize envelope");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("envelope value");
+
+        assert_eq!(decoded, envelope);
+        assert_eq!(value["contract_version"], CONTRACT_VERSION);
+        assert_eq!(value["schema_version"], CONTRACT_SCHEMA_VERSION);
+        assert_eq!(value["reproducibility"]["run_seed"], 7);
+        assert_eq!(
+            value["reproducibility"]["prompt_version"],
+            "plotforge-agent-text-prompt-v1"
+        );
+        assert!(value.get("raw_provider_response").is_none());
+    }
+
+    #[test]
+    fn agent_output_envelope_rejects_raw_provider_fields() {
+        let mut envelope = serde_json::to_value(sample_agent_output_envelope()).expect("envelope");
+        envelope["raw_provider_response"] =
+            serde_json::json!("raw provider body with sk-test-secret-marker");
+        let error = serde_json::from_value::<AgentOutputEnvelope>(envelope)
+            .expect_err("raw provider response should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut nested = serde_json::to_value(sample_agent_output_envelope()).expect("envelope");
+        nested["reproducibility"]["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<AgentOutputEnvelope>(nested)
+            .expect_err("provider credential field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -1555,12 +2024,14 @@ mod tests {
     fn runtime_trace_roundtrips_json() {
         let story_state = StoryState {
             current_scene_key: "court-crisis-001".into(),
+            current_beat_id: Some("court-crisis-001-beat-001".into()),
             completed_scene_keys: Vec::new(),
             turn: 0,
         };
         let trace = RuntimeTrace {
             id: "trace-1".into(),
             timestamp_ms: 1,
+            reproducibility: sample_reproducibility_metadata().with_trace_id("trace-1"),
             player_input: Some("raise taxes".into()),
             selected_choice: Some("raise_tax".into()),
             action_intent: Some(ActionIntent::supported("raise_tax", vec!["tax".into()])),
@@ -1609,10 +2080,12 @@ mod tests {
         let snapshot = RuntimeSnapshot {
             id: "save-001".into(),
             timestamp_ms: 42,
+            reproducibility: sample_reproducibility_metadata().with_snapshot_id("save-001"),
             project_id: "dynasty-embers".into(),
             project_version: "0.1.0".into(),
             story_state: StoryState {
                 current_scene_key: "court-crisis-001".into(),
+                current_beat_id: Some("court-crisis-001-beat-001".into()),
                 completed_scene_keys: vec!["opening-court".into()],
                 turn: 1,
             },
@@ -1630,7 +2103,20 @@ mod tests {
                 background_asset: "assets/generated/court-crisis-001.png".into(),
                 character_ids: Vec::new(),
                 plot_thread_updates: BTreeMap::new(),
-                beats: Vec::new(),
+                entry_beat_id: Some("court-crisis-001-beat-001".into()),
+                beats: vec![Beat {
+                    id: "court-crisis-001-beat-001".into(),
+                    text: "The court resumes from the saved beat.".into(),
+                    choices: vec![Choice {
+                        id: "raise-tax".into(),
+                        label: "Raise taxes".into(),
+                        action_type: "raise_tax".into(),
+                        input_terms: vec!["raise".into(), "tax".into()],
+                        dramatic_purpose: "Commit a restored scene choice.".into(),
+                        change_scene: true,
+                    }],
+                    next: BeatNext::Scene,
+                }],
             }],
         };
 
@@ -1821,6 +2307,7 @@ mod tests {
             world_state: WorldState::default(),
             story_state: StoryState {
                 current_scene_key: "court-crisis-001".into(),
+                current_beat_id: Some("court-crisis-001-beat-001".into()),
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
@@ -1849,6 +2336,7 @@ mod tests {
                 }],
             }],
             scenes: Vec::new(),
+            ai_safety_policy: Default::default(),
         };
         let manifest = ExportManifest {
             game: project.game.clone(),
@@ -2011,11 +2499,101 @@ mod tests {
         assert_eq!(effect["kind"], "set_resource");
     }
 
+    fn sample_project_data() -> ProjectData {
+        ProjectData {
+            game: GameProject {
+                id: "dynasty-embers".into(),
+                title: "Dynasty Embers".into(),
+                version: "0.1.0".into(),
+                description: "Demo".into(),
+                entry_scene: "court-crisis-001".into(),
+                run_seed: 7,
+            },
+            resources: vec![ResourceDefinition {
+                key: "treasury".into(),
+                label: "Treasury".into(),
+                initial: 40,
+                min: 0,
+                max: 100,
+            }],
+            world_state: WorldState::default(),
+            story_state: StoryState {
+                current_scene_key: "court-crisis-001".into(),
+                current_beat_id: Some("court-crisis-001-beat-001".into()),
+                completed_scene_keys: Vec::new(),
+                turn: 0,
+            },
+            story_craft: StoryCraftState {
+                bible: StoryCraftBible {
+                    genre_promise: "history".into(),
+                    central_question: "survive?".into(),
+                    target_emotions: vec!["pressure".into()],
+                    core_foreshadowing: vec!["ledger".into()],
+                    ..StoryCraftBible::default()
+                },
+                emotional_arc: Vec::new(),
+                plot_threads: Vec::new(),
+                ..StoryCraftState::default()
+            },
+            characters: Vec::new(),
+            rules: vec![Rule {
+                id: "raise-tax".into(),
+                action_type: "raise_tax".into(),
+                conditions: vec![Condition::ResourceAtMost {
+                    key: "treasury".into(),
+                    value: 80,
+                }],
+                effects: vec![Effect::TriggerEvent {
+                    event: "local_tax_resistance".into(),
+                }],
+            }],
+            scenes: Vec::new(),
+            ai_safety_policy: Default::default(),
+        }
+    }
+
+    fn assert_contract_roundtrip_rejects_unknown<T>(contract: T)
+    where
+        T: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + PartialEq,
+    {
+        let encoded = serde_json::to_string_pretty(&contract).expect("serialize contract");
+        let decoded: T = serde_json::from_str(&encoded).expect("deserialize contract");
+        assert_eq!(decoded, contract);
+
+        let mut value: serde_json::Value = serde_json::from_str(&encoded).expect("contract value");
+        value["unknown_field"] = serde_json::json!("not allowed");
+        let error = serde_json::from_value::<T>(value).expect_err("unknown field rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
     fn sample_scene_plan_output_proposal() -> AgentOutputProposal {
         AgentOutputProposal {
             id: "scene-plan-proposal-001".into(),
             agent: AgentRole::ScenePlanner,
-            output: AgentProposalPayload::ScenePlan(sample_scene_plan_proposal()),
+            output: AgentProposalPayload::ScenePlan(Box::new(sample_scene_plan_proposal())),
+        }
+    }
+
+    fn sample_reproducibility_metadata() -> ReproducibilityMetadata {
+        ReproducibilityMetadata {
+            run_seed: 7,
+            prompt_version: "plotforge-agent-text-prompt-v1".into(),
+            model_version: "fake-text-model-v1".into(),
+            provider_config_hash: "sha256:fake-text-provider-config".into(),
+            trace_id: None,
+            snapshot_id: None,
+        }
+    }
+
+    fn sample_agent_output_envelope() -> AgentOutputEnvelope {
+        let proposal = sample_scene_plan_output_proposal();
+        AgentOutputEnvelope {
+            id: "scene-plan-envelope-001".into(),
+            contract_version: CONTRACT_VERSION.into(),
+            schema_version: CONTRACT_SCHEMA_VERSION,
+            agent: proposal.agent.clone(),
+            reproducibility: sample_reproducibility_metadata(),
+            proposal,
         }
     }
 
@@ -2043,6 +2621,7 @@ mod tests {
                 fallback_asset_count: 0,
                 prompt_hashes: vec!["sha256:abc".into()],
             }],
+            ai_safety_policy: Default::default(),
             notices: vec![
                 "No provider credentials, raw provider responses, or private traces are included."
                     .into(),
@@ -2121,10 +2700,10 @@ mod tests {
         AgentOutputProposal {
             id: "beat-drafts-proposal-001".into(),
             agent: AgentRole::BeatWriter,
-            output: AgentProposalPayload::BeatDrafts(BeatDraftsProposal {
+            output: AgentProposalPayload::BeatDrafts(Box::new(BeatDraftsProposal {
                 scene_key: "court-crisis-002".into(),
                 beats: vec![sample_beat_draft_proposal()],
-            }),
+            })),
         }
     }
 
@@ -2132,7 +2711,7 @@ mod tests {
         AgentOutputProposal {
             id: "review-proposal-001".into(),
             agent: AgentRole::PlotDoctor,
-            output: AgentProposalPayload::Review(sample_review_proposal()),
+            output: AgentProposalPayload::Review(Box::new(sample_review_proposal())),
         }
     }
 
@@ -2160,6 +2739,7 @@ mod tests {
                 id: "inspect-corruption".into(),
                 label: "Investigate the collectors".into(),
                 action_type: "inspect_corruption".into(),
+                input_terms: vec!["inspect".into(), "corruption".into()],
                 dramatic_purpose: "Trade court stability for cleaner revenue.".into(),
                 change_scene: true,
             }],
