@@ -6,7 +6,7 @@ use std::{
 
 use plotforge_export::{ExportError, export_static_web};
 use plotforge_media::MediaError;
-use plotforge_schema::ExportManifest;
+use plotforge_schema::{AI_USAGE_MANIFEST_FILE, AiUsageManifest, ExportManifest};
 use plotforge_storage::create_demo_project;
 
 #[test]
@@ -24,6 +24,12 @@ fn export_manifest_contains_entry_scene_and_assets() {
     .expect("parse manifest");
     assert_eq!(manifest.game.title, "Dynasty Embers");
     assert_eq!(manifest.entry_scene, "court-crisis-001");
+    assert_eq!(manifest.profile.id, "static-web");
+    assert!(!manifest.profile.requires_network_at_runtime);
+    assert!(!manifest.profile.includes_provider_config);
+    assert!(!manifest.profile.includes_private_traces);
+    assert!(!manifest.profile.platform_submission_ready);
+    assert_eq!(manifest.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
     assert!(
         manifest
             .assets
@@ -35,6 +41,35 @@ fn export_manifest_contains_entry_scene_and_assets() {
     let expected_files = expected_export_files();
     assert_eq!(report.audit.allowed_files, expected_files);
     assert_eq!(report.audit.files_found, expected_files);
+}
+
+#[test]
+fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    create_demo_project(&project_path, false).expect("create");
+
+    let report = export_static_web(&project_path, &output_dir).expect("export");
+
+    assert_eq!(report.audit.files_found, expected_export_files());
+    let usage_text = fs::read_to_string(output_dir.join(AI_USAGE_MANIFEST_FILE)).expect("usage");
+    let usage: AiUsageManifest = serde_json::from_str(&usage_text).expect("parse usage");
+    assert_eq!(usage.project_id, "dynasty-embers");
+    assert_eq!(usage.export_profile.id, "static-web");
+    assert!(!usage.external_model_calls_during_export);
+    assert!(!usage.provider_credentials_included);
+    assert!(!usage.raw_provider_responses_included);
+    assert!(!usage.private_traces_included);
+    assert!(usage.disclosures.iter().any(|disclosure| {
+        disclosure
+            .asset_paths
+            .contains(&"assets/generated/court-crisis-001.png".into())
+    }));
+    assert_secret_free(&usage_text);
+    assert!(!usage_text.contains("raw_response"));
+    assert!(!usage_text.contains("request_id"));
+    assert!(usage_text.contains("not a legal compliance guarantee"));
 }
 
 #[test]
@@ -105,7 +140,7 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
     .expect("write provider config");
     fs::write(
         project_path.join("agents/raw_responses/scene.json"),
-        r#"{"raw":"provider response"}"#,
+        r#"{"raw":"RAW_PROVIDER_BODY_SHOULD_NOT_EXPORT"}"#,
     )
     .expect("write raw response");
 
@@ -123,8 +158,12 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
         expected_export_files().into_iter().collect::<BTreeSet<_>>()
     );
     let exported_manifest = fs::read_to_string(output_dir.join("game.json")).expect("manifest");
+    let exported_usage =
+        fs::read_to_string(output_dir.join(AI_USAGE_MANIFEST_FILE)).expect("usage");
     assert!(!exported_manifest.contains("sk-test-secret-marker"));
-    assert!(!exported_manifest.contains("provider response"));
+    assert!(!exported_manifest.contains("RAW_PROVIDER_BODY_SHOULD_NOT_EXPORT"));
+    assert!(!exported_usage.contains("sk-test-secret-marker"));
+    assert!(!exported_usage.contains("RAW_PROVIDER_BODY_SHOULD_NOT_EXPORT"));
 }
 
 #[test]
@@ -204,6 +243,7 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
 
 fn expected_export_files() -> Vec<PathBuf> {
     vec![
+        PathBuf::from(AI_USAGE_MANIFEST_FILE),
         PathBuf::from("assets/generated/court-crisis-001.png"),
         PathBuf::from("game.json"),
         PathBuf::from("index.html"),
@@ -211,4 +251,11 @@ fn expected_export_files() -> Vec<PathBuf> {
         PathBuf::from("player.js"),
         PathBuf::from("styles.css"),
     ]
+}
+
+fn assert_secret_free(text: &str) {
+    assert!(!text.contains("OPENAI_API_KEY"));
+    assert!(!text.contains("api_key"));
+    assert!(!text.contains("secret_key"));
+    assert!(!text.contains("sk-"));
 }

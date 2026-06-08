@@ -5,7 +5,11 @@ use std::{
 };
 
 use plotforge_media::{AssetRegistry, MediaError};
-use plotforge_schema::{AssetRecord, ExportManifest};
+use plotforge_schema::{
+    AI_USAGE_MANIFEST_FILE, AiProviderSummary, AiUsageContentKind, AiUsageDisclosure,
+    AiUsageManifest, AiUsageSourceKind, AssetKind, AssetRecord, AssetSourceKind, ExportManifest,
+    ExportProfile,
+};
 use plotforge_storage::{StorageError, load_project};
 use thiserror::Error;
 
@@ -98,15 +102,20 @@ pub fn export_static_web(
         .map(|asset| validate_export_asset_path(asset))
         .collect::<Result<Vec<_>, _>>()?;
     let asset_record_by_export_path = asset_records
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|record| (PathBuf::from(&record.export_path), record))
         .collect::<BTreeMap<_, _>>();
     let allowed_files = allowed_export_files(&asset_paths);
+    let profile = ExportProfile::static_web();
+    let ai_usage = ai_usage_manifest(&project.game, &profile, &asset_records);
     let manifest = ExportManifest {
         game: project.game,
         entry_scene: project.story_state.current_scene_key,
         scenes: project.scenes,
         assets: assets.clone(),
+        profile,
+        ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
         generated_by: "plotforge-export 0.1.0".into(),
     };
     let data = serde_json::to_string_pretty(&manifest).map_err(|source| ExportError::Json {
@@ -114,12 +123,21 @@ pub fn export_static_web(
         source,
     })?;
     assert_no_secret_markers(&data)?;
+    let ai_usage_data =
+        serde_json::to_string_pretty(&ai_usage).map_err(|source| ExportError::Json {
+            path: output_dir.join(AI_USAGE_MANIFEST_FILE),
+            source,
+        })?;
+    assert_no_secret_markers(&ai_usage_data)?;
 
     let data_path = output_dir.join("game.json");
+    let ai_usage_path = output_dir.join(AI_USAGE_MANIFEST_FILE);
     fs::write(&data_path, data + "\n").map_io(&data_path)?;
+    fs::write(&ai_usage_path, ai_usage_data + "\n").map_io(&ai_usage_path)?;
 
     let mut files_written = write_player_package(output_dir)?;
     files_written.push(data_path);
+    files_written.push(ai_usage_path);
     for asset in asset_paths {
         let record = asset_record_by_export_path
             .get(&asset)
@@ -145,6 +163,112 @@ fn write_player_package(output_dir: &Path) -> Result<Vec<PathBuf>, ExportError> 
             Ok(output_path)
         })
         .collect()
+}
+
+fn ai_usage_manifest(
+    game: &plotforge_schema::GameProject,
+    profile: &ExportProfile,
+    asset_records: &[AssetRecord],
+) -> AiUsageManifest {
+    AiUsageManifest {
+        manifest_version: "2026-06-08".into(),
+        project_id: game.id.clone(),
+        project_version: game.version.clone(),
+        export_profile: profile.clone(),
+        generated_by: "plotforge-export 0.1.0".into(),
+        external_model_calls_during_export: false,
+        provider_credentials_included: false,
+        raw_provider_responses_included: false,
+        private_traces_included: false,
+        disclosures: ai_usage_disclosures(asset_records),
+        provider_summaries: ai_provider_summaries(asset_records),
+        notices: vec![
+            "Static export packages project content and reachable assets only.".into(),
+            "No provider credentials, raw provider responses, or private traces are included."
+                .into(),
+            "This manifest is an engineering disclosure surface, not a legal compliance guarantee."
+                .into(),
+        ],
+    }
+}
+
+fn ai_usage_disclosures(asset_records: &[AssetRecord]) -> Vec<AiUsageDisclosure> {
+    let mut disclosures = vec![AiUsageDisclosure {
+        content_kind: AiUsageContentKind::Text,
+        source_kind: AiUsageSourceKind::ProjectSource,
+        summary: "Story text, scene data, and choice text are exported from canonical project source files."
+            .into(),
+        asset_paths: Vec::new(),
+    }];
+    for record in asset_records {
+        disclosures.push(AiUsageDisclosure {
+            content_kind: ai_content_kind(&record.kind),
+            source_kind: ai_source_kind(record),
+            summary: format!(
+                "Reachable {:?} asset included in the static package.",
+                record.kind
+            ),
+            asset_paths: vec![record.export_path.clone()],
+        });
+    }
+    disclosures
+}
+
+fn ai_content_kind(kind: &AssetKind) -> AiUsageContentKind {
+    match kind {
+        AssetKind::Image => AiUsageContentKind::Image,
+        AssetKind::Audio => AiUsageContentKind::Audio,
+        AssetKind::Voice => AiUsageContentKind::Voice,
+        AssetKind::Data => AiUsageContentKind::Data,
+    }
+}
+
+fn ai_source_kind(record: &AssetRecord) -> AiUsageSourceKind {
+    match record.source {
+        AssetSourceKind::UserImport => AiUsageSourceKind::UserImport,
+        AssetSourceKind::Generated => {
+            if record.provider_metadata.as_ref().is_some_and(|metadata| {
+                !matches!(
+                    metadata.provider.as_str(),
+                    "fake-image-provider" | "fake-image" | "plotforge-placeholder"
+                )
+            }) {
+                AiUsageSourceKind::ExternalProvider
+            } else {
+                AiUsageSourceKind::LocalMockProvider
+            }
+        }
+        AssetSourceKind::Placeholder => AiUsageSourceKind::Placeholder,
+        AssetSourceKind::External => AiUsageSourceKind::ExternalProvider,
+    }
+}
+
+fn ai_provider_summaries(asset_records: &[AssetRecord]) -> Vec<AiProviderSummary> {
+    let mut summaries: BTreeMap<(String, Option<String>), AiProviderSummary> = BTreeMap::new();
+    for record in asset_records {
+        let Some(metadata) = record.provider_metadata.as_ref() else {
+            continue;
+        };
+        let key = (metadata.provider.clone(), metadata.model.clone());
+        let summary = summaries.entry(key).or_insert_with(|| AiProviderSummary {
+            provider: metadata.provider.clone(),
+            model: metadata.model.clone(),
+            generated_asset_count: 0,
+            fallback_asset_count: 0,
+            prompt_hashes: Vec::new(),
+        });
+        if metadata.fallback_used {
+            summary.fallback_asset_count += 1;
+        } else {
+            summary.generated_asset_count += 1;
+        }
+        if let Some(prompt_hash) = metadata.prompt_hash.as_ref()
+            && !summary.prompt_hashes.contains(prompt_hash)
+        {
+            summary.prompt_hashes.push(prompt_hash.clone());
+        }
+    }
+    summaries.into_values().collect()
 }
 
 fn copy_referenced_asset(
@@ -187,7 +311,10 @@ fn validate_export_asset_path(asset: &str) -> Result<PathBuf, ExportError> {
 }
 
 fn allowed_export_files(asset_paths: &[PathBuf]) -> BTreeSet<PathBuf> {
-    let mut allowed_files = BTreeSet::from([PathBuf::from("game.json")]);
+    let mut allowed_files = BTreeSet::from([
+        PathBuf::from("game.json"),
+        PathBuf::from(AI_USAGE_MANIFEST_FILE),
+    ]);
     allowed_files.extend(
         PLAYER_PACKAGE_FILES
             .iter()
@@ -283,6 +410,11 @@ mod tests {
 
         assert!(output_dir.join("index.html").exists());
         assert!(output_dir.join("game.json").exists());
+        assert!(
+            output_dir
+                .join(plotforge_schema::AI_USAGE_MANIFEST_FILE)
+                .exists()
+        );
         assert!(
             output_dir
                 .join("assets/generated/court-crisis-001.png")

@@ -124,6 +124,156 @@
       ],
       "type": "string"
     },
+    "AiProviderSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "fallback_asset_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "generated_asset_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_hashes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "generated_asset_count",
+        "fallback_asset_count",
+        "prompt_hashes"
+      ],
+      "type": "object"
+    },
+    "AiUsageContentKind": {
+      "enum": [
+        "text",
+        "image",
+        "audio",
+        "voice",
+        "data"
+      ],
+      "type": "string"
+    },
+    "AiUsageDisclosure": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/AiUsageContentKind"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/AiUsageSourceKind"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_kind",
+        "source_kind",
+        "summary",
+        "asset_paths"
+      ],
+      "type": "object"
+    },
+    "AiUsageManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "disclosures": {
+          "items": {
+            "$ref": "#/$defs/AiUsageDisclosure"
+          },
+          "type": "array"
+        },
+        "export_profile": {
+          "$ref": "#/$defs/ExportProfile"
+        },
+        "external_model_calls_during_export": {
+          "type": "boolean"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "notices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "private_traces_included": {
+          "type": "boolean"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_version": {
+          "type": "string"
+        },
+        "provider_credentials_included": {
+          "type": "boolean"
+        },
+        "provider_summaries": {
+          "items": {
+            "$ref": "#/$defs/AiProviderSummary"
+          },
+          "type": "array"
+        },
+        "raw_provider_responses_included": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "manifest_version",
+        "project_id",
+        "project_version",
+        "export_profile",
+        "generated_by",
+        "external_model_calls_during_export",
+        "provider_credentials_included",
+        "raw_provider_responses_included",
+        "private_traces_included",
+        "disclosures",
+        "provider_summaries",
+        "notices"
+      ],
+      "type": "object"
+    },
+    "AiUsageSourceKind": {
+      "enum": [
+        "project_source",
+        "local_mock_provider",
+        "external_provider",
+        "placeholder",
+        "user_import"
+      ],
+      "type": "string"
+    },
     "AssetKind": {
       "enum": [
         "image",
@@ -617,6 +767,10 @@
     },
     "ExportManifest": {
       "properties": {
+        "ai_usage_manifest_path": {
+          "default": "ai-usage.json",
+          "type": "string"
+        },
         "assets": {
           "items": {
             "type": "string"
@@ -631,6 +785,29 @@
         },
         "generated_by": {
           "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/ExportProfile",
+          "default": {
+            "capabilities": [
+              "local_http",
+              "no_network_player",
+              "static_assets",
+              "standalone_package"
+            ],
+            "id": "static-web",
+            "includes_private_traces": false,
+            "includes_provider_config": false,
+            "intent": "Package a local/self-hosted static player with prebaked project content.",
+            "notes": [
+              "Runs from copied player files and local asset references.",
+              "Does not include provider credentials, raw provider responses, or private traces.",
+              "This profile is an engineering disclosure surface, not a legal compliance guarantee."
+            ],
+            "platform_submission_ready": false,
+            "requires_network_at_runtime": false,
+            "target": "static_web"
+          }
         },
         "scenes": {
           "items": {
@@ -647,6 +824,78 @@
         "generated_by"
       ],
       "type": "object"
+    },
+    "ExportProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/ExportProfileCapability"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "includes_private_traces": {
+          "type": "boolean"
+        },
+        "includes_provider_config": {
+          "type": "boolean"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "platform_submission_ready": {
+          "type": "boolean"
+        },
+        "requires_network_at_runtime": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/ExportProfileTarget"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "intent",
+        "capabilities",
+        "requires_network_at_runtime",
+        "includes_provider_config",
+        "includes_private_traces",
+        "platform_submission_ready",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "ExportProfileCapability": {
+      "enum": [
+        "local_http",
+        "no_network_player",
+        "static_assets",
+        "standalone_package",
+        "runtime_save_restore",
+        "provider_backed_generation",
+        "desktop_shell",
+        "steam_workshop_metadata"
+      ],
+      "type": "string"
+    },
+    "ExportProfileTarget": {
+      "enum": [
+        "static_web",
+        "dynamic_web",
+        "desktop_bundle",
+        "steam_workshop"
+      ],
+      "type": "string"
     },
     "GameProject": {
       "properties": {
@@ -2094,6 +2343,9 @@
     "agent_output_proposal": {
       "$ref": "#/$defs/AgentOutputProposal"
     },
+    "ai_usage_manifest": {
+      "$ref": "#/$defs/AiUsageManifest"
+    },
     "asset_record": {
       "$ref": "#/$defs/AssetRecord"
     },
@@ -2124,6 +2376,7 @@
     "agent_output_proposal",
     "reference_analysis",
     "asset_record",
+    "ai_usage_manifest",
     "export_manifest"
   ],
   "title": "ContractRootSchemas",

@@ -9,6 +9,7 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Mock agent pipeline only; no external model calls are required.
 - Static web export with prebaked scenes and placeholder PNG assets.
 - No-network static player package sourced from `apps/player-web/static` and copied into exports.
+- Export profiles and `ai-usage.json` package disclosure for static exports; these describe capabilities and AI usage evidence without legal or platform approval guarantees.
 - Media asset registry foundation with typed records, SHA-256 hashes, runtime references, provider metadata, and exportable paths.
 - Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
@@ -57,6 +58,7 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - `plotforge-job` owns long-running job state transitions, progress, cancel/retry/timeout, failure, and cost accounting.
 - `plotforge-agent` owns provider ports and image pipeline orchestration; image generation writes through `plotforge-media` and `plotforge-job`.
 - `plotforge-export` packages only reachable referenced assets from the media registry.
+- Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal guarantees, or platform approval promises.
 - `apps/player-web/static` owns the exported static player surface and consumes `ExportManifest` without duplicating runtime/rule logic.
 - Static exports must not include API keys, provider config, raw provider responses, or private traces.
 
