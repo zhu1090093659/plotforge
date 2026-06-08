@@ -1,6 +1,6 @@
 # PlotForge
 
-PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop frontend workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell.
+PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell with a Tauri command bridge.
 
 ## Current Scope
 
@@ -8,7 +8,7 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Folder project source of truth with TOML, JSON, and Markdown.
 - Mock agent pipeline only; no external model calls are required.
 - Static web export with prebaked scenes and placeholder PNG assets.
-- Creator desktop UI skeleton only; Tauri commands, real LLM/image providers, SQLite cache, and Steam/Workshop are deferred.
+- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers, SQLite cache, and Steam/Workshop are deferred.
 
 ## Commands
 
@@ -22,6 +22,7 @@ npm run creator-desktop:dev
 npm run creator-desktop:typecheck
 npm run creator-desktop:test
 npm run creator-desktop:build
+npm run creator-desktop:smoke
 npm run creator-desktop:tauri:check
 npm run creator-desktop:tauri:dev
 npm run creator-desktop:qa
@@ -35,6 +36,7 @@ cargo run -p plotforge-cli -- export static examples/dynasty-embers --out dist/d
 scripts/contracts/export_contracts.sh
 scripts/contracts/check_contracts.sh
 scripts/qa/full_local.sh
+python3 scripts/qa/creator_desktop_build_smoke.py
 python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 ```
 
@@ -48,4 +50,6 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 
 ## QA
 
-The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build/Tauri check, CLI smoke, and export smoke. Codex Desktop Computer Use verification is documented in `scripts/qa/computer_use_static_export.md`; it is intentionally local-only and not part of GitHub Actions.
+The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build/build-smoke/Tauri check, CLI smoke, and export smoke.
+
+Local desktop interaction smoke is documented in `scripts/qa/computer_use_creator_desktop.md` for Creator Desktop and `scripts/qa/computer_use_static_export.md` for static export. Codex Desktop Browser/Computer Use verification is intentionally local-only and not part of GitHub Actions.

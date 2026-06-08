@@ -14,6 +14,7 @@
     "creator-desktop:tauri:check": "npm run tauri:check --workspace @plotforge/creator-desktop",
     "creator-desktop:tauri:dev": "npm run tauri:dev --workspace @plotforge/creator-desktop",
     "creator-desktop:tauri:build": "npm run tauri:build --workspace @plotforge/creator-desktop",
-    "creator-desktop:qa": "npm run creator-desktop:typecheck && npm run creator-desktop:test && npm run creator-desktop:build && npm run creator-desktop:tauri:check"
+    "creator-desktop:smoke": "python3 scripts/qa/creator_desktop_build_smoke.py",
+    "creator-desktop:qa": "npm run creator-desktop:typecheck && npm run creator-desktop:test && npm run creator-desktop:build && npm run creator-desktop:smoke && npm run creator-desktop:tauri:check"
   }
 }

@@ -1,6 +1,6 @@
 # Codex Desktop Computer Use Static Export Smoke
 
-This runbook verifies the exported PlotForge player in a real desktop browser window through Codex Desktop Computer Use. It complements CI; it is not a GitHub Actions dependency.
+This runbook verifies the exported PlotForge player in a real desktop browser window through Codex Desktop Computer Use. It complements CI; it is not a GitHub Actions dependency. Creator Desktop Studio smoke steps live in `scripts/qa/computer_use_creator_desktop.md`.
 
 ## Prepare the Export
 
