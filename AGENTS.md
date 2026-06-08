@@ -32,7 +32,7 @@ The current MVP contains:
 - Media asset records must use structured, redaction-safe provider metadata only; store prompt hashes/request ids when needed, never raw provider responses or secrets.
 - Job records must use typed state, explicit failure objects, injected clocks for deterministic tests, and no hidden global async state.
 - Image provider fallbacks must remain trace-visible and must register placeholder assets as fallback metadata, not as successful generated-cache hits.
-- Spec-driven planning artifacts belong under `docs/archives/<initiative>/` after completion.
+- Spec-driven planning artifacts and progress logs are local/private operator state for this open-source repository; keep them out of Git and under ignored paths unless explicitly approved.
 
 ## Architecture Boundaries
 

@@ -1,16 +1,98 @@
+# OS and editor state
 .DS_Store
-target/
-node_modules/
-dist/
-build/
-apps/creator-desktop/src-tauri/gen/
-*.log
-**/traces/*.json
-**/exports/
-artifacts/qa/
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# Local agent state
+.claude/worktrees/
+
+# Secrets and machine-local config
 .env
 .env.*
 !.env.example
-.idea/
-.vscode/
-.claude/worktrees/
+.envrc
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+
+# Private or internal open-source notes.
+# Public docs should stay under docs/ with ordinary names.
+docs/analysis/
+docs/plan/
+docs/progress/
+docs/archives/
+docs/private/
+docs/internal/
+docs/local/
+docs/confidential/
+docs/**/private/
+docs/**/internal/
+docs/**/local/
+docs/**/confidential/
+docs/**/*.private.md
+docs/**/*.internal.md
+docs/**/*.local.md
+docs/**/*.confidential.md
+*.private.*
+*.internal.*
+*.local.*
+*.confidential.*
+
+# Dependencies, build output, and compiled artifacts
+target/
+node_modules/
+.pnpm-store/
+.yarn/
+dist/
+build/
+coverage/
+.nyc_output/
+.turbo/
+.vite/
+*.tsbuildinfo
+*.profraw
+*.profdata
+apps/creator-desktop/src-tauri/gen/
+*.app/
+*.dmg
+*.pkg
+*.msi
+*.AppImage
+*.deb
+*.rpm
+
+# Logs, QA output, and local reports
+*.log
+logs/
+artifacts/qa/
+playwright-report/
+test-results/
+screenshots/
+*.har
+
+# PlotForge generated project state
+**/.plotforge/
+**/traces/
+**/exports/
+
+# Local Workshop and Steam submission drafts
+workshop-packages/
+steam-submission-kit/
+**/steam-submission-checklist.md
+**/steam-ai-disclosure-draft.md
+**/steam-content-warnings.md
+**/steam-packaging-notes.md
+
+# Local package archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
