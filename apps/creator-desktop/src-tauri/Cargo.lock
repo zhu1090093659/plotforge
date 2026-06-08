@@ -2183,9 +2183,12 @@ dependencies = [
 name = "plotforge-agent"
 version = "0.1.0"
 dependencies = [
+ "plotforge-job",
+ "plotforge-media",
  "plotforge-schema",
  "plotforge-storycraft",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -2205,6 +2208,24 @@ dependencies = [
  "plotforge-schema",
  "plotforge-storage",
  "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "plotforge-job"
+version = "0.1.0"
+dependencies = [
+ "plotforge-schema",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "plotforge-media"
+version = "0.1.0"
+dependencies = [
+ "plotforge-schema",
+ "serde",
+ "sha2",
  "thiserror 2.0.18",
 ]
 
