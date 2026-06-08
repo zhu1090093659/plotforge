@@ -9,9 +9,10 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Mock agent pipeline only; no external model calls are required.
 - Static web export with prebaked scenes and placeholder PNG assets.
 - No-network static player package sourced from `apps/player-web/static` and copied into exports.
-- Export profiles and `ai-usage.json` package disclosure for static exports; these describe capabilities and AI usage evidence without legal or platform approval guarantees.
+- Export profiles and `ai-usage.json` package disclosure for static exports; these describe capabilities and AI usage evidence without legal conclusions or platform approval promises.
 - Local-only Workshop item package schema and validator in `plotforge-workshop`; no Steam API, upload, or release-readiness integration is included.
 - Local Steam Submission Kit draft generation in `plotforge-workshop`; it produces checklist, AI disclosure, content warnings, and packaging-note Markdown drafts from validated package evidence.
+- Steam compliance QA guidance and static no-launch-promise lint for active project-facing docs.
 - Media asset registry foundation with typed records, SHA-256 hashes, runtime references, provider metadata, and exportable paths.
 - Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
@@ -26,6 +27,7 @@ cargo test --workspace
 cargo test -p plotforge-workshop
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+python3 scripts/qa/no_launch_promise_lint.py
 
 npm run creator-desktop:dev
 npm run creator-desktop:typecheck
@@ -61,9 +63,10 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - `plotforge-job` owns long-running job state transitions, progress, cancel/retry/timeout, failure, and cost accounting.
 - `plotforge-agent` owns provider ports and image pipeline orchestration; image generation writes through `plotforge-media` and `plotforge-job`.
 - `plotforge-export` packages only reachable referenced assets from the media registry.
-- Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal guarantees, or platform approval promises.
+- Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal conclusions, or platform approval promises.
 - `plotforge-workshop` owns local Workshop draft package validation. It must not call Steamworks APIs, upload content, or claim release readiness.
 - `plotforge-workshop` also owns Steam Submission Kit draft generation. Generated drafts are local support material only; they do not decide compliance, approval, publishing, or legal status.
+- Steam-facing docs and generated guidance must pass `scripts/qa/no_launch_promise_lint.py`; active docs must not promise automatic publishing, platform outcomes, legal conclusions, or ownership of a creator's Steamworks workflow.
 - `apps/player-web/static` owns the exported static player surface and consumes `ExportManifest` without duplicating runtime/rule logic.
 - Static exports must not include API keys, provider config, raw provider responses, or private traces.
 

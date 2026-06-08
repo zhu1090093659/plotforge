@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 cd "$ROOT"
 
 cargo fmt --all -- --check
+python3 scripts/qa/no_launch_promise_lint.py
 cargo check --workspace
 cargo test --workspace
 scripts/contracts/check_contracts.sh
