@@ -7,8 +7,8 @@ use plotforge_agent::{
 use plotforge_job::JobClock;
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
 use plotforge_schema::{
-    ActionIntentStatus, AgentRole, Beat, Choice, NarrativeReview, REDACTED_TRACE_SECRET,
-    RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
+    ActionIntentStatus, AgentRole, Beat, Choice, Effect, NarrativeReview, REDACTED_TRACE_SECRET,
+    Rule, RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
 };
 use plotforge_storage::dynasty_embers_project;
 
@@ -58,6 +58,42 @@ fn multiple_turns_accumulate_world_state_and_completed_scenes() {
     assert_eq!(second.trace.story_state_after.turn, 2);
     assert!(second.trace.world_state_after.resources["army_morale"] > 45);
     assert_eq!(session.story_state().completed_scene_keys.len(), 2);
+}
+
+#[test]
+fn snapshot_restore_continues_deterministic_multi_turn_session() {
+    let project = dynasty_embers_project();
+    let mut uninterrupted =
+        RuntimeSession::with_scene_planner(project.clone(), FakePlanner::success());
+    uninterrupted.play_once("朕决定加征辽饷").expect("first");
+    let expected_second = uninterrupted
+        .play_once("先拨内帑稳住边军军饷")
+        .expect("second");
+
+    let mut original = RuntimeSession::with_scene_planner(project.clone(), FakePlanner::success());
+    original.play_once("朕决定加征辽饷").expect("first");
+    let snapshot = original.snapshot("save-001", 42);
+    assert_eq!(snapshot.project_id, "dynasty-embers");
+    assert_eq!(snapshot.story_state.turn, 1);
+    assert!(
+        snapshot
+            .scenes
+            .iter()
+            .any(|scene| scene.key == "injected-scene-001")
+    );
+
+    let mut restored =
+        RuntimeSession::with_scene_planner_from_snapshot(project, snapshot, FakePlanner::success())
+            .expect("restore");
+    let restored_second = restored
+        .play_once("先拨内帑稳住边军军饷")
+        .expect("restored second");
+
+    assert_eq!(restored.story_state(), uninterrupted.story_state());
+    assert_eq!(restored.world_state(), uninterrupted.world_state());
+    assert_eq!(restored_second.scene, expected_second.scene);
+    assert_eq!(restored_second.trace.story_state_before.turn, 1);
+    assert_eq!(restored_second.trace.story_state_after.turn, 2);
 }
 
 #[test]
@@ -155,6 +191,39 @@ fn injected_planner_error_does_not_commit_state() {
     assert!(matches!(error, RuntimeEngineError::Planner(_)));
     assert_eq!(session.story_state(), &story_before);
     assert_eq!(session.world_state(), &world_before);
+}
+
+#[test]
+fn failed_rule_after_restore_does_not_corrupt_snapshot_state() {
+    let mut project = dynasty_embers_project();
+    project.rules.push(Rule {
+        id: "invalid-unknown-resource".into(),
+        action_type: "raise_tax".into(),
+        conditions: Vec::new(),
+        effects: vec![Effect::AddResource {
+            key: "missing_resource".into(),
+            amount: 1,
+        }],
+    });
+    let initial_snapshot = RuntimeSession::new(project.clone()).snapshot("save-001", 42);
+    let mut restored =
+        RuntimeSession::from_snapshot(project, initial_snapshot.clone()).expect("restore");
+
+    let error = restored
+        .play_once("朕决定加征辽饷")
+        .expect_err("rule failure");
+
+    assert!(matches!(error, RuntimeEngineError::Rule(_)));
+    let after_error_snapshot = restored.snapshot("save-after-error", 43);
+    assert_eq!(
+        after_error_snapshot.story_state,
+        initial_snapshot.story_state
+    );
+    assert_eq!(
+        after_error_snapshot.world_state,
+        initial_snapshot.world_state
+    );
+    assert_eq!(after_error_snapshot.scenes, initial_snapshot.scenes);
 }
 
 #[test]

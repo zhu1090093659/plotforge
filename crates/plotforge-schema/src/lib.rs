@@ -739,6 +739,17 @@ pub struct RuntimeTrace {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeSnapshot {
+    pub id: String,
+    pub timestamp_ms: u64,
+    pub project_id: String,
+    pub project_version: String,
+    pub story_state: StoryState,
+    pub world_state: WorldState,
+    pub scenes: Vec<Scene>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum JobKind {
     TextGeneration,
@@ -871,6 +882,7 @@ pub struct ExportManifest {
 pub struct ContractRootSchemas {
     pub project_data: ProjectData,
     pub runtime_trace: RuntimeTrace,
+    pub runtime_snapshot: RuntimeSnapshot,
     pub job_record: JobRecord,
     pub agent_output_proposal: AgentOutputProposal,
     pub reference_analysis: ReferenceAnalysis,
@@ -988,6 +1000,7 @@ export interface RuntimeTraceDiagnostic { stage: RuntimeTraceStage; status: Runt
 export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate_rules" | "plan_scene" | "commit_state";
 export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
 export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
+export interface RuntimeSnapshot { id: string; timestamp_ms: number; project_id: string; project_version: string; story_state: StoryState; world_state: WorldState; scenes: Scene[]; }
 
 export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";
@@ -998,7 +1011,7 @@ export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attem
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -1298,6 +1311,43 @@ mod tests {
         let encoded = serde_json::to_string_pretty(&trace).expect("serialize trace");
         let decoded: RuntimeTrace = serde_json::from_str(&encoded).expect("deserialize trace");
         assert_eq!(decoded, trace);
+    }
+
+    #[test]
+    fn runtime_snapshot_roundtrips_json() {
+        let snapshot = RuntimeSnapshot {
+            id: "save-001".into(),
+            timestamp_ms: 42,
+            project_id: "dynasty-embers".into(),
+            project_version: "0.1.0".into(),
+            story_state: StoryState {
+                current_scene_key: "court-crisis-001".into(),
+                completed_scene_keys: vec!["opening-court".into()],
+                turn: 1,
+            },
+            world_state: WorldState {
+                resources: BTreeMap::from([("treasury".into(), 52)]),
+                flags: BTreeMap::from([("corruption_investigation".into(), true)]),
+                triggered_events: vec!["officials_submit_memorials".into()],
+            },
+            scenes: vec![Scene {
+                key: "court-crisis-001".into(),
+                title: "The Red Deficit Ledger".into(),
+                location: "Qianqing Palace".into(),
+                dramatic_purpose: "Keep runtime restore deterministic.".into(),
+                hook: "A saved crisis returns exactly where it paused.".into(),
+                background_asset: "assets/generated/court-crisis-001.png".into(),
+                character_ids: Vec::new(),
+                plot_thread_updates: BTreeMap::new(),
+                beats: Vec::new(),
+            }],
+        };
+
+        let encoded = serde_json::to_string_pretty(&snapshot).expect("serialize snapshot");
+        let decoded: RuntimeSnapshot =
+            serde_json::from_str(&encoded).expect("deserialize snapshot");
+
+        assert_eq!(decoded, snapshot);
     }
 
     #[test]

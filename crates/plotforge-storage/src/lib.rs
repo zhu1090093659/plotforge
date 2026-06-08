@@ -7,8 +7,8 @@ use std::{
 use plotforge_schema::{
     Beat, Character, Choice, Condition, Effect, GameProject, MAX_REFERENCE_STRUCTURE_NOTE_CHARS,
     MAX_REFERENCE_SUMMARY_CHARS, PlotThread, ProjectData, ReferenceAnalysis, ReferenceRights,
-    ReferenceSource, ReferenceSourceType, ReferenceStructureNote, ResourceDefinition, Rule, Scene,
-    StoryState, WorldState,
+    ReferenceSource, ReferenceSourceType, ReferenceStructureNote, ResourceDefinition, Rule,
+    RuntimeSnapshot, Scene, StoryState, WorldState,
 };
 use plotforge_storycraft::dynasty_embers_story_craft;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -40,6 +40,8 @@ pub enum StorageError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("invalid runtime snapshot id: {0}")]
+    InvalidRuntimeSnapshotId(String),
     #[error("reference compliance error at {path}: {reason}")]
     ReferenceCompliance { path: PathBuf, reason: String },
 }
@@ -158,6 +160,43 @@ pub fn write_trace(
     let latest_path = traces_dir.join("latest.json");
     write_json(&latest_path, trace)?;
     Ok(trace_path)
+}
+
+pub fn write_runtime_snapshot(
+    project_path: impl AsRef<Path>,
+    snapshot: &RuntimeSnapshot,
+) -> Result<PathBuf, StorageError> {
+    validate_runtime_snapshot_id(&snapshot.id)?;
+    let saves_dir = project_path.as_ref().join("saves");
+    fs::create_dir_all(&saves_dir).map_io(&saves_dir)?;
+    let snapshot_path = saves_dir.join(runtime_snapshot_file_name(&snapshot.id));
+    write_json(&snapshot_path, snapshot)?;
+    let latest_path = saves_dir.join("latest.runtime_snapshot.json");
+    write_json(&latest_path, snapshot)?;
+    Ok(snapshot_path)
+}
+
+pub fn read_runtime_snapshot(
+    project_path: impl AsRef<Path>,
+    snapshot_id: &str,
+) -> Result<RuntimeSnapshot, StorageError> {
+    validate_runtime_snapshot_id(snapshot_id)?;
+    read_json(
+        &project_path
+            .as_ref()
+            .join("saves")
+            .join(runtime_snapshot_file_name(snapshot_id)),
+    )
+}
+
+pub fn read_latest_runtime_snapshot(
+    project_path: impl AsRef<Path>,
+) -> Result<RuntimeSnapshot, StorageError> {
+    read_json(
+        &project_path
+            .as_ref()
+            .join("saves/latest.runtime_snapshot.json"),
+    )
 }
 
 pub fn dynasty_embers_project() -> ProjectData {
@@ -557,6 +596,23 @@ fn reference_compliance_error(path: &Path, reason: impl Into<String>) -> Storage
     StorageError::ReferenceCompliance {
         path: path.to_path_buf(),
         reason: reason.into(),
+    }
+}
+
+fn runtime_snapshot_file_name(snapshot_id: &str) -> String {
+    format!("{snapshot_id}.runtime_snapshot.json")
+}
+
+fn validate_runtime_snapshot_id(snapshot_id: &str) -> Result<(), StorageError> {
+    let valid = !snapshot_id.is_empty()
+        && snapshot_id != "latest"
+        && snapshot_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+    if valid {
+        Ok(())
+    } else {
+        Err(StorageError::InvalidRuntimeSnapshotId(snapshot_id.into()))
     }
 }
 
