@@ -4,9 +4,13 @@ PlotForge can generate local Steam Submission Kit draft documents from a validat
 
 Generated files:
 
+- `steam-store-copy-draft.md`
 - `steam-submission-checklist.md`
 - `steam-ai-disclosure-draft.md`
 - `steam-content-warnings.md`
+- `steam-asset-references.md`
+- `steam-direct-checklist.md`
+- `steam-content-safety-checklist.md`
 - `steam-packaging-notes.md`
 
 The drafts are support material for a responsible developer. Before any external submission, recheck current Steamworks requirements and edit the drafts against the actual build, store page, screenshots, capsule assets, AI policy, moderation policy, and content warnings. The project QA boundary for Steam-facing text is documented in [Steam Compliance QA Boundary](steam-compliance-qa.md).
@@ -22,7 +26,7 @@ Boundary rules:
 
 - Do not put provider credentials, raw provider responses, private traces, Steam app IDs, or upload state into generated drafts.
 - Do not describe the kit as a compliance determination, platform approval, or publishing automation.
-- Keep generated content deterministic and snapshot-tested when changing checklist, AI disclosure, or content warning text.
+- Keep generated content deterministic and snapshot-tested when changing store copy, checklist, AI disclosure, content warning, asset reference, Steam Direct, content safety, or packaging-note text.
 
 ## Local Evidence Workflow
 

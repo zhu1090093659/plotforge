@@ -19,7 +19,7 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
 - Rebuildable SQLite cache/index for project summaries, source file hashes, trace metadata, and asset metadata; folder files remain source of truth.
-- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers and Steam/Workshop are deferred.
+- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers, real Steamworks API calls, hosted sharing, and paid Workshop flows are deferred.
 
 ## Commands
 

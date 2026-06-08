@@ -382,16 +382,7 @@ pub fn generate_workshop_publish_draft(
         content_root: report.manifest.content_root.clone(),
         tags: report.manifest.tags.clone(),
         ai_usage_manifest_path: report.manifest.ai_usage_manifest_path.clone(),
-        package_files: report
-            .files
-            .iter()
-            .map(|file| WorkshopPackageFile {
-                path: file.path.to_string_lossy().replace('\\', "/"),
-                content_hash: file.content_hash.clone(),
-                hash_algorithm: WORKSHOP_HASH_ALGORITHM.into(),
-                byte_length: file.byte_length,
-            })
-            .collect(),
+        package_files: workshop_package_files_from_report(report),
         generated_by: "plotforge-workshop 0.1.0".into(),
         upload_enabled: false,
         requires_explicit_steamworks_credentials: true,
@@ -456,12 +447,7 @@ pub fn upload_workshop_publish_draft<P: SteamworksUploadPort>(
     validate_library_text(credential_label, "credential label")?;
     validate_workshop_publish_draft(draft)?;
     let validation_report = validate_workshop_package(package_dir.as_ref())?;
-    if validation_report.manifest.package_id != draft.package_id {
-        return Err(WorkshopPackageError::InvalidSteamworksUpload(format!(
-            "publish draft package id {} does not match package {}",
-            draft.package_id, validation_report.manifest.package_id
-        )));
-    }
+    validate_publish_draft_matches_report(draft, &validation_report)?;
 
     let request = SteamworksUploadRequest {
         package_dir: package_dir.as_ref().to_path_buf(),
@@ -1020,6 +1006,58 @@ fn validate_workshop_publish_draft(
         validate_file_metadata(file)?;
     }
     Ok(())
+}
+
+fn validate_publish_draft_matches_report(
+    draft: &WorkshopPublishDraft,
+    report: &WorkshopPackageValidationReport,
+) -> Result<(), WorkshopPackageError> {
+    let manifest = &report.manifest;
+    if draft.package_id != manifest.package_id {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(format!(
+            "publish draft package id {} does not match package {}",
+            draft.package_id, manifest.package_id
+        )));
+    }
+    if draft.title != manifest.title
+        || draft.description != manifest.description
+        || draft.visibility != manifest.visibility
+        || draft.preview_image != manifest.preview_image
+        || draft.content_root != manifest.content_root
+        || draft.tags != manifest.tags
+        || draft.ai_usage_manifest_path != manifest.ai_usage_manifest_path
+    {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(
+            "publish draft metadata does not match the validated workshop package".into(),
+        ));
+    }
+
+    let mut expected_files = workshop_package_files_from_report(report);
+    let mut draft_files = draft.package_files.clone();
+    expected_files.sort_by(|left, right| left.path.cmp(&right.path));
+    draft_files.sort_by(|left, right| left.path.cmp(&right.path));
+    if draft_files != expected_files {
+        return Err(WorkshopPackageError::InvalidSteamworksUpload(
+            "publish draft package files do not match the validated workshop package".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn workshop_package_files_from_report(
+    report: &WorkshopPackageValidationReport,
+) -> Vec<WorkshopPackageFile> {
+    report
+        .files
+        .iter()
+        .map(|file| WorkshopPackageFile {
+            path: file.path.to_string_lossy().replace('\\', "/"),
+            content_hash: file.content_hash.clone(),
+            hash_algorithm: WORKSHOP_HASH_ALGORITHM.into(),
+            byte_length: file.byte_length,
+        })
+        .collect()
 }
 
 fn validate_file_metadata(record: &WorkshopPackageFile) -> Result<(), WorkshopPackageError> {
@@ -2325,6 +2363,30 @@ Draft support material only. The creator must review the shipped build, screensh
         assert!(matches!(
             credentials_error,
             WorkshopPackageError::SteamworksCredentialsMissing
+        ));
+        assert_eq!(adapter.calls.get(), 0);
+    }
+
+    #[test]
+    fn upload_workshop_publish_draft_rejects_stale_or_tampered_draft_before_adapter_call() {
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+        let mut draft = validated_publish_draft(package.path());
+        draft.package_files[0].content_hash = sha256_hex(b"tampered package file");
+        let adapter = FakeSteamworksUploadPort::default();
+        let enabled = SteamworksUploadConfig {
+            enabled: true,
+            credential_label: Some("steamworks-local-test-label".into()),
+            app_access_confirmed: true,
+        };
+
+        let error = upload_workshop_publish_draft(&adapter, &enabled, package.path(), &draft)
+            .expect_err("tampered publish draft");
+
+        assert!(matches!(
+            error,
+            WorkshopPackageError::InvalidSteamworksUpload(message)
+                if message.contains("package files do not match")
         ));
         assert_eq!(adapter.calls.get(), 0);
     }
