@@ -29,7 +29,7 @@
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 0 | 5 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 0 | 5 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 0 | 4 | 4 |
-| 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 2 | 2 | 4 |
+| 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 1 | 3 | 4 |
 | 6 | Steam and Workshop Exploration | https://github.com/zhu1090093659/plotforge/milestone/14 | 3 | 0 | 3 |
 
 ## Issue Mapping
@@ -57,7 +57,7 @@
 | T4.4 | #39 | Integrate media references into runtime and export | closed by PR #65 |
 | T5.1 | #40 | Add save and restore runtime snapshots | closed by PR #66 |
 | T5.2 | #41 | Add SQLite cache and index as non-source-of-truth | closed by PR #67 |
-| T5.3 | #42 | Promote player web and export v2 package | open |
+| T5.3 | #42 | Promote player web and export v2 package | closed by PR #68 |
 | T5.4 | #43 | Add export profiles and AI Usage Manifest base | open |
 | T6.1 | #44 | Add Workshop item package schema and validator | open |
 | T6.2 | #45 | Add Steam Submission Kit draft generator | open |
@@ -77,13 +77,13 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 - [x] Phase 2: Story Craft and Provider Contracts (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [x] Phase 3: Desktop Studio Skeleton (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [x] Phase 4: Media and Job Pipeline (4/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
-- [ ] Phase 5: Persistence, Debugger, and Export v2 (2/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
+- [ ] Phase 5: Persistence, Debugger, and Export v2 (3/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
 - [ ] Phase 6: Steam and Workshop Exploration (0/3 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/14)
 
 ## Current Status
 
 **Active Phase**: Phase 5 — Persistence, Debugger, and Export v2
-**Active Task**: T5.3 Promote player web and export v2 package (Issue #42)
+**Active Task**: T5.4 Add export profiles and AI Usage Manifest base (Issue #43)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #42: promote player web and export v2 package.
+1. Implement #43: add export profiles and AI Usage Manifest base.
 2. Keep persistence/debugger/export behavior behind typed runtime, storage, and export contracts.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -130,3 +130,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-08 | Execution | Completed #39 via PR #65: added typed runtime media references, regenerated contracts, exported only reachable referenced `plotforge-media` assets, excluded unreferenced project assets, updated Creator Desktop fixtures and AGENTS/README rules, full local QA, green GitHub Actions, and closed Phase 4 milestone with drift_score 0. |
 | 2026-06-08 | Execution | Completed #40 via PR #66: added typed `RuntimeSnapshot` schema/contracts, runtime snapshot/restore APIs with project id/version/current-scene validation, storage snapshot read/write helpers with safe ids and latest mirror, save roundtrip, deterministic multi-turn restore, failed-rule no-corruption tests, full local QA, and green GitHub Actions. |
 | 2026-06-08 | Execution | Completed #41 via PR #67: added optional `.plotforge/cache.sqlite` cache/index with schema migrations, project/source/trace/asset metadata tables, rebuild-from-folder API, cache miss and source-precedence tests, `rusqlite` bundled dependency, AGENTS/README cache invariant updates, full local QA, and green GitHub Actions. |
+| 2026-06-08 | Execution | Completed #42 via PR #68: promoted `apps/player-web/static` to the no-network export player package, replaced inline export HTML with package file copying, added player DOM/mobile/no-network tests, strengthened export package and HTTP smoke checks, wired player-web QA into full local QA and CI, verified with Codex in-app Browser desktop/mobile smoke, and green GitHub Actions. |
