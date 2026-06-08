@@ -1,6 +1,6 @@
 # PlotForge
 
-PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, media asset registry foundations, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell with a Tauri command bridge.
+PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, media asset registry and job queue foundations, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell with a Tauri command bridge.
 
 ## Current Scope
 
@@ -9,6 +9,7 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Mock agent pipeline only; no external model calls are required.
 - Static web export with prebaked scenes and placeholder PNG assets.
 - Media asset registry foundation with typed records, SHA-256 hashes, references, provider metadata, and exportable paths.
+- Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers, SQLite cache, and Steam/Workshop are deferred.
 
 ## Commands
@@ -48,6 +49,7 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - AI or mock agents propose content; runtime and rule engine commit state.
 - Folder project files are source of truth; caches must be rebuildable.
 - `plotforge-media` owns the media registry foundation: asset records, hashes, refs, provider metadata, path safety, and reachability.
+- `plotforge-job` owns long-running job state transitions, progress, cancel/retry/timeout, failure, and cost accounting.
 - Static exports must not include API keys, provider config, raw provider responses, or private traces.
 
 ## QA
