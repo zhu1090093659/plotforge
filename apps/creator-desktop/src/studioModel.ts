@@ -101,14 +101,14 @@ export const studioSections: StudioSection[] = [
     id: "playtest",
     label: "Playtest",
     description: "Local runtime preview",
-    status: "later",
+    status: "ready",
     icon: Play,
   },
   {
     id: "debugger",
     label: "Debugger",
     description: "Trace, diagnostics, review notes",
-    status: "later",
+    status: "ready",
     icon: Bug,
   },
   {

@@ -1,5 +1,6 @@
 import type { ProjectData } from "../../../contracts/plotforge";
 import {
+  demoPlayOnceReport,
   demoProjectData,
   demoProjectPath,
   demoSourceContents,
@@ -7,6 +8,7 @@ import {
 } from "./demoStudioData";
 import {
   studioBridge,
+  type PlayOnceReport,
   type ProjectCheckReport,
   type SourceFileContent,
   type SourceFileSummary,
@@ -16,6 +18,7 @@ export interface StudioDataSource {
   runtimeName: string;
   openProject(path: string): Promise<ProjectData>;
   checkProject(path: string): Promise<ProjectCheckReport>;
+  playOnceProject(path: string, playerInput: string): Promise<PlayOnceReport>;
   listSourceFiles(path: string): Promise<SourceFileSummary[]>;
   readSourceFile(path: string, relativePath: string): Promise<SourceFileContent>;
   writeSourceFile(
@@ -30,6 +33,7 @@ export function createTauriStudioDataSource(): StudioDataSource {
     runtimeName: "Tauri desktop",
     openProject: studioBridge.openProject,
     checkProject: studioBridge.checkProject,
+    playOnceProject: studioBridge.playOnceProject,
     listSourceFiles: studioBridge.listSourceFiles,
     readSourceFile: studioBridge.readSourceFile,
     writeSourceFile: studioBridge.writeSourceFile,
@@ -57,6 +61,9 @@ export function createBrowserPreviewDataSource(): StudioDataSource {
         rule_count: demoProjectData.rules.length,
         character_count: demoProjectData.characters.length,
       };
+    },
+    async playOnceProject(_path, playerInput) {
+      return demoPlayOnceReport(playerInput);
     },
     async listSourceFiles() {
       return demoSourceFiles.map((file) => ({ ...file }));

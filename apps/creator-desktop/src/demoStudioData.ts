@@ -1,5 +1,9 @@
 import type { ProjectData } from "../../../contracts/plotforge";
-import type { SourceFileContent, SourceFileSummary } from "./tauriBridge";
+import type {
+  PlayOnceReport,
+  SourceFileContent,
+  SourceFileSummary,
+} from "./tauriBridge";
 
 export const demoProjectPath = "examples/dynasty-embers";
 
@@ -192,3 +196,97 @@ export const demoSourceContents: Record<string, SourceFileContent> = {
     content: '{\n  "key": "court-crisis-001",\n  "title": "Tax Resistance Memorials"\n}\n',
   },
 };
+
+export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
+  return {
+    scene: demoProjectData.scenes[0],
+    trace_path: `${demoProjectPath}/traces/trace-001.json`,
+    delta_summary: [
+      "public_order: -8",
+      "treasury: +12",
+      "event: local_tax_resistance",
+    ],
+    trace: {
+      id: "trace-001",
+      timestamp_ms: 1,
+      player_input: playerInput,
+      selected_choice: "raise-tax",
+      action_intent: {
+        status: "supported",
+        action_type: "raise_tax",
+        matched_terms: ["tax"],
+        reason: null,
+      },
+      rule_result: {
+        action_type: "raise_tax",
+        delta_empty: false,
+        state_committed: true,
+        error: null,
+      },
+      planner_result: {
+        requested_action_type: "raise_tax",
+        scene_key: "court-crisis-001",
+        fallback_used: false,
+        error: null,
+      },
+      diagnostics: [
+        {
+          stage: "interpret_action",
+          status: "completed",
+          message: "action `raise_tax` matched 1 term(s)",
+        },
+        {
+          stage: "select_choice",
+          status: "completed",
+          message: "selected choice `raise-tax`",
+        },
+        {
+          stage: "evaluate_rules",
+          status: "completed",
+          message: "rules evaluated for `raise_tax` and produced a world delta",
+        },
+        {
+          stage: "plan_scene",
+          status: "completed",
+          message: "planner returned scene `court-crisis-001`",
+        },
+        {
+          stage: "commit_state",
+          status: "completed",
+          message: "committed story turn 1",
+        },
+      ],
+      world_state_before: demoProjectData.world_state,
+      world_state_delta: {
+        resource_changes: { public_order: -8, treasury: 12 },
+        resource_sets: {},
+        flags: {},
+        triggered_events: ["local_tax_resistance"],
+      },
+      world_state_after: {
+        resources: { treasury: 52, public_order: 47, army_morale: 45 },
+        flags: {},
+        triggered_events: ["local_tax_resistance"],
+      },
+      story_state_before: demoProjectData.story_state,
+      story_state_after: {
+        current_scene_key: "court-crisis-001",
+        completed_scene_keys: ["court-crisis-001"],
+        turn: 1,
+      },
+      narrative_review: {
+        scene_key: "court-crisis-001",
+        score: 100,
+        hook_score: 100,
+        pacing_score: 100,
+        character_consistency_score: 100,
+        payoff_score: 100,
+        choice_meaningfulness_score: 100,
+        ai_slop_risk: 0,
+        issues: [],
+      },
+      errors: [],
+      fallback_used: false,
+    },
+  };
+}
