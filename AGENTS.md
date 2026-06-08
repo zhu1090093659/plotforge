@@ -21,7 +21,7 @@ The current MVP contains:
 - Folder project files are the source of truth for game projects; generated caches, exports, traces, and build artifacts must be rebuildable.
 - `examples/dynasty-embers` must remain a valid fixture and must stay semantically aligned with `create_demo_project`.
 - Runtime traces are generated evidence, not committed fixture state.
-- Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
+- Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, media references, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
 - Media asset records must use structured, redaction-safe provider metadata only; store prompt hashes/request ids when needed, never raw provider responses or secrets.
 - Job records must use typed state, explicit failure objects, injected clocks for deterministic tests, and no hidden global async state.
 - Image provider fallbacks must remain trace-visible and must register placeholder assets as fallback metadata, not as successful generated-cache hits.
@@ -33,7 +33,7 @@ The current MVP contains:
 - Keep runtime state transitions in `plotforge-runtime`; agents propose content and runtime/rules commit state.
 - Player/freeform input must resolve to a typed `ActionIntent`; unsupported input must not mutate runtime state or silently map to a default action.
 - Keep persistence and fixture file layout in `plotforge-storage`.
-- Keep static export behavior in `plotforge-export`; exported bundles must not include private traces, provider config, raw provider responses, or secrets.
+- Keep static export behavior in `plotforge-export`; exported bundles must copy only reachable referenced assets from `plotforge-media` and must not include private traces, provider config, raw provider responses, unreferenced assets, or secrets.
 - Keep asset registry records, content hashes, references, provider metadata, and reachability in `plotforge-media`; as export, runtime, Studio, and future providers integrate media, consume this boundary instead of adding a second media registry implementation.
 - Keep long-running task state transitions, cancel/retry/timeout/progress, and cost accounting in `plotforge-job`; provider/runtime/export adapters should not own parallel job state machines.
 - Keep image provider ports and scene image pipeline orchestration in `plotforge-agent`; image providers should feed `plotforge-media` and `plotforge-job` instead of bypassing those boundaries.

@@ -1410,6 +1410,21 @@
       ],
       "type": "object"
     },
+    "RuntimeMediaReference": {
+      "properties": {
+        "project_path": {
+          "type": "string"
+        },
+        "reference": {
+          "$ref": "#/$defs/AssetReference"
+        }
+      },
+      "required": [
+        "reference",
+        "project_path"
+      ],
+      "type": "object"
+    },
     "RuntimePlannerResult": {
       "properties": {
         "error": {
@@ -1501,6 +1516,13 @@
         },
         "id": {
           "type": "string"
+        },
+        "media_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RuntimeMediaReference"
+          },
+          "type": "array"
         },
         "narrative_review": {
           "anyOf": [

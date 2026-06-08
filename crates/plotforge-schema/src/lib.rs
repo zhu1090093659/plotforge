@@ -667,6 +667,12 @@ pub struct RuntimePlannerResult {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeMediaReference {
+    pub reference: AssetReference,
+    pub project_path: String,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeTraceDiagnostic {
     pub stage: RuntimeTraceStage,
     pub status: RuntimeTraceStageStatus,
@@ -726,6 +732,8 @@ pub struct RuntimeTrace {
     pub story_state_before: StoryState,
     pub story_state_after: StoryState,
     pub narrative_review: Option<NarrativeReview>,
+    #[serde(default)]
+    pub media_references: Vec<RuntimeMediaReference>,
     pub errors: Vec<RuntimeError>,
     pub fallback_used: bool,
 }
@@ -975,10 +983,11 @@ export type Severity = "info" | "warning" | "error";
 export interface RuntimeError { code: string; message: string; }
 export interface RuntimeRuleResult { action_type: string; delta_empty: boolean; state_committed: boolean; error?: RuntimeError | null; }
 export interface RuntimePlannerResult { requested_action_type: string; scene_key?: string | null; fallback_used: boolean; error?: RuntimeError | null; }
+export interface RuntimeMediaReference { reference: AssetReference; project_path: string; }
 export interface RuntimeTraceDiagnostic { stage: RuntimeTraceStage; status: RuntimeTraceStageStatus; message: string; }
 export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate_rules" | "plan_scene" | "commit_state";
 export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
-export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; errors: RuntimeError[]; fallback_used: boolean; }
+export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
 
 export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";
@@ -1274,6 +1283,14 @@ mod tests {
             story_state_before: story_state.clone(),
             story_state_after: story_state,
             narrative_review: None,
+            media_references: vec![RuntimeMediaReference {
+                reference: AssetReference {
+                    reference_kind: AssetReferenceKind::Scene,
+                    reference_id: "court-crisis-001".into(),
+                    slot: "background_asset".into(),
+                },
+                project_path: "assets/generated/court-crisis-001.png".into(),
+            }],
             errors: Vec::new(),
             fallback_used: false,
         };

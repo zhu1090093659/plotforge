@@ -285,6 +285,16 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
         ai_slop_risk: 0,
         issues: [],
       },
+      media_references: [
+        {
+          reference: {
+            reference_kind: "scene",
+            reference_id: "court-crisis-001",
+            slot: "background_asset",
+          },
+          project_path: "assets/generated/court-crisis-001.png",
+        },
+      ],
       errors: [],
       fallback_used: false,
     },

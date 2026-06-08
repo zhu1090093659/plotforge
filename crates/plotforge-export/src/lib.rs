@@ -1,17 +1,20 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
 };
 
-use plotforge_schema::ExportManifest;
-use plotforge_storage::{StorageError, load_project, write_placeholder_png};
+use plotforge_media::{AssetRegistry, MediaError};
+use plotforge_schema::{AssetRecord, ExportManifest};
+use plotforge_storage::{StorageError, load_project};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ExportError {
     #[error(transparent)]
     Storage(#[from] StorageError),
+    #[error(transparent)]
+    Media(#[from] MediaError),
     #[error("io error at {path}: {source}")]
     Io {
         path: PathBuf,
@@ -51,16 +54,23 @@ pub fn export_static_web(
     project_path: impl AsRef<Path>,
     output_dir: impl AsRef<Path>,
 ) -> Result<ExportReport, ExportError> {
+    let project_path = project_path.as_ref();
     let project = load_project(project_path)?;
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir).map_io(output_dir)?;
     fs::create_dir_all(output_dir.join("assets/generated"))
         .map_io(output_dir.join("assets/generated"))?;
 
-    let assets = project
-        .scenes
+    let mut asset_registry = AssetRegistry::new();
+    asset_registry.register_scene_background_assets(project_path, &project)?;
+    let asset_records = asset_registry
+        .reachable_records()
+        .into_iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    let assets = asset_records
         .iter()
-        .map(|scene| scene.background_asset.clone())
+        .map(|record| record.export_path.clone())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -68,6 +78,10 @@ pub fn export_static_web(
         .iter()
         .map(|asset| validate_export_asset_path(asset))
         .collect::<Result<Vec<_>, _>>()?;
+    let asset_record_by_export_path = asset_records
+        .into_iter()
+        .map(|record| (PathBuf::from(&record.export_path), record))
+        .collect::<BTreeMap<_, _>>();
     let allowed_files = allowed_export_files(&asset_paths);
     let manifest = ExportManifest {
         game: project.game,
@@ -89,8 +103,10 @@ pub fn export_static_web(
 
     let mut files_written = vec![index_path, data_path];
     for asset in asset_paths {
-        let asset_path = output_dir.join(&asset);
-        write_placeholder_png(&asset_path)?;
+        let record = asset_record_by_export_path
+            .get(&asset)
+            .ok_or_else(|| ExportError::MissingPackageFile(asset.clone()))?;
+        let asset_path = copy_referenced_asset(project_path, output_dir, record)?;
         files_written.push(asset_path);
     }
     let audit = audit_export_package(output_dir, &allowed_files)?;
@@ -100,6 +116,21 @@ pub fn export_static_web(
         files_written,
         audit,
     })
+}
+
+fn copy_referenced_asset(
+    project_path: &Path,
+    output_dir: &Path,
+    record: &AssetRecord,
+) -> Result<PathBuf, ExportError> {
+    let source_path = project_path.join(&record.project_path);
+    let output_path = output_dir.join(&record.export_path);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_io(parent)?;
+    }
+    fs::metadata(&source_path).map_io(&source_path)?;
+    fs::copy(&source_path, &output_path).map_io(&output_path)?;
+    Ok(output_path)
 }
 
 fn assert_no_secret_markers(data: &str) -> Result<(), ExportError> {

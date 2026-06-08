@@ -66,10 +66,11 @@ export type Severity = "info" | "warning" | "error";
 export interface RuntimeError { code: string; message: string; }
 export interface RuntimeRuleResult { action_type: string; delta_empty: boolean; state_committed: boolean; error?: RuntimeError | null; }
 export interface RuntimePlannerResult { requested_action_type: string; scene_key?: string | null; fallback_used: boolean; error?: RuntimeError | null; }
+export interface RuntimeMediaReference { reference: AssetReference; project_path: string; }
 export interface RuntimeTraceDiagnostic { stage: RuntimeTraceStage; status: RuntimeTraceStageStatus; message: string; }
 export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate_rules" | "plan_scene" | "commit_state";
 export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
-export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; errors: RuntimeError[]; fallback_used: boolean; }
+export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
 
 export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";

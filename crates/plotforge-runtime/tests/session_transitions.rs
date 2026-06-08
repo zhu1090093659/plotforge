@@ -254,6 +254,15 @@ fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
     assert!(!planner_result.fallback_used);
     assert!(planner_result.error.is_none());
 
+    assert_eq!(step.trace.media_references.len(), 1);
+    let media_reference = &step.trace.media_references[0];
+    assert_eq!(media_reference.reference.reference_id, "court-crisis-001");
+    assert_eq!(media_reference.reference.slot, "background_asset");
+    assert_eq!(
+        media_reference.project_path,
+        "assets/generated/court-crisis-001.png"
+    );
+
     assert!(step.trace.diagnostics.iter().any(|diagnostic| {
         diagnostic.stage == RuntimeTraceStage::InterpretAction
             && diagnostic.status == RuntimeTraceStageStatus::Completed

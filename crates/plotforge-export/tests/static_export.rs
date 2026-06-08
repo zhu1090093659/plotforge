@@ -5,6 +5,7 @@ use std::{
 };
 
 use plotforge_export::{ExportError, export_static_web};
+use plotforge_media::MediaError;
 use plotforge_schema::ExportManifest;
 use plotforge_storage::create_demo_project;
 
@@ -107,6 +108,39 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
 }
 
 #[test]
+fn export_copies_only_referenced_media_registry_assets() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    create_demo_project(&project_path, false).expect("create");
+    fs::write(
+        project_path.join("assets/generated/unused-generated.png"),
+        b"unused generated image bytes",
+    )
+    .expect("write unused asset");
+    let source_bytes =
+        fs::read(project_path.join("assets/generated/court-crisis-001.png")).expect("source png");
+
+    let report = export_static_web(&project_path, &output_dir).expect("export");
+
+    assert_eq!(
+        fs::read(output_dir.join("assets/generated/court-crisis-001.png")).expect("exported png"),
+        source_bytes
+    );
+    assert!(
+        !output_dir
+            .join("assets/generated/unused-generated.png")
+            .exists()
+    );
+    assert!(
+        !report
+            .audit
+            .files_found
+            .contains(&PathBuf::from("assets/generated/unused-generated.png"))
+    );
+}
+
+#[test]
 fn export_rejects_stale_disallowed_files_in_output_package() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
@@ -141,6 +175,9 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
 
     let error = export_static_web(&project_path, &output_dir).expect_err("unsafe asset");
 
-    assert!(matches!(error, ExportError::UnsafeAssetPath(_)));
+    assert!(matches!(
+        error,
+        ExportError::Media(MediaError::UnsafeAssetPath(_))
+    ));
     assert!(!temp.path().join("traces/latest.json").exists());
 }
