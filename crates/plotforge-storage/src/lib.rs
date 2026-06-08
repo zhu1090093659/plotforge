@@ -14,6 +14,13 @@ use plotforge_storycraft::dynasty_embers_story_craft;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
+mod sqlite_cache;
+
+pub use sqlite_cache::{
+    SQLITE_CACHE_SCHEMA_VERSION, SqliteCacheSummary, read_sqlite_cache_summary,
+    rebuild_sqlite_cache, sqlite_cache_path,
+};
+
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("project path already exists and is not empty: {0}")]
@@ -40,6 +47,24 @@ pub enum StorageError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("sqlite error at {path}: {source}")]
+    Sqlite {
+        path: PathBuf,
+        #[source]
+        source: rusqlite::Error,
+    },
+    #[error("media cache error at {path}: {source}")]
+    Media {
+        path: PathBuf,
+        #[source]
+        source: plotforge_media::MediaError,
+    },
+    #[error("unsupported sqlite cache schema version: expected {expected}, got {actual}")]
+    UnsupportedSqliteCacheSchemaVersion { expected: u32, actual: u32 },
+    #[error("invalid sqlite cache value: {0}")]
+    InvalidSqliteCacheValue(String),
+    #[error("project path cannot be indexed as UTF-8: {0}")]
+    InvalidProjectPath(PathBuf),
     #[error("invalid runtime snapshot id: {0}")]
     InvalidRuntimeSnapshotId(String),
     #[error("reference compliance error at {path}: {reason}")]
@@ -392,7 +417,7 @@ fn read_toml<T: DeserializeOwned>(path: &Path) -> Result<T, StorageError> {
     })
 }
 
-fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, StorageError> {
+pub(crate) fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, StorageError> {
     let text = fs::read_to_string(path).map_io(path)?;
     serde_json::from_str(&text).map_err(|source| StorageError::Json {
         path: path.to_path_buf(),
@@ -840,7 +865,7 @@ fn project_agents_md() -> &'static str {
     "# AGENTS.md\n\n## Project goal\n\nBuild a playable PlotForge story project from local files.\n\n## Commands\n\n- `plotforge check .`\n- `plotforge play . --once`\n- `plotforge export static . --out exports/static`\n\n## Rules\n\n- Files are source of truth.\n- Do not put API keys in project files or exports.\n- AI output proposes content; engine rules commit state.\n- Reference imports store metadata, rights, short summaries, and structure notes only; do not store large raw copyrighted bodies.\n"
 }
 
-trait IoContext<T> {
+pub(crate) trait IoContext<T> {
     fn map_io(self, path: impl AsRef<Path>) -> Result<T, StorageError>;
 }
 

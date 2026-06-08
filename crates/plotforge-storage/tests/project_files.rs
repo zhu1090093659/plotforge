@@ -11,10 +11,12 @@ use plotforge_schema::{
     WorldState,
 };
 use plotforge_storage::{
-    StorageError, create_demo_project, dynasty_embers_project, load_project,
-    read_latest_runtime_snapshot, read_runtime_snapshot, validate_project,
-    validate_reference_library, write_reference_analysis, write_runtime_snapshot, write_trace,
+    SQLITE_CACHE_SCHEMA_VERSION, StorageError, create_demo_project, dynasty_embers_project,
+    load_project, read_latest_runtime_snapshot, read_runtime_snapshot, read_sqlite_cache_summary,
+    rebuild_sqlite_cache, sqlite_cache_path, validate_project, validate_reference_library,
+    write_reference_analysis, write_runtime_snapshot, write_trace,
 };
+use rusqlite::Connection;
 
 #[test]
 fn create_demo_respects_force_flag() {
@@ -133,6 +135,108 @@ fn write_runtime_snapshot_rejects_unsafe_snapshot_id() {
 }
 
 #[test]
+fn sqlite_cache_migrates_and_rebuilds_from_folder_state() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+    write_trace(&project, &sample_runtime_trace("trace-cache-001")).expect("write trace");
+
+    let summary = rebuild_sqlite_cache(&project).expect("rebuild cache");
+
+    assert_eq!(summary.schema_version, SQLITE_CACHE_SCHEMA_VERSION);
+    assert_eq!(summary.project_id, "dynasty-embers");
+    assert_eq!(summary.title, "Dynasty Embers");
+    assert_eq!(summary.scene_count, 1);
+    assert_eq!(summary.asset_count, 1);
+    assert_eq!(summary.trace_count, 1);
+    assert!(summary.source_file_count > 0);
+    assert_eq!(
+        read_sqlite_cache_summary(&project).expect("read cache summary"),
+        Some(summary)
+    );
+
+    let connection = Connection::open(sqlite_cache_path(&project)).expect("open sqlite");
+    let user_version: u32 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("user version");
+    let migration_count: u32 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = ?1",
+            [SQLITE_CACHE_SCHEMA_VERSION],
+            |row| row.get(0),
+        )
+        .expect("migration count");
+    let source_file_count: u32 = connection
+        .query_row("SELECT COUNT(*) FROM source_files", [], |row| row.get(0))
+        .expect("source file count");
+    let image_asset_count: u32 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM assets WHERE kind = 'image' AND source = 'generated'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("asset count");
+
+    assert_eq!(user_version, SQLITE_CACHE_SCHEMA_VERSION);
+    assert_eq!(migration_count, 1);
+    assert!(source_file_count > 0);
+    assert_eq!(image_asset_count, 1);
+}
+
+#[test]
+fn project_loads_without_sqlite_cache() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+
+    assert!(!sqlite_cache_path(&project).exists());
+    assert_eq!(
+        read_sqlite_cache_summary(&project).expect("cache miss"),
+        None
+    );
+    assert_eq!(
+        load_project(&project)
+            .expect("load without cache")
+            .game
+            .title,
+        "Dynasty Embers"
+    );
+}
+
+#[test]
+fn folder_source_takes_precedence_over_stale_sqlite_cache() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    create_demo_project(&project, false).expect("create");
+    let original = rebuild_sqlite_cache(&project).expect("initial rebuild");
+    assert_eq!(original.title, "Dynasty Embers");
+
+    let game_path = project.join("game.toml");
+    let game_toml = fs::read_to_string(&game_path).expect("read game");
+    fs::write(
+        &game_path,
+        game_toml.replace("title = \"Dynasty Embers\"", "title = \"Cache Ignored\""),
+    )
+    .expect("write game");
+
+    assert_eq!(
+        load_project(&project).expect("load project").game.title,
+        "Cache Ignored"
+    );
+    assert_eq!(
+        read_sqlite_cache_summary(&project)
+            .expect("read stale cache")
+            .expect("stale cache exists")
+            .title,
+        "Dynasty Embers"
+    );
+    assert_eq!(
+        rebuild_sqlite_cache(&project).expect("rebuild cache").title,
+        "Cache Ignored"
+    );
+}
+
+#[test]
 fn reference_imports_store_metadata_and_summary_only() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("dynasty-embers");
@@ -218,6 +322,47 @@ fn sample_runtime_snapshot(id: &str) -> RuntimeSnapshot {
         story_state: project.story_state,
         world_state: project.world_state,
         scenes: project.scenes,
+    }
+}
+
+fn sample_runtime_trace(id: &str) -> RuntimeTrace {
+    let story = StoryState {
+        current_scene_key: "court-crisis-001".into(),
+        completed_scene_keys: Vec::new(),
+        turn: 1,
+    };
+    RuntimeTrace {
+        id: id.into(),
+        timestamp_ms: 1,
+        player_input: Some("test".into()),
+        selected_choice: Some("raise-tax".into()),
+        action_intent: Some(ActionIntent::supported("raise_tax", vec!["test".into()])),
+        rule_result: Some(RuntimeRuleResult {
+            action_type: "raise_tax".into(),
+            delta_empty: true,
+            state_committed: true,
+            error: None,
+        }),
+        planner_result: Some(RuntimePlannerResult {
+            requested_action_type: "raise_tax".into(),
+            scene_key: Some("court-crisis-002".into()),
+            fallback_used: false,
+            error: None,
+        }),
+        diagnostics: vec![RuntimeTraceDiagnostic::new_redacted(
+            RuntimeTraceStage::CommitState,
+            RuntimeTraceStageStatus::Completed,
+            "committed",
+        )],
+        world_state_before: WorldState::default(),
+        world_state_delta: WorldDelta::default(),
+        world_state_after: WorldState::default(),
+        story_state_before: story.clone(),
+        story_state_after: story,
+        narrative_review: None,
+        media_references: Vec::new(),
+        errors: Vec::new(),
+        fallback_used: false,
     }
 }
 

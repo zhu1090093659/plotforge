@@ -1,6 +1,6 @@
 # PlotForge
 
-PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, media asset registry, job queue, fake image provider foundations, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell with a Tauri command bridge.
+PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, media asset registry, job queue, fake image provider foundations, rebuildable SQLite cache/index, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell with a Tauri command bridge.
 
 ## Current Scope
 
@@ -11,7 +11,8 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Media asset registry foundation with typed records, SHA-256 hashes, runtime references, provider metadata, and exportable paths.
 - Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
 - Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
-- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers, SQLite cache, and Steam/Workshop are deferred.
+- Rebuildable SQLite cache/index for project summaries, source file hashes, trace metadata, and asset metadata; folder files remain source of truth.
+- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers and Steam/Workshop are deferred.
 
 ## Commands
 
@@ -49,6 +50,7 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - Generated JSON Schema and TypeScript contracts live under `contracts/` and must be regenerated from Rust schema, not hand-maintained.
 - AI or mock agents propose content; runtime and rule engine commit state.
 - Folder project files are source of truth; caches must be rebuildable.
+- SQLite cache/index lives under `.plotforge/cache.sqlite`; it is optional, rebuildable from folder state, and never overrides canonical project files.
 - `plotforge-media` owns the media registry foundation: asset records, hashes, refs, provider metadata, path safety, and reachability.
 - `plotforge-job` owns long-running job state transitions, progress, cancel/retry/timeout, failure, and cost accounting.
 - `plotforge-agent` owns provider ports and image pipeline orchestration; image generation writes through `plotforge-media` and `plotforge-job`.

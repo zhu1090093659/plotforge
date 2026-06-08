@@ -4,13 +4,14 @@ This file is the project-level memory for future agents. Keep durable engineerin
 
 ## Project Goal
 
-Build PlotForge as a CLI-first Rust engine with a creator desktop UI adapter. Real model providers, media providers, SQLite cache, and Steam/Workshop integrations remain deferred until their planned tasks.
+Build PlotForge as a CLI-first Rust engine with a creator desktop UI adapter. Real model providers, media providers, and Steam/Workshop integrations remain deferred until their planned tasks.
 
 The current MVP contains:
 
 - Rust workspace crates for schema, storage, rule evaluation, story craft review, mock agent planning, runtime, media asset registry, job queue core, static export, and CLI.
 - `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace with dashboard, source editor, playtest, runtime trace views, and a thin Tauri command bridge.
 - Folder project source of truth using TOML, JSON, Markdown, and generated local assets.
+- Rebuildable SQLite cache/index under `.plotforge/cache.sqlite` for project summary, source file hashes, trace metadata, and asset metadata.
 - `examples/dynasty-embers` as the committed demo fixture.
 - Static web export served from local files over HTTP.
 
@@ -19,6 +20,7 @@ The current MVP contains:
 - `plotforge-schema` is the only schema contract source of truth.
 - Generated frontend contracts live in `contracts/`; regenerate them with `scripts/contracts/export_contracts.sh` after Rust schema changes and verify with `scripts/contracts/check_contracts.sh`.
 - Folder project files are the source of truth for game projects; generated caches, exports, traces, and build artifacts must be rebuildable.
+- SQLite cache/index files are never required to load canonical project state; when cache contents conflict with folder files, folder files win and the cache must be rebuilt.
 - `examples/dynasty-embers` must remain a valid fixture and must stay semantically aligned with `create_demo_project`.
 - Runtime traces are generated evidence, not committed fixture state.
 - Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, media references, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
@@ -33,6 +35,7 @@ The current MVP contains:
 - Keep runtime state transitions in `plotforge-runtime`; agents propose content and runtime/rules commit state.
 - Player/freeform input must resolve to a typed `ActionIntent`; unsupported input must not mutate runtime state or silently map to a default action.
 - Keep persistence and fixture file layout in `plotforge-storage`.
+- Keep SQLite cache/index behavior in `plotforge-storage`; it may index project summaries, source file hashes, trace metadata, and asset metadata, but must not become a second project loader or source of truth.
 - Keep static export behavior in `plotforge-export`; exported bundles must copy only reachable referenced assets from `plotforge-media` and must not include private traces, provider config, raw provider responses, unreferenced assets, or secrets.
 - Keep asset registry records, content hashes, references, provider metadata, and reachability in `plotforge-media`; as export, runtime, Studio, and future providers integrate media, consume this boundary instead of adding a second media registry implementation.
 - Keep long-running task state transitions, cancel/retry/timeout/progress, and cost accounting in `plotforge-job`; provider/runtime/export adapters should not own parallel job state machines.
