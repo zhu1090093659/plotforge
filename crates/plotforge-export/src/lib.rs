@@ -9,6 +9,25 @@ use plotforge_schema::{AssetRecord, ExportManifest};
 use plotforge_storage::{StorageError, load_project};
 use thiserror::Error;
 
+const PLAYER_PACKAGE_FILES: &[(&str, &str)] = &[
+    (
+        "index.html",
+        include_str!("../../../apps/player-web/static/index.html"),
+    ),
+    (
+        "styles.css",
+        include_str!("../../../apps/player-web/static/styles.css"),
+    ),
+    (
+        "player-core.js",
+        include_str!("../../../apps/player-web/static/player-core.js"),
+    ),
+    (
+        "player.js",
+        include_str!("../../../apps/player-web/static/player.js"),
+    ),
+];
+
 #[derive(Debug, Error)]
 pub enum ExportError {
     #[error(transparent)]
@@ -96,12 +115,11 @@ pub fn export_static_web(
     })?;
     assert_no_secret_markers(&data)?;
 
-    let index_path = output_dir.join("index.html");
     let data_path = output_dir.join("game.json");
-    fs::write(&index_path, player_html()).map_io(&index_path)?;
     fs::write(&data_path, data + "\n").map_io(&data_path)?;
 
-    let mut files_written = vec![index_path, data_path];
+    let mut files_written = write_player_package(output_dir)?;
+    files_written.push(data_path);
     for asset in asset_paths {
         let record = asset_record_by_export_path
             .get(&asset)
@@ -116,6 +134,17 @@ pub fn export_static_web(
         files_written,
         audit,
     })
+}
+
+fn write_player_package(output_dir: &Path) -> Result<Vec<PathBuf>, ExportError> {
+    PLAYER_PACKAGE_FILES
+        .iter()
+        .map(|(relative_path, contents)| {
+            let output_path = output_dir.join(relative_path);
+            fs::write(&output_path, contents).map_io(&output_path)?;
+            Ok(output_path)
+        })
+        .collect()
 }
 
 fn copy_referenced_asset(
@@ -158,8 +187,12 @@ fn validate_export_asset_path(asset: &str) -> Result<PathBuf, ExportError> {
 }
 
 fn allowed_export_files(asset_paths: &[PathBuf]) -> BTreeSet<PathBuf> {
-    let mut allowed_files =
-        BTreeSet::from([PathBuf::from("game.json"), PathBuf::from("index.html")]);
+    let mut allowed_files = BTreeSet::from([PathBuf::from("game.json")]);
+    allowed_files.extend(
+        PLAYER_PACKAGE_FILES
+            .iter()
+            .map(|(relative_path, _)| PathBuf::from(relative_path)),
+    );
     allowed_files.extend(asset_paths.iter().cloned());
     allowed_files
 }
@@ -218,89 +251,6 @@ fn collect_export_files(
         manifest.insert(relative_path.to_path_buf());
     }
     Ok(())
-}
-
-fn player_html() -> &'static str {
-    r#"<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PlotForge Player</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: ui-serif, Georgia, serif;
-        color: #f6efe2;
-        background: #171512;
-      }
-      main {
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 32px;
-      }
-      article {
-        width: min(920px, 100%);
-        border: 1px solid #6f5f42;
-        background: #242018;
-        padding: 24px;
-      }
-      img {
-        width: 100%;
-        height: 220px;
-        object-fit: cover;
-        image-rendering: pixelated;
-        background: #51442f;
-      }
-      button {
-        display: block;
-        width: 100%;
-        margin-top: 10px;
-        padding: 12px;
-        border: 1px solid #8e7a56;
-        background: #362f24;
-        color: #f6efe2;
-        text-align: left;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <article>
-        <h1 id="title">Loading PlotForge export...</h1>
-        <img id="scene-image" alt="" />
-        <h2 id="scene-title"></h2>
-        <p id="hook"></p>
-        <p id="beat"></p>
-        <div id="choices"></div>
-      </article>
-    </main>
-    <script>
-      fetch("./game.json")
-        .then((response) => response.json())
-        .then((game) => {
-          const scene = game.scenes.find((item) => item.key === game.entry_scene) || game.scenes[0];
-          document.title = game.game.title;
-          document.getElementById("title").textContent = game.game.title;
-          document.getElementById("scene-title").textContent = scene.title;
-          document.getElementById("scene-image").src = scene.background_asset;
-          document.getElementById("hook").textContent = scene.hook;
-          document.getElementById("beat").textContent = scene.beats[0]?.text || "";
-          const choices = document.getElementById("choices");
-          for (const choice of scene.beats[0]?.choices || []) {
-            const button = document.createElement("button");
-            button.textContent = choice.label;
-            button.addEventListener("click", () => {
-              document.getElementById("beat").textContent = choice.dramatic_purpose;
-            });
-            choices.appendChild(button);
-          }
-        });
-    </script>
-  </body>
-</html>
-"#
 }
 
 trait IoContext<T> {

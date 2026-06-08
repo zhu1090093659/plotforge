@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "apps/creator-desktop"
+    "apps/creator-desktop",
+    "apps/player-web"
   ],
   "scripts": {
     "creator-desktop:dev": "npm run dev --workspace @plotforge/creator-desktop",
@@ -15,6 +16,9 @@
     "creator-desktop:tauri:dev": "npm run tauri:dev --workspace @plotforge/creator-desktop",
     "creator-desktop:tauri:build": "npm run tauri:build --workspace @plotforge/creator-desktop",
     "creator-desktop:smoke": "python3 scripts/qa/creator_desktop_build_smoke.py",
-    "creator-desktop:qa": "npm run creator-desktop:typecheck && npm run creator-desktop:test && npm run creator-desktop:build && npm run creator-desktop:smoke && npm run creator-desktop:tauri:check"
+    "creator-desktop:qa": "npm run creator-desktop:typecheck && npm run creator-desktop:test && npm run creator-desktop:build && npm run creator-desktop:smoke && npm run creator-desktop:tauri:check",
+    "player-web:test": "npm run test --workspace @plotforge/player-web",
+    "player-web:qa": "npm run player-web:test",
+    "frontend:qa": "npm run creator-desktop:qa && npm run player-web:qa"
   }
 }

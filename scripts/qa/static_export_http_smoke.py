@@ -16,7 +16,14 @@ def main() -> int:
     args = parser.parse_args()
 
     export_dir = args.export_dir.resolve()
-    assert_file(export_dir / "index.html")
+    index_html = export_dir / "index.html"
+    player_js = export_dir / "player.js"
+    player_core_js = export_dir / "player-core.js"
+    styles_css = export_dir / "styles.css"
+    assert_file(index_html)
+    assert_file(player_js)
+    assert_file(player_core_js)
+    assert_file(styles_css)
     game_json = export_dir / "game.json"
     assert_file(game_json)
 
@@ -29,6 +36,7 @@ def main() -> int:
     for asset in manifest["assets"]:
         assert_file(export_dir / asset)
     assert_whitelisted_files(export_dir, manifest["assets"])
+    assert_no_network_urls([index_html, player_js, player_core_js, styles_css])
 
     port = free_port()
     server = subprocess.Popen(
@@ -40,8 +48,14 @@ def main() -> int:
         wait_for_http(port)
         index = fetch(f"http://127.0.0.1:{port}/index.html")
         game = fetch(f"http://127.0.0.1:{port}/game.json")
+        player = fetch(f"http://127.0.0.1:{port}/player.js")
+        styles = fetch(f"http://127.0.0.1:{port}/styles.css")
         assert "PlotForge Player" in index
+        assert 'src="./player.js"' in index
+        assert 'href="./styles.css"' in index
         assert "Dynasty Embers" in game
+        assert "bootPlayer" in player
+        assert ".pf-player" in styles
     finally:
         server.terminate()
         server.wait(timeout=5)
@@ -56,7 +70,14 @@ def assert_file(path: pathlib.Path) -> None:
 
 
 def assert_whitelisted_files(export_dir: pathlib.Path, assets: list[str]) -> None:
-    expected = {"index.html", "game.json", *assets}
+    expected = {
+        "index.html",
+        "game.json",
+        "player-core.js",
+        "player.js",
+        "styles.css",
+        *assets,
+    }
     actual = {
         path.relative_to(export_dir).as_posix()
         for path in export_dir.rglob("*")
@@ -77,6 +98,15 @@ def assert_whitelisted_files(export_dir: pathlib.Path, assets: list[str]) -> Non
     )
     if blocked:
         raise AssertionError(f"private files leaked into export package: {blocked}")
+
+
+def assert_no_network_urls(paths: list[pathlib.Path]) -> None:
+    blocked_markers = ["http://", "https://", "//cdn.", "//unpkg.", "//fonts."]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        blocked = [marker for marker in blocked_markers if marker in text]
+        if blocked:
+            raise AssertionError(f"network URL marker(s) {blocked} found in {path}")
 
 
 def free_port() -> int:

@@ -1,0 +1,14 @@
+{
+  "name": "@plotforge/player-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --environment jsdom",
+    "qa": "npm run test"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.0.15"
+  }
+}
