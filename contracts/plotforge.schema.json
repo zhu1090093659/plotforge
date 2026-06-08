@@ -699,6 +699,184 @@
       ],
       "type": "object"
     },
+    "JobCost": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_units": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spent_units": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "JobFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "JobKind": {
+      "enum": [
+        "text_generation",
+        "image_generation",
+        "tts_generation",
+        "export_package",
+        "reference_analysis"
+      ],
+      "type": "string"
+    },
+    "JobProgress": {
+      "additionalProperties": false,
+      "properties": {
+        "completed_units": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_units": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "JobRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "$ref": "#/$defs/JobCost",
+          "default": {
+            "estimated_units": 0,
+            "spent_units": 0
+          }
+        },
+        "created_at_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "finished_at_ms": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/JobKind"
+        },
+        "max_attempts": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "progress": {
+          "$ref": "#/$defs/JobProgress",
+          "default": {
+            "completed_units": 0,
+            "message": null,
+            "total_units": 0
+          }
+        },
+        "started_at_ms": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobStatus"
+        },
+        "timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "updated_at_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "attempt",
+        "max_attempts",
+        "created_at_ms",
+        "updated_at_ms",
+        "timeout_ms"
+      ],
+      "type": "object"
+    },
+    "JobStatus": {
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "canceled",
+        "timed_out"
+      ],
+      "type": "string"
+    },
     "NarrativeFunction": {
       "enum": [
         "hook",
@@ -1860,6 +2038,9 @@
     "export_manifest": {
       "$ref": "#/$defs/ExportManifest"
     },
+    "job_record": {
+      "$ref": "#/$defs/JobRecord"
+    },
     "project_data": {
       "$ref": "#/$defs/ProjectData"
     },
@@ -1873,6 +2054,7 @@
   "required": [
     "project_data",
     "runtime_trace",
+    "job_record",
     "agent_output_proposal",
     "reference_analysis",
     "asset_record",

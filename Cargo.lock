@@ -340,6 +340,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "plotforge-job"
+version = "0.1.0"
+dependencies = [
+ "plotforge-schema",
+ "thiserror",
+]
+
+[[package]]
 name = "plotforge-media"
 version = "0.1.0"
 dependencies = [

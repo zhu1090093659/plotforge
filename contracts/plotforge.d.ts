@@ -71,6 +71,13 @@ export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate
 export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
 export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; errors: RuntimeError[]; fallback_used: boolean; }
 
+export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";
+export interface JobProgress { completed_units: number; total_units: number; message?: string | null; }
+export interface JobCost { estimated_units: number; spent_units: number; }
+export interface JobFailure { code: string; message: string; retryable: boolean; }
+export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
+
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }

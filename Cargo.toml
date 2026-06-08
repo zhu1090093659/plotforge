@@ -3,6 +3,7 @@ members = [
   "crates/plotforge-agent",
   "crates/plotforge-cli",
   "crates/plotforge-export",
+  "crates/plotforge-job",
   "crates/plotforge-media",
   "crates/plotforge-rule",
   "crates/plotforge-runtime",
@@ -25,6 +26,7 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 plotforge-agent = { path = "crates/plotforge-agent" }
 plotforge-export = { path = "crates/plotforge-export" }
+plotforge-job = { path = "crates/plotforge-job" }
 plotforge-media = { path = "crates/plotforge-media" }
 plotforge-rule = { path = "crates/plotforge-rule" }
 plotforge-runtime = { path = "crates/plotforge-runtime" }

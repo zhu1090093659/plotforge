@@ -730,6 +730,78 @@ pub struct RuntimeTrace {
     pub fallback_used: bool,
 }
 
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JobKind {
+    TextGeneration,
+    ImageGeneration,
+    TtsGeneration,
+    ExportPackage,
+    ReferenceAnalysis,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JobStatus {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+    Canceled,
+    TimedOut,
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct JobProgress {
+    #[serde(default)]
+    pub completed_units: u32,
+    #[serde(default)]
+    pub total_units: u32,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct JobCost {
+    #[serde(default)]
+    pub estimated_units: u64,
+    #[serde(default)]
+    pub spent_units: u64,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct JobFailure {
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct JobRecord {
+    pub id: String,
+    pub kind: JobKind,
+    pub status: JobStatus,
+    pub attempt: u32,
+    pub max_attempts: u32,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+    #[serde(default)]
+    pub started_at_ms: Option<u64>,
+    #[serde(default)]
+    pub finished_at_ms: Option<u64>,
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub progress: JobProgress,
+    #[serde(default)]
+    pub cost: JobCost,
+    #[serde(default)]
+    pub failure: Option<JobFailure>,
+}
+
 pub const REDACTED_TRACE_SECRET: &str = "[REDACTED_SECRET]";
 
 pub fn redact_trace_text(text: &str) -> String {
@@ -791,6 +863,7 @@ pub struct ExportManifest {
 pub struct ContractRootSchemas {
     pub project_data: ProjectData,
     pub runtime_trace: RuntimeTrace,
+    pub job_record: JobRecord,
     pub agent_output_proposal: AgentOutputProposal,
     pub reference_analysis: ReferenceAnalysis,
     pub asset_record: AssetRecord,
@@ -907,9 +980,16 @@ export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate
 export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
 export interface RuntimeTrace { id: string; timestamp_ms: number; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; errors: RuntimeError[]; fallback_used: boolean; }
 
+export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";
+export interface JobProgress { completed_units: number; total_units: number; message?: string | null; }
+export interface JobCost { estimated_units: number; spent_units: number; }
+export interface JobFailure { code: string; message: string; retryable: boolean; }
+export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
+
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -1085,6 +1165,37 @@ mod tests {
 
         let error = serde_json::from_value::<AssetRecord>(record)
             .expect_err("raw provider response should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn job_record_roundtrips_json() {
+        let record = sample_job_record();
+
+        let encoded = serde_json::to_string_pretty(&record).expect("serialize job");
+        let decoded: JobRecord = serde_json::from_str(&encoded).expect("deserialize job");
+        let value: serde_json::Value = serde_json::from_str(&encoded).expect("job value");
+
+        assert_eq!(decoded, record);
+        assert_eq!(value["kind"], "image_generation");
+        assert_eq!(value["status"], "running");
+        assert_eq!(value["progress"]["completed_units"], 2);
+        assert_eq!(value["cost"]["estimated_units"], 500);
+    }
+
+    #[test]
+    fn job_record_rejects_unknown_failure_fields() {
+        let mut record = serde_json::to_value(sample_job_record()).expect("job record");
+        record["failure"] = serde_json::json!({
+            "code": "provider_error",
+            "message": "provider failed",
+            "retryable": true,
+            "raw_response": "sk-test-secret-marker"
+        });
+
+        let error =
+            serde_json::from_value::<JobRecord>(record).expect_err("raw failure field rejected");
 
         assert!(error.to_string().contains("unknown field"));
     }
@@ -1544,6 +1655,31 @@ mod tests {
                 reference_id: "court-crisis-001".into(),
                 slot: "background_asset".into(),
             }],
+        }
+    }
+
+    fn sample_job_record() -> JobRecord {
+        JobRecord {
+            id: "job-000001".into(),
+            kind: JobKind::ImageGeneration,
+            status: JobStatus::Running,
+            attempt: 1,
+            max_attempts: 3,
+            created_at_ms: 100,
+            updated_at_ms: 150,
+            started_at_ms: Some(125),
+            finished_at_ms: None,
+            timeout_ms: 10_000,
+            progress: JobProgress {
+                completed_units: 2,
+                total_units: 5,
+                message: Some("rendering".into()),
+            },
+            cost: JobCost {
+                estimated_units: 500,
+                spent_units: 100,
+            },
+            failure: None,
         }
     }
 }
