@@ -30,7 +30,7 @@
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 0 | 5 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 0 | 4 | 4 |
 | 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 0 | 4 | 4 |
-| 6 | Steam and Workshop Exploration | https://github.com/zhu1090093659/plotforge/milestone/14 | 2 | 1 | 3 |
+| 6 | Steam and Workshop Exploration | https://github.com/zhu1090093659/plotforge/milestone/14 | 1 | 2 | 3 |
 
 ## Issue Mapping
 
@@ -60,7 +60,7 @@
 | T5.3 | #42 | Promote player web and export v2 package | closed by PR #68 |
 | T5.4 | #43 | Add export profiles and AI Usage Manifest base | closed by PR #69 |
 | T6.1 | #44 | Add Workshop item package schema and validator | closed by PR #70 |
-| T6.2 | #45 | Add Steam Submission Kit draft generator | open |
+| T6.2 | #45 | Add Steam Submission Kit draft generator | closed by PR #71 |
 | T6.3 | #46 | Add Steam compliance QA docs and no-launch-promise guard | open |
 
 ## Quick Status Commands
@@ -78,12 +78,12 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 - [x] Phase 3: Desktop Studio Skeleton (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [x] Phase 4: Media and Job Pipeline (4/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
 - [x] Phase 5: Persistence, Debugger, and Export v2 (4/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
-- [ ] Phase 6: Steam and Workshop Exploration (1/3 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/14)
+- [ ] Phase 6: Steam and Workshop Exploration (2/3 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/14)
 
 ## Current Status
 
 **Active Phase**: Phase 6 — Steam and Workshop Exploration
-**Active Task**: T6.2 Add Steam Submission Kit draft generator (Issue #45)
+**Active Task**: T6.3 Add Steam compliance QA docs and no-launch-promise guard (Issue #46)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #45: add Steam Submission Kit draft generator.
+1. Implement #46: add Steam compliance QA docs and no-launch-promise guard.
 2. Keep Steam/Workshop work as schema/docs/package exploration only; do not add platform upload or launch promises.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -133,3 +133,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-08 | Execution | Completed #42 via PR #68: promoted `apps/player-web/static` to the no-network export player package, replaced inline export HTML with package file copying, added player DOM/mobile/no-network tests, strengthened export package and HTTP smoke checks, wired player-web QA into full local QA and CI, verified with Codex in-app Browser desktop/mobile smoke, and green GitHub Actions. |
 | 2026-06-08 | Execution | Completed #43 via PR #69: added schema-defined export profiles for static/dynamic/desktop/Steam intent, introduced redaction-safe `AiUsageManifest` contracts and `ai-usage.json`, bumped contract schema version to 2, extended static export manifest/smoke/no-secret tests, updated AGENTS/README disclosure boundaries, full local QA, green GitHub Actions, and closed Phase 5 milestone with drift_score 0. |
 | 2026-06-08 | Execution | Completed #44 via PR #70: added schema-defined Workshop item package metadata, introduced `plotforge-workshop` local-only validator for draft package manifests, file hashes, AI usage disclosure, safe paths, and secret/upload marker rejection, regenerated contracts, updated AGENTS/README offline Workshop boundaries, full local QA, and green GitHub Actions. |
+| 2026-06-08 | Execution | Completed #45 via PR #71: added schema-defined Steam Submission Kit request/draft contracts, local checklist, AI disclosure, content warning, and packaging-note Markdown draft generation in `plotforge-workshop`, forbidden secret/launch/legal claim guards, generated contract snapshots, AGENTS/README/docs boundaries, full local QA, and green GitHub Actions. |
