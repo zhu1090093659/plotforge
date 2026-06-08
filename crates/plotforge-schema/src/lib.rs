@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 3;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 4;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -1104,6 +1104,38 @@ pub struct WorkshopItemPackage {
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SteamSubmissionKitRequest {
+    pub product_name: String,
+    #[serde(default)]
+    pub desktop_build_path: Option<String>,
+    pub store_short_description: String,
+    pub screenshot_paths: Vec<String>,
+    pub capsule_asset_paths: Vec<String>,
+    pub content_warnings: Vec<String>,
+    pub safety_guardrails: Vec<String>,
+    pub user_reporting_path: String,
+    pub moderation_policy: String,
+    pub build_notes: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SteamSubmissionKitDraft {
+    pub manifest_version: String,
+    pub product_name: String,
+    pub workshop_package_id: String,
+    pub generated_by: String,
+    pub source_workshop_manifest_path: String,
+    pub checklist_markdown: String,
+    pub ai_disclosure_markdown: String,
+    pub content_warnings_markdown: String,
+    pub packaging_notes_markdown: String,
+    pub official_reference_urls: Vec<String>,
+    pub notices: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportManifest {
     pub game: GameProject,
     pub entry_scene: String,
@@ -1131,6 +1163,8 @@ pub struct ContractRootSchemas {
     pub asset_record: AssetRecord,
     pub ai_usage_manifest: AiUsageManifest,
     pub workshop_item_package: WorkshopItemPackage,
+    pub steam_submission_kit_request: SteamSubmissionKitRequest,
+    pub steam_submission_kit_draft: SteamSubmissionKitDraft,
     pub export_manifest: ExportManifest,
 }
 
@@ -1224,6 +1258,8 @@ export interface AiUsageManifest { manifest_version: string; project_id: string;
 export type WorkshopDraftVisibility = "private_draft" | "friends_only_draft" | "unlisted_draft";
 export interface WorkshopPackageFile { path: string; content_hash: string; hash_algorithm: string; byte_length: number; }
 export interface WorkshopItemPackage { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; export_profile: ExportProfile; ai_usage_manifest_path: string; content_files: WorkshopPackageFile[]; notices: string[]; }
+export interface SteamSubmissionKitRequest { product_name: string; desktop_build_path?: string | null; store_short_description: string; screenshot_paths: string[]; capsule_asset_paths: string[]; content_warnings: string[]; safety_guardrails: string[]; user_reporting_path: string; moderation_policy: string; build_notes: string[]; }
+export interface SteamSubmissionKitDraft { manifest_version: string; product_name: string; workshop_package_id: string; generated_by: string; source_workshop_manifest_path: string; checklist_markdown: string; ai_disclosure_markdown: string; content_warnings_markdown: string; packaging_notes_markdown: string; official_reference_urls: string[]; notices: string[]; }
 export interface Scene { key: string; title: string; location: string; dramatic_purpose: string; hook: string; background_asset: string; character_ids: string[]; plot_thread_updates: Record<string, string>; beats: Beat[]; }
 export interface Beat { id: string; text: string; choices: Choice[]; }
 export interface Choice { id: string; label: string; action_type: string; dramatic_purpose: string; change_scene: boolean; }
@@ -1266,7 +1302,7 @@ export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attem
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -1937,6 +1973,28 @@ mod tests {
     }
 
     #[test]
+    fn steam_submission_kit_contracts_roundtrip_and_reject_unknown_fields() {
+        let request = sample_steam_submission_kit_request();
+        let encoded = serde_json::to_string_pretty(&request).expect("serialize kit request");
+        let decoded: SteamSubmissionKitRequest =
+            serde_json::from_str(&encoded).expect("deserialize kit request");
+        assert_eq!(decoded, request);
+
+        let draft = sample_steam_submission_kit_draft();
+        let encoded = serde_json::to_string_pretty(&draft).expect("serialize kit draft");
+        let decoded: SteamSubmissionKitDraft =
+            serde_json::from_str(&encoded).expect("deserialize kit draft");
+        assert_eq!(decoded, draft);
+
+        let mut value = serde_json::to_value(decoded).expect("kit draft value");
+        value["steam_app_id"] = serde_json::json!("000000");
+        let error = serde_json::from_value::<SteamSubmissionKitDraft>(value)
+            .expect_err("unknown Steam upload fields should be rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn tagged_rule_enums_use_snake_case_contracts() {
         let condition = serde_json::to_value(Condition::FlagEquals {
             key: "tax_resistance".into(),
@@ -2013,6 +2071,48 @@ mod tests {
             notices: vec![
                 "Local package validation only; no upload integration is included.".into(),
                 "This package does not promise platform approval or release readiness.".into(),
+            ],
+        }
+    }
+
+    fn sample_steam_submission_kit_request() -> SteamSubmissionKitRequest {
+        SteamSubmissionKitRequest {
+            product_name: "Dynasty Embers".into(),
+            desktop_build_path: Some("builds/dynasty-embers-desktop.zip".into()),
+            store_short_description: "A branching court drama built with PlotForge.".into(),
+            screenshot_paths: vec!["media/screenshots/court-crisis.png".into()],
+            capsule_asset_paths: vec!["media/capsules/header.png".into()],
+            content_warnings: vec!["Political conflict".into(), "Textual violence".into()],
+            safety_guardrails: vec![
+                "No live-generated AI content is included in this package.".into(),
+                "Moderation review is required before store submission.".into(),
+            ],
+            user_reporting_path: "support@example.invalid".into(),
+            moderation_policy: "Review player-visible text and imagery before release.".into(),
+            build_notes: vec![
+                "Desktop build must be tested on supported operating systems.".into(),
+            ],
+        }
+    }
+
+    fn sample_steam_submission_kit_draft() -> SteamSubmissionKitDraft {
+        SteamSubmissionKitDraft {
+            manifest_version: "2026-06-08".into(),
+            product_name: "Dynasty Embers".into(),
+            workshop_package_id: "dynasty-embers-workshop-draft".into(),
+            generated_by: "plotforge-workshop 0.1.0".into(),
+            source_workshop_manifest_path: "workshop-item.json".into(),
+            checklist_markdown: "# Steam Submission Checklist Draft\n".into(),
+            ai_disclosure_markdown: "# Steam AI Disclosure Draft\n".into(),
+            content_warnings_markdown: "# Content Warnings Draft\n".into(),
+            packaging_notes_markdown: "# Packaging Notes\n".into(),
+            official_reference_urls: vec![
+                "https://partner.steamgames.com/doc/gettingstarted/contentsurvey".into(),
+                "https://partner.steamgames.com/doc/store/review_process".into(),
+            ],
+            notices: vec![
+                "Draft support material only; it does not submit content to Steam.".into(),
+                "Responsible developers must review current Steamworks requirements.".into(),
             ],
         }
     }
