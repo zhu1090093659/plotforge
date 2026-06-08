@@ -19,6 +19,7 @@ import type {
   AudioVoiceCard,
   Character,
   CharacterEditDocument,
+  ExportProfile,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
@@ -171,6 +172,8 @@ export function App({
   const [archivePath, setArchivePath] = useState(
     defaultStaticArchivePath(initialProjectPath),
   );
+  const [exportProfiles, setExportProfiles] = useState<ExportProfile[]>([]);
+  const [selectedExportProfileId, setSelectedExportProfileId] = useState("");
   const [exportReport, setExportReport] = useState<StaticExportReport | null>(
     null,
   );
@@ -203,6 +206,14 @@ export function App({
     () => projectAssetCatalog(projectData, assetRecords),
     [assetRecords, projectData],
   );
+  const selectedExportProfile = useMemo(
+    () =>
+      exportProfiles.find((profile) => profile.id === selectedExportProfileId) ??
+      null,
+    [exportProfiles, selectedExportProfileId],
+  );
+  const staticExportSelected =
+    selectedExportProfile?.target === "static_web";
   const metrics = useMemo(
     () => [
       {
@@ -244,6 +255,7 @@ export function App({
       const [
         project,
         report,
+        profiles,
         files,
         worldDocument,
         storyCraftDocument,
@@ -257,6 +269,7 @@ export function App({
       ] = await Promise.all([
         dataSource.openProject(path),
         dataSource.checkProject(path),
+        dataSource.listExportProfiles(),
         dataSource.listSourceFiles(path),
         dataSource.readWorldEditDocument(path),
         dataSource.readStoryCraftEditDocument(path),
@@ -281,6 +294,10 @@ export function App({
       setLoadedPath(path);
       setProjectPath(path);
       setProjectData(projectWithBible);
+      setExportProfiles(profiles);
+      setSelectedExportProfileId((currentId) =>
+        resolveExportProfileId(profiles, currentId),
+      );
       setAssetRecords(records);
       setVisualBible(visualBibleDocument);
       setAudioBible(audioBibleDocument);
@@ -414,6 +431,11 @@ export function App({
   }
 
   async function runStaticZipExport() {
+    if (!staticExportSelected) {
+      setExportError("Selected export profile has no executable Studio command.");
+      return;
+    }
+
     const outputDir = exportDir.trim();
     const zipPath = archivePath.trim();
     if (!outputDir || !zipPath) {
@@ -1998,16 +2020,18 @@ export function App({
   }
 
   function renderExportPanel() {
+    const exportDisabled = exporting || !staticExportSelected;
+
     return (
       <section className={panelClassName}>
         <PanelHeader
           title="Export"
-          subtitle="Static Web zip package"
+          subtitle="Contract-backed export profiles and package safety"
           action={
             <button
               type="button"
               onClick={() => void runStaticZipExport()}
-              disabled={exporting}
+              disabled={exportDisabled}
               className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
             >
               {exporting ? (
@@ -2021,20 +2045,168 @@ export function App({
         />
         <SectionMessage section="export" status={formStatus} />
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <TextInput
-            label="Output directory"
-            ariaLabel="Static export output directory"
-            value={exportDir}
-            onChange={setExportDir}
-          />
-          <TextInput
-            label="Zip archive"
-            ariaLabel="Static export zip archive"
-            value={archivePath}
-            onChange={setArchivePath}
-          />
-        </div>
+        {exportProfiles.length > 0 ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="grid content-start gap-2">
+              {exportProfiles.map((profile) => {
+                const selected = profile.id === selectedExportProfileId;
+                return (
+                  <button
+                    type="button"
+                    key={profile.id}
+                    aria-label={`Select export profile ${profile.id}`}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      setSelectedExportProfileId(profile.id);
+                      setExportReport(null);
+                      setExportError(null);
+                    }}
+                    className={[
+                      "rounded-md border px-3 py-3 text-left transition",
+                      selected
+                        ? "border-ink/45 bg-parchment"
+                        : "border-ink/10 hover:border-ink/30",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h4 className="truncate text-sm font-semibold">
+                          {profile.id}
+                        </h4>
+                        <p className="mt-1 text-xs font-medium uppercase text-ink/45">
+                          {profile.target}
+                        </p>
+                      </div>
+                      <span
+                        className={[
+                          "rounded-sm px-2 py-1 text-xs font-semibold",
+                          profile.target === "static_web"
+                            ? "bg-jade/10 text-jade"
+                            : "bg-ink/5 text-ink/55",
+                        ].join(" ")}
+                      >
+                        {profile.target === "static_web" ? "Executable" : "Draft"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-5 text-ink/65">
+                      {profile.intent}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedExportProfile ? (
+              <article className="rounded-md border border-ink/10 bg-parchment p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium uppercase text-ink/45">
+                      Selected Profile
+                    </p>
+                    <h4 className="mt-1 text-base font-semibold">
+                      {selectedExportProfile.id}
+                    </h4>
+                  </div>
+                  <span className="rounded-sm border border-ink/10 bg-white px-2 py-1 text-xs font-semibold text-ink/60">
+                    {selectedExportProfile.target}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+                  <ProfileFlag
+                    label="Runtime network"
+                    value={
+                      selectedExportProfile.requires_network_at_runtime
+                        ? "required"
+                        : "not required"
+                    }
+                    safe={!selectedExportProfile.requires_network_at_runtime}
+                  />
+                  <ProfileFlag
+                    label="Provider config"
+                    value={
+                      selectedExportProfile.includes_provider_config
+                        ? "included"
+                        : "excluded"
+                    }
+                    safe={!selectedExportProfile.includes_provider_config}
+                  />
+                  <ProfileFlag
+                    label="Private traces"
+                    value={
+                      selectedExportProfile.includes_private_traces
+                        ? "included"
+                        : "excluded"
+                    }
+                    safe={!selectedExportProfile.includes_private_traces}
+                  />
+                  <ProfileFlag
+                    label="Submission ready"
+                    value={
+                      selectedExportProfile.platform_submission_ready
+                        ? "claimed"
+                        : "not claimed"
+                    }
+                    safe={!selectedExportProfile.platform_submission_ready}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-medium uppercase text-ink/45">
+                    Capabilities
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedExportProfile.capabilities.map((capability) => (
+                      <span
+                        key={capability}
+                        className="rounded-sm border border-ink/10 bg-white px-2 py-1 text-xs font-semibold text-ink/65"
+                      >
+                        {capability}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-2">
+                  {selectedExportProfile.notes.map((note) => (
+                    <p
+                      key={note}
+                      className="rounded-md border border-ink/10 bg-white px-3 py-2 text-sm text-ink/65"
+                    >
+                      {note}
+                    </p>
+                  ))}
+                </div>
+              </article>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyPanel label="No export profiles returned by the Studio adapter." />
+        )}
+
+        {selectedExportProfile && !staticExportSelected ? (
+          <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm text-ink/60">
+            This profile is available as contract metadata only; no Studio export
+            command is wired for this target.
+          </div>
+        ) : null}
+
+        {staticExportSelected ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <TextInput
+              label="Output directory"
+              ariaLabel="Static export output directory"
+              value={exportDir}
+              onChange={setExportDir}
+            />
+            <TextInput
+              label="Zip archive"
+              ariaLabel="Static export zip archive"
+              value={archivePath}
+              onChange={setArchivePath}
+            />
+          </div>
+        ) : null}
 
         {exportError ? (
           <Message tone="error" className="mt-4">
@@ -2595,6 +2767,30 @@ function MetricBox({ label, value }: { label: string; value: string | number }) 
   );
 }
 
+function ProfileFlag({
+  label,
+  value,
+  safe,
+}: {
+  label: string;
+  value: string;
+  safe: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-ink/10 bg-white px-3 py-2">
+      <p className="text-xs font-medium uppercase text-ink/45">{label}</p>
+      <p
+        className={[
+          "mt-1 text-sm font-semibold",
+          safe ? "text-jade" : "text-signal",
+        ].join(" ")}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function AssetCatalogCard({ item }: { item: AssetCatalogItem }) {
   if (item.source === "scene-background-fallback") {
     return (
@@ -2759,6 +2955,14 @@ function contentKindsFromLines(value: string): AiUsageContentKind[] {
     allowed.includes(kind as AiUsageContentKind),
   );
   return selected.length > 0 ? selected : ["text"];
+}
+
+function resolveExportProfileId(profiles: ExportProfile[], currentId: string) {
+  if (profiles.some((profile) => profile.id === currentId)) {
+    return currentId;
+  }
+
+  return profiles[0]?.id ?? "";
 }
 
 function defaultStaticExportDir(projectPath: string) {

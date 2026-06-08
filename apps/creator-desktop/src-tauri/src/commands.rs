@@ -1,9 +1,9 @@
 use plotforge_studio::{
     AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
-    CharacterGenerationReport, PlayOnceReport, ProjectCheckReport, ProjectCreationReport,
-    ProjectCreationRequest, ProjectData, ResourceDefinition, Rule, RulesEditDocument,
-    StaticExportReport, StateVariablesEditDocument, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StudioCommandError, SourceFileContent, SourceFileSummary,
+    CharacterGenerationReport, ExportProfile, PlayOnceReport, ProjectCheckReport,
+    ProjectCreationReport, ProjectCreationRequest, ProjectData, ResourceDefinition, Rule,
+    RulesEditDocument, SourceFileContent, SourceFileSummary, StateVariablesEditDocument,
+    StaticExportReport, StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError,
     VisualBible, WorldEditDocument, WorldGenerationReport,
 };
 
@@ -24,6 +24,11 @@ pub fn open_project(path: String) -> Result<ProjectData, StudioCommandError> {
 #[tauri::command(rename_all = "snake_case")]
 pub fn check_project(path: String) -> Result<ProjectCheckReport, StudioCommandError> {
     plotforge_studio::check_project(path)
+}
+
+#[tauri::command]
+pub fn list_export_profiles() -> Vec<ExportProfile> {
+    plotforge_studio::list_export_profiles()
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -220,7 +225,11 @@ pub fn play_once_project_from_latest_snapshot(
     player_input: String,
     save_id: Option<String>,
 ) -> Result<PlayOnceReport, StudioCommandError> {
-    plotforge_studio::play_once_project_from_latest_snapshot(path, &player_input, save_id.as_deref())
+    plotforge_studio::play_once_project_from_latest_snapshot(
+        path,
+        &player_input,
+        save_id.as_deref(),
+    )
 }
 
 #[tauri::command(rename_all = "snake_case")]

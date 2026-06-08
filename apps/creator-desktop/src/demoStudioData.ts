@@ -1,6 +1,7 @@
 import type {
   AiSafetyPolicy,
   AssetRecord,
+  ExportProfile,
   ProjectData,
   ReproducibilityMetadata,
 } from "../../../contracts/plotforge";
@@ -11,6 +12,123 @@ import type {
 } from "./tauriBridge";
 
 export const demoProjectPath = "examples/dynasty-embers";
+
+export const demoExportProfiles = [
+  {
+    id: "static-web",
+    target: "static_web",
+    intent: "Package a local/self-hosted static player with prebaked project content.",
+    capabilities: [
+      "local_http",
+      "no_network_player",
+      "static_assets",
+      "standalone_package",
+    ],
+    requires_network_at_runtime: false,
+    includes_provider_config: false,
+    includes_private_traces: false,
+    platform_submission_ready: false,
+    notes: [
+      "Runs from copied player files and local asset references.",
+      "Does not include provider credentials, raw provider responses, or private traces.",
+      "This profile is an engineering disclosure surface, not a legal compliance guarantee.",
+    ],
+  },
+  {
+    id: "byo-key-web",
+    target: "dynamic_web",
+    intent:
+      "Describe a future dynamic web player where each player supplies their own provider key.",
+    capabilities: [
+      "provider_backed_generation",
+      "player_byo_key",
+      "runtime_save_restore",
+    ],
+    requires_network_at_runtime: true,
+    includes_provider_config: false,
+    includes_private_traces: false,
+    platform_submission_ready: false,
+    notes: [
+      "Player BYO keys must be entered at runtime and must not be written into export packages.",
+      "Raw provider responses are never part of this profile contract.",
+      "This is a descriptive profile only; static export remains the runnable MVP output.",
+    ],
+  },
+  {
+    id: "self-host-backend",
+    target: "dynamic_web",
+    intent:
+      "Describe a future dynamic web package backed by a creator-operated service.",
+    capabilities: [
+      "provider_backed_generation",
+      "self_host_backend",
+      "runtime_save_restore",
+    ],
+    requires_network_at_runtime: true,
+    includes_provider_config: false,
+    includes_private_traces: false,
+    platform_submission_ready: false,
+    notes: [
+      "Provider credentials must stay in the creator-operated backend, never in client packages.",
+      "The export kit may generate deployment notes, but not backend secrets or live provider config.",
+      "This is a descriptive profile only; no hosted backend is generated in the MVP.",
+    ],
+  },
+  {
+    id: "desktop-runtime",
+    target: "desktop_bundle",
+    intent:
+      "Generate a local desktop runtime draft with package evidence and build notes.",
+    capabilities: [
+      "desktop_shell",
+      "runtime_save_restore",
+      "static_assets",
+      "standalone_package",
+    ],
+    requires_network_at_runtime: false,
+    includes_provider_config: false,
+    includes_private_traces: false,
+    platform_submission_ready: false,
+    notes: [
+      "Desktop runtime state must stay separate from private debug traces.",
+      "Provider credentials are not bundled into distributable packages.",
+    ],
+  },
+  {
+    id: "steam-workshop",
+    target: "steam_workshop",
+    intent: "Describe a future Workshop metadata/package candidate.",
+    capabilities: ["steam_workshop_metadata", "static_assets"],
+    requires_network_at_runtime: false,
+    includes_provider_config: false,
+    includes_private_traces: false,
+    platform_submission_ready: false,
+    notes: [
+      "Workshop support is a metadata/package exploration profile only.",
+      "This profile does not upload content or promise platform approval.",
+    ],
+  },
+  {
+    id: "steam-submission-kit",
+    target: "steam_submission_kit",
+    intent:
+      "Generate local draft evidence for a creator-owned Steam submission workflow.",
+    capabilities: [
+      "steam_submission_evidence",
+      "static_assets",
+      "standalone_package",
+    ],
+    requires_network_at_runtime: false,
+    includes_provider_config: false,
+    includes_private_traces: false,
+    platform_submission_ready: false,
+    notes: [
+      "Submission Kit output is draft support material only.",
+      "Creators remain responsible for Steamworks setup, store copy, build upload, content survey, and platform review.",
+      "This profile does not call Steamworks APIs or promise approval.",
+    ],
+  },
+] satisfies ExportProfile[];
 
 export const demoReproducibilityMetadata: ReproducibilityMetadata = {
   run_seed: 7,

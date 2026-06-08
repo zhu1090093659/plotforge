@@ -9,7 +9,7 @@ use plotforge_export::{export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 pub use plotforge_schema::{
     AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
-    CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect,
+    CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect, ExportProfile,
     ProjectCreationReport, ProjectCreationRequest, ProjectData, ProjectTemplateId,
     ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
     StateVariablesEditDocument, StoryCraftEditDocument, StoryCraftGenerationReport,
@@ -111,6 +111,10 @@ pub fn check_project(path: impl AsRef<Path>) -> StudioCommandResult<ProjectCheck
         rule_count: project.rules.len(),
         character_count: project.characters.len(),
     })
+}
+
+pub fn list_export_profiles() -> Vec<ExportProfile> {
+    plotforge_schema::supported_export_profiles()
 }
 
 pub fn read_world_edit_document(path: impl AsRef<Path>) -> StudioCommandResult<WorldEditDocument> {
@@ -687,12 +691,13 @@ mod tests {
         AiSafetyPolicy, Character, Effect, ResourceDefinition, Rule, check_project,
         create_character, create_project, create_resource, create_rule, export_static_project,
         export_static_project_zip, generate_character, generate_story_craft,
-        generate_world_expansion, list_asset_records, list_source_files, open_project,
-        play_once_project, play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
-        play_once_project_with_save, read_ai_safety_policy, read_character_edit_document,
-        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
-        read_story_craft_edit_document, read_world_edit_document, update_ai_safety_policy,
-        update_story_craft_edit_document, update_world_edit_document, write_source_file,
+        generate_world_expansion, list_asset_records, list_export_profiles, list_source_files,
+        open_project, play_once_project, play_once_project_from_latest_snapshot,
+        play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
+        read_character_edit_document, read_rules_edit_document, read_source_file,
+        read_state_variables_edit_document, read_story_craft_edit_document,
+        read_world_edit_document, update_ai_safety_policy, update_story_craft_edit_document,
+        update_world_edit_document, write_source_file,
     };
 
     #[test]
@@ -725,6 +730,53 @@ mod tests {
         assert_eq!(error.code, "create_project");
         assert!(error.message.contains("secret markers"));
         assert!(!project_path.join("game.toml").exists());
+    }
+
+    #[test]
+    fn list_export_profiles_exposes_schema_supported_profiles() {
+        let profiles = list_export_profiles();
+        let ids = profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec![
+                "static-web",
+                "byo-key-web",
+                "self-host-backend",
+                "desktop-runtime",
+                "steam-workshop",
+                "steam-submission-kit"
+            ]
+        );
+        assert!(profiles.iter().any(|profile| profile.id == "byo-key-web"));
+        assert!(
+            profiles
+                .iter()
+                .any(|profile| profile.id == "self-host-backend")
+        );
+        assert!(
+            profiles
+                .iter()
+                .any(|profile| profile.id == "steam-submission-kit")
+        );
+        assert!(
+            profiles
+                .iter()
+                .all(|profile| !profile.includes_provider_config)
+        );
+        assert!(
+            profiles
+                .iter()
+                .all(|profile| !profile.includes_private_traces)
+        );
+        assert!(
+            profiles
+                .iter()
+                .all(|profile| !profile.platform_submission_ready)
+        );
     }
 
     #[test]

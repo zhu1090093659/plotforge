@@ -1118,6 +1118,76 @@
         }
       ]
     },
+    "DesktopRuntimeDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "ai_usage_manifest_path": {
+          "type": "string"
+        },
+        "build_notes_markdown": {
+          "type": "string"
+        },
+        "export_profile": {
+          "$ref": "#/$defs/ExportProfile"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "notices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "package_files": {
+          "items": {
+            "$ref": "#/$defs/WorkshopPackageFile"
+          },
+          "type": "array"
+        },
+        "private_traces_included": {
+          "type": "boolean"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "project_version": {
+          "type": "string"
+        },
+        "provider_credentials_included": {
+          "type": "boolean"
+        },
+        "raw_provider_responses_included": {
+          "type": "boolean"
+        },
+        "requires_network_at_runtime": {
+          "type": "boolean"
+        },
+        "runtime_entrypoint": {
+          "type": "string"
+        },
+        "static_manifest_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest_version",
+        "project_id",
+        "project_version",
+        "export_profile",
+        "static_manifest_path",
+        "ai_usage_manifest_path",
+        "build_notes_markdown",
+        "package_files",
+        "runtime_entrypoint",
+        "requires_network_at_runtime",
+        "provider_credentials_included",
+        "private_traces_included",
+        "raw_provider_responses_included",
+        "notices"
+      ],
+      "type": "object"
+    },
     "Effect": {
       "oneOf": [
         {
@@ -1347,8 +1417,11 @@
         "standalone_package",
         "runtime_save_restore",
         "provider_backed_generation",
+        "player_byo_key",
+        "self_host_backend",
         "desktop_shell",
-        "steam_workshop_metadata"
+        "steam_workshop_metadata",
+        "steam_submission_evidence"
       ],
       "type": "string"
     },
@@ -1357,7 +1430,8 @@
         "static_web",
         "dynamic_web",
         "desktop_bundle",
-        "steam_workshop"
+        "steam_workshop",
+        "steam_submission_kit"
       ],
       "type": "string"
     },
@@ -3602,6 +3676,9 @@
     "character_portrait_request": {
       "$ref": "#/$defs/CharacterPortraitRequest"
     },
+    "desktop_runtime_draft": {
+      "$ref": "#/$defs/DesktopRuntimeDraft"
+    },
     "export_manifest": {
       "$ref": "#/$defs/ExportManifest"
     },
@@ -3702,6 +3779,7 @@
     "audio_bible",
     "ai_safety_policy",
     "ai_usage_manifest",
+    "desktop_runtime_draft",
     "workshop_item_package",
     "steam_submission_kit_request",
     "steam_submission_kit_draft",

@@ -6,6 +6,7 @@ import type {
   Character,
   CharacterEditDocument,
   CharacterGenerationReport,
+  ExportProfile,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
@@ -27,6 +28,7 @@ export const studioCommandNames = {
   createProject: "create_project",
   openProject: "open_project",
   checkProject: "check_project",
+  listExportProfiles: "list_export_profiles",
   readWorldEditDocument: "read_world_edit_document",
   updateWorldEditDocument: "update_world_edit_document",
   readStoryCraftEditDocument: "read_story_craft_edit_document",
@@ -136,6 +138,9 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<ProjectCheckReport>(studioCommandNames.checkProject, {
         path,
       });
+    },
+    listExportProfiles(): Promise<ExportProfile[]> {
+      return invokeCommand<ExportProfile[]>(studioCommandNames.listExportProfiles);
     },
     readWorldEditDocument(path: string): Promise<WorldEditDocument> {
       return invokeCommand<WorldEditDocument>(

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 import {
+  demoExportProfiles,
   demoPlayOnceReport,
   demoProjectData,
   demoReproducibilityMetadata,
@@ -381,6 +382,16 @@ describe("App", () => {
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Export/ }));
+    expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
+    expect(screen.getByText("byo-key-web")).toBeTruthy();
+    expect(screen.getByText("self-host-backend")).toBeTruthy();
+    expect(screen.getByText("desktop-runtime")).toBeTruthy();
+    expect(screen.getByText("steam-workshop")).toBeTruthy();
+    expect(screen.getByText("steam-submission-kit")).toBeTruthy();
+    expect(screen.getByText("no_network_player")).toBeTruthy();
+    expect(screen.getByText("Provider config")).toBeTruthy();
+    expect(screen.getByText("Submission ready")).toBeTruthy();
+
     fireEvent.change(screen.getByLabelText("Static export output directory"), {
       target: { value: "/tmp/static-export" },
     });
@@ -400,6 +411,43 @@ describe("App", () => {
     });
     expect(screen.getByText("/tmp/dynasty-embers.zip")).toBeTruthy();
     expect(screen.getByText("matched")).toBeTruthy();
+  });
+
+  it("keeps draft export profiles visible without calling static export", async () => {
+    const exports: string[] = [];
+    const dataSource = appTestDataSource({
+      async exportStaticProjectZip() {
+        exports.push("static-zip");
+        throw new Error("static export should not run for draft profiles");
+      },
+    });
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Export/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Select export profile steam-workshop",
+      }),
+    );
+
+    expect(screen.getByText("steam_workshop_metadata")).toBeTruthy();
+    expect(screen.getByText("not claimed")).toBeTruthy();
+    expect(
+      screen.getByText("This profile does not upload content or promise platform approval."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /This profile is available as contract metadata only; no Studio export command is wired/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Export zip" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(exports).toEqual([]);
   });
 
   it("creates a project from wizard fields and reloads the created folder", async () => {
@@ -819,6 +867,9 @@ function appTestDataSource(
         rule_count: 1,
         character_count: 2,
       };
+    },
+    async listExportProfiles() {
+      return structuredClone(demoExportProfiles);
     },
     async listAssetRecords() {
       return demoProjectData.asset_records;
