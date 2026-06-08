@@ -27,7 +27,7 @@
 |:--|:--|:--|--:|--:|--:|
 | 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 0 | 5 | 5 |
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 0 | 5 | 5 |
-| 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 2 | 3 | 5 |
+| 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 1 | 4 | 5 |
 | 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 4 | 0 | 4 |
 | 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 4 | 0 | 4 |
 | 6 | Steam and Workshop Exploration | https://github.com/zhu1090093659/plotforge/milestone/14 | 3 | 0 | 3 |
@@ -49,7 +49,7 @@
 | T3.1 | #31 | Initialize creator desktop frontend workspace | closed by PR #57 |
 | T3.2 | #32 | Add Tauri command bridge | closed by PR #58 |
 | T3.3 | #33 | Build project dashboard and source-file editor shell | closed by PR #59 |
-| T3.4 | #34 | Build playtest and debugger trace views | open |
+| T3.4 | #34 | Build playtest and debugger trace views | closed by PR #60 |
 | T3.5 | #35 | Add Studio local QA runbook and smoke path | open |
 | T4.1 | #36 | Add plotforge-media asset registry | open |
 | T4.2 | #37 | Add job queue core | open |
@@ -75,7 +75,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 
 - [x] Phase 1: Core Runtime Hardening (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
 - [x] Phase 2: Story Craft and Provider Contracts (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
-- [ ] Phase 3: Desktop Studio Skeleton (3/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
+- [ ] Phase 3: Desktop Studio Skeleton (4/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
 - [ ] Phase 4: Media and Job Pipeline (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
 - [ ] Phase 5: Persistence, Debugger, and Export v2 (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
 - [ ] Phase 6: Steam and Workshop Exploration (0/3 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/14)
@@ -83,7 +83,7 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 ## Current Status
 
 **Active Phase**: Phase 3 — Desktop Studio Skeleton
-**Active Task**: T3.4 Build playtest and debugger trace views (Issue #34)
+**Active Task**: T3.5 Add Studio local QA runbook and smoke path (Issue #35)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #34: build playtest and debugger trace views on top of the Tauri bridge.
+1. Implement #35: add Studio local QA runbook and smoke path.
 2. Keep frontend contracts generated from Rust schema and avoid duplicating business logic in UI code.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -122,3 +122,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-07 | Execution | Completed #31 via PR #57: initialized npm workspace and `apps/creator-desktop` Vite/React/Tailwind shell, added contract-backed frontend adapter test, frontend CI job, full local QA integration, and AGENTS/README commands. |
 | 2026-06-07 | Execution | Completed #32 via PR #58: added `plotforge-studio` command adapter crate, Tauri v2 `src-tauri` IPC wrapper, typed frontend invoke bridge, Tauri check in creator QA/CI, and browser DOM smoke coverage. |
 | 2026-06-08 | Execution | Completed #33 via PR #59: added canonical source-file read/write commands, safe editable text-surface guardrails, project dashboard source browser/editor, browser preview data source, component tests, full local QA, and desktop Chrome smoke coverage. |
+| 2026-06-08 | Execution | Completed #34 via PR #60: added data-source backed Playtest and Runtime Trace panels, visible fallback/errors/review/diagnostics, no raw key rendering coverage, full local QA, and desktop/mobile Browser smoke coverage. |
