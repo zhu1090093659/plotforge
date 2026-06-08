@@ -28,7 +28,7 @@
 | 1 | Core Runtime Hardening | https://github.com/zhu1090093659/plotforge/milestone/9 | 0 | 5 | 5 |
 | 2 | Story Craft and Provider Contracts | https://github.com/zhu1090093659/plotforge/milestone/10 | 0 | 5 | 5 |
 | 3 | Desktop Studio Skeleton | https://github.com/zhu1090093659/plotforge/milestone/11 | 0 | 5 | 5 |
-| 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 3 | 1 | 4 |
+| 4 | Media and Job Pipeline | https://github.com/zhu1090093659/plotforge/milestone/12 | 2 | 2 | 4 |
 | 5 | Persistence, Debugger, and Export v2 | https://github.com/zhu1090093659/plotforge/milestone/13 | 4 | 0 | 4 |
 | 6 | Steam and Workshop Exploration | https://github.com/zhu1090093659/plotforge/milestone/14 | 3 | 0 | 3 |
 
@@ -52,7 +52,7 @@
 | T3.4 | #34 | Build playtest and debugger trace views | closed by PR #60 |
 | T3.5 | #35 | Add Studio local QA runbook and smoke path | closed by PR #61 |
 | T4.1 | #36 | Add plotforge-media asset registry | closed by PR #62 |
-| T4.2 | #37 | Add job queue core | open |
+| T4.2 | #37 | Add job queue core | closed by PR #63 |
 | T4.3 | #38 | Add image provider port and fake image pipeline | open |
 | T4.4 | #39 | Integrate media references into runtime and export | open |
 | T5.1 | #40 | Add save and restore runtime snapshots | open |
@@ -76,14 +76,14 @@ gh api 'repos/zhu1090093659/plotforge/milestones?state=all' --jq '.[] | select(.
 - [x] Phase 1: Core Runtime Hardening (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/9)
 - [x] Phase 2: Story Craft and Provider Contracts (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/10)
 - [x] Phase 3: Desktop Studio Skeleton (5/5 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/11)
-- [ ] Phase 4: Media and Job Pipeline (1/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
+- [ ] Phase 4: Media and Job Pipeline (2/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/12)
 - [ ] Phase 5: Persistence, Debugger, and Export v2 (0/4 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/13)
 - [ ] Phase 6: Steam and Workshop Exploration (0/3 tasks) — [milestone](https://github.com/zhu1090093659/plotforge/milestone/14)
 
 ## Current Status
 
 **Active Phase**: Phase 4 — Media and Job Pipeline
-**Active Task**: T4.2 Add job queue core (Issue #37)
+**Active Task**: T4.3 Add image provider port and fake image pipeline (Issue #38)
 **Blockers**: None
 
 ## Governance Status
@@ -100,7 +100,7 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 
 ## Next Steps
 
-1. Implement #37: add the job queue core for long-running tasks.
+1. Implement #38: add the image provider port and fake image pipeline.
 2. Keep media/job contracts in Rust crates and expose UI/runtime behavior through typed ports.
 3. Use PRs with `closes #N` for GitHub issue closure and update this index after merges.
 
@@ -125,3 +125,4 @@ Per-task telemetry is stored as GitHub Issue comments. Adaptive drift state live
 | 2026-06-08 | Execution | Completed #34 via PR #60: added data-source backed Playtest and Runtime Trace panels, visible fallback/errors/review/diagnostics, no raw key rendering coverage, full local QA, and desktop/mobile Browser smoke coverage. |
 | 2026-06-08 | Execution | Completed #35 via PR #61: added Creator Desktop build smoke wired into `creator-desktop:qa`, Studio Browser/Computer Use local runbook, README/AGENTS QA updates, full local QA, and desktop/mobile Browser smoke. Phase 3 milestone closed with drift_score 0. |
 | 2026-06-08 | Execution | Completed #36 via PR #62: added `plotforge-media` asset registry foundation with typed asset records, SHA-256 hashes, dedupe, refs, provider metadata, reachability/exportable paths, contract snapshots, AGENTS/README boundary updates, full local QA, and green GitHub Actions. |
+| 2026-06-08 | Execution | Completed #37 via PR #63: added `plotforge-job` queue core with typed states, explicit failures, injected-clock tests, cancel/retry/timeout/progress, cost accounting, contract snapshots, AGENTS/README invariants, full local QA, and green GitHub Actions. |
