@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PlotForge Player</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="plotforge-player" class="pf-player" data-player-root data-state="loading">
+      <header class="pf-topbar" aria-label="Player status">
+        <span class="pf-brand">PlotForge</span>
+        <span class="pf-status" data-field="status">Loading export</span>
+      </header>
+      <main class="pf-stage">
+        <section class="pf-visual" aria-label="Scene artwork">
+          <img data-field="scene-image" alt="" />
+        </section>
+        <section class="pf-script" aria-live="polite">
+          <p class="pf-kicker" data-field="game-title">Loading</p>
+          <h1 data-field="scene-title">Loading PlotForge export</h1>
+          <p class="pf-hook" data-field="hook"></p>
+          <p class="pf-beat" data-field="beat"></p>
+          <div class="pf-choices" data-field="choices" aria-label="Choices"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./player.js"></script>
+  </body>
+</html>

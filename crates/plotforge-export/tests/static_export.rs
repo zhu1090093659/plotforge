@@ -32,13 +32,37 @@ fn export_manifest_contains_entry_scene_and_assets() {
     for asset in manifest.assets {
         assert!(output_dir.join(asset).is_file());
     }
-    let expected_files = vec![
-        PathBuf::from("assets/generated/court-crisis-001.png"),
-        PathBuf::from("game.json"),
-        PathBuf::from("index.html"),
-    ];
+    let expected_files = expected_export_files();
     assert_eq!(report.audit.allowed_files, expected_files);
     assert_eq!(report.audit.files_found, expected_files);
+}
+
+#[test]
+fn export_package_includes_player_web_surface_without_network_urls() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    create_demo_project(&project_path, false).expect("create");
+
+    let report = export_static_web(&project_path, &output_dir).expect("export");
+
+    assert_eq!(report.audit.files_found, expected_export_files());
+    let index = fs::read_to_string(output_dir.join("index.html")).expect("index");
+    let player = fs::read_to_string(output_dir.join("player.js")).expect("player");
+    let player_core = fs::read_to_string(output_dir.join("player-core.js")).expect("player core");
+    let styles = fs::read_to_string(output_dir.join("styles.css")).expect("styles");
+    assert!(index.contains("data-player-root"));
+    assert!(index.contains("src=\"./player.js\""));
+    assert!(index.contains("href=\"./styles.css\""));
+    assert!(player.contains("bootPlayer"));
+    assert!(player_core.contains("fetch(\"./game.json\""));
+    for file in [index, player, player_core, styles] {
+        assert!(!file.contains("https://"));
+        assert!(!file.contains("http://"));
+        assert!(!file.contains("//cdn."));
+        assert!(!file.contains("//unpkg."));
+        assert!(!file.contains("//fonts."));
+    }
 }
 
 #[test]
@@ -96,11 +120,7 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
             .files_found
             .into_iter()
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            PathBuf::from("assets/generated/court-crisis-001.png"),
-            PathBuf::from("game.json"),
-            PathBuf::from("index.html"),
-        ])
+        expected_export_files().into_iter().collect::<BTreeSet<_>>()
     );
     let exported_manifest = fs::read_to_string(output_dir.join("game.json")).expect("manifest");
     assert!(!exported_manifest.contains("sk-test-secret-marker"));
@@ -180,4 +200,15 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
         ExportError::Media(MediaError::UnsafeAssetPath(_))
     ));
     assert!(!temp.path().join("traces/latest.json").exists());
+}
+
+fn expected_export_files() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("assets/generated/court-crisis-001.png"),
+        PathBuf::from("game.json"),
+        PathBuf::from("index.html"),
+        PathBuf::from("player-core.js"),
+        PathBuf::from("player.js"),
+        PathBuf::from("styles.css"),
+    ]
 }

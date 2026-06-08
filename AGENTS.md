@@ -9,6 +9,7 @@ Build PlotForge as a CLI-first Rust engine with a creator desktop UI adapter. Re
 The current MVP contains:
 
 - Rust workspace crates for schema, storage, rule evaluation, story craft review, mock agent planning, runtime, media asset registry, job queue core, static export, and CLI.
+- `apps/player-web/static` as the source for the no-network static player package copied by `plotforge-export`.
 - `apps/creator-desktop` as the Vite/React/Tailwind Studio frontend workspace with dashboard, source editor, playtest, runtime trace views, and a thin Tauri command bridge.
 - Folder project source of truth using TOML, JSON, Markdown, and generated local assets.
 - Rebuildable SQLite cache/index under `.plotforge/cache.sqlite` for project summary, source file hashes, trace metadata, and asset metadata.
@@ -37,6 +38,7 @@ The current MVP contains:
 - Keep persistence and fixture file layout in `plotforge-storage`.
 - Keep SQLite cache/index behavior in `plotforge-storage`; it may index project summaries, source file hashes, trace metadata, and asset metadata, but must not become a second project loader or source of truth.
 - Keep static export behavior in `plotforge-export`; exported bundles must copy only reachable referenced assets from `plotforge-media` and must not include private traces, provider config, raw provider responses, unreferenced assets, or secrets.
+- Keep static player package behavior in `apps/player-web/static`; it must consume `ExportManifest`, run without external network URLs, and must not duplicate rule/runtime state machines.
 - Keep asset registry records, content hashes, references, provider metadata, and reachability in `plotforge-media`; as export, runtime, Studio, and future providers integrate media, consume this boundary instead of adding a second media registry implementation.
 - Keep long-running task state transitions, cancel/retry/timeout/progress, and cost accounting in `plotforge-job`; provider/runtime/export adapters should not own parallel job state machines.
 - Keep image provider ports and scene image pipeline orchestration in `plotforge-agent`; image providers should feed `plotforge-media` and `plotforge-job` instead of bypassing those boundaries.
@@ -54,6 +56,7 @@ The current MVP contains:
 - CLI command changes must update black-box tests under `crates/plotforge-cli/tests/`.
 - Export/player behavior changes must update export tests and, when rendering or interaction matters, the HTTP smoke path.
 - Creator desktop changes must run `npm run creator-desktop:qa`; user-visible UI adapters should add or update TypeScript/Vitest coverage for contract-backed behavior.
+- Static player changes must run `npm run player-web:qa` and cover DOM interaction, mobile viewport behavior, and no-network package constraints.
 - Fixture changes must keep `cargo run -p plotforge-cli -- check examples/dynasty-embers` passing and must not commit generated trace JSON.
 - CLI/export smoke tests must use temp dirs; do not mutate checked-in fixtures in CI.
 - If a meaningful test cannot be added, document the reason in the PR or final response and run the next best validation.
@@ -67,6 +70,7 @@ Use the narrowest relevant checks during development, then run the full gate bef
 - `cargo test --workspace`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `npm run creator-desktop:qa`
+- `npm run player-web:qa`
 - `python3 scripts/qa/creator_desktop_build_smoke.py`
 - `scripts/qa/full_local.sh`
 - `scripts/contracts/check_contracts.sh`

@@ -59,6 +59,8 @@ jobs:
         run: npm ci
       - name: Run creator desktop QA
         run: npm run creator-desktop:qa
+      - name: Run player web QA
+        run: npm run player-web:qa
 
   cli-smoke:
     runs-on: ubuntu-latest

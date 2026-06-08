@@ -13,6 +13,7 @@ cargo test --workspace
 scripts/contracts/check_contracts.sh
 npm ci
 npm run creator-desktop:qa
+npm run player-web:qa
 cargo clippy --workspace --all-targets -- -D warnings
 
 PROJECT="$TMP/dynasty-embers"
