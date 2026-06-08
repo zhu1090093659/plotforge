@@ -7,11 +7,16 @@ use std::{
 use plotforge_media::{AssetRegistry, MediaError};
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiProviderSummary, AiUsageContentKind, AiUsageDisclosure,
-    AiUsageManifest, AiUsageSourceKind, AssetKind, AssetRecord, AssetSourceKind, ExportManifest,
-    ExportProfile, contains_secret_marker_text,
+    AiUsageManifest, AiUsageSourceKind, AssetKind, AssetRecord, AssetSourceKind,
+    DESKTOP_RUNTIME_DRAFT_FILE, DesktopRuntimeDraft, ExportManifest, ExportProfile,
+    WorkshopPackageFile, contains_secret_marker_text,
 };
 use plotforge_storage::{StorageError, load_project};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+const GAME_MANIFEST_FILE: &str = "game.json";
+const DESKTOP_BUILD_NOTES_FILE: &str = "desktop-build-notes.md";
 
 const PLAYER_PACKAGE_FILES: &[(&str, &str)] = &[
     (
@@ -50,13 +55,13 @@ pub enum ExportError {
         #[source]
         source: serde_json::Error,
     },
-    #[error("static export contains a blocked secret marker: {0}")]
+    #[error("export package contains a blocked secret marker: {0}")]
     SecretMarker(String),
-    #[error("static export asset path is not package-safe: {0}")]
+    #[error("export package asset path is not package-safe: {0}")]
     UnsafeAssetPath(String),
-    #[error("static export package contains a disallowed file: {0}")]
+    #[error("export package contains a disallowed file: {0}")]
     DisallowedPackageFile(PathBuf),
-    #[error("static export package is missing an expected file: {0}")]
+    #[error("export package is missing an expected file: {0}")]
     MissingPackageFile(PathBuf),
     #[error(
         "static zip archive path must not be inside the export directory: {archive} inside {output_dir}"
@@ -95,81 +100,65 @@ pub struct ExportPackageAudit {
     pub files_found: Vec<PathBuf>,
 }
 
+struct ExportPayload {
+    manifest: ExportManifest,
+    ai_usage: AiUsageManifest,
+    asset_paths: Vec<PathBuf>,
+    asset_record_by_export_path: BTreeMap<PathBuf, AssetRecord>,
+}
+
 pub fn export_static_web(
     project_path: impl AsRef<Path>,
     output_dir: impl AsRef<Path>,
 ) -> Result<ExportReport, ExportError> {
     let project_path = project_path.as_ref();
-    let project = load_project_for_export(project_path)?;
     let output_dir = output_dir.as_ref();
-    fs::create_dir_all(output_dir).map_io(output_dir)?;
-    fs::create_dir_all(output_dir.join("assets/generated"))
-        .map_io(output_dir.join("assets/generated"))?;
 
-    let mut asset_registry = AssetRegistry::new();
-    asset_registry.register_project_assets(project_path, &project)?;
-    let asset_records = asset_registry
-        .reachable_records()
-        .into_iter()
-        .cloned()
-        .collect::<Vec<_>>();
-    let assets = asset_records
-        .iter()
-        .map(|record| record.export_path.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    let asset_paths = assets
-        .iter()
-        .map(|asset| validate_export_asset_path(asset))
-        .collect::<Result<Vec<_>, _>>()?;
-    let asset_record_by_export_path = asset_records
-        .iter()
-        .cloned()
-        .map(|record| (PathBuf::from(&record.export_path), record))
-        .collect::<BTreeMap<_, _>>();
-    let allowed_files = allowed_export_files(&asset_paths);
-    let profile = ExportProfile::static_web();
-    let ai_usage = ai_usage_manifest(&project, &profile, &asset_records);
-    let manifest = ExportManifest {
-        game: project.game,
-        entry_scene: project.story_state.current_scene_key,
-        scenes: project.scenes,
-        assets: assets.clone(),
-        asset_records: asset_records.clone(),
-        profile,
-        ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
-        generated_by: "plotforge-export 0.1.0".into(),
-    };
-    let data = serde_json::to_string_pretty(&manifest).map_err(|source| ExportError::Json {
-        path: output_dir.join("game.json"),
-        source,
-    })?;
-    assert_no_secret_markers(&data)?;
-    let ai_usage_data =
-        serde_json::to_string_pretty(&ai_usage).map_err(|source| ExportError::Json {
-            path: output_dir.join(AI_USAGE_MANIFEST_FILE),
-            source,
-        })?;
-    assert_no_secret_markers(&ai_usage_data)?;
-
-    let data_path = output_dir.join("game.json");
-    let ai_usage_path = output_dir.join(AI_USAGE_MANIFEST_FILE);
-    fs::write(&data_path, data + "\n").map_io(&data_path)?;
-    fs::write(&ai_usage_path, ai_usage_data + "\n").map_io(&ai_usage_path)?;
-
-    let mut files_written = write_player_package(output_dir)?;
-    files_written.push(data_path);
-    files_written.push(ai_usage_path);
-    for asset in asset_paths {
-        let record = asset_record_by_export_path
-            .get(&asset)
-            .ok_or_else(|| ExportError::MissingPackageFile(asset.clone()))?;
-        let asset_path = copy_referenced_asset(project_path, output_dir, record)?;
-        files_written.push(asset_path);
-    }
+    let payload = build_export_payload(project_path, ExportProfile::static_web())?;
+    let allowed_files = allowed_export_files(&payload.asset_paths);
+    let files_written = write_static_runtime_files(project_path, output_dir, &payload)?;
     let audit = audit_export_package(output_dir, &allowed_files)?;
 
+    Ok(ExportReport {
+        output_dir: output_dir.to_path_buf(),
+        files_written,
+        audit,
+    })
+}
+
+pub fn export_desktop_runtime_draft(
+    project_path: impl AsRef<Path>,
+    output_dir: impl AsRef<Path>,
+) -> Result<ExportReport, ExportError> {
+    let project_path = project_path.as_ref();
+    let output_dir = output_dir.as_ref();
+
+    let payload = build_export_payload(project_path, ExportProfile::desktop_bundle())?;
+    let mut allowed_files = allowed_export_files(&payload.asset_paths);
+    allowed_files.insert(PathBuf::from(DESKTOP_BUILD_NOTES_FILE));
+    allowed_files.insert(PathBuf::from(DESKTOP_RUNTIME_DRAFT_FILE));
+
+    let mut files_written = write_static_runtime_files(project_path, output_dir, &payload)?;
+    let build_notes = desktop_build_notes(&payload.manifest);
+    assert_no_secret_markers(&build_notes)?;
+    let build_notes_path = output_dir.join(DESKTOP_BUILD_NOTES_FILE);
+    fs::write(&build_notes_path, build_notes.clone()).map_io(&build_notes_path)?;
+    files_written.push(build_notes_path);
+
+    let mut package_file_paths = allowed_export_files(&payload.asset_paths);
+    package_file_paths.insert(PathBuf::from(DESKTOP_BUILD_NOTES_FILE));
+    let package_files = package_file_records(output_dir, &package_file_paths)?;
+    let draft = desktop_runtime_draft(&payload, build_notes, package_files);
+    let draft_data = serde_json::to_string_pretty(&draft).map_err(|source| ExportError::Json {
+        path: output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE),
+        source,
+    })?;
+    assert_no_secret_markers(&draft_data)?;
+    let draft_path = output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE);
+    fs::write(&draft_path, draft_data + "\n").map_io(&draft_path)?;
+    files_written.push(draft_path);
+
+    let audit = audit_export_package(output_dir, &allowed_files)?;
     Ok(ExportReport {
         output_dir: output_dir.to_path_buf(),
         files_written,
@@ -197,6 +186,53 @@ pub fn export_static_web_zip(
     })
 }
 
+fn build_export_payload(
+    project_path: &Path,
+    profile: ExportProfile,
+) -> Result<ExportPayload, ExportError> {
+    let project = load_project_for_export(project_path)?;
+    let mut asset_registry = AssetRegistry::new();
+    asset_registry.register_project_assets(project_path, &project)?;
+    let asset_records = asset_registry
+        .reachable_records()
+        .into_iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    let assets = asset_records
+        .iter()
+        .map(|record| record.export_path.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let asset_paths = assets
+        .iter()
+        .map(|asset| validate_export_asset_path(asset))
+        .collect::<Result<Vec<_>, _>>()?;
+    let asset_record_by_export_path = asset_records
+        .iter()
+        .cloned()
+        .map(|record| (PathBuf::from(&record.export_path), record))
+        .collect::<BTreeMap<_, _>>();
+    let ai_usage = ai_usage_manifest(&project, &profile, &asset_records);
+    let manifest = ExportManifest {
+        game: project.game,
+        entry_scene: project.story_state.current_scene_key,
+        scenes: project.scenes,
+        assets,
+        asset_records,
+        profile,
+        ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
+        generated_by: "plotforge-export 0.1.0".into(),
+    };
+
+    Ok(ExportPayload {
+        manifest,
+        ai_usage,
+        asset_paths,
+        asset_record_by_export_path,
+    })
+}
+
 fn load_project_for_export(
     project_path: &Path,
 ) -> Result<plotforge_schema::ProjectData, ExportError> {
@@ -204,6 +240,47 @@ fn load_project_for_export(
         StorageError::Media { source, .. } => ExportError::Media(source),
         source => ExportError::Storage(source),
     })
+}
+
+fn write_static_runtime_files(
+    project_path: &Path,
+    output_dir: &Path,
+    payload: &ExportPayload,
+) -> Result<Vec<PathBuf>, ExportError> {
+    fs::create_dir_all(output_dir).map_io(output_dir)?;
+    fs::create_dir_all(output_dir.join("assets/generated"))
+        .map_io(output_dir.join("assets/generated"))?;
+
+    let manifest_data =
+        serde_json::to_string_pretty(&payload.manifest).map_err(|source| ExportError::Json {
+            path: output_dir.join(GAME_MANIFEST_FILE),
+            source,
+        })?;
+    assert_no_secret_markers(&manifest_data)?;
+    let ai_usage_data =
+        serde_json::to_string_pretty(&payload.ai_usage).map_err(|source| ExportError::Json {
+            path: output_dir.join(AI_USAGE_MANIFEST_FILE),
+            source,
+        })?;
+    assert_no_secret_markers(&ai_usage_data)?;
+
+    let manifest_path = output_dir.join(GAME_MANIFEST_FILE);
+    let ai_usage_path = output_dir.join(AI_USAGE_MANIFEST_FILE);
+    fs::write(&manifest_path, manifest_data + "\n").map_io(&manifest_path)?;
+    fs::write(&ai_usage_path, ai_usage_data + "\n").map_io(&ai_usage_path)?;
+
+    let mut files_written = write_player_package(output_dir)?;
+    files_written.push(manifest_path);
+    files_written.push(ai_usage_path);
+    for asset in &payload.asset_paths {
+        let record = payload
+            .asset_record_by_export_path
+            .get(asset)
+            .ok_or_else(|| ExportError::MissingPackageFile(asset.clone()))?;
+        let asset_path = copy_referenced_asset(project_path, output_dir, record)?;
+        files_written.push(asset_path);
+    }
+    Ok(files_written)
 }
 
 fn write_player_package(output_dir: &Path) -> Result<Vec<PathBuf>, ExportError> {
@@ -278,6 +355,61 @@ fn zip_entry_name(path: &Path) -> Result<String, ExportError> {
     Ok(parts.join("/"))
 }
 
+fn desktop_runtime_draft(
+    payload: &ExportPayload,
+    build_notes_markdown: String,
+    package_files: Vec<WorkshopPackageFile>,
+) -> DesktopRuntimeDraft {
+    DesktopRuntimeDraft {
+        manifest_version: "2026-06-08".into(),
+        project_id: payload.manifest.game.id.clone(),
+        project_version: payload.manifest.game.version.clone(),
+        export_profile: payload.manifest.profile.clone(),
+        static_manifest_path: GAME_MANIFEST_FILE.into(),
+        ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
+        build_notes_markdown,
+        package_files,
+        runtime_entrypoint: "index.html".into(),
+        requires_network_at_runtime: payload.manifest.profile.requires_network_at_runtime,
+        provider_credentials_included: false,
+        private_traces_included: false,
+        raw_provider_responses_included: false,
+        notices: vec![
+            "Local desktop runtime draft only; no installer or platform submission is generated."
+                .into(),
+            "No provider credentials, raw provider responses, or private traces are included."
+                .into(),
+            "Creators must review and build any desktop shell themselves before distribution."
+                .into(),
+        ],
+    }
+}
+
+fn desktop_build_notes(manifest: &ExportManifest) -> String {
+    format!(
+        "\
+# Desktop Runtime Draft
+
+Project: {} ({})
+Profile: {}
+Runtime entrypoint: index.html
+Static manifest: game.json
+AI usage manifest: {}
+
+This package is a local draft around the no-network static player. It does not include a Tauri build, installer, provider credentials, private traces, raw provider responses, Steamworks upload state, or platform approval evidence.
+
+Next manual steps:
+- Review the generated static player package over local HTTP.
+- Build and test a desktop shell outside this export package if distribution is desired.
+- Recheck platform requirements and store copy before any external submission.
+",
+        manifest.game.title,
+        manifest.game.version,
+        manifest.profile.id,
+        AI_USAGE_MANIFEST_FILE
+    )
+}
+
 fn ai_usage_manifest(
     project: &plotforge_schema::ProjectData,
     profile: &ExportProfile,
@@ -296,14 +428,22 @@ fn ai_usage_manifest(
         disclosures: ai_usage_disclosures(asset_records),
         provider_summaries: ai_provider_summaries(asset_records),
         ai_safety_policy: project.ai_safety_policy.clone(),
-        notices: vec![
-            "Static export packages project content and reachable assets only.".into(),
-            "No provider credentials, raw provider responses, or private traces are included."
-                .into(),
-            "This manifest is an engineering disclosure surface, not a legal compliance guarantee."
-                .into(),
-        ],
+        notices: ai_usage_notices(profile),
     }
+}
+
+fn ai_usage_notices(profile: &ExportProfile) -> Vec<String> {
+    let package_notice = if profile.id == "desktop-runtime" {
+        "Desktop runtime draft packages project content, the static player, build notes, and reachable assets only."
+    } else {
+        "Static export packages project content and reachable assets only."
+    };
+    vec![
+        package_notice.into(),
+        "No provider credentials, raw provider responses, or private traces are included.".into(),
+        "This manifest is an engineering disclosure surface, not a legal compliance guarantee."
+            .into(),
+    ]
 }
 
 fn ai_usage_disclosures(asset_records: &[AssetRecord]) -> Vec<AiUsageDisclosure> {
@@ -319,7 +459,7 @@ fn ai_usage_disclosures(asset_records: &[AssetRecord]) -> Vec<AiUsageDisclosure>
             content_kind: ai_content_kind(&record.kind),
             source_kind: ai_source_kind(record),
             summary: format!(
-                "Reachable {:?} asset included in the static package.",
+                "Reachable {:?} asset included in the export package.",
                 record.kind
             ),
             asset_paths: vec![record.export_path.clone()],
@@ -424,7 +564,7 @@ fn validate_export_asset_path(asset: &str) -> Result<PathBuf, ExportError> {
 
 fn allowed_export_files(asset_paths: &[PathBuf]) -> BTreeSet<PathBuf> {
     let mut allowed_files = BTreeSet::from([
-        PathBuf::from("game.json"),
+        PathBuf::from(GAME_MANIFEST_FILE),
         PathBuf::from(AI_USAGE_MANIFEST_FILE),
     ]);
     allowed_files.extend(
@@ -434,6 +574,31 @@ fn allowed_export_files(asset_paths: &[PathBuf]) -> BTreeSet<PathBuf> {
     );
     allowed_files.extend(asset_paths.iter().cloned());
     allowed_files
+}
+
+fn package_file_records(
+    output_dir: &Path,
+    files: &BTreeSet<PathBuf>,
+) -> Result<Vec<WorkshopPackageFile>, ExportError> {
+    files
+        .iter()
+        .map(|relative_path| {
+            let file_path = output_dir.join(relative_path);
+            let bytes = fs::read(&file_path).map_io(&file_path)?;
+            Ok(WorkshopPackageFile {
+                path: relative_path.to_string_lossy().replace('\\', "/"),
+                content_hash: sha256_hex(&bytes),
+                hash_algorithm: "sha256".into(),
+                byte_length: bytes.len() as u64,
+            })
+        })
+        .collect()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 fn normalized_absolute_path(path: &Path) -> Result<PathBuf, ExportError> {

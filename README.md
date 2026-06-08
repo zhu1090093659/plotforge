@@ -8,8 +8,9 @@ PlotForge is an AI story game creation engine. This repository currently contain
 - Folder project source of truth with TOML, JSON, and Markdown.
 - Mock agent pipeline only; no external model calls are required.
 - Static web export with prebaked scenes and placeholder PNG assets.
+- Export profile listing plus a local Desktop Runtime draft package with `desktop-runtime-draft.json`, build notes, static player files, reachable assets, and package hashes.
 - No-network static player package sourced from `apps/player-web/static` and copied into exports.
-- Export profiles and `ai-usage.json` package disclosure for static exports; these describe capabilities and AI usage evidence without legal conclusions or platform approval promises.
+- Export profiles and `ai-usage.json` package disclosure for static and desktop draft exports; these describe capabilities and AI usage evidence without legal conclusions or platform approval promises.
 - Local-only Workshop item package schema and validator in `plotforge-workshop`; no Steam API, upload, or release-readiness integration is included.
 - Local Steam Submission Kit draft generation in `plotforge-workshop`; it produces checklist, AI disclosure, content warnings, and packaging-note Markdown drafts from validated package evidence.
 - Steam compliance QA guidance and static no-launch-promise lint for active project-facing docs.
@@ -43,7 +44,9 @@ cargo run -p plotforge-cli -- new demo --path examples/dynasty-embers --force
 cargo run -p plotforge-cli -- check examples/dynasty-embers
 cargo run -p plotforge-cli -- play examples/dynasty-embers --once
 cargo run -p plotforge-cli -- trace inspect examples/dynasty-embers/traces/latest.json
+cargo run -p plotforge-cli -- export profiles
 cargo run -p plotforge-cli -- export static examples/dynasty-embers --out dist/dynasty-embers
+cargo run -p plotforge-cli -- export desktop examples/dynasty-embers --out dist/dynasty-embers-desktop
 
 scripts/contracts/export_contracts.sh
 scripts/contracts/check_contracts.sh
@@ -63,6 +66,7 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 - `plotforge-job` owns long-running job state transitions, progress, cancel/retry/timeout, failure, and cost accounting.
 - `plotforge-agent` owns provider ports and image pipeline orchestration; image generation writes through `plotforge-media` and `plotforge-job`.
 - `plotforge-export` packages only reachable referenced assets from the media registry.
+- Desktop Runtime draft export is local package evidence only; it emits build notes and hashes but does not create an installer, bundle credentials, include private traces, or claim platform readiness.
 - Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal conclusions, or platform approval promises.
 - `plotforge-workshop` owns local Workshop draft package validation. It must not call Steamworks APIs, upload content, or claim release readiness.
 - `plotforge-workshop` also owns Steam Submission Kit draft generation. Generated drafts are local support material only; they do not decide compliance, approval, publishing, or legal status.
@@ -72,6 +76,6 @@ python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 
 ## QA
 
-The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build/build-smoke/Tauri check, CLI smoke, and export smoke.
+The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build/build-smoke/Tauri check, CLI smoke, static export smoke, desktop draft export smoke, and unpacked HTTP export smoke.
 
 Local desktop interaction smoke is documented in `scripts/qa/computer_use_creator_desktop.md` for Creator Desktop and `scripts/qa/computer_use_static_export.md` for static export. Codex Desktop Browser/Computer Use verification is intentionally local-only and not part of GitHub Actions.

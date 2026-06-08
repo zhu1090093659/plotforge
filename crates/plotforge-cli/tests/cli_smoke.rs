@@ -1,6 +1,6 @@
 use std::{fs, process::Command};
 
-use plotforge_schema::REDACTED_TRACE_SECRET;
+use plotforge_schema::{AI_USAGE_MANIFEST_FILE, DESKTOP_RUNTIME_DRAFT_FILE, REDACTED_TRACE_SECRET};
 
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_plotforge-cli")
@@ -11,6 +11,7 @@ fn cli_runs_full_demo_flow_in_tempdir() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("dynasty-embers");
     let export = temp.path().join("export");
+    let desktop_export = temp.path().join("desktop-export");
     let export_zip = temp.path().join("dynasty-embers-static.zip");
     let unpacked_export = temp.path().join("unpacked-export");
 
@@ -23,6 +24,16 @@ fn cli_runs_full_demo_flow_in_tempdir() {
     ])
     .assert_success_contains("created Dynasty Embers");
     run(["check", project.to_str().unwrap()]).assert_success_contains("ok: Dynasty Embers");
+    run(["export", "profiles"])
+        .assert_success_contains("static-web target=static_web")
+        .assert_contains("byo-key-web target=dynamic_web requires_network_at_runtime=true")
+        .assert_contains("self-host-backend target=dynamic_web requires_network_at_runtime=true")
+        .assert_contains("desktop-runtime target=desktop_bundle")
+        .assert_contains("steam-workshop target=steam_workshop")
+        .assert_contains("steam-submission-kit target=steam_submission_kit")
+        .assert_contains("includes_provider_config=false")
+        .assert_contains("includes_private_traces=false")
+        .assert_contains("platform_submission_ready=false");
     run(["play", project.to_str().unwrap(), "--once"])
         .assert_success_contains("choice: raise-tax")
         .assert_contains("treasury: +12");
@@ -85,8 +96,30 @@ fn cli_runs_full_demo_flow_in_tempdir() {
             .join("assets/generated/court-crisis-001.png")
             .is_file()
     );
-    assert!(!unpacked_export.join("traces/latest.json").exists());
-    assert!(!unpacked_export.join("providers/config.json").exists());
+    assert_export_tree_excludes_private_paths(&unpacked_export);
+
+    run([
+        "export",
+        "desktop",
+        project.to_str().unwrap(),
+        "--out",
+        desktop_export.to_str().unwrap(),
+    ])
+    .assert_success_contains("exported desktop runtime draft")
+    .assert_contains("desktop-runtime-draft.json")
+    .assert_contains("desktop build notes:");
+
+    assert!(desktop_export.join("index.html").is_file());
+    assert!(desktop_export.join("game.json").is_file());
+    assert!(desktop_export.join(AI_USAGE_MANIFEST_FILE).is_file());
+    assert!(desktop_export.join(DESKTOP_RUNTIME_DRAFT_FILE).is_file());
+    assert!(desktop_export.join("desktop-build-notes.md").is_file());
+    assert!(
+        desktop_export
+            .join("assets/generated/court-crisis-001.png")
+            .is_file()
+    );
+    assert_export_tree_excludes_private_paths(&desktop_export);
 }
 
 #[test]
@@ -399,6 +432,39 @@ fn extract_zip(archive_path: &std::path::Path, output_dir: &std::path::Path) {
         .status()
         .expect("unzip command");
     assert!(status.success(), "unzip failed with {status:?}");
+}
+
+fn assert_export_tree_excludes_private_paths(export_dir: &std::path::Path) {
+    assert!(!export_dir.join("traces").exists());
+    assert!(!export_dir.join("providers").exists());
+    assert!(
+        !export_tree_paths(export_dir)
+            .iter()
+            .any(|path| path.contains("raw_responses")),
+        "export contains raw_responses path"
+    );
+}
+
+fn export_tree_paths(root: &std::path::Path) -> Vec<String> {
+    let mut paths = Vec::new();
+    collect_export_tree_paths(root, root, &mut paths);
+    paths
+}
+
+fn collect_export_tree_paths(
+    root: &std::path::Path,
+    current: &std::path::Path,
+    paths: &mut Vec<String>,
+) {
+    for entry in fs::read_dir(current).expect("read export dir") {
+        let entry = entry.expect("export entry");
+        let path = entry.path();
+        let relative_path = path.strip_prefix(root).expect("relative export path");
+        paths.push(relative_path.to_string_lossy().replace('\\', "/"));
+        if path.is_dir() {
+            collect_export_tree_paths(root, &path, paths);
+        }
+    }
 }
 
 struct CommandOutput {

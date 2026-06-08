@@ -2,9 +2,12 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use plotforge_export::{export_static_web, export_static_web_zip};
+use plotforge_export::{export_desktop_runtime_draft, export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
-use plotforge_schema::{ProjectCreationRequest, ProjectTemplateId};
+use plotforge_schema::{
+    DESKTOP_RUNTIME_DRAFT_FILE, ExportProfileTarget, ProjectCreationRequest, ProjectTemplateId,
+    supported_export_profiles,
+};
 use plotforge_storage::{
     create_demo_project, create_project_from_request, load_project, read_latest_runtime_snapshot,
     read_runtime_snapshot, validate_project, validate_runtime_snapshot_id, write_runtime_snapshot,
@@ -127,7 +130,9 @@ struct ExportCommand {
 
 #[derive(Debug, Subcommand)]
 enum ExportSubcommand {
+    Profiles,
     Static(ExportStaticArgs),
+    Desktop(ExportDesktopArgs),
 }
 
 #[derive(Debug, Args)]
@@ -138,6 +143,14 @@ struct ExportStaticArgs {
     out: PathBuf,
     #[arg(long)]
     zip: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct ExportDesktopArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    #[arg(long, default_value = "exports/desktop-runtime")]
+    out: PathBuf,
 }
 
 fn main() -> Result<()> {
@@ -404,6 +417,19 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
 
 fn handle_export(command: ExportCommand) -> Result<()> {
     match command.command {
+        ExportSubcommand::Profiles => {
+            for profile in supported_export_profiles() {
+                println!(
+                    "{} target={} requires_network_at_runtime={} includes_provider_config={} includes_private_traces={} platform_submission_ready={}",
+                    profile.id,
+                    export_profile_target_label(&profile.target),
+                    profile.requires_network_at_runtime,
+                    profile.includes_provider_config,
+                    profile.includes_private_traces,
+                    profile.platform_submission_ready
+                );
+            }
+        }
         ExportSubcommand::Static(args) => {
             let report = if let Some(zip_path) = args.zip.as_ref() {
                 let zip_report = export_static_web_zip(&args.path, &args.out, zip_path)
@@ -436,6 +462,39 @@ fn handle_export(command: ExportCommand) -> Result<()> {
                 report.files_written.len()
             );
         }
+        ExportSubcommand::Desktop(args) => {
+            let report =
+                export_desktop_runtime_draft(&args.path, &args.out).with_context(|| {
+                    format!(
+                        "export desktop runtime draft from {} to {}",
+                        args.path.display(),
+                        args.out.display()
+                    )
+                })?;
+            println!(
+                "exported desktop runtime draft to {} ({} files)",
+                report.output_dir.display(),
+                report.files_written.len()
+            );
+            println!(
+                "desktop runtime draft: {}",
+                report.output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE).display()
+            );
+            println!(
+                "desktop build notes: {}",
+                report.output_dir.join("desktop-build-notes.md").display()
+            );
+        }
     }
     Ok(())
+}
+
+fn export_profile_target_label(target: &ExportProfileTarget) -> &'static str {
+    match target {
+        ExportProfileTarget::StaticWeb => "static_web",
+        ExportProfileTarget::DynamicWeb => "dynamic_web",
+        ExportProfileTarget::DesktopBundle => "desktop_bundle",
+        ExportProfileTarget::SteamWorkshop => "steam_workshop",
+        ExportProfileTarget::SteamSubmissionKit => "steam_submission_kit",
+    }
 }

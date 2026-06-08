@@ -15,6 +15,7 @@ import type {
   WorldEditDocument,
 } from "../../../contracts/plotforge";
 import {
+  demoExportProfiles,
   demoProjectData,
   demoReproducibilityMetadata,
 } from "./demoStudioData";
@@ -53,6 +54,9 @@ describe("createStudioBridge", () => {
           character_count: 6,
         } satisfies ProjectCheckReport;
         return result as T;
+      }
+      if (command === studioCommandNames.listExportProfiles) {
+        return demoExportProfiles as T;
       }
       if (command === studioCommandNames.exportStaticProject) {
         const result = {
@@ -187,6 +191,7 @@ describe("createStudioBridge", () => {
       true,
     );
     await bridge.checkProject("/tmp/dynasty-embers");
+    await bridge.listExportProfiles();
     await bridge.readWorldEditDocument("/tmp/dynasty-embers");
     await bridge.updateWorldEditDocument("/tmp/dynasty-embers", worldDocument);
     await bridge.readStoryCraftEditDocument("/tmp/dynasty-embers");
@@ -277,6 +282,10 @@ describe("createStudioBridge", () => {
       {
         command: "check_project",
         args: { path: "/tmp/dynasty-embers" },
+      },
+      {
+        command: "list_export_profiles",
+        args: undefined,
       },
       {
         command: "read_world_edit_document",

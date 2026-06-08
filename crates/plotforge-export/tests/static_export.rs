@@ -5,11 +5,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use plotforge_export::{ExportError, export_static_web, export_static_web_zip};
+use plotforge_export::{
+    ExportError, export_desktop_runtime_draft, export_static_web, export_static_web_zip,
+};
 use plotforge_media::MediaError;
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiSafetyPolicy, AiUsageContentKind, AiUsageManifest, AssetKind,
-    AssetSourceKind, ExportManifest, MediaAssetReference, contains_secret_marker_text,
+    AssetSourceKind, DESKTOP_RUNTIME_DRAFT_FILE, DesktopRuntimeDraft, ExportManifest,
+    MediaAssetReference, contains_secret_marker_text,
 };
 use plotforge_storage::{
     attach_beat_audio_reference, create_demo_project, load_project, update_ai_safety_policy,
@@ -347,6 +350,115 @@ fn export_static_zip_contains_only_audited_package_files() {
 }
 
 #[test]
+fn export_desktop_runtime_draft_writes_local_package_evidence_without_private_files() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("desktop-export");
+    create_demo_project(&project_path, false).expect("create");
+    fs::create_dir_all(project_path.join("traces")).expect("traces dir");
+    fs::create_dir_all(project_path.join("providers")).expect("providers dir");
+    fs::create_dir_all(project_path.join("agents/raw_responses")).expect("raw dir");
+    fs::write(project_path.join("traces/latest.json"), "{}").expect("private trace");
+    fs::write(project_path.join("providers/config.json"), "{}").expect("provider config");
+    fs::write(project_path.join("agents/raw_responses/scene.json"), "{}").expect("raw response");
+
+    let report = export_desktop_runtime_draft(&project_path, &output_dir).expect("desktop export");
+
+    let expected_files = expected_desktop_export_files();
+    assert_eq!(report.audit.allowed_files, expected_files);
+    assert_eq!(report.audit.files_found, expected_files);
+    assert!(output_dir.join("index.html").is_file());
+    assert!(output_dir.join("game.json").is_file());
+    assert!(output_dir.join(AI_USAGE_MANIFEST_FILE).is_file());
+    assert!(output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE).is_file());
+    assert!(output_dir.join("desktop-build-notes.md").is_file());
+    assert!(
+        output_dir
+            .join("assets/generated/court-crisis-001.png")
+            .is_file()
+    );
+    assert!(!output_dir.join("traces/latest.json").exists());
+    assert!(!output_dir.join("providers/config.json").exists());
+    assert!(!output_dir.join("agents/raw_responses/scene.json").exists());
+
+    let manifest: ExportManifest = serde_json::from_str(
+        &fs::read_to_string(output_dir.join("game.json")).expect("read manifest"),
+    )
+    .expect("manifest");
+    assert_eq!(manifest.profile.id, "desktop-runtime");
+    assert!(!manifest.profile.requires_network_at_runtime);
+    assert_eq!(manifest.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
+
+    let ai_usage_text = fs::read_to_string(output_dir.join(AI_USAGE_MANIFEST_FILE)).expect("usage");
+    let ai_usage: AiUsageManifest = serde_json::from_str(&ai_usage_text).expect("usage json");
+    assert_eq!(ai_usage.export_profile.id, "desktop-runtime");
+    assert!(!ai_usage.provider_credentials_included);
+    assert!(!ai_usage.raw_provider_responses_included);
+    assert!(!ai_usage.private_traces_included);
+    assert!(ai_usage_text.contains("Desktop runtime draft packages project content"));
+
+    let draft_text =
+        fs::read_to_string(output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE)).expect("draft");
+    let draft: DesktopRuntimeDraft = serde_json::from_str(&draft_text).expect("draft json");
+    assert_eq!(draft.project_id, "dynasty-embers");
+    assert_eq!(draft.export_profile.id, "desktop-runtime");
+    assert_eq!(draft.static_manifest_path, "game.json");
+    assert_eq!(draft.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
+    assert_eq!(draft.runtime_entrypoint, "index.html");
+    assert!(!draft.requires_network_at_runtime);
+    assert!(!draft.provider_credentials_included);
+    assert!(!draft.private_traces_included);
+    assert!(!draft.raw_provider_responses_included);
+    assert!(
+        draft
+            .build_notes_markdown
+            .contains("# Desktop Runtime Draft")
+    );
+    assert!(
+        draft
+            .build_notes_markdown
+            .contains("does not include a Tauri build")
+    );
+    assert_eq!(
+        draft
+            .package_files
+            .iter()
+            .map(|file| PathBuf::from(&file.path))
+            .collect::<Vec<_>>(),
+        expected_export_files_with_build_notes()
+    );
+    for file in &draft.package_files {
+        let path = output_dir.join(&file.path);
+        let bytes = fs::read(&path).expect("package file");
+        assert_eq!(file.hash_algorithm, "sha256");
+        assert_eq!(file.byte_length, bytes.len() as u64);
+        assert_eq!(file.content_hash.len(), 64);
+    }
+    assert_secret_free(&draft_text);
+    assert!(!draft_text.contains("steam_app_id"));
+    assert!(!draft_text.contains("published_file_id"));
+}
+
+#[test]
+fn export_desktop_runtime_draft_rejects_stale_private_output_files() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("desktop-export");
+    create_demo_project(&project_path, false).expect("create");
+    fs::create_dir_all(output_dir.join("providers")).expect("output providers");
+    fs::write(output_dir.join("providers/config.json"), "{}").expect("stale config");
+
+    let error = export_desktop_runtime_draft(&project_path, &output_dir)
+        .expect_err("stale output should fail");
+
+    assert!(matches!(
+        error,
+        ExportError::DisallowedPackageFile(path)
+            if path.as_path() == Path::new("providers/config.json")
+    ));
+}
+
+#[test]
 fn export_static_zip_refuses_to_include_stale_output_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
@@ -419,6 +531,18 @@ fn expected_export_files() -> Vec<PathBuf> {
         PathBuf::from("player.js"),
         PathBuf::from("styles.css"),
     ]
+}
+
+fn expected_export_files_with_build_notes() -> Vec<PathBuf> {
+    let mut files = expected_export_files();
+    files.insert(2, PathBuf::from("desktop-build-notes.md"));
+    files
+}
+
+fn expected_desktop_export_files() -> Vec<PathBuf> {
+    let mut files = expected_export_files_with_build_notes();
+    files.insert(3, PathBuf::from(DESKTOP_RUNTIME_DRAFT_FILE));
+    files
 }
 
 fn assert_secret_free(text: &str) {

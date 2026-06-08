@@ -5,6 +5,7 @@ import type {
   Character,
   CharacterEditDocument,
   CharacterGenerationReport,
+  ExportProfile,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
@@ -21,6 +22,7 @@ import type {
 import {
   demoAiSafetyPolicy,
   demoAssetRecords,
+  demoExportProfiles,
   demoPlayOnceReport,
   demoProjectData,
   demoProjectPath,
@@ -46,6 +48,7 @@ export interface StudioDataSource {
   ): Promise<ProjectCreationReport>;
   openProject(path: string): Promise<ProjectData>;
   checkProject(path: string): Promise<ProjectCheckReport>;
+  listExportProfiles(): Promise<ExportProfile[]>;
   readWorldEditDocument(path: string): Promise<WorldEditDocument>;
   updateWorldEditDocument(
     path: string,
@@ -142,6 +145,7 @@ export function createTauriStudioDataSource(): StudioDataSource {
     createProject: studioBridge.createProject,
     openProject: studioBridge.openProject,
     checkProject: studioBridge.checkProject,
+    listExportProfiles: studioBridge.listExportProfiles,
     readWorldEditDocument: studioBridge.readWorldEditDocument,
     updateWorldEditDocument: studioBridge.updateWorldEditDocument,
     readStoryCraftEditDocument: studioBridge.readStoryCraftEditDocument,
@@ -213,6 +217,9 @@ export function createBrowserPreviewDataSource(): StudioDataSource {
 
   return {
     runtimeName: "Browser preview",
+    async listExportProfiles() {
+      return structuredClone(demoExportProfiles);
+    },
     async createProject(path, request) {
       previewProject = {
         ...structuredClone(demoProjectData),

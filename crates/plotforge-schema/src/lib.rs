@@ -7,10 +7,11 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 11;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 12;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
+pub const DESKTOP_RUNTIME_DRAFT_FILE: &str = "desktop-runtime-draft.json";
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GameProject {
@@ -1262,6 +1263,7 @@ pub enum ExportProfileTarget {
     DynamicWeb,
     DesktopBundle,
     SteamWorkshop,
+    SteamSubmissionKit,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -1273,8 +1275,11 @@ pub enum ExportProfileCapability {
     StandalonePackage,
     RuntimeSaveRestore,
     ProviderBackedGeneration,
+    PlayerByoKey,
+    SelfHostBackend,
     DesktopShell,
     SteamWorkshopMetadata,
+    SteamSubmissionEvidence,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -1326,12 +1331,13 @@ impl ExportProfile {
 
     pub fn dynamic_web() -> Self {
         Self {
-            id: "dynamic-web".into(),
+            id: "byo-key-web".into(),
             target: ExportProfileTarget::DynamicWeb,
-            intent: "Describe a future hosted player that may call provider-backed services."
+            intent: "Describe a future dynamic web player where each player supplies their own provider key."
                 .into(),
             capabilities: vec![
                 ExportProfileCapability::ProviderBackedGeneration,
+                ExportProfileCapability::PlayerByoKey,
                 ExportProfileCapability::RuntimeSaveRestore,
             ],
             requires_network_at_runtime: true,
@@ -1339,21 +1345,47 @@ impl ExportProfile {
             includes_private_traces: false,
             platform_submission_ready: false,
             notes: vec![
-                "Provider credentials must stay server-side and outside export packages.".into(),
+                "Player BYO keys must be entered at runtime and must not be written into export packages.".into(),
                 "Raw provider responses are never part of this profile contract.".into(),
+                "This is a descriptive profile only; static export remains the runnable MVP output.".into(),
+            ],
+        }
+    }
+
+    pub fn self_host_backend() -> Self {
+        Self {
+            id: "self-host-backend".into(),
+            target: ExportProfileTarget::DynamicWeb,
+            intent: "Describe a future dynamic web package backed by a creator-operated service."
+                .into(),
+            capabilities: vec![
+                ExportProfileCapability::ProviderBackedGeneration,
+                ExportProfileCapability::SelfHostBackend,
+                ExportProfileCapability::RuntimeSaveRestore,
+            ],
+            requires_network_at_runtime: true,
+            includes_provider_config: false,
+            includes_private_traces: false,
+            platform_submission_ready: false,
+            notes: vec![
+                "Provider credentials must stay in the creator-operated backend, never in client packages.".into(),
+                "The export kit may generate deployment notes, but not backend secrets or live provider config.".into(),
+                "This is a descriptive profile only; no hosted backend is generated in the MVP.".into(),
             ],
         }
     }
 
     pub fn desktop_bundle() -> Self {
         Self {
-            id: "desktop-bundle".into(),
+            id: "desktop-runtime".into(),
             target: ExportProfileTarget::DesktopBundle,
-            intent: "Describe a future desktop runtime package with local persistence.".into(),
+            intent: "Generate a local desktop runtime draft with package evidence and build notes."
+                .into(),
             capabilities: vec![
                 ExportProfileCapability::DesktopShell,
                 ExportProfileCapability::RuntimeSaveRestore,
                 ExportProfileCapability::StaticAssets,
+                ExportProfileCapability::StandalonePackage,
             ],
             requires_network_at_runtime: false,
             includes_provider_config: false,
@@ -1385,14 +1417,39 @@ impl ExportProfile {
             ],
         }
     }
+
+    pub fn steam_submission_kit() -> Self {
+        Self {
+            id: "steam-submission-kit".into(),
+            target: ExportProfileTarget::SteamSubmissionKit,
+            intent: "Generate local draft evidence for a creator-owned Steam submission workflow."
+                .into(),
+            capabilities: vec![
+                ExportProfileCapability::SteamSubmissionEvidence,
+                ExportProfileCapability::StaticAssets,
+                ExportProfileCapability::StandalonePackage,
+            ],
+            requires_network_at_runtime: false,
+            includes_provider_config: false,
+            includes_private_traces: false,
+            platform_submission_ready: false,
+            notes: vec![
+                "Submission Kit output is draft support material only.".into(),
+                "Creators remain responsible for Steamworks setup, store copy, build upload, content survey, and platform review.".into(),
+                "This profile does not call Steamworks APIs or promise approval.".into(),
+            ],
+        }
+    }
 }
 
 pub fn supported_export_profiles() -> Vec<ExportProfile> {
     vec![
         ExportProfile::static_web(),
         ExportProfile::dynamic_web(),
+        ExportProfile::self_host_backend(),
         ExportProfile::desktop_bundle(),
         ExportProfile::steam_workshop(),
+        ExportProfile::steam_submission_kit(),
     ]
 }
 
@@ -1452,6 +1509,25 @@ pub struct AiUsageManifest {
     pub provider_summaries: Vec<AiProviderSummary>,
     #[serde(default)]
     pub ai_safety_policy: AiSafetyPolicy,
+    pub notices: Vec<String>,
+}
+
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopRuntimeDraft {
+    pub manifest_version: String,
+    pub project_id: String,
+    pub project_version: String,
+    pub export_profile: ExportProfile,
+    pub static_manifest_path: String,
+    pub ai_usage_manifest_path: String,
+    pub build_notes_markdown: String,
+    pub package_files: Vec<WorkshopPackageFile>,
+    pub runtime_entrypoint: String,
+    pub requires_network_at_runtime: bool,
+    pub provider_credentials_included: bool,
+    pub private_traces_included: bool,
+    pub raw_provider_responses_included: bool,
     pub notices: Vec<String>,
 }
 
@@ -1571,6 +1647,7 @@ pub struct ContractRootSchemas {
     pub audio_bible: AudioBible,
     pub ai_safety_policy: AiSafetyPolicy,
     pub ai_usage_manifest: AiUsageManifest,
+    pub desktop_runtime_draft: DesktopRuntimeDraft,
     pub workshop_item_package: WorkshopItemPackage,
     pub steam_submission_kit_request: SteamSubmissionKitRequest,
     pub steam_submission_kit_draft: SteamSubmissionKitDraft,
@@ -1670,8 +1747,8 @@ export interface VisualBible { style_cards: VisualStyleCard[]; }
 export interface VisualStyleCard { id: string; title: string; summary: string; prompt: string; palette: string[]; tags: string[]; reference_asset_ids: string[]; }
 export interface AudioBible { voice_cards: AudioVoiceCard[]; }
 export interface AudioVoiceCard { id: string; title: string; summary: string; voice: string; delivery: string; tags: string[]; sample_text?: string | null; reference_asset_ids: string[]; }
-export type ExportProfileTarget = "static_web" | "dynamic_web" | "desktop_bundle" | "steam_workshop";
-export type ExportProfileCapability = "local_http" | "no_network_player" | "static_assets" | "standalone_package" | "runtime_save_restore" | "provider_backed_generation" | "desktop_shell" | "steam_workshop_metadata";
+export type ExportProfileTarget = "static_web" | "dynamic_web" | "desktop_bundle" | "steam_workshop" | "steam_submission_kit";
+export type ExportProfileCapability = "local_http" | "no_network_player" | "static_assets" | "standalone_package" | "runtime_save_restore" | "provider_backed_generation" | "player_byo_key" | "self_host_backend" | "desktop_shell" | "steam_workshop_metadata" | "steam_submission_evidence";
 export interface ExportProfile { id: string; target: ExportProfileTarget; intent: string; capabilities: ExportProfileCapability[]; requires_network_at_runtime: boolean; includes_provider_config: boolean; includes_private_traces: boolean; platform_submission_ready: boolean; notes: string[]; }
 export type AiUsageContentKind = "text" | "image" | "audio" | "voice" | "data";
 export type AiUsageSourceKind = "project_source" | "local_mock_provider" | "external_provider" | "placeholder" | "user_import";
@@ -1681,6 +1758,7 @@ export interface AiSafetyPolicy { live_generated_content_enabled: boolean; conte
 export interface AiUsageManifest { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; generated_by: string; external_model_calls_during_export: boolean; provider_credentials_included: boolean; raw_provider_responses_included: boolean; private_traces_included: boolean; disclosures: AiUsageDisclosure[]; provider_summaries: AiProviderSummary[]; ai_safety_policy: AiSafetyPolicy; notices: string[]; }
 export type WorkshopDraftVisibility = "private_draft" | "friends_only_draft" | "unlisted_draft";
 export interface WorkshopPackageFile { path: string; content_hash: string; hash_algorithm: string; byte_length: number; }
+export interface DesktopRuntimeDraft { manifest_version: string; project_id: string; project_version: string; export_profile: ExportProfile; static_manifest_path: string; ai_usage_manifest_path: string; build_notes_markdown: string; package_files: WorkshopPackageFile[]; runtime_entrypoint: string; requires_network_at_runtime: boolean; provider_credentials_included: boolean; private_traces_included: boolean; raw_provider_responses_included: boolean; notices: string[]; }
 export interface WorkshopItemPackage { manifest_version: string; package_id: string; title: string; description: string; visibility: WorkshopDraftVisibility; preview_image: string; content_root: string; tags: string[]; export_profile: ExportProfile; ai_usage_manifest_path: string; content_files: WorkshopPackageFile[]; notices: string[]; }
 export interface SteamSubmissionKitRequest { product_name: string; desktop_build_path?: string | null; store_short_description: string; screenshot_paths: string[]; capsule_asset_paths: string[]; content_warnings: string[]; safety_guardrails: string[]; user_reporting_path: string; moderation_policy: string; build_notes: string[]; }
 export interface SteamSubmissionKitDraft { manifest_version: string; product_name: string; workshop_package_id: string; generated_by: string; source_workshop_manifest_path: string; checklist_markdown: string; ai_disclosure_markdown: string; content_warnings_markdown: string; packaging_notes_markdown: string; official_reference_urls: string[]; notices: string[]; }
@@ -1740,7 +1818,7 @@ export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attem
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; visual_bible: VisualBible; audio_bible: AudioBible; asset_records: AssetRecord[]; ai_safety_policy: AiSafetyPolicy; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; asset_records: AssetRecord[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
 "#,
     );
     output
@@ -2437,10 +2515,13 @@ mod tests {
             generated_by: "test".into(),
         };
         let ai_usage = sample_ai_usage_manifest(&project.game);
+        let desktop_runtime_draft = sample_desktop_runtime_draft(&project.game);
 
         let project_json = serde_json::to_string(&project).expect("serialize project");
         let manifest_json = serde_json::to_string(&manifest).expect("serialize manifest");
         let ai_usage_json = serde_json::to_string(&ai_usage).expect("serialize ai usage");
+        let desktop_runtime_json =
+            serde_json::to_string(&desktop_runtime_draft).expect("serialize desktop draft");
         assert_eq!(
             serde_json::from_str::<ProjectData>(&project_json).expect("deserialize project"),
             project
@@ -2452,6 +2533,11 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<AiUsageManifest>(&ai_usage_json).expect("deserialize ai usage"),
             ai_usage
+        );
+        assert_eq!(
+            serde_json::from_str::<DesktopRuntimeDraft>(&desktop_runtime_json)
+                .expect("deserialize desktop draft"),
+            desktop_runtime_draft
         );
     }
 
@@ -2490,10 +2576,20 @@ mod tests {
             ids,
             vec![
                 "static-web",
-                "dynamic-web",
-                "desktop-bundle",
-                "steam-workshop"
+                "byo-key-web",
+                "self-host-backend",
+                "desktop-runtime",
+                "steam-workshop",
+                "steam-submission-kit"
             ]
+        );
+        assert_eq!(
+            profiles
+                .iter()
+                .find(|profile| profile.id == "steam-submission-kit")
+                .expect("submission kit profile")
+                .target,
+            ExportProfileTarget::SteamSubmissionKit
         );
         for profile in profiles {
             assert!(!profile.includes_provider_config);
@@ -2525,6 +2621,52 @@ mod tests {
         let error = serde_json::from_value::<AiUsageManifest>(manifest)
             .expect_err("raw provider response should be rejected");
 
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn desktop_runtime_draft_roundtrips_and_rejects_private_or_upload_fields() {
+        let game = GameProject {
+            id: "dynasty-embers".into(),
+            title: "Dynasty Embers".into(),
+            version: "0.1.0".into(),
+            description: "Demo".into(),
+            entry_scene: "court-crisis-001".into(),
+            run_seed: 7,
+        };
+        let draft = sample_desktop_runtime_draft(&game);
+        assert_contract_roundtrip_rejects_unknown(draft.clone());
+        assert_eq!(draft.export_profile, ExportProfile::desktop_bundle());
+        assert!(!draft.requires_network_at_runtime);
+        assert!(!draft.provider_credentials_included);
+        assert!(!draft.private_traces_included);
+        assert!(!draft.raw_provider_responses_included);
+
+        let mut value = serde_json::to_value(draft).expect("desktop draft value");
+        value["provider_config_path"] = serde_json::json!("providers/config.json");
+        let error = serde_json::from_value::<DesktopRuntimeDraft>(value)
+            .expect_err("provider config field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+
+        let mut upload = serde_json::json!({
+            "manifest_version": "2026-06-08",
+            "project_id": "dynasty-embers",
+            "project_version": "0.1.0",
+            "export_profile": ExportProfile::desktop_bundle(),
+            "static_manifest_path": "game.json",
+            "ai_usage_manifest_path": AI_USAGE_MANIFEST_FILE,
+            "build_notes_markdown": "# Desktop Runtime Draft\n",
+            "package_files": [],
+            "runtime_entrypoint": "index.html",
+            "requires_network_at_runtime": false,
+            "provider_credentials_included": false,
+            "private_traces_included": false,
+            "raw_provider_responses_included": false,
+            "notices": [],
+            "steam_app_id": "000000"
+        });
+        let error = serde_json::from_value::<DesktopRuntimeDraft>(upload.take())
+            .expect_err("Steam upload fields should be rejected");
         assert!(error.to_string().contains("unknown field"));
     }
 
@@ -2742,6 +2884,35 @@ mod tests {
             notices: vec![
                 "Local package validation only; no upload integration is included.".into(),
                 "This package does not promise platform approval or release readiness.".into(),
+            ],
+        }
+    }
+
+    fn sample_desktop_runtime_draft(game: &GameProject) -> DesktopRuntimeDraft {
+        DesktopRuntimeDraft {
+            manifest_version: "2026-06-08".into(),
+            project_id: game.id.clone(),
+            project_version: game.version.clone(),
+            export_profile: ExportProfile::desktop_bundle(),
+            static_manifest_path: "game.json".into(),
+            ai_usage_manifest_path: AI_USAGE_MANIFEST_FILE.into(),
+            build_notes_markdown: "# Desktop Runtime Draft\n".into(),
+            package_files: vec![WorkshopPackageFile {
+                path: "game.json".into(),
+                content_hash: "sha256:abc".into(),
+                hash_algorithm: "sha256".into(),
+                byte_length: 42,
+            }],
+            runtime_entrypoint: "index.html".into(),
+            requires_network_at_runtime: false,
+            provider_credentials_included: false,
+            private_traces_included: false,
+            raw_provider_responses_included: false,
+            notices: vec![
+                "Local desktop runtime draft only; no installer or platform submission is generated."
+                    .into(),
+                "No provider credentials, raw provider responses, or private traces are included."
+                    .into(),
             ],
         }
     }

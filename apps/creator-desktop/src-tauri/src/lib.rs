@@ -7,6 +7,7 @@ pub fn run() {
             commands::create_project,
             commands::open_project,
             commands::check_project,
+            commands::list_export_profiles,
             commands::read_world_edit_document,
             commands::update_world_edit_document,
             commands::read_story_craft_edit_document,
