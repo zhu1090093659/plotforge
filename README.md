@@ -1,83 +1,133 @@
 # PlotForge
 
-PlotForge is an AI story game creation engine. This repository currently contains the CLI-first MVP slice from the PRD plus the first creator desktop workspace: Rust schema contracts, story craft review, declarative rules, mock runtime, trace persistence, media asset registry, job queue, fake image provider foundations, rebuildable SQLite cache/index, the `dynasty-embers` demo template, static web export, and a Vite/React/Tailwind Studio shell with a Tauri command bridge.
+Someone has a game in their head.
 
-## Current Scope
+Not a pitch deck. Not a market segment. A place.
 
-- Rust workspace and CLI prototype.
-- Folder project source of truth with TOML, JSON, and Markdown.
-- Mock agent pipeline only; no external model calls are required.
-- Static web export with prebaked scenes and placeholder PNG assets.
-- Export profile listing plus a local Desktop Runtime draft package with `desktop-runtime-draft.json`, build notes, static player files, reachable assets, and package hashes.
-- No-network static player package sourced from `apps/player-web/static` and copied into exports.
-- Export profiles and `ai-usage.json` package disclosure for static and desktop draft exports; these describe capabilities and AI usage evidence without legal conclusions or platform approval promises.
-- Local-only Workshop item package schema, validator, library import/load/remix/block/report/delete flow, publish draft writer, and gated upload port in `plotforge-workshop`; no Steam API call is made by default.
-- Local Steam Submission Kit draft generation in `plotforge-workshop`; it produces store copy, checklist, AI disclosure, content warnings, asset reference, Steam Direct checklist, content safety, and packaging-note Markdown drafts from validated package evidence.
-- Creator desktop Play/Creator/Developer product mode shell for the Steam route, plus thin Studio adapters over Workshop package and draft operations.
-- Steam compliance QA guidance and static no-launch-promise lint for active project-facing docs.
-- Media asset registry foundation with typed records, SHA-256 hashes, runtime references, provider metadata, and exportable paths.
-- Job queue foundation with typed state, cancel/retry/timeout/progress, explicit failures, injected clock tests, and cost accounting.
-- Fake image provider pipeline with scene background asset registration, job state, trace-visible placeholder fallback, and cache reuse.
-- Rebuildable SQLite cache/index for project summaries, source file hashes, trace metadata, and asset metadata; folder files remain source of truth.
-- Creator desktop Studio shell with Tauri-backed project load/check/source edit/playtest commands; real LLM/image providers, real Steamworks API calls, hosted sharing, and paid Workshop flows are deferred.
+A street after rain. A ship that never reaches shore. A house where the dead still answer. A kingdom, a kitchen, a battlefield, a school hallway at three in the afternoon. The creator can see it. They can feel the rules of it. They know what the player should fear, want, lose, and carry away.
 
-## Commands
+Most of the time, that world stays there.
+
+PlotForge is being built for the moment when it does not have to stay there.
+
+It is a CLI-first Rust engine and creator studio for turning dreams, notes, scenes, rules, images, and choices into playable AI story games. The point is simple: help anyone build the game world they have been carrying around.
+
+AI is not magic here. It is human work made dense. It is mathematics, language, hardware, research, code, failure, patience, and the judgment of scientists and engineers. PlotForge puts that work in the hands of creators. Not to replace their will. To give it shape.
+
+A game is not only a game.
+
+It can be a promise. A warning. A memory. A private country. It can hold the creator's dream and make that dream answer back.
+
+## What PlotForge Is
+
+PlotForge is an engine for playable imagination.
+
+It keeps the project as files you can read: TOML, JSON, Markdown, and local assets. It keeps the schema in Rust. It lets the runtime and rule engine commit state. It treats traces, exports, media records, and package evidence as things that can be checked.
+
+The current repository contains the MVP foundation:
+
+- Rust workspace crates for schema, storage, rules, runtime, story craft review, mock agent planning, media assets, job state, export, Workshop draft validation, and CLI orchestration.
+- A folder-project format where source files are the truth and caches are rebuildable.
+- A Vite/React/Tailwind Creator Desktop workspace with a thin Tauri bridge.
+- A static no-network player package under `apps/player-web/static`.
+- The committed demo fixture at `examples/dynasty-embers`.
+- Local export profiles, AI usage disclosure files, package hashes, and Steam Submission Kit drafts.
+- A local-only Workshop package schema and validator.
+
+Real model providers, real media providers, Steamworks upload, hosted sharing, and paid Workshop flows are still deferred. The current AI path is a mock/planned-provider foundation. That boundary is intentional.
+
+## The Shape Of A World
+
+A PlotForge project is meant to be plain enough to inspect and strong enough to run.
+
+The creator writes the world. The engine keeps it honest.
+
+- `plotforge-schema` owns the contracts.
+- `plotforge-storage` owns folder project loading and editing.
+- `plotforge-rule` owns declarative rule evaluation.
+- `plotforge-runtime` owns scene, beat, and state progression.
+- `plotforge-agent` owns provider ports and planning/image orchestration.
+- `plotforge-media` owns asset records, hashes, references, and reachability.
+- `plotforge-job` owns long-running job state, failure, progress, retry, cancel, timeout, and cost accounting.
+- `plotforge-export` owns static and desktop draft export packaging.
+- `plotforge-workshop` owns offline Workshop draft validation and Steam Submission Kit draft generation.
+- `plotforge-cli` ties the crates together without becoming the business logic.
+
+Generated contracts live under `contracts/`. They come from Rust. They are not hand-maintained.
+
+## Try The Demo
 
 ```bash
-cargo check --workspace
-cargo test --workspace
-cargo test -p plotforge-workshop
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-python3 scripts/qa/no_launch_promise_lint.py
-
-npm run creator-desktop:dev
-npm run creator-desktop:typecheck
-npm run creator-desktop:test
-npm run creator-desktop:build
-npm run creator-desktop:smoke
-npm run creator-desktop:tauri:check
-npm run creator-desktop:tauri:dev
-npm run creator-desktop:qa
-npm run player-web:qa
-
-cargo run -p plotforge-cli -- new demo --path examples/dynasty-embers --force
 cargo run -p plotforge-cli -- check examples/dynasty-embers
 cargo run -p plotforge-cli -- play examples/dynasty-embers --once
 cargo run -p plotforge-cli -- trace inspect examples/dynasty-embers/traces/latest.json
-cargo run -p plotforge-cli -- export profiles
 cargo run -p plotforge-cli -- export static examples/dynasty-embers --out dist/dynasty-embers
-cargo run -p plotforge-cli -- export desktop examples/dynasty-embers --out dist/dynasty-embers-desktop
-cargo test -p plotforge-cli --test cli_smoke cli_runs_workshop_local_flow_in_tempdir
-
-scripts/contracts/export_contracts.sh
-scripts/contracts/check_contracts.sh
-scripts/qa/full_local.sh
-python3 scripts/qa/creator_desktop_build_smoke.py
 python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
 ```
 
-## Architecture Rules
+Create a fresh demo in a temp directory:
 
-- `plotforge-schema` is the contract source of truth.
-- Generated JSON Schema and TypeScript contracts live under `contracts/` and must be regenerated from Rust schema, not hand-maintained.
-- AI or mock agents propose content; runtime and rule engine commit state.
-- Folder project files are source of truth; caches must be rebuildable.
-- SQLite cache/index lives under `.plotforge/cache.sqlite`; it is optional, rebuildable from folder state, and never overrides canonical project files.
-- `plotforge-media` owns the media registry foundation: asset records, hashes, refs, provider metadata, path safety, and reachability.
-- `plotforge-job` owns long-running job state transitions, progress, cancel/retry/timeout, failure, and cost accounting.
-- `plotforge-agent` owns provider ports and image pipeline orchestration; image generation writes through `plotforge-media` and `plotforge-job`.
-- `plotforge-export` packages only reachable referenced assets from the media registry.
-- Desktop Runtime draft export is local package evidence only; it emits build notes and hashes but does not create an installer, bundle credentials, include private traces, or claim platform readiness.
-- Export profiles and AI usage manifests are schema-defined disclosure artifacts; they must not include provider credentials, raw provider responses, private traces, legal conclusions, or platform approval promises.
-- `plotforge-workshop` owns local Workshop draft package validation, local library operations, publish draft generation, and the gated Steamworks upload port. It must not call Steamworks APIs by default or claim external platform outcomes.
-- `plotforge-workshop` also owns Steam Submission Kit draft generation. Generated drafts are local support material only; they do not decide compliance, approval, publishing, or legal status.
-- Steam-facing docs and generated guidance must pass `scripts/qa/no_launch_promise_lint.py`; active docs must not promise automatic publishing, platform outcomes, legal conclusions, or ownership of a creator's Steamworks workflow.
-- `apps/player-web/static` owns the exported static player surface and consumes `ExportManifest` without duplicating runtime/rule logic.
-- Static exports must not include API keys, provider config, raw provider responses, or private traces.
+```bash
+tmp="$(mktemp -d)"
+cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
+cargo run -p plotforge-cli -- check "$tmp/dynasty-embers"
+cargo run -p plotforge-cli -- play "$tmp/dynasty-embers" --once
+cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+python3 scripts/qa/static_export_http_smoke.py --export-dir "$tmp/export"
+```
 
-## QA
+Run the Creator Desktop workspace:
 
-The repeatable local gate is `scripts/qa/full_local.sh`. It includes Rust checks, contract drift checks, creator desktop typecheck/test/build/build-smoke/Tauri check, CLI smoke, static export smoke, desktop draft export smoke, and unpacked HTTP export smoke.
+```bash
+npm run creator-desktop:dev
+npm run creator-desktop:qa
+```
 
-Local desktop interaction smoke is documented in `scripts/qa/computer_use_creator_desktop.md` for Creator Desktop and `scripts/qa/computer_use_static_export.md` for static export. Codex Desktop Browser/Computer Use verification is intentionally local-only and not part of GitHub Actions.
+## Build And Verify
+
+The narrow checks are useful while working:
+
+```bash
+cargo fmt --all -- --check
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+
+npm run creator-desktop:typecheck
+npm run creator-desktop:test
+npm run creator-desktop:build
+npm run player-web:qa
+
+scripts/contracts/check_contracts.sh
+python3 scripts/qa/no_launch_promise_lint.py
+```
+
+The full local gate is:
+
+```bash
+scripts/qa/full_local.sh
+```
+
+It covers Rust checks, contract drift, Creator Desktop QA, CLI smoke, static export smoke, desktop draft export smoke, and HTTP export smoke.
+
+## Hard Lines
+
+Dreams need tools. They also need boundaries.
+
+- Folder project files win over generated caches.
+- Runtime traces are evidence, not committed fixture state.
+- Provider credentials stay local and out of project source, contracts, traces, exports, docs, and fixtures.
+- Static exports copy only whitelisted player files, manifest files, and reachable referenced assets.
+- Export profiles and `ai-usage.json` describe capability and evidence. They do not make legal conclusions or platform approval promises.
+- Workshop and Steam Submission Kit flows are local draft support only. They do not upload by default and do not promise Steam outcomes.
+- No hidden network calls belong in MVP runtime paths or tests.
+
+The work is to make creation feel open without making the system vague.
+
+## Why
+
+Because there are too many worlds left in people's heads.
+
+Because a person should be able to sit down with an idea and build a place others can enter.
+
+Because imagination is not small. It only needs better doors.
