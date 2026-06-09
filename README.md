@@ -124,6 +124,10 @@ Dreams need tools. They also need boundaries.
 
 The work is to make creation feel open without making the system vague.
 
+## Contributors
+
+- Codex
+
 ## Why
 
 Because there are too many worlds left in people's heads.
