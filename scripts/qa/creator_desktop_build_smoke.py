@@ -19,7 +19,11 @@ REQUIRED_UI_MARKERS = [
     "Runtime Trace",
     "No raw responses",
     "No secret markers",
-    "trace-001",
+    "Backend Boundary",
+    "Real Studio command surface",
+    "Studio-backed capabilities",
+    "No build run interface",
+    "Package Evidence Summary",
 ]
 
 BLOCKED_MARKERS = [

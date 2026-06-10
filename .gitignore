@@ -91,6 +91,7 @@ screenshots/
 **/.plotforge/
 **/traces/
 **/exports/
+**/saves/*.runtime_snapshot.json
 
 # Local Workshop and Steam submission drafts
 workshop-packages/

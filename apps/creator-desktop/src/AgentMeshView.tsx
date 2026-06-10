@@ -1,10 +1,7 @@
 import {
   Boxes,
   CheckCircle2,
-  Circle,
-  Code2,
   FileText,
-  GitBranch,
   Lock,
   Network,
   PackageCheck,
@@ -14,225 +11,200 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import type {
-  LocalPreviewCapability,
-  LocalPreviewState,
-  LocalPreviewWorker,
-} from "./localPreviewModel";
-import { localPreviewSummary } from "./localPreviewModel";
 import type { CreatorProjectSummary } from "./projectSummary";
-import type { PlayOnceReport } from "./tauriBridge";
+import type { PlayOnceReport, SourceFileSummary } from "./tauriBridge";
 import { StudioButton, StudioStatusChip } from "./studioUi";
 
 interface AgentMeshViewProps {
   projectSummary: CreatorProjectSummary | null;
   loadedPath: string;
-  localPreviewState: LocalPreviewState;
+  runtimeName: string;
+  sourceFiles: SourceFileSummary[];
+  assetRecordCount: number;
+  exportProfileCount: number;
   playtestReport: PlayOnceReport | null;
   onOpenTrace(): void;
   onRunPlayableProof(): void;
 }
 
+interface Capability {
+  id: string;
+  label: string;
+  source: string;
+  evidence: string;
+  status: "wired" | "not-implemented";
+}
+
+const realCapabilities: Capability[] = [
+  {
+    id: "project-open-check",
+    label: "Project open/check",
+    source: "plotforge-studio -> plotforge-storage",
+    evidence: "Folder project files and schema validation",
+    status: "wired",
+  },
+  {
+    id: "structured-editing",
+    label: "Structured editing",
+    source: "plotforge-studio -> plotforge-storage",
+    evidence: "World, StoryCraft, Characters, State, Rules documents",
+    status: "wired",
+  },
+  {
+    id: "source-files",
+    label: "Source file read/write",
+    source: "plotforge-studio source-file adapter",
+    evidence: "Editable source list and file content",
+    status: "wired",
+  },
+  {
+    id: "runtime-proof",
+    label: "Runtime proof",
+    source: "plotforge-runtime + trace storage",
+    evidence: "PlayOnceReport, RuntimeTrace, optional snapshot",
+    status: "wired",
+  },
+  {
+    id: "static-export",
+    label: "Static export zip",
+    source: "plotforge-export",
+    evidence: "Whitelisted package files and archive report",
+    status: "wired",
+  },
+  {
+    id: "agent-acp-bridge",
+    label: "ACP / external agent bridge",
+    source: "No schema-backed Studio command",
+    evidence: "Not exposed by Tauri or HTTP dev bridge",
+    status: "not-implemented",
+  },
+];
+
 export function AgentMeshView({
   projectSummary,
   loadedPath,
-  localPreviewState,
+  runtimeName,
+  sourceFiles,
+  assetRecordCount,
+  exportProfileCount,
   playtestReport,
   onOpenTrace,
   onRunPlayableProof,
 }: AgentMeshViewProps) {
-  const summary = localPreviewSummary(localPreviewState);
-  const externalWorkers = localPreviewState.workers.filter(
-    (worker) => worker.kind === "external-worker",
-  );
-  const subagents = localPreviewState.workers.filter(
-    (worker) => worker.kind === "plotforge-subagent",
-  );
-  const directorWorker = localPreviewState.workers.find(
-    (worker) => worker.kind === "director",
-  );
-  const selectedCapability = localPreviewState.capabilities[0] ?? null;
-  const approvalQueue = localPreviewState.approvals.filter(
-    (approval) => approval.state === "pending-local-review",
-  );
+  const wiredCount = realCapabilities.filter(
+    (capability) => capability.status === "wired",
+  ).length;
   const proofLabel = playtestReport
     ? `${playtestReport.trace.id} / ${playtestReport.delta_summary.length} deltas`
-    : "waiting for playable proof";
+    : "not captured";
 
   return (
     <section aria-label="Agent Mesh Workspace" className="grid gap-5">
-      <div className="grid gap-4 2xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+      <div className="grid gap-4 2xl:grid-cols-[300px_minmax(0,1fr)_320px]">
         <aside
-          aria-label="ACP Bridge Setup"
+          aria-label="Studio Backend Bridge"
           className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-acp-400">
-                ACP Bridge Setup
+                Backend Bridge
               </p>
               <h3 className="mt-1 text-lg font-semibold text-canvas-50">
-                Local capability bridge
+                Real Studio commands
               </h3>
             </div>
-            <StudioStatusChip tone="agent">
-              {localPreviewState.source}
-            </StudioStatusChip>
+            <StudioStatusChip tone="health">{runtimeName}</StudioStatusChip>
           </div>
 
           <div className="grid gap-2 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
-            <BridgeFact
-              label="Network"
-              value={localPreviewState.networkEnabled ? "enabled" : "disabled"}
-            />
-            <BridgeFact
-              label="Project truth"
-              value={
-                localPreviewState.authoritativeProjectState
-                  ? "authoritative"
-                  : "not authoritative"
-              }
-            />
-            <BridgeFact
-              label="StudioDataSource"
-              value={
-                localPreviewState.usesStudioDataSourcePort
-                  ? "agent port"
-                  : "not an agent port"
-              }
-            />
-          </div>
-
-          <PanelTitle label="Connected Workers" count={externalWorkers.length} />
-          <div className="grid gap-2">
-            {externalWorkers.map((worker) => (
-              <WorkerCard key={worker.id} worker={worker} tone="external" />
-            ))}
-          </div>
-
-          <PanelTitle label="PlotForge SubAgents" count={subagents.length} />
-          <div className="grid gap-2">
-            {subagents.map((worker) => (
-              <WorkerCard key={worker.id} worker={worker} tone="subagent" />
-            ))}
+            <BridgeFact label="Project truth" value="folder source files" />
+            <BridgeFact label="Command source" value="plotforge-studio" />
+            <BridgeFact label="Network ACP" value="not implemented" />
+            <BridgeFact label="Provider calls" value="not implemented" />
           </div>
 
           <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-canvas-50">
-                Permission Policy
+                Removed Fake Surfaces
               </p>
-              <StudioStatusChip tone="action">approval gated</StudioStatusChip>
+              <StudioStatusChip tone="danger">disabled</StudioStatusChip>
             </div>
             <ul className="mt-3 grid gap-2 text-xs leading-5 text-canvas-200/70">
-              {localPreviewState.capabilityPolicy.boundaries.map((boundary) => (
-                <li key={boundary} className="flex gap-2">
-                  <ShieldCheck
-                    aria-hidden
-                    size={14}
-                    className="mt-0.5 shrink-0 text-health-400"
-                  />
-                  <span>{boundary}</span>
-                </li>
-              ))}
+              <BoundaryLine icon={Lock}>
+                No mock external workers or mock connected state.
+              </BoundaryLine>
+              <BoundaryLine icon={Lock}>
+                No local approval queue unless a real command exists.
+              </BoundaryLine>
+              <BoundaryLine icon={Lock}>
+                No generated artifact bundle without persisted evidence.
+              </BoundaryLine>
             </ul>
           </div>
         </aside>
 
         <div className="grid gap-4">
           <div
-            aria-label="Mesh Map"
+            aria-label="Command Boundary Map"
             className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-acp-400">
-                  Mesh Map
+                  Command Boundary Map
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-canvas-50">
                   {projectSummary?.title ?? "No project loaded"}
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-canvas-200/60">
-                  Director intent fans into mock external workers, PlotForge
-                  subAgents, reviewable artifacts, and playable proof.
+                  The UI is now backed by Studio command results. Agent and ACP
+                  concepts stay visible only as unavailable boundaries until
+                  schema-backed ports are added.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <StudioStatusChip tone="acp">
-                  {summary.externalWorkerCount} external workers
-                </StudioStatusChip>
-                <StudioStatusChip tone="agent">
-                  {summary.plotforgeSubagentCount} subAgents
-                </StudioStatusChip>
                 <StudioStatusChip tone="health">
-                  {summary.capabilityCount} capabilities
+                  {wiredCount} wired capabilities
+                </StudioStatusChip>
+                <StudioStatusChip tone="neutral">
+                  {sourceFiles.length} source files
                 </StudioStatusChip>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="mt-5 grid gap-4 xl:grid-cols-3">
               <MeshColumn
-                title="Director Intent"
-                icon={GitBranch}
-                tone="border-acp-400/45 bg-acp-500/15"
-              >
-                <MeshNode
-                  title={directorWorker?.label ?? "Director Agent"}
-                  detail={
-                    directorWorker?.role ??
-                    "Frames creator intent and validates playable proof"
-                  }
-                  accent="text-acp-400"
-                />
-              </MeshColumn>
-
-              <MeshColumn
-                title="External Workers"
-                icon={Code2}
-                tone="border-agent-400/45 bg-agent-500/15"
-              >
-                {externalWorkers.map((worker) => (
-                  <MeshNode
-                    key={worker.id}
-                    title={worker.label}
-                    detail={worker.capabilityIds.join(" / ")}
-                    accent="text-agent-400"
-                  />
-                ))}
-              </MeshColumn>
-
-              <MeshColumn
-                title="PlotForge SubAgents"
-                icon={Network}
+                title="Project Source"
+                icon={FileText}
                 tone="border-health-400/45 bg-health-500/15"
               >
-                {subagents.map((worker) => (
-                  <MeshNode
-                    key={worker.id}
-                    title={worker.label}
-                    detail={worker.capabilityIds.join(" / ")}
-                    accent="text-health-400"
-                  />
-                ))}
+                <MeshNode title={loadedPath} detail="Folder files win over cache" />
+              </MeshColumn>
+              <MeshColumn
+                title="Runtime Evidence"
+                icon={Play}
+                tone="border-acp-400/45 bg-acp-500/15"
+              >
+                <MeshNode title={proofLabel} detail="Generated only by play_once" />
+              </MeshColumn>
+              <MeshColumn
+                title="Export Evidence"
+                icon={PackageCheck}
+                tone="border-amber-400/45 bg-amber-500/15"
+              >
+                <MeshNode
+                  title={`${exportProfileCount} profiles`}
+                  detail="Only static web has an executable Studio command"
+                />
               </MeshColumn>
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <ArtifactNode
-                icon={FileText}
-                title="Narrative Docs"
-                detail="chapters/*.md"
-              />
-              <ArtifactNode
-                icon={Boxes}
-                title="Assets"
-                detail="assets/* / manifest.json"
-              />
-              <ArtifactNode
-                icon={PackageCheck}
-                title="Build Package"
-                detail="package.zip / checksums.txt"
-              />
+              <ArtifactNode icon={FileText} title="Source Files" detail={String(sourceFiles.length)} />
+              <ArtifactNode icon={Boxes} title="Asset Records" detail={String(assetRecordCount)} />
+              <ArtifactNode icon={Network} title="External Agents" detail="not implemented" />
             </div>
           </div>
 
@@ -246,12 +218,10 @@ export function AgentMeshView({
                   Capability Matrix
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-ink">
-                  Exposed local/mock capabilities
+                  Studio-backed capabilities
                 </h3>
               </div>
-              <StudioStatusChip tone="agent">
-                {summary.approvalRequiredCapabilityCount} approval required
-              </StudioStatusChip>
+              <StudioStatusChip tone="health">{wiredCount} wired</StudioStatusChip>
             </div>
 
             <div className="overflow-x-auto">
@@ -259,28 +229,27 @@ export function AgentMeshView({
                 <thead className="bg-parchment text-xs uppercase text-ink/50">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Capability</th>
-                    <th className="px-4 py-3 font-semibold">Worker</th>
-                    <th className="px-4 py-3 font-semibold">SubAgent</th>
-                    <th className="px-4 py-3 font-semibold">Inputs</th>
-                    <th className="px-4 py-3 font-semibold">Outputs</th>
-                    <th className="px-4 py-3 font-semibold">Approval</th>
-                    <th className="px-4 py-3 font-semibold">Trace</th>
+                    <th className="px-4 py-3 font-semibold">Real source</th>
+                    <th className="px-4 py-3 font-semibold">Evidence</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {localPreviewState.capabilities.map((capability) => (
-                    <CapabilityRow
-                      key={capability.id}
-                      capability={capability}
-                      worker={findWorker(
-                        localPreviewState,
-                        capability.providerWorkerId,
-                      )}
-                      subagent={findWorker(
-                        localPreviewState,
-                        capability.plotforgeAgentId,
-                      )}
-                    />
+                  {realCapabilities.map((capability) => (
+                    <tr key={capability.id} className="border-t border-ink/10 align-top">
+                      <td className="px-4 py-3 font-semibold text-ink">
+                        {capability.label}
+                      </td>
+                      <td className="px-4 py-3 text-ink/70">{capability.source}</td>
+                      <td className="px-4 py-3 text-ink/70">{capability.evidence}</td>
+                      <td className="px-4 py-3">
+                        <StudioStatusChip
+                          tone={capability.status === "wired" ? "health" : "danger"}
+                        >
+                          {capability.status}
+                        </StudioStatusChip>
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -294,101 +263,37 @@ export function AgentMeshView({
         >
           <div>
             <p className="text-xs font-semibold uppercase text-acp-500">
-              Selected Capability
+              Bridge Evidence
             </p>
             <h3 className="mt-1 text-lg font-semibold text-ink">
-              {selectedCapability?.label ?? "No capability"}
+              Current backend facts
             </h3>
-            <p className="mt-1 text-sm leading-6 text-ink/60">
-              {selectedCapability?.description ??
-                "Capability metadata is loaded from local preview state."}
-            </p>
           </div>
 
-          {selectedCapability ? (
-            <div className="grid gap-2 rounded-md border border-ink/10 bg-parchment px-3 py-3">
-              <EvidenceLine
-                label="Input artifacts"
-                value={selectedCapability.inputArtifacts.join(" / ")}
-              />
-              <EvidenceLine
-                label="Output contract"
-                value={selectedCapability.outputArtifacts.join(" / ")}
-              />
-              <EvidenceLine
-                label="Approval required"
-                value={selectedCapability.approvalRequired ? "yes" : "no"}
-              />
-              <EvidenceLine
-                label="Trace level"
-                value={selectedCapability.traceLevel}
-              />
-            </div>
-          ) : null}
-
-          <div className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-ink">Safety & Evidence</h3>
-              <StudioStatusChip tone="health">trace visible</StudioStatusChip>
-            </div>
-            <div className="mt-3 grid gap-3">
-              <PathBlock
-                title="Allowed paths"
-                icon={CheckCircle2}
-                paths={localPreviewState.capabilityPolicy.allowedPaths}
-                tone="text-health-500"
-              />
-              <PathBlock
-                title="Blocked paths"
-                icon={Lock}
-                paths={localPreviewState.capabilityPolicy.blockedPaths}
-                tone="text-signal"
-              />
-            </div>
+          <div className="grid gap-2 rounded-md border border-ink/10 bg-parchment px-3 py-3">
+            <EvidenceLine label="Runtime" value={runtimeName} />
+            <EvidenceLine label="Loaded path" value={loadedPath} />
+            <EvidenceLine label="Playable proof" value={proofLabel} />
+            <EvidenceLine
+              label="Trace id"
+              value={playtestReport?.trace.id ?? "not captured"}
+            />
           </div>
 
           <div className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-ink">Approval Queue</h3>
-              <StudioStatusChip tone="agent">{approvalQueue.length}</StudioStatusChip>
+              <h3 className="text-sm font-semibold text-ink">Safety Boundary</h3>
+              <StudioStatusChip tone="health">explicit</StudioStatusChip>
             </div>
-            <div className="mt-3 grid gap-2">
-              {localPreviewState.approvals.map((approval) => (
-                <div
-                  key={approval.id}
-                  className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-ink">
-                      {approval.title}
-                    </p>
-                    <span className="text-xs font-semibold text-amber-600">
-                      {approval.state}
-                    </span>
-                  </div>
-                  <p className="mt-1 truncate text-xs text-ink/50">
-                    {approval.evidenceIds.join(" / ")}
-                  </p>
-                </div>
-              ))}
+            <div className="mt-3 grid gap-2 text-sm text-ink/65">
+              <p>No provider credentials are read by this UI surface.</p>
+              <p>No external agent connection is started from the browser.</p>
+              <p>Unsupported capabilities are disabled instead of simulated.</p>
             </div>
           </div>
 
           <div className="rounded-md border border-ink/10 bg-graphite-950 px-3 py-3 text-canvas-50">
-            <h3 className="text-sm font-semibold">Bridge Evidence</h3>
-            <div className="mt-3 grid gap-2">
-              <BridgeFact label="Loaded path" value={loadedPath} />
-              <BridgeFact label="Playable proof" value={proofLabel} />
-              <BridgeFact
-                label="Trace id"
-                value={playtestReport?.trace.id ?? "not captured"}
-              />
-              <BridgeFact
-                label="Run seed"
-                value={String(playtestReport?.trace.reproducibility.run_seed ?? 7)}
-              />
-              <BridgeFact label="Tests passing" value="local preview only" />
-            </div>
+            <h3 className="text-sm font-semibold">Actions</h3>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <StudioButton onClick={onOpenTrace}>
                 <TerminalSquare aria-hidden size={16} />
@@ -406,45 +311,18 @@ export function AgentMeshView({
   );
 }
 
-function findWorker(state: LocalPreviewState, workerId: string) {
-  return state.workers.find((worker) => worker.id === workerId) ?? null;
-}
-
-function PanelTitle({ label, count }: { label: string; count: number }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <p className="text-sm font-semibold text-canvas-50">{label}</p>
-      <StudioStatusChip tone="neutral">{count}</StudioStatusChip>
-    </div>
-  );
-}
-
-function WorkerCard({
-  worker,
-  tone,
+function BoundaryLine({
+  icon: Icon,
+  children,
 }: {
-  worker: LocalPreviewWorker;
-  tone: "external" | "subagent";
+  icon: LucideIcon;
+  children: string;
 }) {
   return (
-    <article className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-canvas-50">
-            {worker.label}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-canvas-200/55">
-            {worker.role}
-          </p>
-        </div>
-        <StudioStatusChip tone={tone === "external" ? "acp" : "agent"}>
-          {worker.connectionState}
-        </StudioStatusChip>
-      </div>
-      <p className="mt-2 truncate text-xs text-canvas-200/45">
-        {worker.capabilityIds.join(" / ")}
-      </p>
-    </article>
+    <li className="flex gap-2">
+      <Icon aria-hidden size={14} className="mt-0.5 shrink-0 text-signal" />
+      <span>{children}</span>
+    </li>
   );
 }
 
@@ -470,19 +348,11 @@ function MeshColumn({
   );
 }
 
-function MeshNode({
-  title,
-  detail,
-  accent,
-}: {
-  title: string;
-  detail: string;
-  accent: string;
-}) {
+function MeshNode({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="rounded-md border border-canvas-200/10 bg-graphite-850 px-3 py-3">
-      <p className="text-sm font-semibold text-canvas-50">{title}</p>
-      <p className={`mt-1 text-xs leading-5 ${accent}`}>{detail}</p>
+      <p className="truncate text-sm font-semibold text-canvas-50">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-canvas-200/60">{detail}</p>
     </div>
   );
 }
@@ -505,100 +375,9 @@ function ArtifactNode({
   );
 }
 
-function CapabilityRow({
-  capability,
-  worker,
-  subagent,
-}: {
-  capability: LocalPreviewCapability;
-  worker: LocalPreviewWorker | null;
-  subagent: LocalPreviewWorker | null;
-}) {
-  return (
-    <tr className="border-t border-ink/10 align-top">
-      <td className="px-4 py-3">
-        <p className="font-semibold text-ink">{capability.label}</p>
-        <p className="mt-1 text-xs leading-5 text-ink/55">
-          {capability.description}
-        </p>
-      </td>
-      <td className="px-4 py-3 text-ink/70">
-        {worker?.label ?? capability.providerWorkerId}
-      </td>
-      <td className="px-4 py-3 text-ink/70">
-        {subagent?.label ?? capability.plotforgeAgentId}
-      </td>
-      <td className="px-4 py-3">
-        <ChipList values={capability.inputArtifacts} />
-      </td>
-      <td className="px-4 py-3">
-        <ChipList values={capability.outputArtifacts} />
-      </td>
-      <td className="px-4 py-3">
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-ink/70">
-          {capability.approvalRequired ? (
-            <CheckCircle2 aria-hidden size={16} className="text-amber-500" />
-          ) : (
-            <Circle aria-hidden size={16} className="text-health-500" />
-          )}
-          {capability.approvalRequired ? "Required" : "Review only"}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1 text-xs font-semibold text-ink/60">
-          {capability.traceLevel}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-function ChipList({ values }: { values: string[] }) {
-  return (
-    <div className="flex max-w-56 flex-wrap gap-1">
-      {values.map((value) => (
-        <span
-          key={value}
-          className="rounded-sm border border-ink/10 bg-parchment px-2 py-1 text-xs text-ink/60"
-        >
-          {value}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function PathBlock({
-  title,
-  icon: Icon,
-  paths,
-  tone,
-}: {
-  title: string;
-  icon: LucideIcon;
-  paths: string[];
-  tone: string;
-}) {
-  return (
-    <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2">
-      <div className="flex items-center gap-2">
-        <Icon aria-hidden size={15} className={tone} />
-        <p className="text-xs font-semibold uppercase text-ink/45">{title}</p>
-      </div>
-      <div className="mt-2 grid gap-1">
-        {paths.map((path) => (
-          <code key={path} className="truncate text-xs text-ink/65">
-            {path}
-          </code>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function EvidenceLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 text-sm">
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 text-sm">
       <span className="text-ink/45">{label}</span>
       <span className="truncate font-medium text-ink">{value}</span>
     </div>

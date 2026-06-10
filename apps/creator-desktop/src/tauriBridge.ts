@@ -115,6 +115,25 @@ export type StudioInvoke = <T>(
   args?: Record<string, unknown>,
 ) => Promise<T>;
 
+export function createHttpStudioInvoke(
+  endpoint = "/__plotforge_studio/invoke",
+): StudioInvoke {
+  return async <T>(command: string, args: Record<string, unknown> = {}) => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ command, args }),
+    });
+    const payload = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      throw new Error(studioHttpErrorMessage(payload, response.status));
+    }
+    return payload as T;
+  };
+}
+
 export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
   return {
     createProject(
@@ -443,3 +462,15 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
 }
 
 export const studioBridge = createStudioBridge();
+
+function studioHttpErrorMessage(payload: unknown, status: number) {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string"
+  ) {
+    return payload.message;
+  }
+  return `Studio HTTP command failed with status ${status}`;
+}

@@ -14,10 +14,6 @@ import {
   demoProjectData,
   demoReproducibilityMetadata,
 } from "./demoStudioData";
-import {
-  defaultLocalPreviewState,
-  type LocalPreviewState,
-} from "./localPreviewModel";
 import type { StudioDataSource } from "./studioDataSource";
 import type {
   AssetRecord,
@@ -160,113 +156,28 @@ describe("App", () => {
     ).toBeTruthy();
   });
 
-  it("renders local preview agent state without using the data source as an agent port", async () => {
-    const blockedCalls: string[] = [];
-    const localPreviewState: LocalPreviewState = {
-      ...defaultLocalPreviewState,
-      source: "local-preview-only",
-      authoritativeProjectState: false,
-      usesStudioDataSourcePort: false,
-      networkEnabled: false,
-      workers: [
-        {
-          id: "mock-acp-worker",
-          label: "Mock ACP Worker",
-          role: "Visible local preview worker only",
-          kind: "external-worker",
-          connectionState: "mock-connected",
-          capabilityIds: ["StoryCraft.review"],
-        },
-        {
-          id: "mock-story-agent",
-          label: "Mock Story Agent",
-          role: "Visible local preview subAgent only",
-          kind: "plotforge-subagent",
-          connectionState: "local-only",
-          capabilityIds: ["StoryCraft.review"],
-        },
-      ],
-      capabilities: [
-        {
-          id: "StoryCraft.review",
-          label: "StoryCraft.review",
-          description: "Local preview review capability",
-          providerWorkerId: "mock-acp-worker",
-          plotforgeAgentId: "mock-story-agent",
-          inputArtifacts: ["story/*.md"],
-          outputArtifacts: ["review.md"],
-          approvalRequired: true,
-          traceLevel: "full",
-        },
-      ],
-      approvals: [
-        {
-          id: "approval-local-only",
-          title: "Approve local preview patch",
-          state: "pending-local-review",
-          evidenceIds: ["trace-preview", "files-preview"],
-        },
-      ],
-      capabilityPolicy: {
-        title: "Injected local preview boundary",
-        boundaries: [
-          "Injected preview state is not project truth.",
-          "Injected preview state does not call StudioDataSource.",
-        ],
-        allowedPaths: ["/tmp/dynasty-embers/"],
-        blockedPaths: ["/tmp/provider-keys/"],
-      },
-    };
-    const dataSource = appTestDataSource({
-      async generateWorldExpansion() {
-        blockedCalls.push("generate-world");
-        throw new Error("preview state must not generate world content");
-      },
-      async generateStoryCraft() {
-        blockedCalls.push("generate-story");
-        throw new Error("preview state must not generate story content");
-      },
-      async generateCharacter() {
-        blockedCalls.push("generate-character");
-        throw new Error("preview state must not generate characters");
-      },
-      async exportStaticProjectZip() {
-        blockedCalls.push("export");
-        throw new Error("preview state must not export");
-      },
-    });
+  it("does not render injected fake agent workers or approval queues", async () => {
+    const dataSource = appTestDataSource();
 
     render(
-      <App
-        dataSource={dataSource}
-        initialProjectPath="/tmp/dynasty-embers"
-        localPreviewState={localPreviewState}
-      />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    expect(screen.getByText("Local Preview Agent State")).toBeTruthy();
-    expect(screen.getByText("Injected local preview boundary")).toBeTruthy();
-    expect(screen.getByText("local-preview-only")).toBeTruthy();
-    expect(screen.getAllByText("Mock ACP Worker").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("mock-connected").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Approve local preview patch").length)
-      .toBeGreaterThan(0);
-    expect(screen.getAllByText("pending-local-review").length)
-      .toBeGreaterThan(0);
-    expect(screen.getAllByText("not authoritative").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("disabled").length).toBeGreaterThan(0);
-    expect(
-      screen.getByText("Injected preview state does not call StudioDataSource."),
-    ).toBeTruthy();
+    expect(screen.getByText("Backend Boundary")).toBeTruthy();
+    expect(screen.getByText("Real Studio command surface")).toBeTruthy();
+    expect(screen.getAllByText("External agents").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Mock ACP Worker")).toBeNull();
+    expect(screen.queryByText("Approve local preview patch")).toBeNull();
+    expect(screen.queryByText("local-preview-only")).toBeNull();
 
     fireEvent.click(getWorkflowButton("Agent Mesh"));
     expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
       .toBeTruthy();
-    expect(screen.getAllByText("StoryCraft.review").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Mock Story Agent").length).toBeGreaterThan(0);
-    expect(screen.getByText("/tmp/provider-keys/")).toBeTruthy();
-    expect(blockedCalls).toEqual([]);
+    expect(screen.getByText("Studio-backed capabilities")).toBeTruthy();
+    expect(screen.getByText("ACP / external agent bridge")).toBeTruthy();
+    expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Mock Story Agent")).toBeNull();
   });
 
   it("renders asset records and visual-audio bible cards before background fallback", async () => {

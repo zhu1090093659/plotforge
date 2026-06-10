@@ -28,11 +28,6 @@ import { AgentMeshView } from "./AgentMeshView";
 import { ArtifactReviewView } from "./ArtifactReviewView";
 import { CommandCenterView } from "./CommandCenterView";
 import { DirectorModeView } from "./DirectorModeView";
-import {
-  defaultLocalPreviewState,
-  localPreviewSummary,
-  type LocalPreviewState,
-} from "./localPreviewModel";
 import { RuntimeTracePanel } from "./runtimeTraceView";
 import {
   createDefaultStudioDataSource,
@@ -97,13 +92,11 @@ interface RuleDraft {
 export interface AppProps {
   dataSource?: StudioDataSource;
   initialProjectPath?: string;
-  localPreviewState?: LocalPreviewState;
 }
 
 export function App({
   dataSource = createDefaultStudioDataSource(),
   initialProjectPath = defaultProjectPath(),
-  localPreviewState = defaultLocalPreviewState,
 }: AppProps) {
   const [activeWorkflow, setActiveWorkflow] =
     useState<AgentNativeWorkflowId>("command");
@@ -214,7 +207,6 @@ export function App({
   const activeWorkflowSections = activeWorkflowMeta.sectionIds.map((sectionId) =>
     getStudioSection(sectionId),
   );
-  const previewSummary = localPreviewSummary(localPreviewState);
 
   useEffect(() => {
     setCreateProjectPath(defaultNewProjectPath(initialProjectPath));
@@ -684,7 +676,12 @@ export function App({
           <AgentMeshView
             projectSummary={projectSummary}
             loadedPath={loadedPath}
-            localPreviewState={localPreviewState}
+            runtimeName={dataSource.runtimeName}
+            sourceFiles={sourceFiles}
+            assetRecordCount={
+              assetCatalog.items.filter((item) => item.source === "record").length
+            }
+            exportProfileCount={exportProfiles.length}
             playtestReport={playtestReport}
             onOpenTrace={() => openStudioSection("debugger")}
             onRunPlayableProof={() => void runPlaytest()}
@@ -705,11 +702,12 @@ export function App({
           <ArtifactReviewView
             projectSummary={projectSummary}
             loadedPath={loadedPath}
+            sourceFiles={sourceFiles}
             assetCatalog={assetCatalog}
-            localPreviewState={localPreviewState}
             playtestReport={playtestReport}
             playtesting={playtesting}
             playtestError={playtestError}
+            exportReport={exportReport}
             onOpenTrace={() => openStudioSection("debugger")}
             onRunPlayableProof={() => void runPlaytest()}
             assetMaintenance={renderAssetMaintenancePanel()}
@@ -727,7 +725,6 @@ export function App({
             saveId={playtestSaveId}
             restoreId={playtestRestoreId}
             restoreLatest={playtestRestoreLatest}
-            localPreviewState={localPreviewState}
             onInputChange={setPlaytestInput}
             onSaveIdChange={setPlaytestSaveId}
             onRestoreIdChange={setPlaytestRestoreId}
@@ -745,7 +742,6 @@ export function App({
             selectedExportProfile={selectedExportProfile}
             exportReport={exportReport}
             aiSafetyPolicy={aiSafetyPolicy}
-            localPreviewState={localPreviewState}
             loadedPath={loadedPath}
             projectId={projectData?.game.id ?? null}
           />
@@ -773,7 +769,6 @@ export function App({
           playtestReport={playtestReport}
           playtestError={playtestError}
           exportProfiles={exportProfiles}
-          localPreviewState={localPreviewState}
           dirty={dirty}
           onIntentChange={setPlaytestInput}
           onRunPlayableProof={() => void runPlaytest()}
@@ -2640,89 +2635,47 @@ export function App({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-canvas-200/55">
-                Local Preview Agent State
+                Backend Boundary
               </p>
               <h4 className="mt-1 text-sm font-semibold text-canvas-50">
-                {localPreviewState.capabilityPolicy.title}
+                Real Studio command surface
               </h4>
             </div>
-            <StudioStatusChip tone="agent">{localPreviewState.source}</StudioStatusChip>
+            <StudioStatusChip tone="health">{dataSource.runtimeName}</StudioStatusChip>
           </div>
 
           <div className="mt-3 grid gap-2 text-sm">
             <PreviewEvidenceLine
-              label="Workers"
-              value={String(previewSummary.workerCount)}
+              label="Project source"
+              value="folder files"
             />
             <PreviewEvidenceLine
-              label="Pending approvals"
-              value={String(previewSummary.pendingApprovalCount)}
+              label="Runtime"
+              value={playtestReport?.trace.id ?? "not run"}
             />
             <PreviewEvidenceLine
-              label="Network"
-              value={previewSummary.networkEnabled ? "enabled" : "disabled"}
+              label="Export"
+              value={exportReport?.archive_path ?? "not exported"}
             />
             <PreviewEvidenceLine
-              label="Project truth"
-              value={
-                previewSummary.isAuthoritativeProjectState
-                  ? "authoritative"
-                  : "not authoritative"
-              }
+              label="External agents"
+              value="not implemented"
             />
           </div>
 
           <div className="mt-3 grid gap-2">
-            {localPreviewState.workers.map((worker) => (
-              <div
-                key={worker.id}
-                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-canvas-50">
-                    {worker.label}
-                  </p>
-                  <span className="text-xs font-semibold text-acp-400">
-                    {worker.connectionState}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-canvas-200/55">
-                  {worker.role}
+            {[
+              "Browser mode uses the HTTP dev bridge backed by plotforge-studio.",
+              "Tauri mode uses the same command names through IPC.",
+              "ACP workers, approval queues, provider calls, and publishing automation are not implemented.",
+            ].map((boundary) => (
+                <p
+                  key={boundary}
+                  className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-xs leading-5 text-canvas-200/65"
+                >
+                  {boundary}
                 </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 grid gap-2">
-            {localPreviewState.approvals.map((approval) => (
-              <div
-                key={approval.id}
-                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-canvas-50">
-                    {approval.title}
-                  </p>
-                  <span className="text-xs font-semibold text-amber-400">
-                    {approval.state}
-                  </span>
-                </div>
-                <p className="mt-1 truncate text-xs text-canvas-200/55">
-                  {approval.evidenceIds.join(" / ")}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 grid gap-2">
-            {localPreviewState.capabilityPolicy.boundaries.map((boundary) => (
-              <p
-                key={boundary}
-                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-xs leading-5 text-canvas-200/65"
-              >
-                {boundary}
-              </p>
-            ))}
+              ))}
           </div>
         </div>
 

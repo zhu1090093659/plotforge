@@ -4,16 +4,12 @@ import {
   demoPlayOnceReport,
   demoProjectData,
 } from "./demoStudioData";
-import {
-  defaultLocalPreviewState,
-  type LocalPreviewState,
-} from "./localPreviewModel";
 import { DirectorModeView } from "./DirectorModeView";
 
 afterEach(cleanup);
 
 describe("DirectorModeView", () => {
-  it("renders a director-first playable scene preview and local decision queue", () => {
+  it("renders a director-first playable scene preview and real runtime boundary", () => {
     const callbacks = directorCallbacks();
 
     render(
@@ -27,7 +23,6 @@ describe("DirectorModeView", () => {
         saveId="save-001"
         restoreId=""
         restoreLatest={false}
-        localPreviewState={defaultLocalPreviewState}
         {...callbacks}
       />,
     );
@@ -48,13 +43,10 @@ describe("DirectorModeView", () => {
       .toBeTruthy();
     expect(screen.getByText("Hear one more minister")).toBeTruthy();
     expect(screen.getByText("Raise emergency taxes")).toBeTruthy();
-    expect(screen.getByText("Review generated story thread bundle"))
-      .toBeTruthy();
-    expect(screen.getByText("Confirm export disclosure evidence")).toBeTruthy();
-    expect(screen.getByText("Codex Worker")).toBeTruthy();
-    expect(screen.getByText("Claude Code Worker")).toBeTruthy();
-    expect(screen.getByText("Story Agent")).toBeTruthy();
-    expect(screen.getByText("Asset Agent")).toBeTruthy();
+    expect(screen.getByText("Project source")).toBeTruthy();
+    expect(screen.getByText("Runtime proof")).toBeTruthy();
+    expect(screen.getByText(/No decision queue is available/)).toBeTruthy();
+    expect(screen.queryByText("Codex Worker")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
       /automatic publishing|approval guarantee|legal guarantee|real ACP execution/i,
     );
@@ -74,7 +66,6 @@ describe("DirectorModeView", () => {
         saveId="save-001"
         restoreId=""
         restoreLatest={false}
-        localPreviewState={defaultLocalPreviewState}
         {...callbacks}
       />,
     );
@@ -105,14 +96,13 @@ describe("DirectorModeView", () => {
         saveId="save-001"
         restoreId=""
         restoreLatest={false}
-        localPreviewState={localPreviewStateWithSingleApproval()}
         {...callbacks}
       />,
     );
 
     expect(screen.getByText("Playtest result")).toBeTruthy();
-    expect(screen.getByText("trace-001")).toBeTruthy();
-    expect(screen.getByText(/3 visible state deltas/)).toBeTruthy();
+    expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/3 visible state deltas/).length).toBeGreaterThan(0);
     expect(screen.getByText("100/100")).toBeTruthy();
   });
 
@@ -135,7 +125,6 @@ describe("DirectorModeView", () => {
         saveId="save-001"
         restoreId=""
         restoreLatest={false}
-        localPreviewState={defaultLocalPreviewState}
         {...callbacks}
       />,
     );
@@ -162,19 +151,5 @@ function directorCallbacks() {
     onRun: vi.fn(),
     onOpenStory: vi.fn(),
     onOpenTrace: vi.fn(),
-  };
-}
-
-function localPreviewStateWithSingleApproval(): LocalPreviewState {
-  return {
-    ...defaultLocalPreviewState,
-    approvals: [
-      {
-        id: "approval-story-thread",
-        title: "Review generated story thread bundle",
-        state: "pending-local-review",
-        evidenceIds: ["trace_id", "files_changed", "playtest_result"],
-      },
-    ],
   };
 }

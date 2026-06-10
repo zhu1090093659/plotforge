@@ -13,7 +13,6 @@ import type {
   NarrativeIssue,
   RuntimeTraceDiagnostic,
 } from "../../../contracts/plotforge";
-import type { LocalPreviewState } from "./localPreviewModel";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport, StaticExportReport } from "./tauriBridge";
 
@@ -38,7 +37,6 @@ interface RuntimeTracePanelProps {
   selectedExportProfile?: ExportProfile | null;
   exportReport?: StaticExportReport | null;
   aiSafetyPolicy?: AiSafetyPolicy | null;
-  localPreviewState?: LocalPreviewState;
   loadedPath?: string | null;
   projectId?: string | null;
 }
@@ -168,7 +166,6 @@ export function RuntimeTracePanel({
   selectedExportProfile = null,
   exportReport = null,
   aiSafetyPolicy = null,
-  localPreviewState,
   loadedPath = null,
   projectId = null,
 }: RuntimeTracePanelProps) {
@@ -183,11 +180,6 @@ export function RuntimeTracePanel({
     projectId,
     loadedPath,
   });
-  const artifactChanges = localPreviewState?.artifactBundle.changes ?? [];
-  const changedFileCount = artifactChanges.reduce(
-    (total, change) => total + change.files.length,
-    0,
-  );
   const packageReady =
     Boolean(
       selectedExportProfile &&
@@ -349,7 +341,7 @@ export function RuntimeTracePanel({
               <div className="mt-4 grid gap-5">
                 <CausalityGraph trace={trace} />
                 <TraceEvidence trace={trace} />
-                <ToolMetadata trace={trace} changedFileCount={changedFileCount} />
+                <ToolMetadata trace={trace} exportReport={exportReport} />
                 <WorldDeltaEvidence trace={trace} />
                 <MediaReferenceList references={trace.media_references} />
                 {review ? <ReviewScores review={review} /> : null}
@@ -399,26 +391,26 @@ export function RuntimeTracePanel({
 
           <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
             <p className="text-sm font-semibold text-canvas-50">
-              Artifact Diff Summary
+              Package Evidence Summary
             </p>
             <div className="mt-3 grid gap-2">
-              {artifactChanges.length > 0 ? (
-                artifactChanges.map((change) => (
-                  <div
-                    key={change.id}
-                    className="flex items-center justify-between gap-3 border-t border-canvas-200/10 pt-2 text-sm first:border-t-0 first:pt-0"
-                  >
-                    <span className="truncate text-canvas-50">
-                      {change.title}
-                    </span>
-                    <span className="shrink-0 text-health-400">
-                      {change.files.length} files
-                    </span>
-                  </div>
-                ))
+              {exportReport ? (
+                [
+                  ["Files written", String(exportReport.files_written.length)],
+                  ["Archived files", String(exportReport.archived_files.length)],
+                  ["Allowed files", String(exportReport.allowed_files.length)],
+                ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between gap-3 border-t border-canvas-200/10 pt-2 text-sm first:border-t-0 first:pt-0"
+                    >
+                      <span className="truncate text-canvas-50">{label}</span>
+                      <span className="shrink-0 text-health-400">{value}</span>
+                    </div>
+                  ))
               ) : (
                 <p className="text-sm text-canvas-200/55">
-                  No artifact bundle linked.
+                  No export report captured.
                 </p>
               )}
             </div>
@@ -673,10 +665,10 @@ function CausalityGraph({ trace }: { trace: PlayOnceReport["trace"] }) {
 
 function ToolMetadata({
   trace,
-  changedFileCount,
+  exportReport,
 }: {
   trace: PlayOnceReport["trace"];
-  changedFileCount: number;
+  exportReport: StaticExportReport | null;
 }) {
   return (
     <div>
@@ -688,7 +680,10 @@ function ToolMetadata({
           value={trace.reproducibility.prompt_version}
         />
         <TraceField label="Tool calls" value={trace.diagnostics.length} />
-        <TraceField label="Files touched" value={changedFileCount} />
+        <TraceField
+          label="Export files"
+          value={exportReport?.files_written.length ?? 0}
+        />
       </div>
     </div>
   );

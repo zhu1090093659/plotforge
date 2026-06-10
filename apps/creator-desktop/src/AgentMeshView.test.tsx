@@ -2,13 +2,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentMeshView } from "./AgentMeshView";
 import { demoPlayOnceReport, demoProjectData } from "./demoStudioData";
-import { defaultLocalPreviewState } from "./localPreviewModel";
 import { summarizeProject } from "./projectSummary";
 
 afterEach(cleanup);
 
 describe("AgentMeshView", () => {
-  it("renders the local/mock agent mesh, ACP setup, capability matrix, and evidence boundary", () => {
+  it("renders real Studio command capabilities and explicit unavailable agent boundaries", () => {
     const openTrace = vi.fn();
     const runProof = vi.fn();
 
@@ -16,7 +15,13 @@ describe("AgentMeshView", () => {
       <AgentMeshView
         projectSummary={summarizeProject(demoProjectData)}
         loadedPath="/tmp/dynasty-embers"
-        localPreviewState={defaultLocalPreviewState}
+        runtimeName="HTTP dev bridge"
+        sourceFiles={[
+          { path: "game.toml", kind: "toml", bytes: 120, editable: false },
+          { path: "world/world.md", kind: "markdown", bytes: 80, editable: true },
+        ]}
+        assetRecordCount={demoProjectData.asset_records.length}
+        exportProfileCount={3}
         playtestReport={demoPlayOnceReport("raise emergency taxes")}
         onOpenTrace={openTrace}
         onRunPlayableProof={runProof}
@@ -25,25 +30,17 @@ describe("AgentMeshView", () => {
 
     expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
       .toBeTruthy();
-    expect(screen.getByLabelText("ACP Bridge Setup")).toBeTruthy();
-    expect(screen.getByLabelText("Mesh Map")).toBeTruthy();
+    expect(screen.getByLabelText("Studio Backend Bridge")).toBeTruthy();
+    expect(screen.getByLabelText("Command Boundary Map")).toBeTruthy();
     expect(screen.getByLabelText("Capability Matrix")).toBeTruthy();
     expect(screen.getByLabelText("Bridge Evidence")).toBeTruthy();
-    expect(screen.getAllByText("Codex Worker").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Claude Code Worker").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Story Agent").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Rules Agent").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("StoryCraft.review").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Rules.patch").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Runtime.playtest").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Assets.generate").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Export.package").length).toBeGreaterThan(0);
-    expect(screen.getByText("/config/provider-keys/")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "No ACP network, provider call, credential, upload, or platform publishing behavior is enabled.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Project open/check")).toBeTruthy();
+    expect(screen.getByText("Runtime proof")).toBeTruthy();
+    expect(screen.getByText("Static export zip")).toBeTruthy();
+    expect(screen.getByText("ACP / external agent bridge")).toBeTruthy();
+    expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Codex Worker")).toBeNull();
+    expect(screen.queryByText("Claude Code Worker")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
       /automatic publishing|approval guarantee|legal guarantee|real ACP execution|official approval|Steam upload automation/i,
     );

@@ -1,7 +1,6 @@
 import {
   Boxes,
   CheckCircle2,
-  Clock3,
   FileText,
   Loader2,
   Network,
@@ -10,9 +9,9 @@ import {
   ShieldCheck,
   Sparkles,
   TerminalSquare,
+  type LucideIcon,
 } from "lucide-react";
 import type { ExportProfile, ProjectData } from "../../../contracts/plotforge";
-import type { LocalPreviewState } from "./localPreviewModel";
 import type { CreatorProjectSummary } from "./projectSummary";
 import type { StudioMetric } from "./useStudioWorkspace";
 import type {
@@ -35,7 +34,6 @@ interface CommandCenterViewProps {
   playtestReport: PlayOnceReport | null;
   playtestError: string | null;
   exportProfiles: ExportProfile[];
-  localPreviewState: LocalPreviewState;
   dirty: boolean;
   onIntentChange(intent: string): void;
   onRunPlayableProof(): void;
@@ -55,7 +53,6 @@ export function CommandCenterView({
   playtestReport,
   playtestError,
   exportProfiles,
-  localPreviewState,
   dirty,
   onIntentChange,
   onRunPlayableProof,
@@ -78,12 +75,6 @@ export function CommandCenterView({
     exportProfiles.find((profile) => profile.target === "static_web") ??
     null;
   const exportProfile = staticProfile;
-  const pendingApprovals = localPreviewState.approvals.filter(
-    (approval) => approval.state === "pending-local-review",
-  );
-  const connectedWorkers = localPreviewState.workers.filter(
-    (worker) => worker.connectionState === "mock-connected",
-  );
   const proofReady = Boolean(playtestReport && !playtestError);
   const exportReady = Boolean(staticProfile);
   const sourceSummary = `${sourceFiles.length} files`;
@@ -278,8 +269,8 @@ export function CommandCenterView({
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-graphite-700/65">
-                PlotForge uses this as local playtest input today; agent proposals
-                stay visible for human approval.
+                PlotForge sends this through the real runtime playtest command
+                today; agent proposal workflows are not implemented.
               </p>
               <StudioButton
                 variant="primary"
@@ -316,67 +307,60 @@ export function CommandCenterView({
           </Panel>
 
           <Panel
-            title="Agent Run"
+            title="Backend Commands"
             action={
-              <StudioStatusChip tone="action">
-                {pendingApprovals.length > 0 ? "Waiting for approval" : "Ready"}
-              </StudioStatusChip>
+              <StudioStatusChip tone="health">wired</StudioStatusChip>
             }
           >
             <div className="grid gap-3">
-              {localPreviewState.workers.map((worker) => (
+              {[
+                {
+                  id: "project",
+                  label: "Project source",
+                  role: "open_project, check_project, source file read/write",
+                  state: "folder files",
+                },
+                {
+                  id: "runtime",
+                  label: "Runtime proof",
+                  role: "play_once_project writes redaction-safe trace evidence",
+                  state: proofReady ? "captured" : "ready",
+                },
+                {
+                  id: "export",
+                  label: "Static export",
+                  role: "export_static_project_zip writes a whitelisted package",
+                  state: exportReady ? "profile loaded" : "not loaded",
+                },
+              ].map((item) => (
                 <article
-                  key={worker.id}
+                  key={item.id}
                   className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">
-                        {worker.label}
+                        {item.label}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-ink/55">
-                        {worker.role}
+                        {item.role}
                       </p>
                     </div>
-                    <StudioStatusChip
-                      tone={
-                        worker.connectionState === "mock-connected"
-                          ? "acp"
-                          : "agent"
-                      }
-                    >
-                      {worker.connectionState}
-                    </StudioStatusChip>
+                    <StudioStatusChip tone="health">{item.state}</StudioStatusChip>
                   </div>
-                  <p className="mt-2 truncate text-xs text-ink/45">
-                    {worker.capabilityIds.join(" / ")}
-                  </p>
                 </article>
               ))}
             </div>
           </Panel>
 
           <Panel
-            title="Open Approvals"
-            action={<StudioStatusChip tone="agent">{pendingApprovals.length}</StudioStatusChip>}
+            title="Unavailable Agent Interfaces"
+            action={<StudioStatusChip tone="danger">not implemented</StudioStatusChip>}
           >
-            <div className="grid gap-2">
-              {localPreviewState.approvals.map((approval) => (
-                <div
-                  key={approval.id}
-                  className="rounded-md border border-ink/10 bg-white px-3 py-2"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="text-sm font-semibold">{approval.title}</p>
-                    <span className="text-xs font-semibold text-amber-600">
-                      {approval.state}
-                    </span>
-                  </div>
-                  <p className="mt-1 truncate text-xs text-ink/50">
-                    {approval.evidenceIds.join(" / ")}
-                  </p>
-                </div>
-              ))}
+            <div className="grid gap-2 text-sm leading-6 text-ink/65">
+              <p>ACP workers are not connected by any Studio command.</p>
+              <p>Approval queues are hidden until persisted proposal contracts exist.</p>
+              <p>Provider-backed generation remains explicit local mock/runtime logic.</p>
             </div>
           </Panel>
 
@@ -384,17 +368,13 @@ export function CommandCenterView({
             <div className="grid grid-cols-2 gap-2">
               <EvidenceCard
                 icon={Network}
-                label="Connected agents"
-                value={`${connectedWorkers.length}/${localPreviewState.workers.length}`}
+                label="Backend"
+                value="Studio"
               />
               <EvidenceCard
                 icon={ShieldCheck}
                 label="Project truth"
-                value={
-                  localPreviewState.authoritativeProjectState
-                    ? "authoritative"
-                    : "local preview"
-                }
+                value="folder files"
               />
               <EvidenceCard
                 icon={CheckCircle2}
@@ -476,12 +456,6 @@ function recentRunRows(
         when: "current",
         tone: report.trace.errors.length > 0 ? "partial" : "success",
       },
-      {
-        id: "trace-local-preview",
-        detail: "Local preview approvals remain pending",
-        when: "local",
-        tone: "partial",
-      },
     ];
   }
 
@@ -549,7 +523,7 @@ function EvidenceCard({
   label,
   value,
 }: {
-  icon: typeof Clock3;
+  icon: LucideIcon;
   label: string;
   value: string;
 }) {

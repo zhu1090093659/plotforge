@@ -5,7 +5,6 @@ import {
   demoExportProfiles,
   demoPlayOnceReport,
 } from "./demoStudioData";
-import { defaultLocalPreviewState } from "./localPreviewModel";
 import { RuntimeTracePanel } from "./runtimeTraceView";
 
 afterEach(cleanup);
@@ -28,7 +27,6 @@ describe("RuntimeTracePanel", () => {
           files_found: ["index.html", "game.json"],
         }}
         aiSafetyPolicy={demoAiSafetyPolicy}
-        localPreviewState={defaultLocalPreviewState}
       />,
     );
 
@@ -36,7 +34,7 @@ describe("RuntimeTracePanel", () => {
     expect(screen.getByRole("region", { name: "Trace Debug" })).toBeTruthy();
     expect(screen.getByRole("complementary", { name: "Proof Evidence Panel" })).toBeTruthy();
     expect(screen.getByText("Redaction-safe causality")).toBeTruthy();
-    expect(screen.getByText("Artifact Diff Summary")).toBeTruthy();
+    expect(screen.getByText("Package Evidence Summary")).toBeTruthy();
     expect(screen.getByText("AI Usage Disclosure")).toBeTruthy();
     expect(screen.getByText("Content Warning Draft")).toBeTruthy();
     expect(screen.getByText("Local Static Web Package")).toBeTruthy();

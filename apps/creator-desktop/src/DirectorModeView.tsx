@@ -10,7 +10,6 @@ import {
   Target,
 } from "lucide-react";
 import type { ProjectData } from "../../../contracts/plotforge";
-import type { LocalPreviewState } from "./localPreviewModel";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport } from "./tauriBridge";
 import { StudioButton, StudioStatusChip, studioUiClassNames } from "./studioUi";
@@ -25,7 +24,6 @@ interface DirectorModeViewProps {
   saveId: string;
   restoreId: string;
   restoreLatest: boolean;
-  localPreviewState: LocalPreviewState;
   onInputChange(input: string): void;
   onSaveIdChange(saveId: string): void;
   onRestoreIdChange(restoreId: string): void;
@@ -45,7 +43,6 @@ export function DirectorModeView({
   saveId,
   restoreId,
   restoreLatest,
-  localPreviewState,
   onInputChange,
   onSaveIdChange,
   onRestoreIdChange,
@@ -66,15 +63,27 @@ export function DirectorModeView({
     loadedPath,
   });
   const trace = report?.trace ?? null;
-  const queueItems = directionQueue(localPreviewState, report);
-  const activityItems = localPreviewState.workers.map((worker, index) => ({
-    id: worker.id,
-    label: worker.label,
-    title: activityTitle(worker.label),
-    body: worker.role,
-    detail: worker.capabilityIds.join(" / "),
-    minutesAgo: `${index * 3 + 2}m ago`,
-  }));
+  const queueItems = directionQueue(report);
+  const activityItems = [
+    {
+      id: "project-source",
+      label: "Project source",
+      title: projectData ? "Folder project loaded" : "No project loaded",
+      body: projectData
+        ? `${projectData.scenes.length} scenes, ${projectData.rules.length} rules, ${projectData.characters.length} characters`
+        : "Open a project before running a playable turn.",
+      detail: loadedPath,
+    },
+    {
+      id: "runtime-proof",
+      label: "Runtime proof",
+      title: report ? "Latest playtest committed" : "No playtest run yet",
+      body: report
+        ? `${report.delta_summary.length} visible state deltas from ${report.scene.title}`
+        : "Run turn calls the Studio runtime command and writes a trace.",
+      detail: report?.trace.id ?? "not captured",
+    },
+  ];
 
   return (
     <section aria-label="Director Mode Workspace" className="grid gap-5">
@@ -100,9 +109,7 @@ export function DirectorModeView({
                   <p className="truncate text-sm font-semibold text-canvas-50">
                     {item.label}
                   </p>
-                  <p className="mt-1 text-xs text-canvas-200/45">
-                    {item.minutesAgo}
-                  </p>
+                  <p className="mt-1 text-xs text-canvas-200/45">real data</p>
                 </div>
                 <CheckCircle2
                   aria-hidden
@@ -233,7 +240,7 @@ export function DirectorModeView({
                   Direction Bar
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-ink">
-                  Ask agents to change the game
+                  Run a runtime turn
                 </h3>
               </div>
               <StudioButton onClick={onOpenTrace}>
@@ -325,45 +332,54 @@ export function DirectorModeView({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase text-amber-600">
-                Local preview
+                Runtime
               </p>
               <h3 className="text-base font-semibold text-ink">Decision Queue</h3>
             </div>
             <StudioStatusChip tone="agent">{queueItems.length}</StudioStatusChip>
           </div>
 
-          {queueItems.map((item) => (
-            <article
-              key={item.id}
-              className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">
-                    {item.title}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-ink/55">
-                    {item.body}
-                  </p>
+          {queueItems.length ? (
+            queueItems.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">
+                      {item.title}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-ink/55">
+                      {item.body}
+                    </p>
+                  </div>
+                  <StudioStatusChip tone={item.tone}>
+                    {item.impact}
+                  </StudioStatusChip>
                 </div>
-                <StudioStatusChip tone={item.tone}>{item.impact}</StudioStatusChip>
-              </div>
-              <div className="mt-3 grid gap-2 text-xs">
-                <QueueFact label="Files changed" value={item.filesChanged} />
-                <QueueFact label="Evidence" value={item.evidence} />
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <StudioButton onClick={onOpenTrace}>
-                  <FlaskConical aria-hidden size={16} />
-                  Compare versions
-                </StudioButton>
-                <StudioButton onClick={onOpenTrace}>
-                  <CheckCircle2 aria-hidden size={16} />
-                  Review evidence
-                </StudioButton>
-              </div>
-            </article>
-          ))}
+                <div className="mt-3 grid gap-2 text-xs">
+                  <QueueFact label="Trace path" value={item.filesChanged} />
+                  <QueueFact label="Evidence" value={item.evidence} />
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <StudioButton onClick={onOpenTrace}>
+                    <FlaskConical aria-hidden size={16} />
+                    Open trace
+                  </StudioButton>
+                  <StudioButton onClick={onOpenTrace}>
+                    <CheckCircle2 aria-hidden size={16} />
+                    Review evidence
+                  </StudioButton>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="rounded-md border border-ink/10 bg-parchment px-3 py-3 text-sm leading-6 text-ink/55">
+              No decision queue is available. Run a turn to create runtime
+              evidence; agent approval queues are not implemented.
+            </div>
+          )}
         </aside>
       </div>
     </section>
@@ -393,10 +409,7 @@ function resolveEntryScene(projectData: ProjectData | null) {
   );
 }
 
-function directionQueue(
-  state: LocalPreviewState,
-  report: PlayOnceReport | null,
-): Array<{
+function directionQueue(report: PlayOnceReport | null): Array<{
   id: string;
   title: string;
   body: string;
@@ -405,33 +418,11 @@ function directionQueue(
   evidence: string;
   tone: "action" | "health" | "acp" | "agent";
 }> {
-  const approvals = state.approvals.map((approval, index) => ({
-    id: approval.id,
-    title: approval.title,
-    body:
-      approval.state === "pending-local-review"
-        ? "Local preview proposal awaits creator review."
-        : "Local preview evidence is ready for inspection.",
-    impact: index === 0 ? "High impact" : "Medium impact",
-    filesChanged: approval.evidenceIds[1] ?? "local-preview",
-    evidence: approval.evidenceIds.join(" / "),
-    tone: approval.state === "pending-local-review" ? "action" : "agent",
-  })) satisfies Array<{
-    id: string;
-    title: string;
-    body: string;
-    impact: string;
-    filesChanged: string;
-    evidence: string;
-    tone: "action" | "health" | "acp" | "agent";
-  }>;
-
   if (!report) {
-    return approvals;
+    return [];
   }
 
   return [
-    ...approvals,
     {
       id: "playtest-result",
       title: "Playtest result",
@@ -442,16 +433,6 @@ function directionQueue(
       tone: report.trace.errors.length ? "action" : "health",
     },
   ];
-}
-
-function activityTitle(label: string) {
-  if (label.toLowerCase().includes("story")) {
-    return "Prepared story direction";
-  }
-  if (label.toLowerCase().includes("asset")) {
-    return "Reviewed scene assets";
-  }
-  return "Checked playable proof";
 }
 
 function CanvasFact({ label, value }: { label: string; value: string }) {

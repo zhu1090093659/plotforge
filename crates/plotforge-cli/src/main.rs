@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, io, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -20,6 +20,8 @@ use plotforge_workshop::{
     upload_workshop_publish_draft, validate_workshop_package, write_steam_submission_kit,
     write_workshop_publish_draft,
 };
+use serde::{Serialize, de::DeserializeOwned};
+use serde_json::Value;
 
 #[derive(Debug, Parser)]
 #[command(name = "plotforge")]
@@ -37,6 +39,7 @@ enum Command {
     Trace(TraceCommand),
     Export(ExportCommand),
     Workshop(WorkshopCommand),
+    Studio(StudioInvokeArgs),
 }
 
 #[derive(Debug, Args)]
@@ -268,6 +271,11 @@ struct WorkshopSubmissionKitArgs {
     build_notes: Vec<String>,
 }
 
+#[derive(Debug, Args)]
+struct StudioInvokeArgs {
+    command: String,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -277,7 +285,241 @@ fn main() -> Result<()> {
         Command::Trace(command) => handle_trace(command),
         Command::Export(command) => handle_export(command),
         Command::Workshop(command) => handle_workshop(command),
+        Command::Studio(args) => handle_studio(args),
     }
+}
+
+fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
+    let payload: Value =
+        serde_json::from_reader(io::stdin()).context("parse studio command json")?;
+
+    match args.command.as_str() {
+        "create_project" => print_studio_json(studio_result(plotforge_studio::create_project(
+            studio_arg::<PathBuf>(&payload, "path")?,
+            studio_arg(&payload, "request")?,
+            studio_arg(&payload, "force")?,
+        ))?),
+        "open_project" => print_studio_json(studio_result(plotforge_studio::open_project(
+            studio_arg::<PathBuf>(&payload, "path")?,
+        ))?),
+        "check_project" => print_studio_json(studio_result(plotforge_studio::check_project(
+            studio_arg::<PathBuf>(&payload, "path")?,
+        ))?),
+        "list_export_profiles" => print_studio_json(plotforge_studio::list_export_profiles()),
+        "read_world_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::read_world_edit_document(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "update_world_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::update_world_edit_document(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "document")?,
+            ),
+        )?),
+        "read_story_craft_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::read_story_craft_edit_document(studio_arg::<PathBuf>(
+                &payload, "path",
+            )?),
+        )?),
+        "update_story_craft_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::update_story_craft_edit_document(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "document")?,
+            ),
+        )?),
+        "read_character_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::read_character_edit_document(studio_arg::<PathBuf>(
+                &payload, "path",
+            )?),
+        )?),
+        "update_character_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::update_character_edit_document(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "document")?,
+            ),
+        )?),
+        "create_character" => {
+            print_studio_json(studio_result(plotforge_studio::create_character(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "character")?,
+            ))?)
+        }
+        "read_state_variables_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::read_state_variables_edit_document(studio_arg::<PathBuf>(
+                &payload, "path",
+            )?),
+        )?),
+        "update_state_variables_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::update_state_variables_edit_document(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "document")?,
+            ),
+        )?),
+        "create_resource" => print_studio_json(studio_result(plotforge_studio::create_resource(
+            studio_arg::<PathBuf>(&payload, "path")?,
+            studio_arg(&payload, "resource")?,
+        ))?),
+        "read_rules_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::read_rules_edit_document(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "update_rules_edit_document" => print_studio_json(studio_result(
+            plotforge_studio::update_rules_edit_document(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "document")?,
+            ),
+        )?),
+        "create_rule" => print_studio_json(studio_result(plotforge_studio::create_rule(
+            studio_arg::<PathBuf>(&payload, "path")?,
+            studio_arg(&payload, "rule")?,
+        ))?),
+        "generate_world_expansion" => {
+            let expansion_goal: String = studio_arg(&payload, "expansion_goal")?;
+            print_studio_json(studio_result(plotforge_studio::generate_world_expansion(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                &expansion_goal,
+            ))?)
+        }
+        "generate_story_craft" => {
+            let concept: String = studio_arg(&payload, "concept")?;
+            print_studio_json(studio_result(plotforge_studio::generate_story_craft(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                &concept,
+            ))?)
+        }
+        "generate_character" => {
+            let concept: String = studio_arg(&payload, "concept")?;
+            let role_hint: String = studio_arg(&payload, "role_hint")?;
+            print_studio_json(studio_result(plotforge_studio::generate_character(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                &concept,
+                &role_hint,
+            ))?)
+        }
+        "read_ai_safety_policy" => print_studio_json(studio_result(
+            plotforge_studio::read_ai_safety_policy(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "update_ai_safety_policy" => {
+            print_studio_json(studio_result(plotforge_studio::update_ai_safety_policy(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "policy")?,
+            ))?)
+        }
+        "read_visual_bible" => print_studio_json(studio_result(
+            plotforge_studio::read_visual_bible(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "update_visual_bible" => {
+            print_studio_json(studio_result(plotforge_studio::update_visual_bible(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "visual_bible")?,
+            ))?)
+        }
+        "read_audio_bible" => print_studio_json(studio_result(
+            plotforge_studio::read_audio_bible(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "update_audio_bible" => {
+            print_studio_json(studio_result(plotforge_studio::update_audio_bible(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg(&payload, "audio_bible")?,
+            ))?)
+        }
+        "play_once_project" => {
+            let player_input: String = studio_arg(&payload, "player_input")?;
+            print_studio_json(studio_result(plotforge_studio::play_once_project(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                &player_input,
+            ))?)
+        }
+        "play_once_project_with_save" => {
+            let player_input: String = studio_arg(&payload, "player_input")?;
+            let save_id: String = studio_arg(&payload, "save_id")?;
+            print_studio_json(studio_result(
+                plotforge_studio::play_once_project_with_save(
+                    studio_arg::<PathBuf>(&payload, "path")?,
+                    &player_input,
+                    Some(&save_id),
+                ),
+            )?)
+        }
+        "play_once_project_from_snapshot" => {
+            let player_input: String = studio_arg(&payload, "player_input")?;
+            let snapshot_id: String = studio_arg(&payload, "snapshot_id")?;
+            let save_id: Option<String> = studio_arg(&payload, "save_id")?;
+            print_studio_json(studio_result(
+                plotforge_studio::play_once_project_from_snapshot(
+                    studio_arg::<PathBuf>(&payload, "path")?,
+                    &player_input,
+                    &snapshot_id,
+                    save_id.as_deref(),
+                ),
+            )?)
+        }
+        "play_once_project_from_latest_snapshot" => {
+            let player_input: String = studio_arg(&payload, "player_input")?;
+            let save_id: Option<String> = studio_arg(&payload, "save_id")?;
+            print_studio_json(studio_result(
+                plotforge_studio::play_once_project_from_latest_snapshot(
+                    studio_arg::<PathBuf>(&payload, "path")?,
+                    &player_input,
+                    save_id.as_deref(),
+                ),
+            )?)
+        }
+        "export_static_project" => {
+            print_studio_json(studio_result(plotforge_studio::export_static_project(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg::<PathBuf>(&payload, "output_dir")?,
+            ))?)
+        }
+        "export_static_project_zip" => {
+            print_studio_json(studio_result(plotforge_studio::export_static_project_zip(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                studio_arg::<PathBuf>(&payload, "output_dir")?,
+                studio_arg::<PathBuf>(&payload, "archive_path")?,
+            ))?)
+        }
+        "list_asset_records" => print_studio_json(studio_result(
+            plotforge_studio::list_asset_records(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "list_source_files" => print_studio_json(studio_result(
+            plotforge_studio::list_source_files(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
+        "read_source_file" => {
+            let relative_path: String = studio_arg(&payload, "relative_path")?;
+            print_studio_json(studio_result(plotforge_studio::read_source_file(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                &relative_path,
+            ))?)
+        }
+        "write_source_file" => {
+            let relative_path: String = studio_arg(&payload, "relative_path")?;
+            let content: String = studio_arg(&payload, "content")?;
+            print_studio_json(studio_result(plotforge_studio::write_source_file(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                &relative_path,
+                &content,
+            ))?)
+        }
+        other => anyhow::bail!("unknown studio command `{other}`"),
+    }
+}
+
+fn studio_arg<T: DeserializeOwned>(payload: &Value, name: &str) -> Result<T> {
+    let value = payload
+        .get(name)
+        .with_context(|| format!("studio command arg `{name}` is required"))?;
+    serde_json::from_value(value.clone())
+        .with_context(|| format!("parse studio command arg `{name}`"))
+}
+
+fn studio_result<T>(result: plotforge_studio::StudioCommandResult<T>) -> Result<T> {
+    result.map_err(|source| anyhow::anyhow!("{}: {}", source.code, source.message))
+}
+
+fn print_studio_json(value: impl Serialize) -> Result<()> {
+    println!(
+        "{}",
+        serde_json::to_string(&value).context("serialize studio command result")?
+    );
+    Ok(())
 }
 
 fn handle_new(command: NewCommand) -> Result<()> {

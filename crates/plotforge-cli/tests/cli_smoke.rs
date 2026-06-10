@@ -1,4 +1,4 @@
-use std::{fs, process::Command};
+use std::{fs, io::Write, process::Command};
 
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
@@ -330,6 +330,48 @@ fn cli_creates_project_from_wizard_fields_and_reopens_it() {
 }
 
 #[test]
+fn cli_studio_json_invokes_real_studio_commands() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("dynasty-embers");
+    run([
+        "new",
+        "demo",
+        "--path",
+        project.to_str().unwrap(),
+        "--force",
+    ])
+    .assert_success_contains("created Dynasty Embers");
+
+    let check = run_with_stdin(
+        ["studio", "check_project"],
+        &serde_json::json!({ "path": project.to_string_lossy() }).to_string(),
+    )
+    .assert_success_contains("\"title\":\"Dynasty Embers\"")
+    .stdout_json();
+    assert_eq!(check["entry_scene"], "court-crisis-001");
+    assert_eq!(check["scene_count"], 1);
+
+    let play = run_with_stdin(
+        ["studio", "play_once_project"],
+        &serde_json::json!({
+            "path": check_project_path(&temp).to_string_lossy(),
+            "player_input": "朕决定加征辽饷"
+        })
+        .to_string(),
+    )
+    .assert_success_contains("\"trace_path\"")
+    .stdout_json();
+    assert_eq!(play["scene"]["key"], "court-crisis-001");
+    assert_eq!(play["trace"]["id"], "trace-001");
+    assert_eq!(play["trace"]["selected_choice"], "raise-tax");
+    assert!(
+        check_project_path(&temp)
+            .join("traces/latest.json")
+            .is_file()
+    );
+}
+
+#[test]
 fn cli_new_project_rejects_secret_markers() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("winter-regency");
@@ -594,6 +636,32 @@ where
     CommandOutput { output }
 }
 
+fn run_with_stdin<I, S>(args: I, stdin: &str) -> CommandOutput
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut child = Command::new(bin())
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn command");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(stdin.as_bytes())
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait command");
+    CommandOutput { output }
+}
+
+fn check_project_path(temp: &tempfile::TempDir) -> std::path::PathBuf {
+    temp.path().join("dynasty-embers")
+}
+
 fn extract_zip(archive_path: &std::path::Path, output_dir: &std::path::Path) {
     fs::create_dir_all(output_dir).expect("unpack dir");
     let status = Command::new("unzip")
@@ -773,6 +841,17 @@ impl CommandOutput {
             "missing `{expected}`\nstdout:\n{stdout}\nstderr:\n{stderr}"
         );
         self
+    }
+
+    fn stdout_json(self) -> serde_json::Value {
+        assert!(
+            self.output.status.success(),
+            "expected success before parsing json, got status {:?}\nstdout:\n{}\nstderr:\n{}",
+            self.output.status.code(),
+            String::from_utf8_lossy(&self.output.stdout),
+            String::from_utf8_lossy(&self.output.stderr)
+        );
+        serde_json::from_slice(&self.output.stdout).expect("stdout json")
     }
 }
 

@@ -33,7 +33,9 @@ npm --workspace @plotforge/creator-desktop run dev -- --host 127.0.0.1
    - Trace id: `trace-001`
    - Evidence fields: `Run seed`, `Prompt version`, `Provider Config Hash`
    - World delta or package readiness evidence is visible.
-5. Open `Agent Mesh` and verify `ACP Bridge Setup`, `Capability Matrix`, and local/mock boundary copy are visible. The page must not imply real ACP execution, official third-party ownership, hidden network calls, or provider credential use.
+5. Open `Agent Mesh` and verify `Studio Backend Bridge`, `Command Boundary Map`, `Capability Matrix`, and real Studio command boundary copy are visible.
+   - Wired capabilities should describe folder project source, structured editing, source file read/write, runtime proof, and static export.
+   - Unavailable interfaces such as ACP/external agent bridge, approval queues, provider calls, and publishing automation must remain explicitly `not implemented`.
 6. Open `Export Package` and verify:
    - `Local export package only`
    - `Package Readiness`
@@ -45,12 +47,13 @@ npm --workspace @plotforge/creator-desktop run dev -- --host 127.0.0.1
 
 ## Evidence
 
-Record the URL, viewport, clicked command, visible trace id, proof section, trace section, export package boundary, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
+Record the URL, viewport, clicked command, visible trace id, proof section, trace section, Agent Mesh backend boundary, export package boundary, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
 
 ## Boundaries
 
 - Starting the Vite server is not evidence; perform at least one visible browser/app interaction.
 - Do not log into accounts, upload files, create API keys, or grant browser permissions for this smoke test.
 - Do not use `file://`; Creator Desktop is validated through the Vite dev server or Tauri dev shell.
+- Vite browser mode calls the local HTTP dev bridge backed by `plotforge-cli studio`; this is local command execution, not an in-browser fake source.
 - Do not treat Browser or Computer Use smoke as a replacement for TypeScript, Vitest, build, Tauri, Rust, CLI, and export checks.
 - Forbidden copy includes automatic publishing, legal/approval guarantees, official-logo ownership claims, real ACP execution claims, hidden network/model execution claims, raw provider responses, provider credentials, and secret marker text.
