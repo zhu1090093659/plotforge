@@ -32,6 +32,7 @@ The current MVP contains:
 - Runtime traces are generated evidence, not committed fixture state.
 - Runtime traces must use structured, redaction-safe fields for action intent, rule result, planner result, diagnostics, media references, fallback, and errors; do not write raw provider responses, secrets, or unredacted key markers into trace/debug output.
 - Runtime traces, snapshots, and provider output envelopes must carry reproducibility metadata (`run_seed`, `prompt_version`, `model_version`, `provider_config_hash`, and trace/snapshot evidence ids where applicable) without storing raw provider responses or credentials.
+- Creator Desktop agent-native UI references live in `docs/design/ui-mockups/agent-native-v1/`; use these PNGs and the folder README as the visual/product reference for the Agent Mesh, Command Center, Director Mode, proof, trace, and export package workflows.
 - Real provider configuration is local-only: credentials must be injected through explicit local resolvers such as environment variables, provider config hashes must be derived only from non-secret config fields, and `providers/` or `provider_config.*` files must never become project source, contracts, traces, or export package content.
 - Media asset records must use structured, redaction-safe provider metadata only; store prompt hashes/request ids when needed, never raw provider responses or secrets.
 - Job records must use typed state, explicit failure objects, injected clocks for deterministic tests, and no hidden global async state.
@@ -60,6 +61,7 @@ The current MVP contains:
 - Keep image provider ports and scene image pipeline orchestration in `plotforge-agent`; image providers should feed `plotforge-media` and `plotforge-job` instead of bypassing those boundaries.
 - Keep CLI behavior in `plotforge-cli`; CLI should orchestrate crates instead of owning business logic.
 - Keep `apps/creator-desktop` as an adapter over generated contracts and future Tauri commands. TypeScript UI code may import types from `contracts/plotforge.d.ts`, but must not reimplement rule, runtime, storage, storycraft, or agent business logic.
+- Agent-native Creator Desktop UI may show ACP workers, agent capabilities, approvals, and evidence as explicit local/mock workflow surfaces, but must not imply real external agent execution, hidden network model calls, Steam upload automation, legal conclusions, or platform approval unless those schema-backed integrations are explicitly added.
 - Keep Tauri command behavior in testable Rust adapter crates such as `plotforge-studio`; `apps/creator-desktop/src-tauri` should stay a thin IPC wrapper.
 - Do not add Steam/Workshop, provider SDKs, or networked model calls to MVP core crates unless the project scope is explicitly changed.
 

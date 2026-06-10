@@ -8,20 +8,28 @@ REQUIRED_UI_MARKERS = [
     "PlotForge Studio",
     "Creator Desktop",
     "Dynasty Embers",
-    "Source Files",
-    "Source Editor",
-    "Playtest",
+    "Project Launchpad",
+    "Command Dock",
+    "Agent Mesh",
+    "ACP Bridge Setup",
+    "Playable Proof",
+    "Trace Debug",
+    "Export Package",
+    "Local export package only",
     "Runtime Trace",
-    "Run turn",
-    "Narrative Review",
-    "Diagnostics",
-    "Boundary Checks",
+    "No raw responses",
+    "No secret markers",
     "trace-001",
-    "treasury: +12",
 ]
 
 BLOCKED_MARKERS = [
     "sk-test-secret should not render",
+    "automatic publishing",
+    "approval guarantee",
+    "legal guarantee",
+    "one-click Steam launch",
+    "Steam upload automation",
+    "real ACP execution",
 ]
 
 

@@ -20,24 +20,32 @@ npm --workspace @plotforge/creator-desktop run dev -- --host 127.0.0.1
 ## Browser or Computer Use Steps
 
 1. Open the Vite URL in the Codex in-app Browser or a local browser controlled through Computer Use.
-2. Verify visible Studio shell content:
+2. Verify visible agent-native Studio shell content:
    - Sidebar label: `PLOTFORGE STUDIO`
    - Project title: `Dynasty Embers`
-   - Panels: `Playtest`, `Runtime Trace`, `Source Files`, `Source Editor`
-   - Source list entry: `world/world.md`
-3. Click `Run turn`.
-4. Verify trace and playtest output:
+   - Primary workflow: `Command Center`
+   - Main region: `Project Launchpad`
+   - Bottom region: `Command Dock`
+3. Click `Run playable proof` in the command dock, or enter a director intent and click `Apply as proof run`.
+4. Verify playable proof and trace output:
+   - Section: `Playable Proof`
+   - Section: `Trace Debug`
    - Trace id: `trace-001`
-   - Status badge: `COMMITTED`
-   - Review section: `Narrative Review`
-   - Diagnostics section: `Diagnostics`
-   - World delta includes `treasury: +12`
-5. Inspect browser console output. Any uncaught error, failed Vite asset, or blank page fails the smoke.
-6. Repeat at a narrow mobile viewport, for example 390 x 844, and verify `Playtest` and `Runtime Trace` remain reachable after `Run turn`.
+   - Evidence fields: `Run seed`, `Prompt version`, `Provider Config Hash`
+   - World delta or package readiness evidence is visible.
+5. Open `Agent Mesh` and verify `ACP Bridge Setup`, `Capability Matrix`, and local/mock boundary copy are visible. The page must not imply real ACP execution, official third-party ownership, hidden network calls, or provider credential use.
+6. Open `Export Package` and verify:
+   - `Local export package only`
+   - `Package Readiness`
+   - `Evidence & Boundaries`
+   - `Export zip` is present for `static-web`
+   - Draft profiles such as `steam-workshop` remain metadata-only and do not run the static export command.
+7. Inspect browser console output. Any uncaught error, failed Vite asset, or blank page fails the smoke.
+8. Repeat at a narrow mobile viewport, for example 390 x 844, and verify `Command Center`, `Agent Mesh`, `Playable Proof`, `Trace Debug`, and `Export Package` remain reachable without text overlap blocking the primary controls.
 
 ## Evidence
 
-Record the URL, viewport, clicked command, visible trace id, review section, diagnostics section, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
+Record the URL, viewport, clicked command, visible trace id, proof section, trace section, export package boundary, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
 
 ## Boundaries
 
@@ -45,3 +53,4 @@ Record the URL, viewport, clicked command, visible trace id, review section, dia
 - Do not log into accounts, upload files, create API keys, or grant browser permissions for this smoke test.
 - Do not use `file://`; Creator Desktop is validated through the Vite dev server or Tauri dev shell.
 - Do not treat Browser or Computer Use smoke as a replacement for TypeScript, Vitest, build, Tauri, Rust, CLI, and export checks.
+- Forbidden copy includes automatic publishing, legal/approval guarantees, official-logo ownership claims, real ACP execution claims, hidden network/model execution claims, raw provider responses, provider credentials, and secret marker text.

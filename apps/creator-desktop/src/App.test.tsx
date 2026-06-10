@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 import {
@@ -7,6 +14,10 @@ import {
   demoProjectData,
   demoReproducibilityMetadata,
 } from "./demoStudioData";
+import {
+  defaultLocalPreviewState,
+  type LocalPreviewState,
+} from "./localPreviewModel";
 import type { StudioDataSource } from "./studioDataSource";
 import type {
   AssetRecord,
@@ -87,7 +98,7 @@ describe("App", () => {
     });
   });
 
-  it("switches product modes and keeps Steam entries local-first", async () => {
+  it("switches agent-native workflows and keeps package entries local-first", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -95,60 +106,167 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Play Mode" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Creator Mode" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Developer Mode" })).toBeTruthy();
+    expect(getWorkflowButton("Command Center")).toBeTruthy();
+    expect(getWorkflowButton("Director Mode")).toBeTruthy();
+    expect(getWorkflowButton("Agent Mesh")).toBeTruthy();
+    expect(getWorkflowButton("Artifact Review")).toBeTruthy();
+    expect(getWorkflowButton("Playable Proof")).toBeTruthy();
+    expect(getWorkflowButton("Export Package")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Creator Mode" }).getAttribute(
-        "aria-pressed",
-      ),
+      getWorkflowButton("Command Center").getAttribute("aria-pressed"),
     ).toBe("true");
-
-    fireEvent.click(screen.getByRole("button", { name: "Play Mode" }));
-
-    expect(screen.getByText("Built-in project")).toBeTruthy();
-    expect(screen.getByText("Local Workshop package")).toBeTruthy();
-    expect(screen.getByText("No network calls")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Project Launchpad" })).toBeTruthy();
+    expect(screen.getByText("Playable Proof Status")).toBeTruthy();
+    expect(screen.getByText("Recent Runs")).toBeTruthy();
+    expect(screen.getByLabelText("Director intent")).toBeTruthy();
+    expect(screen.getAllByText("Command Center").length).toBeGreaterThan(0);
+    const commandDock = screen.getByLabelText("Command dock");
+    expect(within(commandDock).getByText("Command Dock")).toBeTruthy();
     expect(
-      screen.getByText(/does not contact Steamworks, upload files/),
+      within(commandDock).getByRole("button", { name: "Run playable proof" }),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview local project" }));
+    fireEvent.change(screen.getByLabelText("Director intent"), {
+      target: { value: "pay the army and show the consequence" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply as proof run" }));
+    await screen.findByText("Runtime Trace");
+    expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("State Delta").length).toBeGreaterThan(0);
 
-    expect(
-      screen.getByRole("button", { name: "Creator Mode" }).getAttribute(
-        "aria-pressed",
-      ),
-    ).toBe("true");
-    expect(screen.getAllByText("Playtest").length).toBeGreaterThan(0);
+    fireEvent.click(getWorkflowButton("Director Mode"));
+
+    expect(screen.getAllByText("Director Mode").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Playtest input")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Developer Mode" }));
+    fireEvent.click(getWorkflowButton("Export Package"));
 
-    expect(screen.getByText("Local package profiles")).toBeTruthy();
-    expect(screen.getByText("Runtime trace debug")).toBeTruthy();
-    expect(screen.getByText("Submission Kit readiness")).toBeTruthy();
-    expect(
-      screen.getByText(/does not publish, upload, provide legal conclusions/),
-    ).toBeTruthy();
-    expect(screen.getByText(/no Steamworks API calls/)).toBeTruthy();
+    expect(screen.getAllByText("Export Package").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("steam-submission-kit").length).toBeGreaterThan(0);
     expect(document.body.textContent ?? "").not.toMatch(
       /one-click Steam launch|automatic publishing|approval guarantee|legal guarantee/i,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Review Submission Kit" }));
-
-    expect(
-      screen.getByRole("button", { name: "Creator Mode" }).getAttribute(
-        "aria-pressed",
-      ),
-    ).toBe("true");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Select export profile steam-submission-kit",
+      }),
+    );
     expect(screen.getAllByText("steam_submission_kit").length).toBeGreaterThan(0);
     expect(
       screen.getByText(
         "This profile does not call Steamworks APIs or promise approval.",
       ),
     ).toBeTruthy();
+  });
+
+  it("renders local preview agent state without using the data source as an agent port", async () => {
+    const blockedCalls: string[] = [];
+    const localPreviewState: LocalPreviewState = {
+      ...defaultLocalPreviewState,
+      source: "local-preview-only",
+      authoritativeProjectState: false,
+      usesStudioDataSourcePort: false,
+      networkEnabled: false,
+      workers: [
+        {
+          id: "mock-acp-worker",
+          label: "Mock ACP Worker",
+          role: "Visible local preview worker only",
+          kind: "external-worker",
+          connectionState: "mock-connected",
+          capabilityIds: ["StoryCraft.review"],
+        },
+        {
+          id: "mock-story-agent",
+          label: "Mock Story Agent",
+          role: "Visible local preview subAgent only",
+          kind: "plotforge-subagent",
+          connectionState: "local-only",
+          capabilityIds: ["StoryCraft.review"],
+        },
+      ],
+      capabilities: [
+        {
+          id: "StoryCraft.review",
+          label: "StoryCraft.review",
+          description: "Local preview review capability",
+          providerWorkerId: "mock-acp-worker",
+          plotforgeAgentId: "mock-story-agent",
+          inputArtifacts: ["story/*.md"],
+          outputArtifacts: ["review.md"],
+          approvalRequired: true,
+          traceLevel: "full",
+        },
+      ],
+      approvals: [
+        {
+          id: "approval-local-only",
+          title: "Approve local preview patch",
+          state: "pending-local-review",
+          evidenceIds: ["trace-preview", "files-preview"],
+        },
+      ],
+      capabilityPolicy: {
+        title: "Injected local preview boundary",
+        boundaries: [
+          "Injected preview state is not project truth.",
+          "Injected preview state does not call StudioDataSource.",
+        ],
+        allowedPaths: ["/tmp/dynasty-embers/"],
+        blockedPaths: ["/tmp/provider-keys/"],
+      },
+    };
+    const dataSource = appTestDataSource({
+      async generateWorldExpansion() {
+        blockedCalls.push("generate-world");
+        throw new Error("preview state must not generate world content");
+      },
+      async generateStoryCraft() {
+        blockedCalls.push("generate-story");
+        throw new Error("preview state must not generate story content");
+      },
+      async generateCharacter() {
+        blockedCalls.push("generate-character");
+        throw new Error("preview state must not generate characters");
+      },
+      async exportStaticProjectZip() {
+        blockedCalls.push("export");
+        throw new Error("preview state must not export");
+      },
+    });
+
+    render(
+      <App
+        dataSource={dataSource}
+        initialProjectPath="/tmp/dynasty-embers"
+        localPreviewState={localPreviewState}
+      />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(screen.getByText("Local Preview Agent State")).toBeTruthy();
+    expect(screen.getByText("Injected local preview boundary")).toBeTruthy();
+    expect(screen.getByText("local-preview-only")).toBeTruthy();
+    expect(screen.getAllByText("Mock ACP Worker").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("mock-connected").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Approve local preview patch").length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText("pending-local-review").length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText("not authoritative").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("disabled").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Injected preview state does not call StudioDataSource."),
+    ).toBeTruthy();
+
+    fireEvent.click(getWorkflowButton("Agent Mesh"));
+    expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
+      .toBeTruthy();
+    expect(screen.getAllByText("StoryCraft.review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Mock Story Agent").length).toBeGreaterThan(0);
+    expect(screen.getByText("/tmp/provider-keys/")).toBeTruthy();
+    expect(blockedCalls).toEqual([]);
   });
 
   it("renders asset records and visual-audio bible cards before background fallback", async () => {
@@ -159,7 +277,7 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
     expect(screen.getAllByText("asset-image-court-crisis-001").length)
@@ -206,11 +324,12 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
     expect(screen.getByText("Scene background fallback")).toBeTruthy();
-    expect(screen.getByText("assets/generated/court-crisis-001.png")).toBeTruthy();
+    expect(screen.getAllByText("assets/generated/court-crisis-001.png").length)
+      .toBeGreaterThan(0);
   });
 
   it("saves Visual Bible and Audio Bible structured controls through the data source", async () => {
@@ -237,7 +356,7 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Assets/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
       target: { value: "Ink court with harsher winter lanterns." },
@@ -295,7 +414,7 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Playtest" }));
+    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "continue" },
@@ -315,17 +434,23 @@ describe("App", () => {
     expect(screen.getByText("Rule Result")).toBeTruthy();
     expect(screen.getByText("Planner Result")).toBeTruthy();
     expect(screen.getByText("Reproducibility")).toBeTruthy();
-    expect(screen.getByText("plotforge-local-mock-prompt-v1")).toBeTruthy();
-    expect(screen.getByText("plotforge-local-mock-model-v1")).toBeTruthy();
     expect(
-      screen.getByText("sha256:plotforge-local-mock-provider-config-v1"),
-    ).toBeTruthy();
-    expect(screen.getByText("State Delta")).toBeTruthy();
+      screen.getAllByText("plotforge-local-mock-prompt-v1").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("plotforge-local-mock-model-v1").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("sha256:plotforge-local-mock-provider-config-v1")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("State Delta").length).toBeGreaterThan(0);
     expect(screen.getByText("Media References")).toBeTruthy();
     expect(screen.getAllByText("continue-council").length).toBeGreaterThan(0);
     expect(screen.getAllByText("continue").length).toBeGreaterThan(0);
     expect(screen.getByText("background_asset")).toBeTruthy();
-    expect(screen.getByText("assets/generated/court-crisis-001.png")).toBeTruthy();
+    expect(screen.getAllByText("assets/generated/court-crisis-001.png").length)
+      .toBeGreaterThan(0);
     expect(
       screen.getByText("planner returned fallback scene `[REDACTED_SECRET]`"),
     ).toBeTruthy();
@@ -377,7 +502,7 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Playtest" }));
+    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "pay the army" },
@@ -392,7 +517,7 @@ describe("App", () => {
 
     await screen.findByText("/tmp/dynasty-embers/saves/save-after-army.runtime_snapshot.json");
 
-    fireEvent.click(screen.getByRole("button", { name: "Playtest" }));
+    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "raise emergency taxes" },
     });
@@ -445,7 +570,7 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Export/ }));
+    fireEvent.click(getWorkflowButton("Export Package"));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(screen.getByText("byo-key-web")).toBeTruthy();
     expect(screen.getByText("self-host-backend")).toBeTruthy();
@@ -473,8 +598,35 @@ describe("App", () => {
         },
       ]);
     });
-    expect(screen.getByText("/tmp/dynasty-embers.zip")).toBeTruthy();
+    expect(
+      screen.getAllByText("/tmp/dynasty-embers.zip").length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("matched")).toBeTruthy();
+    expect(screen.getByText("pending explicit package hash")).toBeTruthy();
+    expectExportEvidenceStatus("No raw responses", "Pending");
+    expectExportEvidenceStatus("No secret markers", "Pending");
+    expectExportEvidenceStatus("HTTP smoke test passed", "Pending");
+    expectExportEvidenceStatus("All referenced assets copied", "Pass");
+  });
+
+  it("opens the executable static profile from the Command Center export CTA", async () => {
+    const dataSource = appTestDataSource();
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    const launchpad = screen.getByRole("region", { name: "Project Launchpad" });
+    fireEvent.click(within(launchpad).getByRole("button", { name: "Export Package" }));
+
+    expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getByRole("button", { name: "Select export profile static-web" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByLabelText("Static export output directory")).toBeTruthy();
   });
 
   it("keeps draft export profiles visible without calling static export", async () => {
@@ -491,7 +643,7 @@ describe("App", () => {
     );
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Export/ }));
+    fireEvent.click(getWorkflowButton("Export Package"));
     fireEvent.click(
       screen.getByRole("button", {
         name: "Select export profile steam-workshop",
@@ -653,16 +805,12 @@ describe("App", () => {
 
     expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
     for (const label of [
-      "Dashboard",
-      "World Bible",
-      "Story Craft",
-      "Characters",
-      "State",
-      "Rules",
-      "Assets",
-      "Playtest",
-      "Debugger",
-      "Export",
+      "Command Center",
+      "Director Mode",
+      "Agent Mesh",
+      "Artifact Review",
+      "Playable Proof",
+      "Export Package",
     ]) {
       expect(screen.getAllByRole("button", { name: new RegExp(label) }).length)
         .toBeGreaterThan(0);
@@ -680,6 +828,7 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Story Craft" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
     fireEvent.click(screen.getByRole("button", { name: /Characters/ }));
     fireEvent.change(screen.getByLabelText("New character id"), {
       target: { value: "regent" },
@@ -852,6 +1001,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate StoryCraft" }));
     await screen.findByText("Generated Pressure");
 
+    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
     fireEvent.click(screen.getByRole("button", { name: /Characters/ }));
     fireEvent.change(screen.getByLabelText("Character generation concept"), {
       target: { value: "Design a grain envoy." },
@@ -863,7 +1013,7 @@ describe("App", () => {
     await screen.findByDisplayValue("generated-envoy");
     expect(screen.getByText("Generated portrait request")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Export/ }));
+    fireEvent.click(getWorkflowButton("Export Package"));
     fireEvent.click(screen.getByLabelText("Live generated content enabled"));
     fireEvent.click(screen.getByLabelText("Moderation queue enabled"));
     fireEvent.change(screen.getByLabelText("AI safety moderation policy"), {
@@ -883,6 +1033,18 @@ describe("App", () => {
     });
   });
 });
+
+function getWorkflowButton(name: string) {
+  return within(
+    screen.getByRole("navigation", { name: "Agent-native workflows" }),
+  ).getByRole("button", { name });
+}
+
+function expectExportEvidenceStatus(label: string, status: string) {
+  const row = screen.getByText(label).closest("div");
+  expect(row).toBeTruthy();
+  expect(within(row as HTMLElement).getByText(status)).toBeTruthy();
+}
 
 function appTestDataSource(
   overrides: Partial<StudioDataSource> = {},

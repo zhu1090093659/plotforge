@@ -30,6 +30,11 @@
 # Private or internal open-source notes.
 # Public docs should stay under docs/ with ordinary names.
 docs/analysis/
+docs/design/*
+!docs/design/ui-mockups/
+docs/design/ui-mockups/*
+!docs/design/ui-mockups/agent-native-v1/
+!docs/design/ui-mockups/agent-native-v1/**
 docs/plan/
 docs/progress/
 docs/archives/

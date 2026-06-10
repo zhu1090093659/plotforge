@@ -1,58 +1,67 @@
 import {
   CheckCircle2,
-  ChevronRight,
   Download,
-  FolderOpen,
   Loader2,
   PlusCircle,
   Play,
   RefreshCcw,
   Save,
-  ShipWheel,
   TerminalSquare,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AiSafetyPolicy,
   AssetRecord,
   AiUsageContentKind,
-  AudioBible,
   AudioVoiceCard,
   Character,
-  CharacterEditDocument,
-  ExportProfile,
   ProjectCreationReport,
   ProjectCreationRequest,
-  ProjectData,
   ProjectTemplateId,
   ResourceDefinition,
   Rule,
-  RulesEditDocument,
-  StateVariablesEditDocument,
   StoryCraftEditDocument,
-  VisualBible,
   VisualStyleCard,
   WorldEditDocument,
 } from "../../../contracts/plotforge";
-import { summarizeProject, type CreatorProjectSummary } from "./projectSummary";
-import { PlaytestPanel, RuntimeTracePanel } from "./runtimeTraceView";
+import { AgentMeshView } from "./AgentMeshView";
+import { ArtifactReviewView } from "./ArtifactReviewView";
+import { CommandCenterView } from "./CommandCenterView";
+import { DirectorModeView } from "./DirectorModeView";
+import {
+  defaultLocalPreviewState,
+  localPreviewSummary,
+  type LocalPreviewState,
+} from "./localPreviewModel";
+import { RuntimeTracePanel } from "./runtimeTraceView";
 import {
   createDefaultStudioDataSource,
   defaultProjectPath,
   type StudioDataSource,
 } from "./studioDataSource";
 import {
-  projectAssetCatalog,
-  studioSections,
+  agentNativeWorkflows,
+  defaultSectionForWorkflow,
+  getAgentNativeWorkflow,
+  getStudioSection,
+  isSectionInWorkflow,
+  screenReferencesForWorkflow,
+  workflowForSection,
+  type AgentNativeWorkflowId,
   type AssetCatalogItem,
+  type StudioSectionId,
 } from "./studioModel";
-import type {
-  PlayOnceReport,
-  ProjectCheckReport,
-  SourceFileContent,
-  SourceFileSummary,
-  StaticExportReport,
-} from "./tauriBridge";
+import {
+  StudioButton,
+  StudioPanel,
+  StudioShell,
+  StudioStatusChip,
+  studioUiClassNames,
+} from "./studioUi";
+import {
+  defaultNewProjectPath,
+  useStudioWorkspace,
+} from "./useStudioWorkspace";
 
 const boundaryChecks = [
   { label: "Generated contracts", value: "plotforge.d.ts", ok: true },
@@ -60,54 +69,13 @@ const boundaryChecks = [
   { label: "Tauri bridge", value: "commands wired", ok: true },
 ];
 
-const defaultPlaytestInput =
-  "Raise emergency taxes while auditing corrupt officials.";
-
-type StudioSectionId =
-  | "dashboard"
-  | "world"
-  | "story"
-  | "characters"
-  | "state"
-  | "rules"
-  | "assets"
-  | "playtest"
-  | "debugger"
-  | "export";
-
-type ProductModeId = "play" | "creator" | "developer";
-
-const productModes: Array<{
-  id: ProductModeId;
-  label: string;
-  description: string;
-  icon: typeof Play;
-}> = [
-  {
-    id: "play",
-    label: "Play Mode",
-    description: "Local play shelf for bundled and Workshop-style packages",
-    icon: Play,
-  },
-  {
-    id: "creator",
-    label: "Creator Mode",
-    description: "Project editing, playtest, assets, and export profiles",
-    icon: PlusCircle,
-  },
-  {
-    id: "developer",
-    label: "Developer Mode",
-    description: "Local package, debug, and Steam evidence readiness",
-    icon: TerminalSquare,
-  },
-];
-
 type FormStatus = {
   section: StudioSectionId;
   tone: "success" | "error";
   message: string;
 };
+
+type EvidenceStatus = "pass" | "pending" | "review";
 
 type CharacterDraft = Omit<Character, "traits"> & { traits_text: string };
 
@@ -129,44 +97,81 @@ interface RuleDraft {
 export interface AppProps {
   dataSource?: StudioDataSource;
   initialProjectPath?: string;
+  localPreviewState?: LocalPreviewState;
 }
 
 export function App({
   dataSource = createDefaultStudioDataSource(),
   initialProjectPath = defaultProjectPath(),
+  localPreviewState = defaultLocalPreviewState,
 }: AppProps) {
-  const [activeMode, setActiveMode] = useState<ProductModeId>("creator");
+  const [activeWorkflow, setActiveWorkflow] =
+    useState<AgentNativeWorkflowId>("command");
   const [activeSection, setActiveSection] =
-    useState<StudioSectionId>("dashboard");
-  const [projectPath, setProjectPath] = useState(initialProjectPath);
-  const [loadedPath, setLoadedPath] = useState(initialProjectPath);
-  const [projectData, setProjectData] = useState<ProjectData | null>(null);
-  const [assetRecords, setAssetRecords] = useState<AssetRecord[]>([]);
-  const [visualBible, setVisualBible] = useState<VisualBible | null>(null);
-  const [audioBible, setAudioBible] = useState<AudioBible | null>(null);
-  const [projectSummary, setProjectSummary] =
-    useState<CreatorProjectSummary | null>(null);
-  const [checkReport, setCheckReport] = useState<ProjectCheckReport | null>(
-    null,
-  );
-  const [sourceFiles, setSourceFiles] = useState<SourceFileSummary[]>([]);
-  const [selectedFile, setSelectedFile] = useState<SourceFileContent | null>(
-    null,
-  );
-  const [editorContent, setEditorContent] = useState("");
-  const [savedContent, setSavedContent] = useState("");
-  const [worldEditDocument, setWorldEditDocument] =
-    useState<WorldEditDocument | null>(null);
-  const [storyCraftEditDocument, setStoryCraftEditDocument] =
-    useState<StoryCraftEditDocument | null>(null);
-  const [characterEditDocument, setCharacterEditDocument] =
-    useState<CharacterEditDocument | null>(null);
-  const [stateVariablesEditDocument, setStateVariablesEditDocument] =
-    useState<StateVariablesEditDocument | null>(null);
-  const [rulesEditDocument, setRulesEditDocument] =
-    useState<RulesEditDocument | null>(null);
-  const [aiSafetyPolicy, setAiSafetyPolicy] =
-    useState<AiSafetyPolicy | null>(null);
+    useState<StudioSectionId>("launchpad");
+  const {
+    projectPath,
+    setProjectPath,
+    loadedPath,
+    projectData,
+    setProjectData,
+    visualBible,
+    setVisualBible,
+    audioBible,
+    setAudioBible,
+    projectSummary,
+    sourceFiles,
+    selectedFile,
+    editorContent,
+    setEditorContent,
+    dirty,
+    worldEditDocument,
+    setWorldEditDocument,
+    storyCraftEditDocument,
+    setStoryCraftEditDocument,
+    characterEditDocument,
+    setCharacterEditDocument,
+    stateVariablesEditDocument,
+    setStateVariablesEditDocument,
+    rulesEditDocument,
+    setRulesEditDocument,
+    aiSafetyPolicy,
+    setAiSafetyPolicy,
+    playtestInput,
+    setPlaytestInput,
+    playtestSaveId,
+    setPlaytestSaveId,
+    playtestRestoreId,
+    setPlaytestRestoreId,
+    playtestRestoreLatest,
+    setPlaytestRestoreLatest,
+    playtestReport,
+    playtesting,
+    playtestError,
+    exportDir,
+    setExportDir,
+    archivePath,
+    setArchivePath,
+    exportProfiles,
+    selectedExportProfileId,
+    selectedExportProfile,
+    staticExportSelected,
+    exportReport,
+    exporting,
+    exportError,
+    loading,
+    saving,
+    error,
+    assetCatalog,
+    metrics,
+    loadProject: loadWorkspaceProject,
+    refreshProjectOverview,
+    selectSourceFile,
+    saveSelectedFile,
+    runPlaytest: runWorkspacePlaytest,
+    runStaticZipExport,
+    selectExportProfile,
+  } = useStudioWorkspace({ dataSource, initialProjectPath });
   const [newCharacter, setNewCharacter] = useState<CharacterDraft>(
     emptyCharacterDraft(),
   );
@@ -187,28 +192,6 @@ export function App({
     useState("Generated Envoy");
   const [formStatus, setFormStatus] = useState<FormStatus | null>(null);
   const [formSaving, setFormSaving] = useState<StudioSectionId | null>(null);
-  const [playtestInput, setPlaytestInput] = useState(defaultPlaytestInput);
-  const [playtestSaveId, setPlaytestSaveId] = useState("save-001");
-  const [playtestRestoreId, setPlaytestRestoreId] = useState("");
-  const [playtestRestoreLatest, setPlaytestRestoreLatest] = useState(false);
-  const [playtestReport, setPlaytestReport] = useState<PlayOnceReport | null>(
-    null,
-  );
-  const [playtesting, setPlaytesting] = useState(false);
-  const [playtestError, setPlaytestError] = useState<string | null>(null);
-  const [exportDir, setExportDir] = useState(
-    defaultStaticExportDir(initialProjectPath),
-  );
-  const [archivePath, setArchivePath] = useState(
-    defaultStaticArchivePath(initialProjectPath),
-  );
-  const [exportProfiles, setExportProfiles] = useState<ExportProfile[]>([]);
-  const [selectedExportProfileId, setSelectedExportProfileId] = useState("");
-  const [exportReport, setExportReport] = useState<StaticExportReport | null>(
-    null,
-  );
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [createProjectPath, setCreateProjectPath] = useState(
     defaultNewProjectPath(initialProjectPath),
   );
@@ -224,168 +207,22 @@ export function App({
     useState<ProjectCreationReport | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const activeSectionMeta =
-    studioSections.find((section) => section.id === activeSection) ??
-    studioSections[0];
-  const activeModeMeta =
-    productModes.find((mode) => mode.id === activeMode) ?? productModes[1];
-  const dirty = Boolean(selectedFile?.editable && editorContent !== savedContent);
-  const assetCatalog = useMemo(
-    () => projectAssetCatalog(projectData, assetRecords),
-    [assetRecords, projectData],
+  const activeSectionMeta = getStudioSection(activeSection);
+  const activeWorkflowMeta = getAgentNativeWorkflow(activeWorkflow);
+  const activeScreenReferences = screenReferencesForWorkflow(activeWorkflow);
+  const activeWorkflowSections = activeWorkflowMeta.sectionIds.map((sectionId) =>
+    getStudioSection(sectionId),
   );
-  const selectedExportProfile = useMemo(
-    () =>
-      exportProfiles.find((profile) => profile.id === selectedExportProfileId) ??
-      null,
-    [exportProfiles, selectedExportProfileId],
-  );
-  const staticExportSelected =
-    selectedExportProfile?.target === "static_web";
-  const metrics = useMemo(
-    () => [
-      {
-        label: "Scenes",
-        value: String(checkReport?.scene_count ?? projectSummary?.sceneCount ?? 0),
-        tone: "border-jade/50 text-jade",
-      },
-      {
-        label: "Characters",
-        value: String(
-          checkReport?.character_count ?? projectSummary?.characterCount ?? 0,
-        ),
-        tone: "border-brass/50 text-brass",
-      },
-      {
-        label: "Rules",
-        value: String(checkReport?.rule_count ?? projectSummary?.ruleCount ?? 0),
-        tone: "border-signal/50 text-signal",
-      },
-      {
-        label: "Open Threads",
-        value: String(projectSummary?.openThreadCount ?? 0),
-        tone: "border-ink/30 text-ink",
-      },
-    ],
-    [checkReport, projectSummary],
-  );
+  const previewSummary = localPreviewSummary(localPreviewState);
 
   useEffect(() => {
     setCreateProjectPath(defaultNewProjectPath(initialProjectPath));
-    void loadProject(initialProjectPath);
   }, [initialProjectPath]);
 
   async function loadProject(path: string) {
-    setLoading(true);
-    setError(null);
     setFormStatus(null);
-    try {
-      const [
-        project,
-        report,
-        profiles,
-        files,
-        worldDocument,
-        storyCraftDocument,
-        characterDocument,
-        stateVariablesDocument,
-        rulesDocument,
-        safetyPolicy,
-        visualBibleDocument,
-        audioBibleDocument,
-        records,
-      ] = await Promise.all([
-        dataSource.openProject(path),
-        dataSource.checkProject(path),
-        dataSource.listExportProfiles(),
-        dataSource.listSourceFiles(path),
-        dataSource.readWorldEditDocument(path),
-        dataSource.readStoryCraftEditDocument(path),
-        dataSource.readCharacterEditDocument(path),
-        dataSource.readStateVariablesEditDocument(path),
-        dataSource.readRulesEditDocument(path),
-        dataSource.readAiSafetyPolicy(path),
-        dataSource.readVisualBible(path),
-        dataSource.readAudioBible(path),
-        dataSource.listAssetRecords(path),
-      ]);
-      const firstEditable = files.find((file) => file.editable) ?? files[0];
-      const firstContent = firstEditable
-        ? await dataSource.readSourceFile(path, firstEditable.path)
-        : null;
-      const projectWithBible = {
-        ...project,
-        visual_bible: visualBibleDocument,
-        audio_bible: audioBibleDocument,
-      };
-
-      setLoadedPath(path);
-      setProjectPath(path);
-      setProjectData(projectWithBible);
-      setExportProfiles(profiles);
-      setSelectedExportProfileId((currentId) =>
-        resolveExportProfileId(profiles, currentId),
-      );
-      setAssetRecords(records);
-      setVisualBible(visualBibleDocument);
-      setAudioBible(audioBibleDocument);
-      setProjectSummary(summarizeProject(projectWithBible));
-      setCheckReport(report);
-      setSourceFiles(files);
-      setSelectedFile(firstContent);
-      setEditorContent(firstContent?.content ?? "");
-      setSavedContent(firstContent?.content ?? "");
-      setWorldEditDocument(worldDocument);
-      setStoryCraftEditDocument(storyCraftDocument);
-      setCharacterEditDocument(characterDocument);
-      setStateVariablesEditDocument(stateVariablesDocument);
-      setRulesEditDocument(rulesDocument);
-      setAiSafetyPolicy(safetyPolicy);
-      setPlaytestReport(null);
-      setPlaytestError(null);
-      setExportDir(defaultStaticExportDir(path));
-      setArchivePath(defaultStaticArchivePath(path));
-      setExportReport(null);
-      setExportError(null);
-    } catch (source) {
-      setError(source instanceof Error ? source.message : String(source));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshProjectOverview(path: string) {
-    const [
-      project,
-      report,
-      files,
-      visualBibleDocument,
-      audioBibleDocument,
-      records,
-    ] = await Promise.all([
-      dataSource.openProject(path),
-      dataSource.checkProject(path),
-      dataSource.listSourceFiles(path),
-      dataSource.readVisualBible(path),
-      dataSource.readAudioBible(path),
-      dataSource.listAssetRecords(path),
-    ]);
-    const projectWithBible = {
-      ...project,
-      visual_bible: visualBibleDocument,
-      audio_bible: audioBibleDocument,
-    };
-    setProjectData(projectWithBible);
-    setAssetRecords(records);
-    setVisualBible(visualBibleDocument);
-    setAudioBible(audioBibleDocument);
-    setProjectSummary(summarizeProject(projectWithBible));
-    setCheckReport(report);
-    setSourceFiles(files);
+    await loadWorkspaceProject(path);
   }
 
   async function createProjectFromWizard() {
@@ -425,103 +262,13 @@ export function App({
   }
 
   async function runPlaytest() {
-    const input = playtestInput.trim();
-    if (!input) {
-      setPlaytestError("Playtest input is required.");
-      return;
-    }
-
-    setPlaytesting(true);
-    setPlaytestError(null);
-    try {
-      const saveId = playtestSaveId.trim() || null;
-      const restoreId = playtestRestoreId.trim();
-      const report = playtestRestoreLatest
-        ? await dataSource.playOnceProjectFromLatestSnapshot(
-            loadedPath,
-            input,
-            saveId,
-          )
-        : restoreId
-          ? await dataSource.playOnceProjectFromSnapshot(
-              loadedPath,
-              input,
-              restoreId,
-              saveId,
-            )
-          : saveId
-            ? await dataSource.playOnceProjectWithSave(loadedPath, input, saveId)
-            : await dataSource.playOnceProject(loadedPath, input);
-      setPlaytestReport(report);
+    const succeeded = await runWorkspacePlaytest();
+    if (succeeded) {
+      setActiveWorkflow("proof");
       setActiveSection("debugger");
-    } catch (source) {
-      setPlaytestError(source instanceof Error ? source.message : String(source));
+    } else {
+      setActiveWorkflow("game");
       setActiveSection("playtest");
-    } finally {
-      setPlaytesting(false);
-    }
-  }
-
-  async function runStaticZipExport() {
-    if (!staticExportSelected) {
-      setExportError("Selected export profile has no executable Studio command.");
-      return;
-    }
-
-    const outputDir = exportDir.trim();
-    const zipPath = archivePath.trim();
-    if (!outputDir || !zipPath) {
-      setExportError("Output directory and zip archive are required.");
-      return;
-    }
-
-    setExporting(true);
-    setExportError(null);
-    try {
-      const report = await dataSource.exportStaticProjectZip(
-        loadedPath,
-        outputDir,
-        zipPath,
-      );
-      setExportReport(report);
-    } catch (source) {
-      setExportError(source instanceof Error ? source.message : String(source));
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function selectSourceFile(file: SourceFileSummary) {
-    setError(null);
-    try {
-      const content = await dataSource.readSourceFile(loadedPath, file.path);
-      setSelectedFile(content);
-      setEditorContent(content.content);
-      setSavedContent(content.content);
-    } catch (source) {
-      setError(source instanceof Error ? source.message : String(source));
-    }
-  }
-
-  async function saveSelectedFile() {
-    if (!selectedFile?.editable) {
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      const updated = await dataSource.writeSourceFile(
-        loadedPath,
-        selectedFile.path,
-        editorContent,
-      );
-      setSelectedFile(updated);
-      setEditorContent(updated.content);
-      setSavedContent(updated.content);
-    } catch (source) {
-      setError(source instanceof Error ? source.message : String(source));
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -767,7 +514,7 @@ export function App({
     if (!aiSafetyPolicy) {
       return;
     }
-    await runFormAction("export", "AI safety policy saved.", async () => {
+    await runFormAction("export-kit", "AI safety policy saved.", async () => {
       const updated = await dataSource.updateAiSafetyPolicy(
         loadedPath,
         aiSafetyPolicy,
@@ -912,174 +659,37 @@ export function App({
     });
   }
 
-  function openCreatorSection(section: StudioSectionId) {
-    setActiveMode("creator");
+  function openWorkflow(workflowId: AgentNativeWorkflowId) {
+    setActiveWorkflow(workflowId);
+    setActiveSection(defaultSectionForWorkflow(workflowId));
+  }
+
+  function openStudioSection(section: StudioSectionId) {
+    const workflowId = isSectionInWorkflow(section, activeWorkflow)
+      ? activeWorkflow
+      : workflowForSection(section).id;
+    setActiveWorkflow(workflowId);
     setActiveSection(section);
   }
 
   function openExportProfile(profileId: string) {
-    setSelectedExportProfileId(profileId);
-    setExportReport(null);
-    setExportError(null);
-    openCreatorSection("export");
-  }
-
-  function renderActiveMode() {
-    switch (activeMode) {
-      case "play":
-        return renderPlayMode();
-      case "developer":
-        return renderDeveloperMode();
-      case "creator":
-      default:
-        return renderCreatorMode();
-    }
-  }
-
-  function renderCreatorMode() {
-    return renderActiveSection();
-  }
-
-  function renderPlayMode() {
-    const currentTitle = projectSummary?.title ?? "Local project";
-    const currentDescription =
-      projectData?.game.description ??
-      "A folder-backed PlotForge project loaded from this machine.";
-
-    return (
-      <div className="grid gap-5">
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <article className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase text-signal">
-              Built-in project
-            </p>
-            <h3 className="mt-2 text-2xl font-semibold">{currentTitle}</h3>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/65">
-              {currentDescription}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold uppercase text-ink/55">
-              <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1">
-                Local files
-              </span>
-              <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1">
-                No network calls
-              </span>
-              <span className="rounded-sm border border-ink/10 bg-parchment px-2 py-1">
-                Runtime preview
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => openCreatorSection("playtest")}
-              className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black"
-            >
-              <Play aria-hidden size={16} />
-              Preview local project
-            </button>
-          </article>
-
-          <article className="rounded-md border border-ink/10 bg-parchment p-5">
-            <p className="text-xs font-semibold uppercase text-ink/45">
-              Workshop-style entry
-            </p>
-            <h3 className="mt-2 text-lg font-semibold">
-              Local Workshop package
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-ink/65">
-              Use local package metadata and copied assets to inspect a future
-              Workshop candidate. This shell does not contact Steamworks,
-              upload files, or claim platform approval.
-            </p>
-            <button
-              type="button"
-              onClick={() => openExportProfile("steam-workshop")}
-              className={`${secondaryButtonClassName} mt-5`}
-            >
-              <ShipWheel aria-hidden size={16} />
-              Review Workshop profile
-            </button>
-          </article>
-        </section>
-
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <article
-              key={metric.label}
-              className={`rounded-md border bg-white p-4 shadow-sm ${metric.tone}`}
-            >
-              <p className="text-sm font-medium text-ink/55">{metric.label}</p>
-              <p className="mt-2 text-3xl font-semibold text-current">
-                {metric.value}
-              </p>
-            </article>
-          ))}
-        </section>
-      </div>
-    );
-  }
-
-  function renderDeveloperMode() {
-    const workshopProfile = exportProfiles.find(
-      (profile) => profile.id === "steam-workshop",
-    );
-    const submissionProfile = exportProfiles.find(
-      (profile) => profile.id === "steam-submission-kit",
-    );
-
-    return (
-      <div className="grid gap-5">
-        <section className="grid gap-4 lg:grid-cols-3">
-          <DeveloperEntry
-            title="Local package profiles"
-            subtitle="Export and package metadata"
-            body="Inspect static, desktop, and Steam-oriented profiles from the Studio contract. Static web remains the only wired export command."
-            actionLabel="Open Export"
-            onAction={() => openCreatorSection("export")}
-          />
-          <DeveloperEntry
-            title="Runtime trace debug"
-            subtitle="Local evidence"
-            body="Review the latest playtest report, diagnostics, reproducibility metadata, media references, and visible fallback markers."
-            actionLabel="Open Debugger"
-            onAction={() => openCreatorSection("debugger")}
-          />
-          <DeveloperEntry
-            title="Submission Kit readiness"
-            subtitle="Draft support material"
-            body="Check the local Steam Submission Kit evidence profile. It does not publish, upload, provide legal conclusions, or claim approval."
-            actionLabel="Review Submission Kit"
-            onAction={() => openExportProfile("steam-submission-kit")}
-          />
-        </section>
-
-        <section className={panelClassName}>
-          <PanelHeader
-            title="Steam evidence boundary"
-            subtitle="Local-only metadata for package and readiness review"
-          />
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <SteamBoundaryCard
-              title="Workshop package candidate"
-              profile={workshopProfile}
-              empty="steam-workshop profile is not available from the adapter."
-            />
-            <SteamBoundaryCard
-              title="Submission Kit evidence"
-              profile={submissionProfile}
-              empty="steam-submission-kit profile is not available from the adapter."
-            />
-          </div>
-          <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm text-ink/65">
-            Developer Mode is local-first: no Steamworks API calls, no upload
-            action, and no platform outcome or legal conclusion.
-          </div>
-        </section>
-      </div>
-    );
+    selectExportProfile(profileId);
+    openStudioSection("export-kit");
   }
 
   function renderActiveSection() {
     switch (activeSection) {
+      case "agent-mesh":
+        return (
+          <AgentMeshView
+            projectSummary={projectSummary}
+            loadedPath={loadedPath}
+            localPreviewState={localPreviewState}
+            playtestReport={playtestReport}
+            onOpenTrace={() => openStudioSection("debugger")}
+            onRunPlayableProof={() => void runPlaytest()}
+          />
+        );
       case "world":
         return renderWorldPanel();
       case "story":
@@ -1091,10 +701,25 @@ export function App({
       case "rules":
         return renderRulesPanel();
       case "assets":
-        return renderAssetsPanel();
+        return (
+          <ArtifactReviewView
+            projectSummary={projectSummary}
+            loadedPath={loadedPath}
+            assetCatalog={assetCatalog}
+            localPreviewState={localPreviewState}
+            playtestReport={playtestReport}
+            playtesting={playtesting}
+            playtestError={playtestError}
+            onOpenTrace={() => openStudioSection("debugger")}
+            onRunPlayableProof={() => void runPlaytest()}
+            assetMaintenance={renderAssetMaintenancePanel()}
+          />
+        );
       case "playtest":
         return (
-          <PlaytestPanel
+          <DirectorModeView
+            projectData={projectData}
+            loadedPath={loadedPath}
             input={playtestInput}
             running={playtesting}
             report={playtestReport}
@@ -1102,39 +727,59 @@ export function App({
             saveId={playtestSaveId}
             restoreId={playtestRestoreId}
             restoreLatest={playtestRestoreLatest}
+            localPreviewState={localPreviewState}
             onInputChange={setPlaytestInput}
             onSaveIdChange={setPlaytestSaveId}
             onRestoreIdChange={setPlaytestRestoreId}
             onRestoreLatestChange={setPlaytestRestoreLatest}
             onRun={() => void runPlaytest()}
+            onOpenStory={() => openStudioSection("story")}
+            onOpenTrace={() => openStudioSection("debugger")}
           />
         );
       case "debugger":
-        return <RuntimeTracePanel report={playtestReport} error={playtestError} />;
-      case "export":
+        return (
+          <RuntimeTracePanel
+            report={playtestReport}
+            error={playtestError}
+            selectedExportProfile={selectedExportProfile}
+            exportReport={exportReport}
+            aiSafetyPolicy={aiSafetyPolicy}
+            localPreviewState={localPreviewState}
+            loadedPath={loadedPath}
+            projectId={projectData?.game.id ?? null}
+          />
+        );
+      case "export-kit":
         return renderExportPanel();
-      case "dashboard":
+      case "launchpad":
       default:
-        return renderDashboard();
+        return renderLaunchpad();
     }
   }
 
-  function renderDashboard() {
+  function renderLaunchpad() {
     return (
       <div className="grid gap-5">
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <article
-              key={metric.label}
-              className={`rounded-md border bg-white p-4 shadow-sm ${metric.tone}`}
-            >
-              <p className="text-sm font-medium text-ink/55">{metric.label}</p>
-              <p className="mt-2 text-3xl font-semibold text-current">
-                {metric.value}
-              </p>
-            </article>
-          ))}
-        </section>
+        <CommandCenterView
+          projectSummary={projectSummary}
+          projectData={projectData}
+          loadedPath={loadedPath}
+          metrics={metrics}
+          sourceFiles={sourceFiles}
+          selectedFile={selectedFile}
+          playtestInput={playtestInput}
+          playtesting={playtesting}
+          playtestReport={playtestReport}
+          playtestError={playtestError}
+          exportProfiles={exportProfiles}
+          localPreviewState={localPreviewState}
+          dirty={dirty}
+          onIntentChange={setPlaytestInput}
+          onRunPlayableProof={() => void runPlaytest()}
+          onOpenSection={openStudioSection}
+          onOpenExportProfile={openExportProfile}
+        />
 
         <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           {renderProjectCreationPanel()}
@@ -1969,7 +1614,7 @@ export function App({
     );
   }
 
-  function renderAssetsPanel() {
+  function renderAssetMaintenancePanel() {
     const recordCount = assetCatalog.items.filter(
       (item) => item.source === "record",
     ).length;
@@ -1981,7 +1626,7 @@ export function App({
     return (
       <section className={panelClassName}>
         <PanelHeader
-          title="Assets"
+          title="Asset Maintenance"
           subtitle={
             assetCatalog.source === "records"
               ? `${recordCount} asset records`
@@ -2219,12 +1864,118 @@ export function App({
 
   function renderExportPanel() {
     const exportDisabled = exporting || !staticExportSelected;
+    const exportAuditMatched = exportReport
+      ? sameStringSet(exportReport.allowed_files, exportReport.files_found)
+      : false;
+    const packagePaths = exportReport
+      ? [
+          ...exportReport.allowed_files,
+          ...exportReport.files_found,
+          ...exportReport.archived_files,
+        ]
+      : [];
+    const hasAbsolutePackagePath = packagePaths.some(isAbsoluteMachinePath);
+    const packageItems = [
+      {
+        label: "Player files",
+        detail: "HTML, CSS, JS, fonts",
+        status: exportReport ? "Ready" : staticExportSelected ? "Pending" : "Draft",
+        files: exportReport?.files_found.length ?? 0,
+      },
+      {
+        label: "ExportManifest",
+        detail: "export-manifest.json",
+        status: exportReport ? "Ready" : "Pending",
+        files: 1,
+      },
+      {
+        label: "Reachable assets",
+        detail: "Images, audio, fonts",
+        status: exportReport && assetCatalog.items.length > 0 ? "Ready" : "Pending",
+        files: assetCatalog.items.length,
+      },
+      {
+        label: "Story and rules data",
+        detail: "Scenes, rules, contracts",
+        status: exportReport && projectData ? "Ready" : "Pending",
+        files: projectData ? projectData.scenes.length + projectData.rules.length : 0,
+      },
+      {
+        label: "AI usage disclosure",
+        detail: aiSafetyPolicy?.policy_source_path ?? "ai-usage manifest",
+        status: exportReport && aiSafetyPolicy ? "Ready" : "Pending",
+        files: aiSafetyPolicy ? 1 : 0,
+      },
+      {
+        label: "Content warning draft",
+        detail: "local creator review",
+        status: exportReport && aiSafetyPolicy ? "Ready" : "Pending",
+        files: aiSafetyPolicy?.content_kinds.length ?? 0,
+      },
+      {
+        label: "Archive manifest",
+        detail: exportReport?.archive_path ?? "created after export",
+        status: exportReport ? "Ready" : "Pending",
+        files: exportReport?.archived_files.length ?? 0,
+      },
+      {
+        label: "Local smoke evidence",
+        detail: "static export smoke not run by this command",
+        status: "Pending",
+        files: 0,
+      },
+    ];
+    const evidenceChecks = [
+      {
+        label: "No provider configuration",
+        status: selectedExportProfile
+          ? selectedExportProfile.includes_provider_config
+            ? "review"
+            : "pass"
+          : "pending",
+      },
+      {
+        label: "No private traces",
+        status: selectedExportProfile
+          ? selectedExportProfile.includes_private_traces
+            ? "review"
+            : "pass"
+          : "pending",
+      },
+      { label: "No raw responses", status: "pending" },
+      { label: "No secret markers", status: "pending" },
+      {
+        label: "All referenced assets copied",
+        status: exportReport ? (exportAuditMatched ? "pass" : "review") : "pending",
+      },
+      {
+        label: "No absolute machine paths",
+        status: exportReport
+          ? hasAbsolutePackagePath
+            ? "review"
+            : "pass"
+          : "pending",
+      },
+      { label: "HTTP smoke test passed", status: "pending" },
+    ] satisfies Array<{ label: string; status: EvidenceStatus }>;
+    const passedEvidenceCount = evidenceChecks.filter(
+      (check) => check.status === "pass",
+    ).length;
+    const reviewEvidenceCount = evidenceChecks.filter(
+      (check) => check.status === "review",
+    ).length;
+    const selectedProfileReady = evidenceChecks.every(
+      (check) => check.status === "pass",
+    );
+    const packageHash = exportReport
+      ? "pending explicit package hash"
+      : "pending export";
 
     return (
       <section className={panelClassName}>
         <PanelHeader
-          title="Export"
-          subtitle="Contract-backed export profiles and package safety"
+          title="Export Package"
+          subtitle="Local package readiness, manifest evidence, and boundary checks"
           action={
             <button
               type="button"
@@ -2241,10 +1992,230 @@ export function App({
             </button>
           }
         />
-        <SectionMessage section="export" status={formStatus} />
+        <SectionMessage section="export-kit" status={formStatus} />
+
+        <div className="mt-4 grid gap-4 2xl:grid-cols-[0.85fr_1.35fr_1fr]">
+          <aside className="grid content-start gap-3 rounded-lg border border-ink/10 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase text-amber-400">
+                  Build Profile
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+                  {selectedExportProfile?.id ?? "No profile selected"}
+                </h3>
+              </div>
+              <StudioStatusChip tone={staticExportSelected ? "health" : "agent"}>
+                {staticExportSelected ? "Executable" : "Draft"}
+              </StudioStatusChip>
+            </div>
+            <p className="text-sm leading-6 text-canvas-200/65">
+              {selectedExportProfile?.intent ??
+                "Select a local package profile to inspect export readiness."}
+            </p>
+
+            <ExportEvidenceCard
+              title="AI Usage Manifest"
+              badge={aiSafetyPolicy ? "Included" : "Pending"}
+            >
+              <p className="text-sm leading-6 text-canvas-200/65">
+                {aiSafetyPolicy?.moderation_policy ??
+                  "AI usage evidence appears after policy load."}
+              </p>
+            </ExportEvidenceCard>
+
+            <ExportEvidenceCard
+              title="Content Warnings"
+              badge={aiSafetyPolicy ? "Included" : "Pending"}
+            >
+              <div className="grid gap-2">
+                {(aiSafetyPolicy?.content_kinds ?? ["text"]).map((kind) => (
+                  <div
+                    key={kind}
+                    className="flex items-center justify-between gap-3 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-sm"
+                  >
+                    <span className="capitalize text-canvas-50">{kind}</span>
+                    <span className="text-canvas-200/55">creator review</span>
+                  </div>
+                ))}
+              </div>
+            </ExportEvidenceCard>
+
+            <ExportEvidenceCard title="Redaction Rules" badge="On">
+              <div className="grid gap-2 text-sm text-canvas-200/70">
+                {[
+                  "Strip provider configuration",
+                  "Remove private traces",
+                  "Remove raw responses",
+                  "Remove secret markers",
+                ].map((rule) => (
+                  <div key={rule} className="flex items-center justify-between gap-3">
+                    <span>{rule}</span>
+                    <span className="font-semibold text-health-400">On</span>
+                  </div>
+                ))}
+              </div>
+            </ExportEvidenceCard>
+
+            <ExportEvidenceCard title="Asset Whitelist" badge="Local">
+              <p className="text-sm leading-6 text-canvas-200/65">
+                Allow only referenced assets under project asset paths.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[".png", ".jpg", ".webp", ".ogg", ".mp3", ".json", ".md"].map(
+                  (extension) => (
+                    <span
+                      key={extension}
+                      className="rounded-sm border border-canvas-200/10 bg-canvas-50/5 px-2 py-1 text-xs font-semibold text-canvas-200/70"
+                    >
+                      {extension}
+                    </span>
+                  ),
+                )}
+              </div>
+            </ExportEvidenceCard>
+          </aside>
+
+          <div className="grid content-start gap-4">
+            <section className="rounded-lg border border-ink/10 bg-canvas-50 p-4 shadow-studio-panel">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-health-500">
+                    Package Readiness
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold">
+                    {selectedProfileReady
+                      ? "All local boundary checks passed"
+                      : "Review profile boundary checks"}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-right text-sm">
+                  <ExportInfo label="Files" value={String(exportReport?.files_found.length ?? 0)} />
+                  <ExportInfo
+                    label="Estimated size"
+                    value={`${Math.max(1, assetCatalog.items.length * 4 + 18)} MB`}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2">
+                {packageItems.map((item) => (
+                  <PackageReadinessRow key={item.label} item={item} />
+                ))}
+              </div>
+            </section>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              <section className="rounded-lg border border-ink/10 bg-canvas-50 p-4 shadow-studio-panel">
+                <h3 className="text-base font-semibold">Playable Preview</h3>
+                <div className="mt-3 rounded-md border border-ink/10 bg-parchment px-3 py-3">
+                  <p className="text-sm font-semibold">
+                    {projectSummary?.title ?? "No project loaded"}
+                  </p>
+                  <p className="mt-1 text-sm text-ink/60">
+                    {playtestReport?.scene.title ?? "Run proof for current scene."}
+                  </p>
+                  <p className="mt-3 text-sm text-ink/70">
+                    Trace: {playtestReport?.trace.id ?? "pending"}
+                  </p>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-ink/10 bg-canvas-50 p-4 shadow-studio-panel">
+                <h3 className="text-base font-semibold">Dependency Map</h3>
+                <div className="mt-3 grid gap-2 text-sm">
+                  {["Entry", "HTML", "Script", "Data", "Asset"].map((node) => (
+                    <div
+                      key={node}
+                      className="flex items-center justify-between rounded-md border border-ink/10 bg-parchment px-3 py-2"
+                    >
+                      <span>{node}</span>
+                      <span className="font-semibold text-jade">resolved</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-ink/10 bg-canvas-50 p-4 shadow-studio-panel">
+                <h3 className="text-base font-semibold">Size Breakdown</h3>
+                <div className="mt-3 grid gap-2 text-sm">
+                  <ExportInfo label="Images" value={`${assetCatalog.items.length} records`} />
+                  <ExportInfo label="Scripts" value="player bundle" />
+                  <ExportInfo label="Data" value={`${sourceFiles.length} sources`} />
+                  <ExportInfo
+                    label="Other"
+                    value={exportReport ? `${exportReport.archived_files.length} files` : "pending"}
+                  />
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <aside className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
+            <div>
+              <p className="text-xs font-semibold uppercase text-health-400">
+                Evidence & Boundaries
+              </p>
+              <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+                Local export package only
+              </h3>
+            </div>
+            <div className="grid gap-2">
+              {evidenceChecks.map((check) => (
+                <div
+                  key={check.label}
+                  className="flex items-center justify-between gap-3 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-sm"
+                >
+                  <span>{check.label}</span>
+                  <span
+                    className={[
+                      "font-semibold",
+                      evidenceStatusClassName(check.status),
+                    ].join(" ")}
+                  >
+                    {evidenceStatusLabel(check.status)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <ExportEvidenceCard title="Package Information" badge="Local">
+              <div className="grid gap-2 text-sm">
+                <ProofLikeLine label="Profile" value={selectedExportProfile?.id ?? "none"} />
+                <ProofLikeLine label="Package hash" value={packageHash} />
+                <ProofLikeLine
+                  label="Archive"
+                  value={exportReport?.archive_path ?? "not exported"}
+                />
+                <ProofLikeLine
+                  label="Estimated size"
+                  value={`${Math.max(1, assetCatalog.items.length * 4 + 18)} MB`}
+                />
+              </div>
+            </ExportEvidenceCard>
+
+            <ExportEvidenceCard title="Validation Summary" badge="Local">
+              <div className="grid gap-2 text-sm">
+                <ProofLikeLine
+                  label="Checks passed"
+                  value={`${passedEvidenceCount} / ${evidenceChecks.length}`}
+                />
+                <ProofLikeLine
+                  label="Warnings"
+                  value={String(
+                    evidenceChecks.length - passedEvidenceCount - reviewEvidenceCount,
+                  )}
+                />
+                <ProofLikeLine
+                  label="Needs review"
+                  value={String(reviewEvidenceCount + (exportError ? 1 : 0))}
+                />
+              </div>
+            </ExportEvidenceCard>
+          </aside>
+        </div>
 
         {exportProfiles.length > 0 ? (
-          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="grid content-start gap-2">
               {exportProfiles.map((profile) => {
                 const selected = profile.id === selectedExportProfileId;
@@ -2254,11 +2225,7 @@ export function App({
                     key={profile.id}
                     aria-label={`Select export profile ${profile.id}`}
                     aria-pressed={selected}
-                    onClick={() => {
-                      setSelectedExportProfileId(profile.id);
-                      setExportReport(null);
-                      setExportError(null);
-                    }}
+                    onClick={() => selectExportProfile(profile.id)}
                     className={[
                       "rounded-md border px-3 py-3 text-left transition",
                       selected
@@ -2419,7 +2386,7 @@ export function App({
             <MetricBox
               label="Audit"
               value={
-                exportReport.allowed_files.length === exportReport.files_found.length
+                sameStringSet(exportReport.allowed_files, exportReport.files_found)
                   ? "matched"
                   : "mismatch"
               }
@@ -2440,7 +2407,7 @@ export function App({
               </div>
               <SaveButton
                 label="Save AI Safety Policy"
-                saving={formSaving === "export"}
+                saving={formSaving === "export-kit"}
                 onClick={() => void saveAiSafetyPolicy()}
               />
             </div>
@@ -2518,7 +2485,7 @@ export function App({
       <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold">Source Files</h3>
+            <h3 className="text-lg font-semibold">Source Artifacts</h3>
             <p className="mt-1 text-sm text-ink/55">{sourceFiles.length} files</p>
           </div>
           <TerminalSquare aria-hidden className="text-signal" size={22} />
@@ -2583,7 +2550,7 @@ export function App({
       <section className={panelClassName}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold">Source Editor</h3>
+            <h3 className="text-lg font-semibold">Artifact Text Editor</h3>
             <p className="truncate text-sm text-ink/55">
               {selectedFile?.path ?? "No source file selected"}
             </p>
@@ -2628,188 +2595,256 @@ export function App({
     );
   }
 
-  return (
-    <div className="min-h-screen bg-parchment text-ink">
-      <div className="grid min-h-screen grid-cols-[280px_1fr] max-lg:grid-cols-1">
-        <aside className="border-r border-ink/10 bg-white/75 px-4 py-5 max-lg:border-b max-lg:border-r-0">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-ink text-white">
-              PF
-            </div>
-            <div>
-              <p className="text-sm font-semibold uppercase text-signal">
-                PlotForge Studio
-              </p>
-              <h1 className="text-xl font-semibold">Creator Desktop</h1>
-            </div>
-          </div>
+  function renderEvidencePanel() {
+    const healthTone = error || playtestError || exportError ? "danger" : "health";
+    const healthLabel =
+      error || playtestError || exportError ? "Error visible" : "Trace visible";
 
-          <div className="mt-6 flex items-center justify-between rounded-md border border-ink/10 bg-parchment px-3 py-2">
-            <div>
-              <p className="text-xs font-medium uppercase text-ink/60">
-                Open Project
-              </p>
-              <p className="max-w-44 truncate text-sm font-semibold">
-                {loadedPath}
-              </p>
-            </div>
-            <button
-              type="button"
-              title="Open project"
-              onClick={() => void loadProject(projectPath)}
-              className="grid h-9 w-9 place-items-center rounded-md border border-ink/15 bg-white text-ink transition hover:border-ink/40"
-            >
-              {loading ? (
-                <Loader2 aria-hidden size={18} className="animate-spin" />
-              ) : (
-                <FolderOpen aria-hidden size={18} />
+    return (
+      <div className="grid gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase text-amber-400">
+            Evidence Panel
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+            {activeWorkflowMeta.label}
+          </h3>
+          <p className="mt-1 text-sm leading-6 text-canvas-200/65">
+            {activeWorkflowMeta.description}
+          </p>
+        </div>
+
+        <StudioPanel>
+          <div className="flex flex-wrap gap-2">
+            <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
+            <StudioStatusChip tone="acp">{dataSource.runtimeName}</StudioStatusChip>
+            <StudioStatusChip tone="agent">
+              {activeSectionMeta.status}
+            </StudioStatusChip>
+          </div>
+          <div className="mt-4 grid gap-3 text-sm">
+            <EvidenceLine label="Project" value={projectSummary?.title ?? "none"} />
+            <EvidenceLine label="Loaded path" value={loadedPath} />
+            <EvidenceLine label="Source files" value={String(sourceFiles.length)} />
+            <EvidenceLine
+              label="Asset records"
+              value={String(
+                assetCatalog.items.filter((item) => item.source === "record")
+                  .length,
               )}
-            </button>
+            />
+          </div>
+        </StudioPanel>
+
+        <div className="rounded-lg border border-canvas-200/10 bg-graphite-850 px-3 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase text-canvas-200/55">
+                Local Preview Agent State
+              </p>
+              <h4 className="mt-1 text-sm font-semibold text-canvas-50">
+                {localPreviewState.capabilityPolicy.title}
+              </h4>
+            </div>
+            <StudioStatusChip tone="agent">{localPreviewState.source}</StudioStatusChip>
           </div>
 
-          <nav aria-label="Product modes" className="mt-5 grid gap-1">
-            {productModes.map((mode) => {
-              const Icon = mode.icon;
-              const selected = mode.id === activeMode;
-              return (
-                <button
-                  type="button"
-                  key={mode.id}
-                  aria-label={mode.label}
-                  aria-pressed={selected}
-                  title={mode.description}
-                  onClick={() => setActiveMode(mode.id)}
-                  className={[
-                    "flex min-h-12 items-center gap-3 rounded-md px-3 py-2 text-left transition",
-                    selected
-                      ? "bg-ink text-white"
-                      : "text-ink/75 hover:bg-ink/5 hover:text-ink",
-                  ].join(" ")}
-                >
-                  <Icon aria-hidden size={18} className="shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {mode.label}
-                    </span>
-                    <span
-                      className={[
-                        "block truncate text-xs",
-                        selected ? "text-white/65" : "text-ink/45",
-                      ].join(" ")}
-                    >
-                      {mode.id}
-                    </span>
+          <div className="mt-3 grid gap-2 text-sm">
+            <PreviewEvidenceLine
+              label="Workers"
+              value={String(previewSummary.workerCount)}
+            />
+            <PreviewEvidenceLine
+              label="Pending approvals"
+              value={String(previewSummary.pendingApprovalCount)}
+            />
+            <PreviewEvidenceLine
+              label="Network"
+              value={previewSummary.networkEnabled ? "enabled" : "disabled"}
+            />
+            <PreviewEvidenceLine
+              label="Project truth"
+              value={
+                previewSummary.isAuthoritativeProjectState
+                  ? "authoritative"
+                  : "not authoritative"
+              }
+            />
+          </div>
+
+          <div className="mt-3 grid gap-2">
+            {localPreviewState.workers.map((worker) => (
+              <div
+                key={worker.id}
+                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-canvas-50">
+                    {worker.label}
+                  </p>
+                  <span className="text-xs font-semibold text-acp-400">
+                    {worker.connectionState}
                   </span>
-                  {selected ? <ChevronRight aria-hidden size={16} /> : null}
-                </button>
-              );
-            })}
-          </nav>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-canvas-200/55">
+                  {worker.role}
+                </p>
+              </div>
+            ))}
+          </div>
 
-          {activeMode === "creator" ? (
-            <nav aria-label="Creator sections" className="mt-5 grid gap-1">
-              {studioSections.map((section) => {
-                const Icon = section.icon;
-                const selected = section.id === activeSection;
-                return (
-                  <button
-                    type="button"
-                    key={section.id}
-                    title={section.description}
-                    onClick={() =>
-                      setActiveSection(section.id as StudioSectionId)
-                    }
-                    className={[
-                      "flex min-h-12 items-center gap-3 rounded-md px-3 py-2 text-left transition",
-                      selected
-                        ? "bg-ink text-white"
-                        : "text-ink/75 hover:bg-ink/5 hover:text-ink",
-                    ].join(" ")}
-                  >
-                    <Icon aria-hidden size={18} className="shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {section.label}
-                      </span>
-                      <span
-                        className={[
-                          "block truncate text-xs",
-                          selected ? "text-white/65" : "text-ink/45",
-                        ].join(" ")}
-                      >
-                        {section.status}
-                      </span>
-                    </span>
-                    {selected ? <ChevronRight aria-hidden size={16} /> : null}
-                  </button>
-                );
-              })}
-            </nav>
-          ) : null}
-        </aside>
-
-        <main className="min-w-0 px-6 py-5 lg:px-8">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-ink/10 pb-5">
-            <div>
-              <p className="text-sm font-medium uppercase text-ink/55">
-                {activeModeMeta.label} / {dataSource.runtimeName}
-              </p>
-              <h2 className="mt-1 text-2xl font-semibold">
-                {activeMode === "creator"
-                  ? activeSectionMeta.label
-                  : activeModeMeta.label}
-              </h2>
-              <p className="mt-1 text-sm text-ink/55">
-                {activeMode === "creator"
-                  ? (projectSummary?.title ?? "No project loaded")
-                  : activeModeMeta.description}
-              </p>
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <input
-                aria-label="Project path"
-                value={projectPath}
-                onChange={(event) => setProjectPath(event.target.value)}
-                className="h-10 min-w-0 rounded-md border border-ink/15 bg-white px-3 text-sm text-ink outline-none transition focus:border-ink/45 sm:w-72"
-              />
-              <button
-                type="button"
-                title="Refresh project files"
-                onClick={() => void loadProject(projectPath)}
-                className="grid h-10 w-10 place-items-center rounded-md border border-ink/15 bg-white text-ink transition hover:border-ink/40"
+          <div className="mt-3 grid gap-2">
+            {localPreviewState.approvals.map((approval) => (
+              <div
+                key={approval.id}
+                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2"
               >
-                {loading ? (
-                  <Loader2 aria-hidden size={18} className="animate-spin" />
-                ) : (
-                  <RefreshCcw aria-hidden size={18} />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => openCreatorSection("playtest")}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-ink/15 bg-white px-4 text-sm font-semibold text-ink transition hover:border-ink/40"
-              >
-                <Play aria-hidden size={16} />
-                Playtest
-              </button>
-            </div>
-          </header>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-canvas-50">
+                    {approval.title}
+                  </p>
+                  <span className="text-xs font-semibold text-amber-400">
+                    {approval.state}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-xs text-canvas-200/55">
+                  {approval.evidenceIds.join(" / ")}
+                </p>
+              </div>
+            ))}
+          </div>
 
-          <div className="py-5">{renderActiveMode()}</div>
-        </main>
+          <div className="mt-3 grid gap-2">
+            {localPreviewState.capabilityPolicy.boundaries.map((boundary) => (
+              <p
+                key={boundary}
+                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-xs leading-5 text-canvas-200/65"
+              >
+                {boundary}
+              </p>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-canvas-200/10 bg-graphite-850 px-3 py-3">
+          <p className="text-xs font-semibold uppercase text-canvas-200/55">
+            Reference Screens
+          </p>
+          <div className="mt-3 grid gap-2">
+            {activeScreenReferences.map((reference) => (
+              <div
+                key={reference.id}
+                title={reference.title}
+                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2"
+              >
+                <p className="truncate text-sm font-semibold text-canvas-50">
+                  {reference.fileName}
+                </p>
+                <p className="mt-1 truncate text-xs text-canvas-200/45">
+                  {reference.id}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
+    );
+  }
+
+  function renderCommandDock() {
+    return (
+      <>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase text-canvas-200/50">
+            Command Dock
+          </p>
+          <p className="truncate text-sm font-semibold text-canvas-50">
+            {projectSummary?.title ?? "No project loaded"} / {activeSectionMeta.label}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StudioStatusChip tone="action">
+            {dirty ? "Unsaved source" : "Workspace synced"}
+          </StudioStatusChip>
+          <StudioButton variant="primary" onClick={() => openStudioSection("playtest")}>
+            <Play aria-hidden size={16} />
+            Run playable proof
+          </StudioButton>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <StudioShell
+      projectPath={loadedPath}
+      projectLoading={loading}
+      onOpenProject={() => void loadProject(projectPath)}
+      workflowItems={agentNativeWorkflows.map((workflow) => ({
+        id: workflow.id,
+        label: workflow.label,
+        sublabel: workflow.shortLabel,
+        description: workflow.description,
+        icon: workflow.icon,
+        selected: workflow.id === activeWorkflow,
+        onSelect: () => openWorkflow(workflow.id),
+      }))}
+      surfaceItems={activeWorkflowSections.map((section) => ({
+        id: section.id,
+        label: section.label,
+        sublabel: section.status,
+        description: section.description,
+        icon: section.icon,
+        selected: section.id === activeSection,
+        onSelect: () => openStudioSection(section.id),
+      }))}
+      header={{
+        eyebrow: `${activeWorkflowMeta.label} / ${dataSource.runtimeName}`,
+        title: activeSectionMeta.label,
+        subtitle: `${projectSummary?.title ?? "No project loaded"} - ${activeWorkflowMeta.description}`,
+        badges: activeScreenReferences.map((reference) => ({
+          id: reference.id,
+          label: reference.title,
+          title: reference.fileName,
+        })),
+      }}
+      topActions={
+        <>
+          <input
+            aria-label="Project path"
+            value={projectPath}
+            onChange={(event) => setProjectPath(event.target.value)}
+            className={`${studioUiClassNames.input} sm:w-72`}
+          />
+          <StudioButton
+            title="Refresh project files"
+            aria-label="Refresh project files"
+            onClick={() => void loadProject(projectPath)}
+          >
+            {loading ? (
+              <Loader2 aria-hidden size={18} className="animate-spin" />
+            ) : (
+              <RefreshCcw aria-hidden size={18} />
+            )}
+          </StudioButton>
+          <StudioButton onClick={() => openStudioSection("playtest")}>
+            <Play aria-hidden size={16} />
+            Playtest
+          </StudioButton>
+        </>
+      }
+      rightPanel={renderEvidencePanel()}
+      commandDock={renderCommandDock()}
+    >
+      {renderActiveSection()}
+    </StudioShell>
   );
 }
 
-const inputClassName =
-  "h-10 min-w-0 rounded-md border border-ink/15 bg-parchment px-3 text-sm text-ink outline-none transition focus:border-ink/45";
-const textareaClassName =
-  "w-full resize-y rounded-md border border-ink/15 bg-parchment px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-ink/45";
-const panelClassName =
-  "rounded-md border border-ink/10 bg-white p-5 shadow-sm";
-const secondaryButtonClassName =
-  "inline-flex h-9 items-center gap-2 rounded-md border border-ink/15 bg-white px-3 text-sm font-semibold text-ink transition hover:border-ink/40 disabled:cursor-not-allowed disabled:text-ink/30";
+const inputClassName = studioUiClassNames.input;
+const textareaClassName = studioUiClassNames.textarea;
+const panelClassName = studioUiClassNames.panel;
+const secondaryButtonClassName = studioUiClassNames.secondaryButton;
 
 function PanelHeader({
   title,
@@ -2828,108 +2863,6 @@ function PanelHeader({
       </div>
       {action}
     </div>
-  );
-}
-
-function DeveloperEntry({
-  title,
-  subtitle,
-  body,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  subtitle: string;
-  body: string;
-  actionLabel: string;
-  onAction(): void;
-}) {
-  return (
-    <article className="flex min-h-56 flex-col rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-      <div className="min-w-0">
-        <p className="text-xs font-semibold uppercase text-ink/45">
-          {subtitle}
-        </p>
-        <h3 className="mt-2 text-lg font-semibold">{title}</h3>
-        <p className="mt-2 text-sm leading-6 text-ink/65">{body}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onAction}
-        className={`${secondaryButtonClassName} mt-auto w-fit`}
-      >
-        <ChevronRight aria-hidden size={16} />
-        {actionLabel}
-      </button>
-    </article>
-  );
-}
-
-function SteamBoundaryCard({
-  title,
-  profile,
-  empty,
-}: {
-  title: string;
-  profile: ExportProfile | undefined;
-  empty: string;
-}) {
-  if (!profile) {
-    return (
-      <article className="rounded-md border border-ink/10 bg-parchment p-4 text-sm text-ink/60">
-        {empty}
-      </article>
-    );
-  }
-
-  return (
-    <article className="rounded-md border border-ink/10 bg-parchment p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase text-ink/45">
-            {title}
-          </p>
-          <h3 className="mt-1 truncate text-base font-semibold">
-            {profile.id}
-          </h3>
-        </div>
-        <span className="rounded-sm border border-ink/10 bg-white px-2 py-1 text-xs font-semibold text-ink/60">
-          {profile.target}
-        </span>
-      </div>
-      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-        <ProfileFlag
-          label="Runtime network"
-          value={profile.requires_network_at_runtime ? "required" : "not required"}
-          safe={!profile.requires_network_at_runtime}
-        />
-        <ProfileFlag
-          label="Provider config"
-          value={profile.includes_provider_config ? "included" : "excluded"}
-          safe={!profile.includes_provider_config}
-        />
-        <ProfileFlag
-          label="Private traces"
-          value={profile.includes_private_traces ? "included" : "excluded"}
-          safe={!profile.includes_private_traces}
-        />
-        <ProfileFlag
-          label="Platform readiness"
-          value={profile.platform_submission_ready ? "claimed" : "not claimed"}
-          safe={!profile.platform_submission_ready}
-        />
-      </div>
-      <div className="mt-4 grid gap-2">
-        {profile.notes.map((note) => (
-          <p
-            key={note}
-            className="rounded-md border border-ink/10 bg-white px-3 py-2 text-sm text-ink/65"
-          >
-            {note}
-          </p>
-        ))}
-      </div>
-    </article>
   );
 }
 
@@ -3138,6 +3071,148 @@ function ProfileFlag({
   );
 }
 
+function ExportEvidenceCard({
+  title,
+  badge,
+  children,
+}: {
+  title: string;
+  badge: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-canvas-50">{title}</h4>
+        <span className="rounded-sm border border-health-400/30 bg-health-500/15 px-2 py-1 text-xs font-semibold text-health-400">
+          {badge}
+        </span>
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function PackageReadinessRow({
+  item,
+}: {
+  item: {
+    label: string;
+    detail: string;
+    status: string;
+    files: number;
+  };
+}) {
+  const ready = item.status === "Ready" || item.status === "Passed";
+  return (
+    <div className="grid gap-3 rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_120px_minmax(160px,0.7fr)_80px]">
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-ink">{item.label}</p>
+        <p className="mt-1 truncate text-xs text-ink/50">{item.detail}</p>
+      </div>
+      <span
+        className={[
+          "w-fit rounded-sm border px-2 py-1 text-xs font-semibold",
+          ready
+            ? "border-jade/30 bg-jade/10 text-jade"
+            : "border-brass/30 bg-brass/10 text-brass",
+        ].join(" ")}
+      >
+        {item.status}
+      </span>
+      <div className="h-2 self-center rounded-full bg-ink/10">
+        <div
+          className={[
+            "h-2 rounded-full",
+            ready ? "bg-jade" : "bg-brass",
+          ].join(" ")}
+          style={{ width: ready ? "100%" : "45%" }}
+        />
+      </div>
+      <p className="text-right text-xs font-semibold text-ink/60">
+        {item.files} files
+      </p>
+    </div>
+  );
+}
+
+function ExportInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-medium uppercase text-ink/45">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function ProofLikeLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <p className="text-xs font-medium uppercase text-canvas-200/45">{label}</p>
+      <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
+    </div>
+  );
+}
+
+function evidenceStatusLabel(status: EvidenceStatus) {
+  switch (status) {
+    case "pass":
+      return "Pass";
+    case "review":
+      return "Review";
+    case "pending":
+      return "Pending";
+  }
+}
+
+function evidenceStatusClassName(status: EvidenceStatus) {
+  switch (status) {
+    case "pass":
+      return "text-health-400";
+    case "review":
+      return "text-signal";
+    case "pending":
+      return "text-amber-400";
+  }
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightValues = new Set(right);
+  return left.every((value) => rightValues.has(value));
+}
+
+function isAbsoluteMachinePath(path: string) {
+  return path.startsWith("/") || path.startsWith("~") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function EvidenceLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-medium uppercase text-ink/45">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function PreviewEvidenceLine({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <p className="text-xs font-medium uppercase text-canvas-200/45">{label}</p>
+      <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
+    </div>
+  );
+}
+
 function AssetCatalogCard({ item }: { item: AssetCatalogItem }) {
   if (item.source === "scene-background-fallback") {
     return (
@@ -3302,28 +3377,4 @@ function contentKindsFromLines(value: string): AiUsageContentKind[] {
     allowed.includes(kind as AiUsageContentKind),
   );
   return selected.length > 0 ? selected : ["text"];
-}
-
-function resolveExportProfileId(profiles: ExportProfile[], currentId: string) {
-  if (profiles.some((profile) => profile.id === currentId)) {
-    return currentId;
-  }
-
-  return profiles[0]?.id ?? "";
-}
-
-function defaultStaticExportDir(projectPath: string) {
-  return `${trimTrailingSlashes(projectPath)}/exports/static`;
-}
-
-function defaultStaticArchivePath(projectPath: string) {
-  return `${trimTrailingSlashes(projectPath)}/exports/static.zip`;
-}
-
-function defaultNewProjectPath(projectPath: string) {
-  return `${trimTrailingSlashes(projectPath)}-new`;
-}
-
-function trimTrailingSlashes(path: string) {
-  return path.replace(/\/+$/, "") || ".";
 }

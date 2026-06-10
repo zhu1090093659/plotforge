@@ -2,14 +2,20 @@ import {
   AlertTriangle,
   Bug,
   CheckCircle2,
+  Network,
   Loader2,
   Play,
+  ShieldCheck,
 } from "lucide-react";
 import type {
+  AiSafetyPolicy,
+  ExportProfile,
   NarrativeIssue,
   RuntimeTraceDiagnostic,
 } from "../../../contracts/plotforge";
-import type { PlayOnceReport } from "./tauriBridge";
+import type { LocalPreviewState } from "./localPreviewModel";
+import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
+import type { PlayOnceReport, StaticExportReport } from "./tauriBridge";
 
 interface PlaytestPanelProps {
   input: string;
@@ -29,6 +35,12 @@ interface PlaytestPanelProps {
 interface RuntimeTracePanelProps {
   report: PlayOnceReport | null;
   error: string | null;
+  selectedExportProfile?: ExportProfile | null;
+  exportReport?: StaticExportReport | null;
+  aiSafetyPolicy?: AiSafetyPolicy | null;
+  localPreviewState?: LocalPreviewState;
+  loadedPath?: string | null;
+  projectId?: string | null;
 }
 
 export function PlaytestPanel({
@@ -150,90 +162,325 @@ export function PlaytestPanel({
   );
 }
 
-export function RuntimeTracePanel({ report, error }: RuntimeTracePanelProps) {
+export function RuntimeTracePanel({
+  report,
+  error,
+  selectedExportProfile = null,
+  exportReport = null,
+  aiSafetyPolicy = null,
+  localPreviewState,
+  loadedPath = null,
+  projectId = null,
+}: RuntimeTracePanelProps) {
   const trace = report?.trace ?? null;
   const review = trace?.narrative_review ?? null;
+  const beat = resolveSceneBeat(
+    report?.scene,
+    trace?.story_state_after.current_beat_id,
+  );
+  const sceneImage = resolveScenePreviewImage({
+    scene: report?.scene,
+    projectId,
+    loadedPath,
+  });
+  const artifactChanges = localPreviewState?.artifactBundle.changes ?? [];
+  const changedFileCount = artifactChanges.reduce(
+    (total, change) => total + change.files.length,
+    0,
+  );
+  const packageReady =
+    Boolean(
+      selectedExportProfile &&
+        exportReport &&
+        !selectedExportProfile.includes_provider_config &&
+        !selectedExportProfile.includes_private_traces &&
+        sameStringSet(exportReport.allowed_files, exportReport.files_found),
+    );
 
   return (
-    <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold">Runtime Trace</h3>
-          <p className="mt-1 text-sm text-ink/55">
-            {trace?.id ?? "No trace selected"}
-          </p>
-        </div>
-        {trace?.errors.length ? (
-          <AlertTriangle aria-hidden className="text-signal" size={22} />
-        ) : (
-          <Bug aria-hidden className="text-signal" size={22} />
-        )}
-      </div>
+    <section aria-label="Proof And Trace Workspace" className="grid gap-5">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid gap-4">
+          <section
+            aria-label="Playable Proof"
+            className="overflow-hidden rounded-lg border border-graphite-700/15 bg-graphite-950 text-canvas-50 shadow-studio-panel"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-canvas-200/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase text-health-400">
+                  Playable Proof
+                </p>
+                <h3 className="mt-1 text-xl font-semibold text-canvas-50">
+                  {report?.scene.title ?? "Run a playtest turn to create proof"}
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-canvas-200/60">
+                  {trace
+                    ? "Playable result, state deltas, run evidence, artifact diff, and package readiness are shown from the current local run."
+                    : "Trace output appears after a playtest turn."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={trace?.fallback_used ? "fallback" : "completed"}>
+                  {trace?.fallback_used ? "Fallback" : trace ? "Committed" : "Waiting"}
+                </Badge>
+                <Badge tone={trace?.errors.length ? "error" : "completed"}>
+                  {trace ? `${trace.errors.length} errors` : "no run"}
+                </Badge>
+                <Badge tone="neutral">{trace?.id ?? "no trace"}</Badge>
+              </div>
+            </div>
 
-      {error ? (
-        <div className="mt-4 rounded-md border border-signal/30 bg-signal/10 px-3 py-2 text-sm text-signal">
-          {error}
-        </div>
-      ) : null}
+            <div className="relative min-h-[430px] overflow-hidden bg-graphite-900">
+              {sceneImage ? (
+                <img
+                  src={sceneImage}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover opacity-60"
+                />
+              ) : (
+                <ScenePreviewPlaceholder
+                  assetPath={report?.scene.background_asset ?? null}
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/35 to-graphite-950/10" />
+              <div className="relative flex min-h-[430px] flex-col justify-end p-4">
+                <div className="mx-auto w-full max-w-3xl rounded-lg border border-amber-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
+                  <p className="text-xs font-semibold uppercase text-amber-400">
+                    {report
+                      ? `${report.scene.key} / ${report.scene.location}`
+                      : "No playable result"}
+                  </p>
+                  <p className="mt-2 text-base leading-7 text-canvas-50">
+                    {beat?.text ??
+                      "Run a proof turn to inspect the player-facing result."}
+                  </p>
+                  <div className="mt-4 grid gap-2">
+                    {(beat?.choices ?? []).slice(0, 4).map((choice, index) => (
+                      <div
+                        key={choice.id}
+                        className="flex min-h-11 items-center gap-3 rounded-md border border-amber-500/35 bg-canvas-50/5 px-3 text-canvas-50"
+                      >
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-amber-400/60 text-xs text-amber-400">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 truncate text-sm">
+                          {choice.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-      {trace ? (
-        <div className="mt-4 space-y-5">
-          <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase">
-            <Badge tone={trace.fallback_used ? "fallback" : "completed"}>
-              {trace.fallback_used ? "Fallback" : "Committed"}
-            </Badge>
-            <Badge tone={trace.errors.length > 0 ? "error" : "completed"}>
-              {`${trace.errors.length} errors`}
-            </Badge>
-            <Badge tone="neutral">{trace.id}</Badge>
-          </div>
-          {report ? (
-            <div className="rounded-md border border-ink/10 bg-parchment px-3 py-2">
-              <p className="text-xs font-medium uppercase text-ink/45">
-                Scene
-              </p>
-              <p className="mt-1 text-sm font-semibold">{report.scene.title}</p>
-              <p className="mt-1 text-sm text-ink/60">{report.scene.hook}</p>
+            <div className="grid gap-3 border-t border-canvas-200/10 px-4 py-3 md:grid-cols-4">
+              <ProofFact label="Trace ID" value={trace?.id ?? "none"} />
+              <ProofFact
+                label="Run seed"
+                value={trace?.reproducibility.run_seed ?? "none"}
+              />
+              <ProofFact
+                label="State deltas"
+                value={String(report?.delta_summary.length ?? 0)}
+              />
+              <ProofFact
+                label="Package readiness"
+                value={packageReady ? "local ready" : "review required"}
+              />
+            </div>
+          </section>
+
+          {error ? (
+            <div className="rounded-md border border-signal/30 bg-signal/10 px-3 py-2 text-sm text-signal">
+              {error}
             </div>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-4">
-            <TraceField
-              label="Rule"
-              value={trace.rule_result?.action_type}
-              detail={
-                trace.rule_result
-                  ? trace.rule_result.state_committed
-                    ? "committed"
-                    : "not committed"
-                  : undefined
-              }
-            />
-            <TraceField
-              label="Planner"
-              value={trace.planner_result?.scene_key}
-              detail={trace.planner_result?.fallback_used ? "fallback" : "ok"}
-            />
-            <TraceField
-              label="Review score"
-              value={review ? String(review.score) : null}
-              detail={review ? `${review.issues.length} issues` : undefined}
-            />
-            <TraceField label="Snapshot" value={report?.snapshot_path} />
+
+          <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+            <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-base font-semibold">State Delta</h3>
+                <Badge tone="neutral">{report?.delta_summary.length ?? 0}</Badge>
+              </div>
+              <DeltaList lines={report?.delta_summary ?? []} />
+            </section>
+
+            <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-base font-semibold">Run Evidence</h3>
+                <Bug aria-hidden className="text-signal" size={20} />
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <TraceField label="Selected choice" value={trace?.selected_choice} />
+                <TraceField
+                  label="Intent"
+                  value={trace?.action_intent?.action_type ?? "none"}
+                />
+                <TraceField
+                  label="Prompt version"
+                  value={trace?.reproducibility.prompt_version}
+                />
+                <TraceField label="Snapshot" value={report?.snapshot_path} />
+              </div>
+            </section>
           </div>
 
-          <TraceEvidence trace={trace} />
-          <WorldDeltaEvidence trace={trace} />
-          <MediaReferenceList references={trace.media_references} />
-          {review ? <ReviewScores review={review} /> : null}
-          {review?.issues.length ? <IssueList issues={review.issues} /> : null}
-          <DiagnosticList diagnostics={trace.diagnostics} />
-          <ErrorList errors={trace.errors} />
+          <section
+            aria-label="Trace Debug"
+            className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase text-acp-500">
+                  Trace Debug
+                </p>
+                <h3 className="mt-1 text-lg font-semibold">
+                  Redaction-safe causality
+                </h3>
+              </div>
+              {trace?.errors.length ? (
+                <AlertTriangle aria-hidden className="text-signal" size={22} />
+              ) : (
+                <Network aria-hidden className="text-acp-500" size={22} />
+              )}
+            </div>
+
+            {trace ? (
+              <div className="mt-4 grid gap-5">
+                <CausalityGraph trace={trace} />
+                <TraceEvidence trace={trace} />
+                <ToolMetadata trace={trace} changedFileCount={changedFileCount} />
+                <WorldDeltaEvidence trace={trace} />
+                <MediaReferenceList references={trace.media_references} />
+                {review ? <ReviewScores review={review} /> : null}
+                {review?.issues.length ? <IssueList issues={review.issues} /> : null}
+                <DiagnosticList diagnostics={trace.diagnostics} />
+                <ErrorList errors={trace.errors} />
+              </div>
+            ) : (
+              <div className="mt-4 border-t border-ink/10 pt-4 text-sm text-ink/55">
+                Run a playtest turn to inspect trace evidence.
+              </div>
+            )}
+          </section>
         </div>
-      ) : (
-        <div className="mt-4 border-t border-ink/10 pt-4 text-sm text-ink/55">
-          Trace output appears after a playtest turn.
-        </div>
-      )}
+
+        <aside
+          aria-label="Proof Evidence Panel"
+          className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-health-400">
+                Agent Evidence
+              </p>
+              <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+                {trace?.id ?? "No trace selected"}
+              </h3>
+            </div>
+            <ShieldCheck aria-hidden className="text-health-400" size={22} />
+          </div>
+
+          <div className="grid gap-2 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+            <ProofSideFact label="Trace ID" value={trace?.id ?? "none"} />
+            <ProofSideFact
+              label="Run Seed"
+              value={trace?.reproducibility.run_seed ?? "none"}
+            />
+            <ProofSideFact
+              label="Prompt Version"
+              value={trace?.reproducibility.prompt_version ?? "none"}
+            />
+            <ProofSideFact
+              label="Provider Config Hash"
+              value={trace?.reproducibility.provider_config_hash ?? "none"}
+            />
+          </div>
+
+          <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+            <p className="text-sm font-semibold text-canvas-50">
+              Artifact Diff Summary
+            </p>
+            <div className="mt-3 grid gap-2">
+              {artifactChanges.length > 0 ? (
+                artifactChanges.map((change) => (
+                  <div
+                    key={change.id}
+                    className="flex items-center justify-between gap-3 border-t border-canvas-200/10 pt-2 text-sm first:border-t-0 first:pt-0"
+                  >
+                    <span className="truncate text-canvas-50">
+                      {change.title}
+                    </span>
+                    <span className="shrink-0 text-health-400">
+                      {change.files.length} files
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-canvas-200/55">
+                  No artifact bundle linked.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DisclosureDraft
+            title="AI Usage Disclosure"
+            body={
+              aiSafetyPolicy
+                ? aiSafetyPolicy.moderation_policy
+                : "AI usage disclosure appears after policy load."
+            }
+          />
+          <DisclosureDraft
+            title="Content Warning Draft"
+            body={
+              aiSafetyPolicy
+                ? `Content kinds: ${aiSafetyPolicy.content_kinds.join(", ")}. Human review: ${booleanText(aiSafetyPolicy.human_review_required)}.`
+                : "Content warning draft appears after policy load."
+            }
+          />
+
+          <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-canvas-50">
+                  Local Static Web Package
+                </p>
+                <p className="mt-1 text-xs text-canvas-200/55">
+                  {selectedExportProfile?.id ?? "No profile selected"}
+                </p>
+              </div>
+              <Badge tone={packageReady ? "completed" : "fallback"}>
+                {packageReady ? "Ready" : "Review"}
+              </Badge>
+            </div>
+            <div className="mt-3 grid gap-2 text-sm">
+              <ProofSideFact
+                label="Archive"
+                value={exportReport?.archive_path ?? "not exported"}
+              />
+              <ProofSideFact
+                label="Files"
+                value={exportReport?.archived_files.length ?? 0}
+              />
+              <ProofSideFact
+                label="Audit"
+                value={
+                  exportReport
+                    ? sameStringSet(
+                        exportReport.allowed_files,
+                        exportReport.files_found,
+                      )
+                      ? "matched"
+                      : "mismatch"
+                    : "pending"
+                }
+              />
+            </div>
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }
@@ -308,6 +555,140 @@ function TraceEvidence({ trace }: { trace: PlayOnceReport["trace"] }) {
           <TraceField label="Trace id" value={reproducibility.trace_id} />
           <TraceField label="Snapshot id" value={reproducibility.snapshot_id} />
         </EvidenceGroup>
+      </div>
+    </div>
+  );
+}
+
+function ProofFact({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
+      <p className="text-xs font-semibold uppercase text-canvas-200/45">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-sm font-semibold text-canvas-50">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ProofSideFact({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <p className="text-xs font-medium uppercase text-canvas-200/45">{label}</p>
+      <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
+    </div>
+  );
+}
+
+function DisclosureDraft({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-canvas-50">{title}</p>
+        <Badge tone="fallback">Local draft only</Badge>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-canvas-200/65">{body}</p>
+    </div>
+  );
+}
+
+function ScenePreviewPlaceholder({ assetPath }: { assetPath: string | null }) {
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(229,181,95,0.18),_rgba(17,20,25,0.94)_55%)] px-4">
+      <div className="max-w-md rounded-md border border-canvas-200/15 bg-graphite-950/70 px-4 py-3 text-center">
+        <p className="text-sm font-semibold text-canvas-50">
+          Scene preview asset unavailable
+        </p>
+        <p className="mt-1 break-words text-xs leading-5 text-canvas-200/55">
+          {assetPath ?? "No background asset is declared for this scene."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CausalityGraph({ trace }: { trace: PlayOnceReport["trace"] }) {
+  const steps = [
+    {
+      id: "intent",
+      label: "Director Intent",
+      detail: trace.action_intent?.action_type ?? "unsupported",
+      tone: "border-acp-500/35 bg-acp-500/10 text-acp-600",
+    },
+    {
+      id: "rule",
+      label: "Rules.patch",
+      detail: trace.rule_result?.state_committed ? "committed" : "not committed",
+      tone: "border-health-500/35 bg-health-500/10 text-health-600",
+    },
+    {
+      id: "planner",
+      label: "Runtime.playtest",
+      detail: trace.planner_result?.scene_key ?? "none",
+      tone: "border-agent-500/35 bg-agent-500/10 text-agent-600",
+    },
+    {
+      id: "diagnostics",
+      label: "Diagnostics",
+      detail: `${trace.diagnostics.length} steps`,
+      tone: "border-amber-500/35 bg-amber-500/10 text-amber-600",
+    },
+  ];
+
+  return (
+    <div>
+      <h4 className="text-sm font-semibold">Causality Graph</h4>
+      <div className="mt-3 grid gap-3 lg:grid-cols-4">
+        {steps.map((step, index) => (
+          <div key={step.id} className="min-w-0">
+            <div className={`rounded-md border px-3 py-3 ${step.tone}`}>
+              <p className="text-sm font-semibold">{step.label}</p>
+              <p className="mt-1 truncate text-xs opacity-75">{step.detail}</p>
+            </div>
+            {index < steps.length - 1 ? (
+              <p className="mt-2 text-center text-xs font-semibold text-ink/35">
+                flows to
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ToolMetadata({
+  trace,
+  changedFileCount,
+}: {
+  trace: PlayOnceReport["trace"];
+  changedFileCount: number;
+}) {
+  return (
+    <div>
+      <h4 className="text-sm font-semibold">Tool Metadata</h4>
+      <div className="mt-2 grid gap-3 sm:grid-cols-4">
+        <TraceField label="Prompt hash" value={trace.reproducibility.trace_id} />
+        <TraceField
+          label="Prompt version"
+          value={trace.reproducibility.prompt_version}
+        />
+        <TraceField label="Tool calls" value={trace.diagnostics.length} />
+        <TraceField label="Files touched" value={changedFileCount} />
       </div>
     </div>
   );
@@ -536,6 +917,15 @@ function TraceField({
 
 function booleanText(value: boolean) {
   return value ? "true" : "false";
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightValues = new Set(right);
+  return left.every((value) => rightValues.has(value));
 }
 
 function formatSigned(value: number) {
