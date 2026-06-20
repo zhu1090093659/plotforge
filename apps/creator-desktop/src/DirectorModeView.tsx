@@ -307,7 +307,7 @@ export function DirectorModeView({
                   </button>
                 ))}
               </div>
-              <StudioButton variant="primary" onClick={onRun} disabled={running}>
+              <StudioButton variant="primary" aria-label="Run turn" onClick={onRun} disabled={running}>
                 {running ? (
                   <Loader2 aria-hidden size={16} className="animate-spin" />
                 ) : (
