@@ -12,7 +12,12 @@ import {
 import type { ProjectData } from "../../../contracts/plotforge";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport } from "./tauriBridge";
-import { StudioButton, StudioStatusChip, studioUiClassNames } from "./studioUi";
+import {
+  ScenePreviewPlaceholder,
+  StudioButton,
+  StudioStatusChip,
+  studioUiClassNames,
+} from "./studioUi";
 
 interface DirectorModeViewProps {
   projectData: ProjectData | null;
@@ -453,21 +458,6 @@ function QueueFact({ label, value }: { label: string; value: string }) {
     <div className="flex min-w-0 justify-between gap-3 border-t border-ink/10 pt-2">
       <span className="text-ink/45">{label}</span>
       <span className="truncate font-semibold text-ink">{value}</span>
-    </div>
-  );
-}
-
-function ScenePreviewPlaceholder({ assetPath }: { assetPath: string | null }) {
-  return (
-    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(229,181,95,0.20),_rgba(17,20,25,0.92)_55%)] px-4">
-      <div className="max-w-md rounded-md border border-canvas-200/15 bg-graphite-950/70 px-4 py-3 text-center">
-        <p className="text-sm font-semibold text-canvas-50">
-          Scene preview asset unavailable
-        </p>
-        <p className="mt-1 break-words text-xs leading-5 text-canvas-200/55">
-          {assetPath ?? "No background asset is declared for this scene."}
-        </p>
-      </div>
     </div>
   );
 }

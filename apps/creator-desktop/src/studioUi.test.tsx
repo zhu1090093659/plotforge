@@ -3,6 +3,9 @@ import { Boxes, Gauge } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 import {
   agentNativeDesignTokens,
+  Collapsible,
+  CollapsibleSection,
+  ScenePreviewPlaceholder,
   StudioButton,
   StudioPanel,
   StudioShell,
@@ -97,3 +100,127 @@ describe("studioUi", () => {
     expect(openProject).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ScenePreviewPlaceholder", () => {
+  it("renders fallback message when assetPath is null", () => {
+    render(<ScenePreviewPlaceholder assetPath={null} />);
+    expect(screen.getByText("Scene preview asset unavailable")).toBeTruthy();
+    expect(
+      screen.getByText("No background asset is declared for this scene."),
+    ).toBeTruthy();
+  });
+
+  it("renders the provided assetPath when given", () => {
+    render(<ScenePreviewPlaceholder assetPath="assets/bg/ruins.webp" />);
+    expect(screen.getByText("assets/bg/ruins.webp")).toBeTruthy();
+  });
+});
+
+describe("Collapsible", () => {
+  it("starts collapsed by default (defaultOpen=false)", () => {
+    render(
+      <Collapsible label="Advanced Options">
+        <p>Hidden content</p>
+      </Collapsible>,
+    );
+    const toggle = screen.getByRole("button", { name: /advanced options/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Hidden content")).toBeNull();
+  });
+
+  it("starts open when defaultOpen=true", () => {
+    render(
+      <Collapsible label="Open Section" defaultOpen>
+        <p>Visible content</p>
+      </Collapsible>,
+    );
+    const toggle = screen.getByRole("button", { name: /open section/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Visible content")).toBeTruthy();
+  });
+
+  it("toggles open state and aria-expanded on click", () => {
+    render(
+      <Collapsible label="Toggle Me">
+        <p>Toggled content</p>
+      </Collapsible>,
+    );
+    const toggle = screen.getByRole("button", { name: /toggle me/i });
+
+    // Initially closed
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Toggled content")).toBeNull();
+
+    // Click to open
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Toggled content")).toBeTruthy();
+
+    // Click to close
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Toggled content")).toBeNull();
+  });
+
+  it("renders badge when provided", () => {
+    render(
+      <Collapsible label="Items" badge={5}>
+        <p>Content</p>
+      </Collapsible>,
+    );
+    expect(screen.getByText("5")).toBeTruthy();
+  });
+
+  it("exposes aria-controls pointing to the region id", () => {
+    render(
+      <Collapsible label="Accessible Section" defaultOpen>
+        <p>Region content</p>
+      </Collapsible>,
+    );
+    const toggle = screen.getByRole("button", { name: /accessible section/i });
+    const controlsId = toggle.getAttribute("aria-controls");
+    expect(controlsId).toBeTruthy();
+    const region = document.getElementById(controlsId!);
+    expect(region).toBeTruthy();
+    expect(region?.getAttribute("role")).toBe("region");
+  });
+
+  it("region is labeled by the toggle button", () => {
+    render(
+      <Collapsible label="Labeled Region" defaultOpen>
+        <p>Inner</p>
+      </Collapsible>,
+    );
+    const region = screen.getByRole("region", { name: /labeled region/i });
+    expect(region).toBeTruthy();
+  });
+});
+
+describe("CollapsibleSection", () => {
+  it("renders title and wraps children in a StudioPanel", () => {
+    render(
+      <CollapsibleSection title="Advanced Settings" defaultOpen>
+        <p>Section body</p>
+      </CollapsibleSection>,
+    );
+    expect(
+      screen.getByRole("button", { name: /advanced settings/i }),
+    ).toBeTruthy();
+    expect(screen.getByText("Section body")).toBeTruthy();
+  });
+
+  it("starts collapsed when defaultOpen is omitted", () => {
+    render(
+      <CollapsibleSection title="Hidden Section">
+        <p>Should not be visible</p>
+      </CollapsibleSection>,
+    );
+    expect(screen.queryByText("Should not be visible")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: /hidden section/i })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+});
+

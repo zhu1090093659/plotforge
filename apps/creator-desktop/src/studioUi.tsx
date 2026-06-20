@@ -1,10 +1,11 @@
 import {
+  ChevronDown,
   ChevronRight,
   FolderOpen,
   Loader2,
   type LucideIcon,
 } from "lucide-react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
 
 export const agentNativeDesignTokens = {
   shell: {
@@ -318,5 +319,127 @@ function StudioNavButton({
       </span>
       {item.selected ? <ChevronRight aria-hidden size={16} /> : null}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ScenePreviewPlaceholder
+// ---------------------------------------------------------------------------
+
+/** Shown when no background asset is available for a scene preview area. */
+export function ScenePreviewPlaceholder({
+  assetPath,
+}: {
+  assetPath: string | null;
+}) {
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(229,181,95,0.20),_rgba(17,20,25,0.92)_55%)] px-4">
+      <div className="max-w-md rounded-md border border-canvas-200/15 bg-graphite-950/70 px-4 py-3 text-center">
+        <p className="text-sm font-semibold text-canvas-50">
+          Scene preview asset unavailable
+        </p>
+        <p className="mt-1 break-words text-xs leading-5 text-canvas-200/55">
+          {assetPath ?? "No background asset is declared for this scene."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Collapsible / CollapsibleSection
+// ---------------------------------------------------------------------------
+
+export interface CollapsibleProps {
+  /** Header label shown in the toggle button. */
+  label: string;
+  /** Whether the section is open by default (uncontrolled). */
+  defaultOpen?: boolean;
+  /** Optional badge count shown to the right of the label. */
+  badge?: number | string;
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * Lightweight collapsible container.  Can be used uncontrolled (via
+ * `defaultOpen`) or wrapped in a parent that manages open state externally.
+ * Uses a <button> with `aria-expanded` for full keyboard and screen-reader
+ * accessibility.
+ */
+export function Collapsible({
+  label,
+  defaultOpen = false,
+  badge,
+  children,
+  className = "",
+}: CollapsibleProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const headingId = `collapsible-heading-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  const regionId = `collapsible-region-${label.toLowerCase().replace(/\s+/g, "-")}`;
+
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        id={headingId}
+        aria-expanded={open}
+        aria-controls={regionId}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm font-semibold text-ink transition hover:bg-canvas-100"
+      >
+        {open ? (
+          <ChevronDown aria-hidden size={15} className="shrink-0 text-graphite-700/55" />
+        ) : (
+          <ChevronRight aria-hidden size={15} className="shrink-0 text-graphite-700/55" />
+        )}
+        <span className="flex-1">{label}</span>
+        {badge !== undefined ? (
+          <span className="rounded-sm border border-graphite-700/15 bg-canvas-100 px-1.5 py-0.5 text-xs font-semibold text-graphite-700/70">
+            {badge}
+          </span>
+        ) : null}
+      </button>
+      {open ? (
+        <div
+          id={regionId}
+          role="region"
+          aria-labelledby={headingId}
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export interface CollapsibleSectionProps {
+  /** Section heading shown in the toggle button. */
+  title: string;
+  /** Whether the section is open by default (uncontrolled). */
+  defaultOpen?: boolean;
+  /** Optional badge count shown to the right of the title. */
+  badge?: number | string;
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * A `StudioPanel`-wrapped collapsible section.  Use for secondary/advanced
+ * areas that should be hidden by default to reduce visual complexity.
+ */
+export function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  badge,
+  children,
+  className = "",
+}: CollapsibleSectionProps) {
+  return (
+    <StudioPanel className={className}>
+      <Collapsible label={title} defaultOpen={defaultOpen} badge={badge}>
+        <div className="mt-3">{children}</div>
+      </Collapsible>
+    </StudioPanel>
   );
 }
