@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Read `AGENTS.md` first.** It is the shared, authoritative project-level instruction source for all coding agents (Codex, Cursor, Claude Code, and others), covering project goal, source-of-truth rules, architecture boundaries, testing policy, required validation, CI/QA, error handling, and change discipline. This file is a Claude Code quick-reference summary plus Claude Code-specific reminders; it must not duplicate or contradict `AGENTS.md`. Where this summary and `AGENTS.md` disagree, `AGENTS.md` wins.
+
 ## Project Summary
 
 PlotForge is a CLI-first Rust AI story game engine with a React/Tauri creator desktop app and a static web player. Folder-based projects (TOML/JSON/Markdown) are the source of truth; SQLite is a rebuildable cache only.
