@@ -20,7 +20,12 @@ import type {
   SourceFileSummary,
 } from "./tauriBridge";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
-import { StudioButton, StudioStatusChip, studioUiClassNames } from "./studioUi";
+import {
+  ScenePreviewPlaceholder,
+  StudioButton,
+  StudioStatusChip,
+  studioUiClassNames,
+} from "./studioUi";
 
 interface CommandCenterViewProps {
   projectSummary: CreatorProjectSummary | null;
@@ -532,21 +537,6 @@ function EvidenceCard({
       <Icon aria-hidden size={18} className="text-ink/55" />
       <p className="mt-2 text-xs font-semibold uppercase text-ink/45">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
-    </div>
-  );
-}
-
-function ScenePreviewPlaceholder({ assetPath }: { assetPath: string | null }) {
-  return (
-    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(229,181,95,0.20),_rgba(17,20,25,0.92)_55%)] px-4">
-      <div className="max-w-md rounded-md border border-canvas-200/15 bg-graphite-950/70 px-4 py-3 text-center">
-        <p className="text-sm font-semibold text-canvas-50">
-          Scene preview asset unavailable
-        </p>
-        <p className="mt-1 break-words text-xs leading-5 text-canvas-200/55">
-          {assetPath ?? "No background asset is declared for this scene."}
-        </p>
-      </div>
     </div>
   );
 }
