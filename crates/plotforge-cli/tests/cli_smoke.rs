@@ -12,6 +12,18 @@ fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_plotforge-cli")
 }
 
+/// Build a CLI `Command` with deterministic English output.
+///
+/// The CLI resolves its output language from `PLOTFORGE_LANGUAGE`/`LANG` when
+/// `--language` is not passed. Without pinning this, test assertions on English
+/// output text become flaky across locales (e.g. `LANG=zh_CN.UTF-8` renders
+/// "已创建 Dynasty Embers" instead of "created Dynasty Embers").
+fn cli() -> Command {
+    let mut cmd = Command::new(bin());
+    cmd.env("PLOTFORGE_LANGUAGE", "en");
+    cmd
+}
+
 #[test]
 fn cli_runs_full_demo_flow_in_tempdir() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -201,7 +213,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
     .assert_success_contains("blocked workshop item dynasty-embers-remix")
     .assert_contains("reason=Blocked in local library.");
 
-    let blocked_load = Command::new(bin())
+    let blocked_load = cli()
         .args([
             "workshop",
             "load",
@@ -238,7 +250,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
     assert!(!publish_json.contains("steam_app_id"));
     assert!(!publish_json.contains("published_file_id"));
 
-    let disabled_upload = Command::new(bin())
+    let disabled_upload = cli()
         .args([
             "workshop",
             "upload-draft",
@@ -376,7 +388,7 @@ fn cli_new_project_rejects_secret_markers() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("winter-regency");
 
-    let output = Command::new(bin())
+    let output = cli()
         .args([
             "new",
             "project",
@@ -411,7 +423,7 @@ fn cli_rejects_interactive_play_for_now() {
     ])
     .assert_success_contains("created Dynasty Embers");
 
-    let output = Command::new(bin())
+    let output = cli()
         .args(["play", project.to_str().unwrap()])
         .output()
         .expect("run command");
@@ -434,7 +446,7 @@ fn cli_rejects_unsupported_play_input_without_trace() {
     ])
     .assert_success_contains("created Dynasty Embers");
 
-    let output = Command::new(bin())
+    let output = cli()
         .args([
             "play",
             project.to_str().unwrap(),
@@ -560,7 +572,7 @@ fn cli_play_rejects_corrupted_runtime_snapshot_explicitly() {
     )
     .expect("corrupt save");
 
-    let output = Command::new(bin())
+    let output = cli()
         .args([
             "play",
             project.to_str().unwrap(),
@@ -591,7 +603,7 @@ fn cli_play_rejects_invalid_save_id_before_trace_write() {
     ])
     .assert_success_contains("created Dynasty Embers");
 
-    let output = Command::new(bin())
+    let output = cli()
         .args([
             "play",
             project.to_str().unwrap(),
@@ -617,6 +629,16 @@ fn committed_example_fixture_is_cli_valid() {
     run(["check", fixture.to_str().unwrap()]).assert_success_contains("ok: Dynasty Embers");
 }
 
+#[test]
+fn cli_check_supports_chinese_output() {
+    let root = repo_root();
+    let fixture = root.join("examples/dynasty-embers");
+
+    run(["--language", "zh", "check", fixture.to_str().unwrap()])
+        .assert_success_contains("通过：Dynasty Embers")
+        .assert_contains("1 个场景");
+}
+
 fn repo_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -629,10 +651,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = Command::new(bin())
-        .args(args)
-        .output()
-        .expect("run command");
+    let output = cli().args(args).output().expect("run command");
     CommandOutput { output }
 }
 
@@ -641,7 +660,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let mut child = Command::new(bin())
+    let mut child = cli()
         .args(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

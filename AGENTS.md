@@ -62,6 +62,7 @@ The current MVP contains:
 - Keep CLI behavior in `plotforge-cli`; CLI should orchestrate crates instead of owning business logic.
 - Keep `apps/creator-desktop` as an adapter over generated contracts and future Tauri commands. TypeScript UI code may import types from `contracts/plotforge.d.ts`, but must not reimplement rule, runtime, storage, storycraft, or agent business logic.
 - Agent-native Creator Desktop UI may show ACP workers, agent capabilities, approvals, and evidence as explicit local/mock workflow surfaces, but must not imply real external agent execution, hidden network model calls, Steam upload automation, legal conclusions, or platform approval unless those schema-backed integrations are explicitly added.
+- Keep i18n as an adapter concern for UI chrome and command output. Creator Desktop text is localized through `apps/creator-desktop/src/i18n.tsx`; static player text is localized through `apps/player-web/static/player-core.js`; CLI output uses the global language selector. Do not automatically translate project-authored titles, source files, story text, manifest content, or creator-provided export metadata.
 - Keep Tauri command behavior in testable Rust adapter crates such as `plotforge-studio`; `apps/creator-desktop/src-tauri` should stay a thin IPC wrapper.
 - Do not add Steam/Workshop, provider SDKs, or networked model calls to MVP core crates unless the project scope is explicitly changed.
 

@@ -1,4 +1,4 @@
-use std::{fs, io, path::PathBuf};
+use std::{env, fs, io, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -27,8 +27,16 @@ use serde_json::Value;
 #[command(name = "plotforge")]
 #[command(about = "PlotForge CLI-first MVP")]
 struct Cli {
+    #[arg(long, global = true, value_enum)]
+    language: Option<OutputLanguage>,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum OutputLanguage {
+    En,
+    Zh,
 }
 
 #[derive(Debug, Subcommand)]
@@ -278,15 +286,100 @@ struct StudioInvokeArgs {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let language = resolve_output_language(cli.language);
     match cli.command {
-        Command::New(command) => handle_new(command),
-        Command::Check(args) => handle_check(args),
-        Command::Play(args) => handle_play(args),
-        Command::Trace(command) => handle_trace(command),
-        Command::Export(command) => handle_export(command),
-        Command::Workshop(command) => handle_workshop(command),
+        Command::New(command) => handle_new(command, language),
+        Command::Check(args) => handle_check(args, language),
+        Command::Play(args) => handle_play(args, language),
+        Command::Trace(command) => handle_trace(command, language),
+        Command::Export(command) => handle_export(command, language),
+        Command::Workshop(command) => handle_workshop(command, language),
         Command::Studio(args) => handle_studio(args),
     }
+}
+
+fn resolve_output_language(language: Option<OutputLanguage>) -> OutputLanguage {
+    if let Some(language) = language {
+        return language;
+    }
+    match env::var("PLOTFORGE_LANGUAGE")
+        .or_else(|_| env::var("LANG"))
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+    {
+        value if value.starts_with("zh") => OutputLanguage::Zh,
+        _ => OutputLanguage::En,
+    }
+}
+
+fn cli_term(language: OutputLanguage, key: &'static str) -> &'static str {
+    if matches!(language, OutputLanguage::En) {
+        return key;
+    }
+    match key {
+        "scene" => "场景",
+        "choice" => "选择",
+        "delta" => "变化",
+        "trace" => "追踪",
+        "snapshot" => "快照",
+        "run seed" => "运行种子",
+        "prompt version" => "提示词版本",
+        "model version" => "模型版本",
+        "provider config hash" => "Provider 配置哈希",
+        "trace evidence id" => "追踪证据 ID",
+        "snapshot evidence id" => "快照证据 ID",
+        "player input" => "玩家输入",
+        "selected" => "已选择",
+        "intent" => "意图",
+        "intent choice" => "意图选择",
+        "intent action" => "意图动作",
+        "intent matched terms" => "意图匹配词",
+        "intent reason" => "意图原因",
+        "rule" => "规则",
+        "delta empty" => "变化为空",
+        "committed" => "已提交",
+        "rule action" => "规则动作",
+        "rule delta empty" => "规则变化为空",
+        "rule committed" => "规则已提交",
+        "rule error" => "规则错误",
+        "planner" => "规划器",
+        "planner requested" => "规划器请求",
+        "planner scene" => "规划器场景",
+        "planner fallback" => "规划器回退",
+        "planner error" => "规划器错误",
+        "fallback" => "回退",
+        "story before" => "故事前状态",
+        "story after" => "故事后状态",
+        "beat" => "节拍",
+        "turn" => "回合",
+        "world delta" => "世界变化",
+        "diagnostics" => "诊断",
+        "diagnostic" => "诊断",
+        "media references" => "媒体引用",
+        "media" => "媒体",
+        "error" => "错误",
+        "review scene" => "审查场景",
+        "review score" => "审查分数",
+        "review issues" => "审查问题",
+        "review issue" => "审查问题",
+        "desktop runtime draft" => "桌面运行时草稿",
+        "desktop build notes" => "桌面构建说明",
+        _ => key,
+    }
+}
+
+fn none_label(language: OutputLanguage, value: Option<&str>) -> &str {
+    value.unwrap_or(match language {
+        OutputLanguage::En => "none",
+        OutputLanguage::Zh => "无",
+    })
+}
+
+fn unsupported_label(language: OutputLanguage, value: Option<&str>) -> &str {
+    value.unwrap_or(match language {
+        OutputLanguage::En => "unsupported",
+        OutputLanguage::Zh => "不支持",
+    })
 }
 
 fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
@@ -522,12 +615,19 @@ fn print_studio_json(value: impl Serialize) -> Result<()> {
     Ok(())
 }
 
-fn handle_new(command: NewCommand) -> Result<()> {
+fn handle_new(command: NewCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
         NewSubcommand::Demo(args) => {
             let project = create_demo_project(&args.path, args.force)
                 .with_context(|| format!("create demo project at {}", args.path.display()))?;
-            println!("created {} at {}", project.game.title, args.path.display());
+            match language {
+                OutputLanguage::En => {
+                    println!("created {} at {}", project.game.title, args.path.display())
+                }
+                OutputLanguage::Zh => {
+                    println!("已创建 {} 于 {}", project.game.title, args.path.display())
+                }
+            }
         }
         NewSubcommand::Project(args) => {
             let request = ProjectCreationRequest {
@@ -539,31 +639,48 @@ fn handle_new(command: NewCommand) -> Result<()> {
             };
             let report = create_project_from_request(&args.path, request, args.force)
                 .with_context(|| format!("create project at {}", args.path.display()))?;
-            println!(
-                "created project {} at {} ({} files)",
-                report.project.game.title,
-                args.path.display(),
-                report.files_created.len()
-            );
+            match language {
+                OutputLanguage::En => println!(
+                    "created project {} at {} ({} files)",
+                    report.project.game.title,
+                    args.path.display(),
+                    report.files_created.len()
+                ),
+                OutputLanguage::Zh => println!(
+                    "已创建项目 {} 于 {}（{} 个文件）",
+                    report.project.game.title,
+                    args.path.display(),
+                    report.files_created.len()
+                ),
+            }
         }
     }
     Ok(())
 }
 
-fn handle_check(args: ProjectPath) -> Result<()> {
+fn handle_check(args: ProjectPath, language: OutputLanguage) -> Result<()> {
     let project = validate_project(&args.path)
         .with_context(|| format!("validate project at {}", args.path.display()))?;
-    println!(
-        "ok: {} ({} scenes, {} rules, {} characters)",
-        project.game.title,
-        project.scenes.len(),
-        project.rules.len(),
-        project.characters.len()
-    );
+    match language {
+        OutputLanguage::En => println!(
+            "ok: {} ({} scenes, {} rules, {} characters)",
+            project.game.title,
+            project.scenes.len(),
+            project.rules.len(),
+            project.characters.len()
+        ),
+        OutputLanguage::Zh => println!(
+            "通过：{}（{} 个场景，{} 条规则，{} 个角色）",
+            project.game.title,
+            project.scenes.len(),
+            project.rules.len(),
+            project.characters.len()
+        ),
+    }
     Ok(())
 }
 
-fn handle_play(args: PlayArgs) -> Result<()> {
+fn handle_play(args: PlayArgs, language: OutputLanguage) -> Result<()> {
     if !args.once {
         anyhow::bail!("interactive play is not implemented in the MVP; pass --once");
     }
@@ -610,144 +727,229 @@ fn handle_play(args: PlayArgs) -> Result<()> {
         None
     };
 
-    println!("scene: {} - {}", step.scene.key, step.scene.title);
     println!(
-        "choice: {}",
-        step.trace.selected_choice.as_deref().unwrap_or("none")
+        "{}: {} - {}",
+        cli_term(language, "scene"),
+        step.scene.key,
+        step.scene.title
     );
-    println!("delta:");
+    println!(
+        "{}: {}",
+        cli_term(language, "choice"),
+        none_label(language, step.trace.selected_choice.as_deref())
+    );
+    println!("{}:", cli_term(language, "delta"));
     for line in summarize_delta(&step.trace.world_state_delta) {
         println!("  {line}");
     }
-    println!("trace: {}", trace_path.display());
+    println!("{}: {}", cli_term(language, "trace"), trace_path.display());
     if let Some(snapshot_path) = snapshot_path {
-        println!("snapshot: {}", snapshot_path.display());
+        println!(
+            "{}: {}",
+            cli_term(language, "snapshot"),
+            snapshot_path.display()
+        );
     }
     Ok(())
 }
 
-fn handle_trace(command: TraceCommand) -> Result<()> {
+fn handle_trace(command: TraceCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
         TraceSubcommand::Inspect(args) => {
             let text = fs::read_to_string(&args.path)
                 .with_context(|| format!("read trace {}", args.path.display()))?;
             let trace: plotforge_schema::RuntimeTrace =
                 serde_json::from_str(&text).context("parse trace json")?;
-            println!("trace: {}", trace.id);
-            println!("run seed: {}", trace.reproducibility.run_seed);
-            println!("prompt version: {}", trace.reproducibility.prompt_version);
-            println!("model version: {}", trace.reproducibility.model_version);
+            println!("{}: {}", cli_term(language, "trace"), trace.id);
             println!(
-                "provider config hash: {}",
+                "{}: {}",
+                cli_term(language, "run seed"),
+                trace.reproducibility.run_seed
+            );
+            println!(
+                "{}: {}",
+                cli_term(language, "prompt version"),
+                trace.reproducibility.prompt_version
+            );
+            println!(
+                "{}: {}",
+                cli_term(language, "model version"),
+                trace.reproducibility.model_version
+            );
+            println!(
+                "{}: {}",
+                cli_term(language, "provider config hash"),
                 trace.reproducibility.provider_config_hash
             );
             println!(
-                "trace evidence id: {}",
-                trace.reproducibility.trace_id.as_deref().unwrap_or("none")
+                "{}: {}",
+                cli_term(language, "trace evidence id"),
+                none_label(language, trace.reproducibility.trace_id.as_deref())
             );
             println!(
-                "snapshot evidence id: {}",
-                trace
-                    .reproducibility
-                    .snapshot_id
-                    .as_deref()
-                    .unwrap_or("none")
+                "{}: {}",
+                cli_term(language, "snapshot evidence id"),
+                none_label(language, trace.reproducibility.snapshot_id.as_deref())
             );
             println!(
-                "player input: {}",
-                trace.player_input.as_deref().unwrap_or("none")
+                "{}: {}",
+                cli_term(language, "player input"),
+                none_label(language, trace.player_input.as_deref())
             );
             println!(
-                "selected: {}",
-                trace.selected_choice.as_deref().unwrap_or("none")
+                "{}: {}",
+                cli_term(language, "selected"),
+                none_label(language, trace.selected_choice.as_deref())
             );
             if let Some(intent) = trace.action_intent.as_ref() {
                 println!(
-                    "intent: {}",
-                    intent.action_type.as_deref().unwrap_or("unsupported")
+                    "{}: {}",
+                    cli_term(language, "intent"),
+                    unsupported_label(language, intent.action_type.as_deref())
                 );
                 println!("intent status: {:?}", intent.status);
                 println!(
-                    "intent choice: {}",
-                    intent.choice_id.as_deref().unwrap_or("none")
+                    "{}: {}",
+                    cli_term(language, "intent choice"),
+                    none_label(language, intent.choice_id.as_deref())
                 );
                 println!(
-                    "intent action: {}",
-                    intent.action_type.as_deref().unwrap_or("unsupported")
+                    "{}: {}",
+                    cli_term(language, "intent action"),
+                    unsupported_label(language, intent.action_type.as_deref())
                 );
-                println!("intent matched terms: {}", intent.matched_terms.join(", "));
                 println!(
-                    "intent reason: {}",
-                    intent.reason.as_deref().unwrap_or("none")
+                    "{}: {}",
+                    cli_term(language, "intent matched terms"),
+                    intent.matched_terms.join(", ")
+                );
+                println!(
+                    "{}: {}",
+                    cli_term(language, "intent reason"),
+                    none_label(language, intent.reason.as_deref())
                 );
             }
             if let Some(rule_result) = trace.rule_result.as_ref() {
                 println!(
-                    "rule: {} (delta empty: {}, committed: {})",
-                    rule_result.action_type, rule_result.delta_empty, rule_result.state_committed
+                    "{}: {} ({}: {}, {}: {})",
+                    cli_term(language, "rule"),
+                    rule_result.action_type,
+                    cli_term(language, "delta empty"),
+                    rule_result.delta_empty,
+                    cli_term(language, "committed"),
+                    rule_result.state_committed
                 );
-                println!("rule action: {}", rule_result.action_type);
-                println!("rule delta empty: {}", rule_result.delta_empty);
-                println!("rule committed: {}", rule_result.state_committed);
+                println!(
+                    "{}: {}",
+                    cli_term(language, "rule action"),
+                    rule_result.action_type
+                );
+                println!(
+                    "{}: {}",
+                    cli_term(language, "rule delta empty"),
+                    rule_result.delta_empty
+                );
+                println!(
+                    "{}: {}",
+                    cli_term(language, "rule committed"),
+                    rule_result.state_committed
+                );
                 if let Some(error) = rule_result.error.as_ref() {
-                    println!("rule error: {} - {}", error.code, error.message);
+                    println!(
+                        "{}: {} - {}",
+                        cli_term(language, "rule error"),
+                        error.code,
+                        error.message
+                    );
                 }
             }
             if let Some(planner_result) = trace.planner_result.as_ref() {
                 println!(
-                    "planner: {} (fallback: {})",
-                    planner_result.scene_key.as_deref().unwrap_or("none"),
+                    "{}: {} ({}: {})",
+                    cli_term(language, "planner"),
+                    none_label(language, planner_result.scene_key.as_deref()),
+                    cli_term(language, "fallback"),
                     planner_result.fallback_used
                 );
                 println!(
-                    "planner requested: {}",
+                    "{}: {}",
+                    cli_term(language, "planner requested"),
                     planner_result.requested_action_type
                 );
                 println!(
-                    "planner scene: {}",
-                    planner_result.scene_key.as_deref().unwrap_or("none")
+                    "{}: {}",
+                    cli_term(language, "planner scene"),
+                    none_label(language, planner_result.scene_key.as_deref())
                 );
-                println!("planner fallback: {}", planner_result.fallback_used);
+                println!(
+                    "{}: {}",
+                    cli_term(language, "planner fallback"),
+                    planner_result.fallback_used
+                );
                 if let Some(error) = planner_result.error.as_ref() {
-                    println!("planner error: {} - {}", error.code, error.message);
+                    println!(
+                        "{}: {} - {}",
+                        cli_term(language, "planner error"),
+                        error.code,
+                        error.message
+                    );
                 }
             }
-            println!("fallback: {}", trace.fallback_used);
             println!(
-                "story before: scene={} beat={} turn={}",
+                "{}: {}",
+                cli_term(language, "fallback"),
+                trace.fallback_used
+            );
+            println!(
+                "{}: {}={} {}={} {}={}",
+                cli_term(language, "story before"),
+                cli_term(language, "scene"),
                 trace.story_state_before.current_scene_key,
-                trace
-                    .story_state_before
-                    .current_beat_id
-                    .as_deref()
-                    .unwrap_or("none"),
+                cli_term(language, "beat"),
+                none_label(
+                    language,
+                    trace.story_state_before.current_beat_id.as_deref()
+                ),
+                cli_term(language, "turn"),
                 trace.story_state_before.turn
             );
             println!(
-                "story after: scene={} beat={} turn={}",
+                "{}: {}={} {}={} {}={}",
+                cli_term(language, "story after"),
+                cli_term(language, "scene"),
                 trace.story_state_after.current_scene_key,
-                trace
-                    .story_state_after
-                    .current_beat_id
-                    .as_deref()
-                    .unwrap_or("none"),
+                cli_term(language, "beat"),
+                none_label(language, trace.story_state_after.current_beat_id.as_deref()),
+                cli_term(language, "turn"),
                 trace.story_state_after.turn
             );
-            println!("world delta:");
+            println!("{}:", cli_term(language, "world delta"));
             for line in summarize_delta(&trace.world_state_delta) {
                 println!("  {line}");
             }
-            println!("diagnostics: {}", trace.diagnostics.len());
+            println!(
+                "{}: {}",
+                cli_term(language, "diagnostics"),
+                trace.diagnostics.len()
+            );
             for diagnostic in &trace.diagnostics {
                 println!(
-                    "diagnostic: {:?} {:?} - {}",
-                    diagnostic.stage, diagnostic.status, diagnostic.message
+                    "{}: {:?} {:?} - {}",
+                    cli_term(language, "diagnostic"),
+                    diagnostic.stage,
+                    diagnostic.status,
+                    diagnostic.message
                 );
             }
-            println!("media references: {}", trace.media_references.len());
+            println!(
+                "{}: {}",
+                cli_term(language, "media references"),
+                trace.media_references.len()
+            );
             for media in &trace.media_references {
                 println!(
-                    "media: {:?} {} {} -> {}",
+                    "{}: {:?} {} {} -> {}",
+                    cli_term(language, "media"),
                     media.reference.reference_kind,
                     media.reference.reference_id,
                     media.reference.slot,
@@ -755,16 +957,32 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
                 );
             }
             for error in &trace.errors {
-                println!("error: {} - {}", error.code, error.message);
+                println!(
+                    "{}: {} - {}",
+                    cli_term(language, "error"),
+                    error.code,
+                    error.message
+                );
             }
             if let Some(review) = trace.narrative_review.as_ref() {
-                println!("review scene: {}", review.scene_key);
-                println!("review score: {}", review.score);
-                println!("review issues: {}", review.issues.len());
+                println!(
+                    "{}: {}",
+                    cli_term(language, "review scene"),
+                    review.scene_key
+                );
+                println!("{}: {}", cli_term(language, "review score"), review.score);
+                println!(
+                    "{}: {}",
+                    cli_term(language, "review issues"),
+                    review.issues.len()
+                );
                 for issue in &review.issues {
                     println!(
-                        "review issue: {:?} {:?} - {}",
-                        issue.kind, issue.severity, issue.message
+                        "{}: {:?} {:?} - {}",
+                        cli_term(language, "review issue"),
+                        issue.kind,
+                        issue.severity,
+                        issue.message
                     );
                 }
             }
@@ -773,7 +991,7 @@ fn handle_trace(command: TraceCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_export(command: ExportCommand) -> Result<()> {
+fn handle_export(command: ExportCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
         ExportSubcommand::Profiles => {
             for profile in supported_export_profiles() {
@@ -799,11 +1017,18 @@ fn handle_export(command: ExportCommand) -> Result<()> {
                             zip_path.display()
                         )
                     })?;
-                println!(
-                    "exported static zip to {} ({} files)",
-                    zip_report.archive_path.display(),
-                    zip_report.archived_files.len()
-                );
+                match language {
+                    OutputLanguage::En => println!(
+                        "exported static zip to {} ({} files)",
+                        zip_report.archive_path.display(),
+                        zip_report.archived_files.len()
+                    ),
+                    OutputLanguage::Zh => println!(
+                        "已导出静态 zip 到 {}（{} 个文件）",
+                        zip_report.archive_path.display(),
+                        zip_report.archived_files.len()
+                    ),
+                }
                 zip_report.source_report
             } else {
                 export_static_web(&args.path, &args.out).with_context(|| {
@@ -814,11 +1039,18 @@ fn handle_export(command: ExportCommand) -> Result<()> {
                     )
                 })?
             };
-            println!(
-                "exported static player to {} ({} files)",
-                report.output_dir.display(),
-                report.files_written.len()
-            );
+            match language {
+                OutputLanguage::En => println!(
+                    "exported static player to {} ({} files)",
+                    report.output_dir.display(),
+                    report.files_written.len()
+                ),
+                OutputLanguage::Zh => println!(
+                    "已导出静态播放器到 {}（{} 个文件）",
+                    report.output_dir.display(),
+                    report.files_written.len()
+                ),
+            }
         }
         ExportSubcommand::Desktop(args) => {
             let report =
@@ -829,17 +1061,26 @@ fn handle_export(command: ExportCommand) -> Result<()> {
                         args.out.display()
                     )
                 })?;
+            match language {
+                OutputLanguage::En => println!(
+                    "exported desktop runtime draft to {} ({} files)",
+                    report.output_dir.display(),
+                    report.files_written.len()
+                ),
+                OutputLanguage::Zh => println!(
+                    "已导出桌面运行时草稿到 {}（{} 个文件）",
+                    report.output_dir.display(),
+                    report.files_written.len()
+                ),
+            }
             println!(
-                "exported desktop runtime draft to {} ({} files)",
-                report.output_dir.display(),
-                report.files_written.len()
-            );
-            println!(
-                "desktop runtime draft: {}",
+                "{}: {}",
+                cli_term(language, "desktop runtime draft"),
                 report.output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE).display()
             );
             println!(
-                "desktop build notes: {}",
+                "{}: {}",
+                cli_term(language, "desktop build notes"),
                 report.output_dir.join("desktop-build-notes.md").display()
             );
         }
@@ -857,7 +1098,7 @@ fn export_profile_target_label(target: &ExportProfileTarget) -> &'static str {
     }
 }
 
-fn handle_workshop(command: WorkshopCommand) -> Result<()> {
+fn handle_workshop(command: WorkshopCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
         WorkshopSubcommand::Validate(args) => {
             let report = validate_workshop_package(&args.package_dir).with_context(|| {
@@ -866,7 +1107,7 @@ fn handle_workshop(command: WorkshopCommand) -> Result<()> {
                     args.package_dir.display()
                 )
             })?;
-            print_workshop_validation("workshop package ok", &report);
+            print_workshop_validation(language, "workshop package ok", &report);
         }
         WorkshopSubcommand::Import(args) => {
             let report = import_workshop_library_package(&args.library_root, &args.package_dir)
@@ -881,13 +1122,20 @@ fn handle_workshop(command: WorkshopCommand) -> Result<()> {
                 "imported workshop item {} ({})",
                 report.item.local_id, report.item.title
             );
-            print_workshop_validation("validated imported package", &report.validation_report);
+            print_workshop_validation(
+                language,
+                "validated imported package",
+                &report.validation_report,
+            );
         }
         WorkshopSubcommand::List(args) => {
             let items = list_workshop_library(&args.library_root).with_context(|| {
                 format!("list workshop library {}", args.library_root.display())
             })?;
-            println!("workshop library items: {}", items.len());
+            match language {
+                OutputLanguage::En => println!("workshop library items: {}", items.len()),
+                OutputLanguage::Zh => println!("Workshop 库条目：{}", items.len()),
+            }
             for item in items {
                 println!(
                     "{} title={} blocked={} reports={}",
@@ -911,7 +1159,11 @@ fn handle_workshop(command: WorkshopCommand) -> Result<()> {
                 "loaded workshop item {} ({})",
                 report.item.local_id, report.item.title
             );
-            print_workshop_validation("validated loaded package", &report.validation_report);
+            print_workshop_validation(
+                language,
+                "validated loaded package",
+                &report.validation_report,
+            );
         }
         WorkshopSubcommand::Remix(args) => {
             let report = remix_workshop_library_item(
@@ -932,7 +1184,11 @@ fn handle_workshop(command: WorkshopCommand) -> Result<()> {
                 "remixed workshop item {} -> {} ({})",
                 report.source_local_id, report.item.local_id, report.item.title
             );
-            print_workshop_validation("validated remixed package", &report.validation_report);
+            print_workshop_validation(
+                language,
+                "validated remixed package",
+                &report.validation_report,
+            );
         }
         WorkshopSubcommand::Block(args) => {
             let item =
@@ -1062,10 +1318,18 @@ fn handle_workshop(command: WorkshopCommand) -> Result<()> {
 }
 
 fn print_workshop_validation(
+    language: OutputLanguage,
     label: &str,
     report: &plotforge_workshop::WorkshopPackageValidationReport,
 ) {
     let byte_total: u64 = report.files.iter().map(|file| file.byte_length).sum();
+    let label = match (language, label) {
+        (OutputLanguage::Zh, "workshop package ok") => "Workshop 包通过",
+        (OutputLanguage::Zh, "validated imported package") => "已验证导入包",
+        (OutputLanguage::Zh, "validated loaded package") => "已验证加载包",
+        (OutputLanguage::Zh, "validated remixed package") => "已验证 Remix 包",
+        _ => label,
+    };
     println!(
         "{label}: {} title={} files={} bytes={}",
         report.manifest.package_id,

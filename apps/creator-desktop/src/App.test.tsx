@@ -25,7 +25,12 @@ import type {
   SourceFileSummary,
 } from "./tauriBridge";
 
-afterEach(cleanup);
+afterEach(() => {
+  if (typeof window.localStorage?.removeItem === "function") {
+    window.localStorage.removeItem("plotforge:creator-desktop:locale");
+  }
+  cleanup();
+});
 
 describe("App", () => {
   it("loads project data, lists source files, and saves editable text", async () => {
@@ -178,6 +183,67 @@ describe("App", () => {
     expect(screen.getByText("ACP / external agent bridge")).toBeTruthy();
     expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
     expect(screen.queryByText("Mock Story Agent")).toBeNull();
+  });
+
+  it("switches Studio chrome between English and Chinese", async () => {
+    const dataSource = appTestDataSource();
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+    );
+
+    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(screen.getAllByText("Project Launchpad").length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Language"), {
+      target: { value: "zh" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("项目启动台").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("运行可玩证明").length).toBeGreaterThan(0);
+    });
+    if (typeof window.localStorage?.getItem === "function") {
+      expect(window.localStorage.getItem("plotforge:creator-desktop:locale")).toBe(
+        "zh",
+      );
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "导演模式" }));
+    await waitFor(() => {
+      expect(screen.getByText("导演指令栏")).toBeTruthy();
+      expect(screen.getByText("运行一次运行时回合")).toBeTruthy();
+      expect(screen.getByText(/\d+ 个选择/)).toBeTruthy();
+      expect(screen.getByText("恢复最新")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "当前没有可用的决策队列。运行一个回合以生成运行时证据；Agent 审批队列尚未实现。",
+        ),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "产物审查" }));
+    await waitFor(() => {
+      expect(screen.getAllByText("实时构建室").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("未捕获").length).toBeGreaterThan(0);
+      expect(screen.getByText("项目中已加载 1 个可编辑界面。")).toBeTruthy();
+      expect(screen.getByText("运行可玩证明以生成追踪证据。")).toBeTruthy();
+      expect(screen.getByText("当前源产物")).toBeTruthy();
+      expect(screen.getByText("本会话尚未运行运行时证明。")).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByLabelText("语言"), {
+      target: { value: "en" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Live Build Room").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Artifact Review").length).toBeGreaterThan(0);
+      expect(screen.getByText("Current Source Artifacts")).toBeTruthy();
+      expect(screen.getByText("No runtime proof has been run for this session."))
+        .toBeTruthy();
+    });
+    expect(screen.queryByText("实时构建室")).toBeNull();
   });
 
   it("renders asset records and visual-audio bible cards before background fallback", async () => {

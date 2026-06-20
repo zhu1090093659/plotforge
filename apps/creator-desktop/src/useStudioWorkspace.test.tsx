@@ -94,6 +94,23 @@ describe("useStudioWorkspace", () => {
     await screen.findByText("error:cannot refresh project");
   });
 
+  it("renders object-shaped failures without object string coercion", async () => {
+    const objectFailure = workspaceTestDataSource({
+      async openProject() {
+        throw { reason: "cannot load project", stage: "openProject" };
+      },
+    });
+
+    render(<WorkspaceProbe dataSource={objectFailure} />);
+
+    expect(
+      await screen.findByText(
+        'error:{"reason":"cannot load project","stage":"openProject"}',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/error:\[object Object\]/)).toBeNull();
+  });
+
   it("keeps playtest and export state inside the workspace boundary", async () => {
     const dataSource = workspaceTestDataSource();
 

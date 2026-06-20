@@ -57,6 +57,8 @@ import {
   defaultNewProjectPath,
   useStudioWorkspace,
 } from "./useStudioWorkspace";
+import { LanguageToggle, StudioI18nProvider } from "./i18n";
+import { errorMessage } from "./errorMessage";
 
 const boundaryChecks = [
   { label: "Generated contracts", value: "plotforge.d.ts", ok: true },
@@ -247,7 +249,7 @@ export function App({
       setCreateProjectPath(report.project_path);
       await loadProject(report.project_path);
     } catch (source) {
-      setCreateError(source instanceof Error ? source.message : String(source));
+      setCreateError(errorMessage(source));
     } finally {
       setCreating(false);
     }
@@ -284,7 +286,7 @@ export function App({
       setFormStatus({
         section,
         tone: "error",
-        message: source instanceof Error ? source.message : String(source),
+        message: errorMessage(source),
       });
     } finally {
       setFormSaving(null);
@@ -2729,68 +2731,71 @@ export function App({
   }
 
   return (
-    <StudioShell
-      projectPath={loadedPath}
-      projectLoading={loading}
-      onOpenProject={() => void loadProject(projectPath)}
-      workflowItems={agentNativeWorkflows.map((workflow) => ({
-        id: workflow.id,
-        label: workflow.label,
-        sublabel: workflow.shortLabel,
-        description: workflow.description,
-        icon: workflow.icon,
-        selected: workflow.id === activeWorkflow,
-        onSelect: () => openWorkflow(workflow.id),
-      }))}
-      surfaceItems={activeWorkflowSections.map((section) => ({
-        id: section.id,
-        label: section.label,
-        sublabel: section.status,
-        description: section.description,
-        icon: section.icon,
-        selected: section.id === activeSection,
-        onSelect: () => openStudioSection(section.id),
-      }))}
-      header={{
-        eyebrow: `${activeWorkflowMeta.label} / ${dataSource.runtimeName}`,
-        title: activeSectionMeta.label,
-        subtitle: `${projectSummary?.title ?? "No project loaded"} - ${activeWorkflowMeta.description}`,
-        badges: activeScreenReferences.map((reference) => ({
-          id: reference.id,
-          label: reference.title,
-          title: reference.fileName,
-        })),
-      }}
-      topActions={
-        <>
-          <input
-            aria-label="Project path"
-            value={projectPath}
-            onChange={(event) => setProjectPath(event.target.value)}
-            className={`${studioUiClassNames.input} sm:w-72`}
-          />
-          <StudioButton
-            title="Refresh project files"
-            aria-label="Refresh project files"
-            onClick={() => void loadProject(projectPath)}
-          >
-            {loading ? (
-              <Loader2 aria-hidden size={18} className="animate-spin" />
-            ) : (
-              <RefreshCcw aria-hidden size={18} />
-            )}
-          </StudioButton>
-          <StudioButton onClick={() => openStudioSection("playtest")}>
-            <Play aria-hidden size={16} />
-            Playtest
-          </StudioButton>
-        </>
-      }
-      rightPanel={renderEvidencePanel()}
-      commandDock={renderCommandDock()}
-    >
-      {renderActiveSection()}
-    </StudioShell>
+    <StudioI18nProvider>
+      <StudioShell
+        projectPath={loadedPath}
+        projectLoading={loading}
+        onOpenProject={() => void loadProject(projectPath)}
+        workflowItems={agentNativeWorkflows.map((workflow) => ({
+          id: workflow.id,
+          label: workflow.label,
+          sublabel: workflow.shortLabel,
+          description: workflow.description,
+          icon: workflow.icon,
+          selected: workflow.id === activeWorkflow,
+          onSelect: () => openWorkflow(workflow.id),
+        }))}
+        surfaceItems={activeWorkflowSections.map((section) => ({
+          id: section.id,
+          label: section.label,
+          sublabel: section.status,
+          description: section.description,
+          icon: section.icon,
+          selected: section.id === activeSection,
+          onSelect: () => openStudioSection(section.id),
+        }))}
+        header={{
+          eyebrow: `${activeWorkflowMeta.label} / ${dataSource.runtimeName}`,
+          title: activeSectionMeta.label,
+          subtitle: `${projectSummary?.title ?? "No project loaded"} - ${activeWorkflowMeta.description}`,
+          badges: activeScreenReferences.map((reference) => ({
+            id: reference.id,
+            label: reference.title,
+            title: reference.fileName,
+          })),
+        }}
+        topActions={
+          <>
+            <LanguageToggle />
+            <input
+              aria-label="Project path"
+              value={projectPath}
+              onChange={(event) => setProjectPath(event.target.value)}
+              className={`${studioUiClassNames.input} sm:w-72`}
+            />
+            <StudioButton
+              title="Refresh project files"
+              aria-label="Refresh project files"
+              onClick={() => void loadProject(projectPath)}
+            >
+              {loading ? (
+                <Loader2 aria-hidden size={18} className="animate-spin" />
+              ) : (
+                <RefreshCcw aria-hidden size={18} />
+              )}
+            </StudioButton>
+            <StudioButton onClick={() => openStudioSection("playtest")}>
+              <Play aria-hidden size={16} />
+              Playtest
+            </StudioButton>
+          </>
+        }
+        rightPanel={renderEvidencePanel()}
+        commandDock={renderCommandDock()}
+      >
+        {renderActiveSection()}
+      </StudioShell>
+    </StudioI18nProvider>
   );
 }
 

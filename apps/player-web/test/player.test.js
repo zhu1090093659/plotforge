@@ -56,6 +56,47 @@ describe("PlotForge static player", () => {
     ).toBe(1);
   });
 
+  it("renders static player chrome in Chinese and persists language changes", () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+
+    renderPlayer(sampleManifest(), dom.window.document, { locale: "zh" });
+    const continueChoice = dom.window.document.querySelector(
+      '[data-action-type="continue"]',
+    );
+    if (!continueChoice) {
+      throw new Error("expected continue choice button");
+    }
+    continueChoice.click();
+
+    expect(dom.window.document.documentElement.lang).toBe("zh-CN");
+    expect(dom.window.document.querySelector("[data-player-root]")?.dataset.locale).toBe(
+      "zh",
+    );
+    expect(
+      dom.window.document.querySelector('[data-field="status"]')?.textContent,
+    ).toBe("已选择 continue");
+    expect(
+      dom.window.document.querySelector('[data-field="progress"]')?.textContent,
+    ).toBe("场景 1 / 2 · 节拍 2 / 2");
+
+    const languageSelect = dom.window.document.querySelector(
+      '[data-field="language-select"]',
+    );
+    if (!languageSelect) {
+      throw new Error("expected language select");
+    }
+    languageSelect.value = "en";
+    languageSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    expect(
+      dom.window.localStorage.getItem("plotforge:player:locale"),
+    ).toBe("en");
+    expect(dom.window.document.documentElement.lang).toBe("en");
+  });
+
+
   it("navigates scene graph choices and ends a completed static path", () => {
     const dom = new JSDOM(indexHtml, {
       url: "http://127.0.0.1:4173/",
@@ -392,6 +433,7 @@ describe("PlotForge static player", () => {
   it("ships static player files without external network URLs", () => {
     expect(indexHtml).toContain('name="viewport"');
     expect(indexHtml).toContain('src="./player.js"');
+    expect(indexHtml).toContain('data-field="language-select"');
     for (const file of [indexHtml, playerJs, playerCoreJs, stylesCss]) {
       expect(file).not.toMatch(/https?:\/\//);
       expect(file).not.toMatch(/\/\/cdn\.|\/\/unpkg\.|\/\/fonts\./);

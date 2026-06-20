@@ -5,19 +5,22 @@ export async function loadManifest(fetchManifest = defaultFetchManifest) {
 export async function bootPlayer(options = {}) {
   const root = options.root ?? document;
   const mount = playerRoot(root);
+  const ui = createPlayerI18n(root, options.locale);
   try {
     const manifest = await loadManifest(options.fetchManifest);
-    renderPlayer(manifest, root);
+    renderPlayer(manifest, root, { locale: ui.locale });
   } catch (error) {
     mount.dataset.state = "error";
-    text(root, "status", "Export failed to load");
-    text(root, "scene-title", "Unable to load PlotForge export");
+    applyLocale(root, mount, ui.locale);
+    text(root, "status", ui.t("exportFailed"));
+    text(root, "scene-title", ui.t("unableToLoad"));
     text(root, "beat", error instanceof Error ? error.message : String(error));
   }
 }
 
-export function renderPlayer(manifest, root = document) {
+export function renderPlayer(manifest, root = document, options = {}) {
   const mount = playerRoot(root);
+  const ui = createPlayerI18n(root, options.locale);
   const saveStore = createSaveStore(root, manifest);
   const savedPosition = saveStore.load();
   const scene = savedPosition
@@ -31,9 +34,11 @@ export function renderPlayer(manifest, root = document) {
   mount.dataset.state = "ready";
   mount.dataset.saveKey = saveStore.key;
   mount.dataset.saveState = saveStore.available ? "ready" : "unavailable";
-  text(root, "status", "Static export");
+  applyLocale(root, mount, ui.locale);
+  wireLanguageControl(manifest, root, mount, ui.locale);
+  text(root, "status", ui.t("staticExport"));
   text(root, "game-title", manifest.game.title);
-  renderSceneBeat(manifest, scene, firstBeat, root, mount, saveStore);
+  renderSceneBeat(manifest, scene, firstBeat, root, mount, saveStore, ui);
 
   updateViewportMode(root);
   return { sceneKey: scene.key, choiceCount: firstBeat?.choices.length ?? 0 };
@@ -45,7 +50,7 @@ export function updateViewportMode(root = document) {
     (view?.innerWidth ?? 1024) < 760 ? "mobile" : "desktop";
 }
 
-function renderSceneBeat(manifest, scene, beat, root, mount, saveStore) {
+function renderSceneBeat(manifest, scene, beat, root, mount, saveStore, ui) {
   const image = field(root, "scene-image");
   const sceneIndex = manifest.scenes.findIndex((candidate) => candidate.key === scene.key);
   const beatIndex = scene.beats.findIndex((candidate) => candidate.id === beat?.id);
@@ -60,15 +65,15 @@ function renderSceneBeat(manifest, scene, beat, root, mount, saveStore) {
   text(root, "hook", scene.hook);
   text(root, "outcome", "");
   text(root, "beat", beat?.text ?? "");
-  text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length));
+  text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length, ui));
   image.setAttribute("src", scene.background_asset);
-  image.setAttribute("alt", `${scene.title} scene artwork`);
-  renderAudio(manifest, scene, beat, root, mount);
+  image.setAttribute("alt", ui.t("sceneArtwork", { title: scene.title }));
+  renderAudio(manifest, scene, beat, root, mount, ui);
   saveStore.save({ sceneKey: scene.key, beatId: beat?.id ?? null });
-  renderChoices(manifest, beat, scene, root, mount, saveStore);
+  renderChoices(manifest, beat, scene, root, mount, saveStore, ui);
 }
 
-function renderChoices(manifest, beat, scene, root, mount, saveStore) {
+function renderChoices(manifest, beat, scene, root, mount, saveStore, ui) {
   const choices = field(root, "choices");
   choices.replaceChildren();
   for (const choice of beat?.choices ?? []) {
@@ -85,33 +90,33 @@ function renderChoices(manifest, beat, scene, root, mount, saveStore) {
       }
       button.setAttribute("aria-pressed", "true");
       mount.dataset.lastChoice = choice.id;
-      text(root, "status", `Selected ${choice.action_type}`);
+      text(root, "status", ui.t("selectedAction", { actionType: choice.action_type }));
       text(root, "outcome", choice.dramatic_purpose);
-      applyChoiceTransition(manifest, scene, beat, choice, root, mount, saveStore);
+      applyChoiceTransition(manifest, scene, beat, choice, root, mount, saveStore, ui);
     });
     choices.appendChild(button);
   }
 }
 
-function applyChoiceTransition(manifest, scene, beat, choice, root, mount, saveStore) {
+function applyChoiceTransition(manifest, scene, beat, choice, root, mount, saveStore, ui) {
   const transition = resolveChoiceTransition(manifest, scene, beat, choice);
   if (transition.kind === "beat") {
-    renderSceneBeat(manifest, scene, transition.beat, root, mount, saveStore);
+    renderSceneBeat(manifest, scene, transition.beat, root, mount, saveStore, ui);
     text(root, "outcome", choice.dramatic_purpose);
     return;
   }
 
   if (transition.kind === "scene") {
     const entry = requiredEntryBeat(transition.scene);
-    renderSceneBeat(manifest, transition.scene, entry, root, mount, saveStore);
+    renderSceneBeat(manifest, transition.scene, entry, root, mount, saveStore, ui);
     text(root, "outcome", choice.dramatic_purpose);
     return;
   }
 
-  renderEndState(manifest, scene, beat, choice, root, mount, saveStore);
+  renderEndState(manifest, scene, beat, choice, root, mount, saveStore, ui);
 }
 
-function renderEndState(manifest, scene, beat, choice, root, mount, saveStore) {
+function renderEndState(manifest, scene, beat, choice, root, mount, saveStore, ui) {
   mount.dataset.mode = "ended";
   mount.dataset.currentSceneKey = scene.key;
   if (beat?.id) {
@@ -119,15 +124,15 @@ function renderEndState(manifest, scene, beat, choice, root, mount, saveStore) {
   } else {
     delete mount.dataset.currentBeatId;
   }
-  text(root, "status", "Story complete");
+  text(root, "status", ui.t("storyComplete"));
   text(root, "scene-title", scene.title);
   text(root, "hook", scene.hook);
   text(root, "outcome", choice.dramatic_purpose);
-  text(root, "beat", "This static story path has ended.");
+  text(root, "beat", ui.t("storyEnded"));
   const sceneIndex = manifest.scenes.findIndex((candidate) => candidate.key === scene.key);
   const beatIndex = scene.beats.findIndex((candidate) => candidate.id === beat?.id);
-  text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length));
-  renderAudio(manifest, scene, beat, root, mount);
+  text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length, ui));
+  renderAudio(manifest, scene, beat, root, mount, ui);
   field(root, "choices").replaceChildren();
   saveStore.save({ sceneKey: scene.key, beatId: beat?.id ?? null });
 }
@@ -260,14 +265,19 @@ function sceneAfter(manifest, scene) {
   return manifest.scenes[index + 1] ?? null;
 }
 
-function progressLabel(sceneIndex, sceneCount, beatIndex, beatCount) {
+function progressLabel(sceneIndex, sceneCount, beatIndex, beatCount, ui) {
   const scenePart =
-    sceneIndex >= 0 ? `Scene ${sceneIndex + 1} of ${sceneCount}` : "Scene";
-  const beatPart = beatIndex >= 0 ? `Beat ${beatIndex + 1} of ${beatCount}` : "Beat";
+    sceneIndex >= 0
+      ? ui.t("sceneProgress", { current: sceneIndex + 1, total: sceneCount })
+      : ui.t("scene");
+  const beatPart =
+    beatIndex >= 0
+      ? ui.t("beatProgress", { current: beatIndex + 1, total: beatCount })
+      : ui.t("beat");
   return `${scenePart} · ${beatPart}`;
 }
 
-function renderAudio(manifest, scene, beat, root, mount) {
+function renderAudio(manifest, scene, beat, root, mount, ui) {
   const panel = field(root, "audio-panel");
   const audioReference = audioReferenceFor(manifest, scene, beat);
   if (!audioReference) {
@@ -287,7 +297,7 @@ function renderAudio(manifest, scene, beat, root, mount) {
   }
 
   const audioPath = audioReference.path;
-  const audio = ensureAudioElement(panel, root);
+  const audio = ensureAudioElement(panel, root, ui);
   if (audio.getAttribute("src") !== audioPath) {
     audio.setAttribute("src", audioPath);
   }
@@ -296,7 +306,7 @@ function renderAudio(manifest, scene, beat, root, mount) {
   mount.dataset.audioSrc = audioPath;
 }
 
-function ensureAudioElement(panel, root) {
+function ensureAudioElement(panel, root, ui) {
   const existing = panel.querySelector("audio");
   if (existing) {
     return existing;
@@ -305,7 +315,7 @@ function ensureAudioElement(panel, root) {
   audio.controls = true;
   audio.preload = "none";
   audio.dataset.field = "scene-audio";
-  audio.setAttribute("aria-label", "Scene audio");
+  audio.setAttribute("aria-label", ui.t("sceneAudio"));
   audio.addEventListener("error", () => {
     const mount = playerRoot(root);
     mount.dataset.audioState = "error";
@@ -402,6 +412,111 @@ function isLocalAssetPath(path) {
     return false;
   }
   return trimmed === path;
+}
+
+const playerLocaleStorageKey = "plotforge:player:locale";
+const playerLocales = new Set(["en", "zh"]);
+
+const playerMessages = {
+  en: {
+    exportFailed: "Export failed to load",
+    unableToLoad: "Unable to load PlotForge export",
+    staticExport: "Static export",
+    selectedAction: ({ actionType }) => `Selected ${actionType}`,
+    storyComplete: "Story complete",
+    storyEnded: "This static story path has ended.",
+    sceneProgress: ({ current, total }) => `Scene ${current} of ${total}`,
+    beatProgress: ({ current, total }) => `Beat ${current} of ${total}`,
+    scene: "Scene",
+    beat: "Beat",
+    sceneArtwork: ({ title }) => `${title} scene artwork`,
+    sceneAudio: "Scene audio",
+  },
+  zh: {
+    exportFailed: "导出加载失败",
+    unableToLoad: "无法加载 PlotForge 导出",
+    staticExport: "静态导出",
+    selectedAction: ({ actionType }) => `已选择 ${actionType}`,
+    storyComplete: "故事完成",
+    storyEnded: "这条静态故事路径已结束。",
+    sceneProgress: ({ current, total }) => `场景 ${current} / ${total}`,
+    beatProgress: ({ current, total }) => `节拍 ${current} / ${total}`,
+    scene: "场景",
+    beat: "节拍",
+    sceneArtwork: ({ title }) => `${title} 场景图`,
+    sceneAudio: "场景音频",
+  },
+};
+
+function createPlayerI18n(root, requestedLocale) {
+  const locale = resolvePlayerLocale(root, requestedLocale);
+  return {
+    locale,
+    t(key, values = {}) {
+      const message = playerMessages[locale][key] ?? playerMessages.en[key];
+      return typeof message === "function" ? message(values) : message;
+    },
+  };
+}
+
+function resolvePlayerLocale(root, requestedLocale) {
+  if (isPlayerLocale(requestedLocale)) {
+    return requestedLocale;
+  }
+  const view = root.defaultView ?? globalThis.window;
+  const urlLocale = localeFromSearch(view?.location?.search);
+  if (urlLocale) {
+    return urlLocale;
+  }
+  const storedLocale = localStorageFor(view)?.getItem(playerLocaleStorageKey);
+  if (isPlayerLocale(storedLocale)) {
+    return storedLocale;
+  }
+  const htmlLocale = root.documentElement?.getAttribute("lang");
+  if (isPlayerLocale(htmlLocale)) {
+    return htmlLocale;
+  }
+  return view?.navigator?.language?.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+function localeFromSearch(search) {
+  if (!search) {
+    return null;
+  }
+  const params = new URLSearchParams(search);
+  const value = params.get("lang") ?? params.get("language");
+  return isPlayerLocale(value) ? value : null;
+}
+
+function isPlayerLocale(value) {
+  return typeof value === "string" && playerLocales.has(value);
+}
+
+function applyLocale(root, mount, locale) {
+  mount.dataset.locale = locale;
+  root.documentElement?.setAttribute("lang", locale === "zh" ? "zh-CN" : "en");
+}
+
+function wireLanguageControl(manifest, root, mount, locale) {
+  const select = root.querySelector('[data-field="language-select"]');
+  if (!select) {
+    return;
+  }
+  select.value = locale;
+  select.addEventListener(
+    "change",
+    () => {
+      const nextLocale = select.value;
+      if (!isPlayerLocale(nextLocale)) {
+        return;
+      }
+      const storage = localStorageFor(root.defaultView ?? globalThis.window);
+      storage?.setItem(playerLocaleStorageKey, nextLocale);
+      renderPlayer(manifest, root, { locale: nextLocale });
+    },
+    { once: true },
+  );
+  mount.dataset.languageControl = "ready";
 }
 
 function createSaveStore(root, manifest) {

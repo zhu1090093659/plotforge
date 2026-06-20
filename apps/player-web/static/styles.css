@@ -21,6 +21,10 @@ button {
   font: inherit;
 }
 
+select {
+  font: inherit;
+}
+
 .pf-player {
   min-height: 100vh;
   display: grid;
@@ -45,8 +49,29 @@ button {
 }
 
 .pf-status {
+  margin-left: auto;
   color: #c9d7c4;
   font-size: 0.9rem;
+}
+
+.pf-language {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(244, 240, 231, 0.16);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #c9d7c4;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.pf-language select {
+  border: 0;
+  color: #f4f0e7;
+  background: transparent;
+  outline: none;
 }
 
 .pf-stage {
@@ -177,6 +202,15 @@ button {
 }
 
 @media (max-width: 760px) {
+  .pf-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pf-status {
+    margin-left: 0;
+  }
+
   .pf-stage {
     grid-template-columns: 1fr;
   }

@@ -75,7 +75,7 @@ export function ArtifactReviewView({
           </div>
 
           <EvidenceCard title="Source Files" value={String(sourceFiles.length)}>
-            {editableFiles.length} editable surfaces loaded from the project.
+            {`${editableFiles.length} editable surfaces loaded from the project.`}
           </EvidenceCard>
           <EvidenceCard title="Runtime Trace" value={traceId}>
             {playtestReport

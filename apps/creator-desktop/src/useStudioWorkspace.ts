@@ -22,6 +22,7 @@ import type {
   SourceFileSummary,
   StaticExportReport,
 } from "./tauriBridge";
+import { errorMessage } from "./errorMessage";
 
 export const defaultPlaytestInput =
   "Raise emergency taxes while auditing corrupt officials.";
@@ -530,8 +531,4 @@ export function defaultNewProjectPath(projectPath: string) {
 
 function trimTrailingSlashes(path: string) {
   return path.replace(/\/+$/, "") || ".";
-}
-
-function errorMessage(source: unknown): string {
-  return source instanceof Error ? source.message : String(source);
 }
