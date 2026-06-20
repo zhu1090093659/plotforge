@@ -580,10 +580,12 @@ describe("App", () => {
     ).toBeGreaterThan(0);
     expect(screen.getByText("matched")).toBeTruthy();
     expect(screen.getByText("pending explicit package hash")).toBeTruthy();
+    expectExportEvidenceStatus("All referenced assets copied", "Pass");
+    // Permanently-pending checks are under the "Technical Details" collapsible — expand it first
+    fireEvent.click(screen.getByRole("button", { name: /Technical Details/ }));
     expectExportEvidenceStatus("No raw responses", "Pending");
     expectExportEvidenceStatus("No secret markers", "Pending");
     expectExportEvidenceStatus("HTTP smoke test passed", "Pending");
-    expectExportEvidenceStatus("All referenced assets copied", "Pass");
   });
 
   it("opens the executable static profile from the Command Center export CTA", async () => {
