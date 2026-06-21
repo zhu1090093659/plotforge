@@ -1,5 +1,4 @@
 import {
-  Download,
   Loader2,
   Play,
   RefreshCcw,
@@ -32,6 +31,8 @@ import { DirectorModeView } from "./DirectorModeView";
 import { ExportView } from "./ExportView";
 import { RulesView } from "./RulesView";
 import { RuntimeTracePanel } from "./runtimeTraceView";
+import { WorldView } from "./WorldView";
+import { StoryView } from "./StoryView";
 import {
   createDefaultStudioDataSource,
   defaultProjectPath,
@@ -619,9 +620,36 @@ export function App({
           />
         );
       case "world":
-        return renderWorldPanel();
+        return (
+          <WorldView
+            worldEditDocument={worldEditDocument}
+            saving={formSaving === "world"}
+            formStatus={formStatus}
+            worldExpansionGoal={worldExpansionGoal}
+            onWorldExpansionGoalChange={setWorldExpansionGoal}
+            onSave={() => void saveWorldEditDocument()}
+            onGenerateWorldExpansion={() => void generateWorldExpansionFromGoal()}
+            onUpdateWorldDocument={updateWorldDocument}
+          />
+        );
       case "story":
-        return renderStoryPanel();
+        return (
+          <StoryView
+            storyCraftEditDocument={storyCraftEditDocument}
+            saving={formSaving === "story"}
+            formStatus={formStatus}
+            storyGenerationConcept={storyGenerationConcept}
+            onStoryGenerationConceptChange={setStoryGenerationConcept}
+            onSave={() => void saveStoryCraftEditDocument()}
+            onGenerateStoryCraft={() => void generateStoryCraftFromConcept()}
+            onUpdateStoryBible={updateStoryBible}
+            onUpdateStoryCraftDocument={(patch) => {
+              if (storyCraftEditDocument) {
+                setStoryCraftEditDocument({ ...storyCraftEditDocument, ...patch });
+              }
+            }}
+          />
+        );
       case "characters":
         return (
           <CharactersView
@@ -852,200 +880,6 @@ export function App({
     } finally {
       setCreating(false);
     }
-  }
-
-  function renderWorldPanel() {
-    return (
-      <section className={panelClassName}>
-        <PanelHeader
-          title="World Bible"
-          subtitle={`${worldEditDocument?.forbidden_facts.length ?? 0} forbidden facts`}
-          action={
-            <SaveButton
-              label="Save World Bible"
-              saving={formSaving === "world"}
-              onClick={() => void saveWorldEditDocument()}
-            />
-          }
-        />
-        <SectionMessage section="world" status={formStatus} />
-        {worldEditDocument ? (
-          <div className="mt-4 grid gap-4 xl:grid-cols-2">
-            <TextareaInput
-              label="World Bible"
-              ariaLabel="World bible markdown"
-              value={worldEditDocument.world_bible_markdown}
-              onChange={(value) =>
-                updateWorldDocument({ world_bible_markdown: value })
-              }
-              minHeight="min-h-80"
-            />
-            <div className="grid gap-4">
-              <TextareaInput
-                label="Canon"
-                ariaLabel="Canon markdown"
-                value={worldEditDocument.canon_markdown}
-                onChange={(value) =>
-                  updateWorldDocument({ canon_markdown: value })
-                }
-                minHeight="min-h-36"
-              />
-              <TextareaInput
-                label="Forbidden facts"
-                ariaLabel="Forbidden facts"
-                value={listToLines(worldEditDocument.forbidden_facts)}
-                onChange={(value) =>
-                  updateWorldDocument({ forbidden_facts: linesToList(value) })
-                }
-                minHeight="min-h-36"
-              />
-            </div>
-            <div className="xl:col-span-2 rounded-md border border-ink/10 bg-white p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <TextInput
-                  label="AI expansion goal"
-                  ariaLabel="World generation goal"
-                  value={worldExpansionGoal}
-                  onChange={setWorldExpansionGoal}
-                  className="min-w-0 flex-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => void generateWorldExpansionFromGoal()}
-                  disabled={formSaving === "world"}
-                  className={secondaryButtonClassName}
-                >
-                  Generate World Expansion
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <EmptyPanel label="World edit document not loaded." />
-        )}
-      </section>
-    );
-  }
-
-  function renderStoryPanel() {
-    const bible = storyCraftEditDocument?.story_craft.bible;
-
-    return (
-      <section className={panelClassName}>
-        <PanelHeader
-          title="Story Craft"
-          subtitle={`${storyCraftEditDocument?.story_craft.plot_threads.length ?? 0} plot threads`}
-          action={
-            <SaveButton
-              label="Save Story Craft"
-              saving={formSaving === "story"}
-              onClick={() => void saveStoryCraftEditDocument()}
-            />
-          }
-        />
-        <SectionMessage section="story" status={formStatus} />
-        {storyCraftEditDocument && bible ? (
-          <div className="mt-4 grid gap-4">
-            <div className="rounded-md border border-ink/10 bg-white p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <TextareaInput
-                  label="AI story concept"
-                  ariaLabel="Story generation concept"
-                  value={storyGenerationConcept}
-                  onChange={setStoryGenerationConcept}
-                  className="min-w-0 flex-1"
-                  minHeight="min-h-20"
-                />
-                <button
-                  type="button"
-                  onClick={() => void generateStoryCraftFromConcept()}
-                  disabled={formSaving === "story"}
-                  className={secondaryButtonClassName}
-                >
-                  Generate StoryCraft
-                </button>
-              </div>
-            </div>
-            <div className="grid gap-4 xl:grid-cols-2">
-              <TextareaInput
-                label="Story Bible"
-                ariaLabel="Story bible markdown"
-                value={storyCraftEditDocument.story_bible_markdown}
-                onChange={(value) =>
-                  setStoryCraftEditDocument({
-                    ...storyCraftEditDocument,
-                    story_bible_markdown: value,
-                  })
-                }
-                minHeight="min-h-52"
-              />
-              <TextareaInput
-                label="Style Guide"
-                ariaLabel="Style guide markdown"
-                value={storyCraftEditDocument.style_guide_markdown}
-                onChange={(value) =>
-                  setStoryCraftEditDocument({
-                    ...storyCraftEditDocument,
-                    style_guide_markdown: value,
-                  })
-                }
-                minHeight="min-h-52"
-              />
-            </div>
-            <div className="grid gap-4 xl:grid-cols-2">
-              <TextInput
-                label="Genre promise"
-                ariaLabel="Genre promise"
-                value={bible.genre_promise}
-                onChange={(value) => updateStoryBible({ genre_promise: value })}
-              />
-              <TextInput
-                label="Central question"
-                ariaLabel="Central question"
-                value={bible.central_question}
-                onChange={(value) =>
-                  updateStoryBible({ central_question: value })
-                }
-              />
-              <TextareaInput
-                label="Target emotions"
-                ariaLabel="Target emotions"
-                value={listToLines(bible.target_emotions)}
-                onChange={(value) =>
-                  updateStoryBible({ target_emotions: linesToList(value) })
-                }
-                minHeight="min-h-32"
-              />
-              <TextareaInput
-                label="Core foreshadowing"
-                ariaLabel="Core foreshadowing"
-                value={listToLines(bible.core_foreshadowing)}
-                onChange={(value) =>
-                  updateStoryBible({ core_foreshadowing: linesToList(value) })
-                }
-                minHeight="min-h-32"
-              />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {storyCraftEditDocument.story_craft.plot_threads.map((thread) => (
-                <article
-                  key={thread.id}
-                  className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
-                >
-                  <p className="text-sm font-semibold">{thread.title}</p>
-                  <p className="mt-1 text-xs font-medium uppercase text-ink/45">
-                    {thread.status}
-                  </p>
-                  <p className="mt-2 text-sm text-ink/65">{thread.promise}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <EmptyPanel label="Story Craft edit document not loaded." />
-        )}
-      </section>
-    );
   }
 
   function renderAssetMaintenancePanel() {

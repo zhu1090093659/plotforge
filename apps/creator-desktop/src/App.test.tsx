@@ -1004,6 +1004,8 @@ describe("App", () => {
     expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /World Bible/ }));
+    // AI expansion goal is in the "Advanced" collapsible — expand it first.
+    fireEvent.click(screen.getByRole("button", { name: /Advanced/ }));
     fireEvent.change(screen.getByLabelText("World generation goal"), {
       target: { value: "Expand northern border canon." },
     });
