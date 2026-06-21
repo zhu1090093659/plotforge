@@ -905,6 +905,40 @@
       ],
       "type": "string"
     },
+    "CharacterDraft": {
+      "additionalProperties": false,
+      "description": "Lightweight draft used by the Studio UI when creating a new character manually.\nTraits are a single newline-separated string so the form can use a textarea;\nthe Rust side splits and trims them before constructing the full `Character`.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "traits_text": {
+          "description": "Newline-separated trait list (one trait per line).",
+          "type": "string"
+        },
+        "visual_card": {
+          "type": "string"
+        },
+        "voice_card": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "role",
+        "traits_text",
+        "visual_card",
+        "voice_card"
+      ],
+      "type": "object"
+    },
     "CharacterEditDocument": {
       "additionalProperties": false,
       "properties": {
@@ -3757,6 +3791,9 @@
     "audio_bible": {
       "$ref": "#/$defs/AudioBible"
     },
+    "character_draft": {
+      "$ref": "#/$defs/CharacterDraft"
+    },
     "character_edit_document": {
       "$ref": "#/$defs/CharacterEditDocument"
     },
@@ -3868,6 +3905,7 @@
     "character_generation_request",
     "character_generation_report",
     "character_portrait_request",
+    "character_draft",
     "reference_analysis",
     "asset_record",
     "media_asset_reference",

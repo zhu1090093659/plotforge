@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 13;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 14;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -360,6 +360,42 @@ pub struct Character {
     pub voice_card: String,
     #[serde(default)]
     pub portrait_request: Option<CharacterPortraitRequest>,
+}
+
+/// Lightweight draft used by the Studio UI when creating a new character manually.
+/// Traits are a single newline-separated string so the form can use a textarea;
+/// the Rust side splits and trims them before constructing the full `Character`.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterDraft {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    /// Newline-separated trait list (one trait per line).
+    pub traits_text: String,
+    pub visual_card: String,
+    pub voice_card: String,
+}
+
+impl CharacterDraft {
+    /// Convert the draft to a fully-assembled `Character`, trimming all string
+    /// fields and splitting `traits_text` on newlines.
+    pub fn into_character(self) -> Character {
+        Character {
+            id: self.id.trim().to_string(),
+            name: self.name.trim().to_string(),
+            role: self.role.trim().to_string(),
+            traits: self
+                .traits_text
+                .lines()
+                .map(|line| line.trim().to_string())
+                .filter(|line| !line.is_empty())
+                .collect(),
+            visual_card: self.visual_card.trim().to_string(),
+            voice_card: self.voice_card.trim().to_string(),
+            portrait_request: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -1664,6 +1700,7 @@ pub struct ContractRootSchemas {
     pub character_generation_request: CharacterGenerationRequest,
     pub character_generation_report: CharacterGenerationReport,
     pub character_portrait_request: CharacterPortraitRequest,
+    pub character_draft: CharacterDraft,
     pub reference_analysis: ReferenceAnalysis,
     pub asset_record: AssetRecord,
     pub media_asset_reference: MediaAssetReference,
@@ -1761,6 +1798,7 @@ export interface NarrativeReviewNote { id: string; scene_key?: string | null; se
 
 export interface CharacterPortraitRequest { prompt_summary: string; style: string; target_asset_slot: string; prompt_hash: string; provider_config_hash: string; reference_asset_ids: string[]; fallback_allowed: boolean; }
 export interface Character { id: string; name: string; role: string; traits: string[]; visual_card: string; voice_card: string; portrait_request?: CharacterPortraitRequest | null; }
+export interface CharacterDraft { id: string; name: string; role: string; traits_text: string; visual_card: string; voice_card: string; }
 export type AssetKind = "image" | "audio" | "voice" | "data";
 export type AssetSourceKind = "user_import" | "generated" | "placeholder" | "external";
 export type AssetReferenceKind = "project" | "scene" | "character" | "export_profile";
@@ -1844,7 +1882,7 @@ export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attem
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; visual_bible: VisualBible; audio_bible: AudioBible; asset_records: AssetRecord[]; ai_safety_policy: AiSafetyPolicy; }
 export interface ExportManifest { game: GameProject; entry_scene: string; scenes: Scene[]; assets: string[]; asset_records: AssetRecord[]; profile: ExportProfile; ai_usage_manifest_path: string; generated_by: string; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; }
 "#,
     );
     output

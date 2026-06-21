@@ -4,6 +4,7 @@ import type {
   AssetRecord,
   AudioBible,
   Character,
+  CharacterDraft,
   CharacterEditDocument,
   CharacterGenerationReport,
   ExportProfile,
@@ -36,6 +37,7 @@ export const studioCommandNames = {
   readCharacterEditDocument: "read_character_edit_document",
   updateCharacterEditDocument: "update_character_edit_document",
   createCharacter: "create_character",
+  createCharacterFromDraft: "create_character_from_draft",
   readStateVariablesEditDocument: "read_state_variables_edit_document",
   updateStateVariablesEditDocument: "update_state_variables_edit_document",
   createResource: "create_resource",
@@ -213,6 +215,15 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<CharacterEditDocument>(
         studioCommandNames.createCharacter,
         { path, character },
+      );
+    },
+    createCharacterFromDraft(
+      path: string,
+      draft: CharacterDraft,
+    ): Promise<CharacterEditDocument> {
+      return invokeCommand<CharacterEditDocument>(
+        studioCommandNames.createCharacterFromDraft,
+        { path, draft },
       );
     },
     readStateVariablesEditDocument(

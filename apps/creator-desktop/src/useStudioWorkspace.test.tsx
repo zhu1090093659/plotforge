@@ -285,6 +285,21 @@ function workspaceTestDataSource(
         characters: [...demoProjectData.characters, character],
       };
     },
+    async createCharacterFromDraft(_path, draft) {
+      const character = {
+        id: draft.id.trim(),
+        name: draft.name.trim(),
+        role: draft.role.trim(),
+        traits: draft.traits_text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+        visual_card: draft.visual_card.trim(),
+        voice_card: draft.voice_card.trim(),
+        portrait_request: null,
+      };
+      return { characters: [...demoProjectData.characters, character] };
+    },
     async readStateVariablesEditDocument() {
       return {
         resources: demoProjectData.resources,

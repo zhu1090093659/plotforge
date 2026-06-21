@@ -3,6 +3,7 @@ import type {
   AssetRecord,
   AudioBible,
   Character,
+  CharacterDraft,
   CharacterEditDocument,
   CharacterGenerationReport,
   ExportProfile,
@@ -58,6 +59,10 @@ export interface StudioDataSource {
   createCharacter(
     path: string,
     character: Character,
+  ): Promise<CharacterEditDocument>;
+  createCharacterFromDraft(
+    path: string,
+    draft: CharacterDraft,
   ): Promise<CharacterEditDocument>;
   readStateVariablesEditDocument(
     path: string,
@@ -175,6 +180,7 @@ function createStudioDataSource(
     readCharacterEditDocument: bridge.readCharacterEditDocument,
     updateCharacterEditDocument: bridge.updateCharacterEditDocument,
     createCharacter: bridge.createCharacter,
+    createCharacterFromDraft: bridge.createCharacterFromDraft,
     readStateVariablesEditDocument: bridge.readStateVariablesEditDocument,
     updateStateVariablesEditDocument: bridge.updateStateVariablesEditDocument,
     createResource: bridge.createResource,

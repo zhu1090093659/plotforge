@@ -353,6 +353,13 @@ export function ScenePreviewPlaceholder({
 export interface CollapsibleProps {
   /** Header label shown in the toggle button. */
   label: string;
+  /**
+   * Optional stable identifier used to generate `aria-controls` / `id`
+   * attributes.  When omitted, the label text is used (slugified).  Provide
+   * this when multiple collapsibles in the same document share the same label
+   * text (e.g. per-item character cards) to avoid duplicate DOM ids.
+   */
+  id?: string;
   /** Whether the section is open by default (uncontrolled). */
   defaultOpen?: boolean;
   /** Optional badge count shown to the right of the label. */
@@ -369,15 +376,16 @@ export interface CollapsibleProps {
  */
 export function Collapsible({
   label,
+  id: idProp,
   defaultOpen = false,
   badge,
   children,
   className = "",
 }: CollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen);
-  const headingId = `collapsible-heading-${label.toLowerCase().replace(/\s+/g, "-")}`;
-  const regionId = `collapsible-region-${label.toLowerCase().replace(/\s+/g, "-")}`;
-
+  const slug = (idProp ?? label).toLowerCase().replace(/\s+/g, "-");
+  const headingId = `collapsible-heading-${slug}`;
+  const regionId = `collapsible-region-${slug}`;
   return (
     <div className={className}>
       <button

@@ -759,6 +759,22 @@ describe("App", () => {
           characters: [...demoProjectData.characters, character],
         };
       },
+      async createCharacterFromDraft(_path, draft) {
+        const character = {
+          id: draft.id.trim(),
+          name: draft.name.trim(),
+          role: draft.role.trim(),
+          traits: draft.traits_text
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean),
+          visual_card: draft.visual_card.trim(),
+          voice_card: draft.voice_card.trim(),
+          portrait_request: null,
+        };
+        updates.push(`character-draft:${character.id}:${character.traits.join("|")}`);
+        return { characters: [...demoProjectData.characters, character] };
+      },
       async createResource(_path, resource) {
         updates.push(`resource:${resource.key}:${resource.initial}`);
         return {
@@ -812,6 +828,8 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
     fireEvent.click(screen.getByRole("button", { name: /Characters/ }));
+    // Open the "Add Character" collapsible (defaults to Manual mode).
+    fireEvent.click(screen.getByRole("button", { name: "Add Character" }));
     fireEvent.change(screen.getByLabelText("New character id"), {
       target: { value: "regent" },
     });
@@ -863,7 +881,7 @@ describe("App", () => {
       expect(updates).toEqual([
         "world:No secret heir",
         "story:A sharper political survival story.",
-        "character:regent:cautious|clear",
+        "character-draft:regent:cautious|clear",
         "resource:grain:30",
         "rule:spend-grain:add_resource",
       ]);
@@ -985,6 +1003,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
     fireEvent.click(screen.getByRole("button", { name: /Characters/ }));
+    // Open the "Add Character" collapsible and switch to AI Generate mode.
+    fireEvent.click(screen.getByRole("button", { name: "Add Character" }));
+    fireEvent.click(screen.getByRole("button", { name: "AI Generate", pressed: false }));
     fireEvent.change(screen.getByLabelText("Character generation concept"), {
       target: { value: "Design a grain envoy." },
     });
@@ -992,7 +1013,11 @@ describe("App", () => {
       target: { value: "Grain Envoy" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Generate Character" }));
-    await screen.findByDisplayValue("generated-envoy");
+    // After generation the new character card appears as a collapsed item.
+    // The Collapsible label is the character name (roleHint passed as name).
+    await screen.findByRole("button", { name: /Grain Envoy/ });
+    // Expand the card to verify portrait request is visible.
+    fireEvent.click(screen.getByRole("button", { name: /Grain Envoy/ }));
     expect(screen.getByText("Generated portrait request")).toBeTruthy();
 
     fireEvent.click(getWorkflowButton("Export Package"));
@@ -1114,6 +1139,22 @@ function appTestDataSource(
       return {
         characters: [...demoProjectData.characters, character],
       };
+    },
+    async createCharacterFromDraft(_path, draft) {
+      // Simulate what Rust does: trim and split traits.
+      const character = {
+        id: draft.id.trim(),
+        name: draft.name.trim(),
+        role: draft.role.trim(),
+        traits: draft.traits_text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+        visual_card: draft.visual_card.trim(),
+        voice_card: draft.voice_card.trim(),
+        portrait_request: null,
+      };
+      return { characters: [...demoProjectData.characters, character] };
     },
     async readStateVariablesEditDocument() {
       return {

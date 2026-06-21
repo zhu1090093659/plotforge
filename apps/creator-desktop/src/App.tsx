@@ -12,6 +12,7 @@ import type {
   AiUsageContentKind,
   AudioVoiceCard,
   Character,
+  CharacterDraft,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectTemplateId,
@@ -24,6 +25,8 @@ import type {
 import { AgentMeshView } from "./AgentMeshView";
 import { ArtifactReviewView } from "./ArtifactReviewView";
 import { LaunchpadView } from "./LaunchpadView";
+import { CharactersView } from "./CharactersView";
+import { CommandCenterView } from "./CommandCenterView";
 import { DirectorModeView } from "./DirectorModeView";
 import { ExportView } from "./ExportView";
 import { RuntimeTracePanel } from "./runtimeTraceView";
@@ -64,8 +67,6 @@ type FormStatus = {
   message: string;
 };
 
-
-type CharacterDraft = Omit<Character, "traits"> & { traits_text: string };
 
 interface ResourceDraft {
   key: string;
@@ -338,18 +339,10 @@ export function App({
   }
 
   async function createCharacterFromDraft() {
-    const character: Character = {
-      id: newCharacter.id.trim(),
-      name: newCharacter.name.trim(),
-      role: newCharacter.role.trim(),
-      traits: linesToList(newCharacter.traits_text),
-      visual_card: newCharacter.visual_card.trim(),
-      voice_card: newCharacter.voice_card.trim(),
-      portrait_request: newCharacter.portrait_request ?? null,
-    };
-
+    // Character assembly (id trim, traits split) is now done in Rust via the
+    // create_character_from_draft command (AGENTS.md line 51).
     await runFormAction("characters", "Character created.", async () => {
-      const updated = await dataSource.createCharacter(loadedPath, character);
+      const updated = await dataSource.createCharacterFromDraft(loadedPath, newCharacter);
       setCharacterEditDocument(updated);
       setNewCharacter(emptyCharacterDraft());
       await refreshProjectOverview(loadedPath);
@@ -651,7 +644,23 @@ export function App({
       case "story":
         return renderStoryPanel();
       case "characters":
-        return renderCharactersPanel();
+        return (
+          <CharactersView
+            characterEditDocument={characterEditDocument}
+            saving={formSaving === "characters"}
+            formStatus={formStatus}
+            characterGenerationConcept={characterGenerationConcept}
+            onCharacterGenerationConceptChange={setCharacterGenerationConcept}
+            characterGenerationRoleHint={characterGenerationRoleHint}
+            onCharacterGenerationRoleHintChange={setCharacterGenerationRoleHint}
+            characterDraft={newCharacter}
+            onCharacterDraftChange={setNewCharacter}
+            onSave={() => void saveCharacterEditDocument()}
+            onGenerateCharacter={() => void generateCharacterFromConcept()}
+            onCreateCharacterFromDraft={() => void createCharacterFromDraft()}
+            onUpdateCharacter={updateCharacter}
+          />
+        );
       case "state":
         return renderStatePanel();
       case "rules":
@@ -1007,199 +1016,6 @@ export function App({
           </div>
         ) : (
           <EmptyPanel label="Story Craft edit document not loaded." />
-        )}
-      </section>
-    );
-  }
-
-  function renderCharactersPanel() {
-    return (
-      <section className={panelClassName}>
-        <PanelHeader
-          title="Characters"
-          subtitle={`${characterEditDocument?.characters.length ?? 0} records`}
-          action={
-            <SaveButton
-              label="Save Characters"
-              saving={formSaving === "characters"}
-              onClick={() => void saveCharacterEditDocument()}
-            />
-          }
-        />
-        <SectionMessage section="characters" status={formStatus} />
-        {characterEditDocument ? (
-          <div className="mt-4 grid gap-4">
-            <div className="grid gap-4 xl:grid-cols-2">
-              {characterEditDocument.characters.map((character, index) => (
-                <article
-                  key={`${character.id}:${index}`}
-                  className="rounded-md border border-ink/10 bg-parchment p-4"
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <TextInput
-                      label="Character id"
-                      ariaLabel={`Character id ${index + 1}`}
-                      value={character.id}
-                      onChange={(value) => updateCharacter(index, { id: value })}
-                    />
-                    <TextInput
-                      label="Name"
-                      ariaLabel={`Character name ${index + 1}`}
-                      value={character.name}
-                      onChange={(value) =>
-                        updateCharacter(index, { name: value })
-                      }
-                    />
-                    <TextInput
-                      label="Role"
-                      ariaLabel={`Character role ${index + 1}`}
-                      value={character.role}
-                      onChange={(value) =>
-                        updateCharacter(index, { role: value })
-                      }
-                    />
-                    <TextareaInput
-                      label="Traits"
-                      ariaLabel={`Character traits ${index + 1}`}
-                      value={listToLines(character.traits)}
-                      onChange={(value) =>
-                        updateCharacter(index, { traits: linesToList(value) })
-                      }
-                      minHeight="min-h-24"
-                    />
-                    <TextareaInput
-                      label="Visual card"
-                      ariaLabel={`Visual card ${index + 1}`}
-                      value={character.visual_card}
-                      onChange={(value) =>
-                        updateCharacter(index, { visual_card: value })
-                      }
-                      minHeight="min-h-24"
-                    />
-                    <TextareaInput
-                      label="Voice card"
-                      ariaLabel={`Voice card ${index + 1}`}
-                      value={character.voice_card}
-                      onChange={(value) =>
-                        updateCharacter(index, { voice_card: value })
-                      }
-                      minHeight="min-h-24"
-                    />
-                    {character.portrait_request ? (
-                      <div className="sm:col-span-2 rounded-md border border-ink/10 bg-white px-3 py-2 text-sm">
-                        <p className="text-xs font-medium uppercase text-ink/55">
-                          Portrait request
-                        </p>
-                        <p className="mt-1 text-ink/70">
-                          {character.portrait_request.prompt_summary}
-                        </p>
-                        <code className="mt-2 block truncate text-xs text-ink/55">
-                          {character.portrait_request.prompt_hash}
-                        </code>
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="rounded-md border border-ink/10 bg-white p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <TextareaInput
-                  label="AI character concept"
-                  ariaLabel="Character generation concept"
-                  value={characterGenerationConcept}
-                  onChange={setCharacterGenerationConcept}
-                  className="min-w-0 flex-[2]"
-                  minHeight="min-h-20"
-                />
-                <TextInput
-                  label="Role hint"
-                  ariaLabel="Character generation role hint"
-                  value={characterGenerationRoleHint}
-                  onChange={setCharacterGenerationRoleHint}
-                  className="min-w-56"
-                />
-                <button
-                  type="button"
-                  onClick={() => void generateCharacterFromConcept()}
-                  disabled={formSaving === "characters"}
-                  className={secondaryButtonClassName}
-                >
-                  Generate Character
-                </button>
-              </div>
-            </div>
-            <div className="rounded-md border border-ink/10 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h4 className="text-sm font-semibold uppercase text-ink/55">
-                  New Character
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => void createCharacterFromDraft()}
-                  disabled={formSaving === "characters"}
-                  className={secondaryButtonClassName}
-                >
-                  Create Character
-                </button>
-              </div>
-              <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                <TextInput
-                  label="Character id"
-                  ariaLabel="New character id"
-                  value={newCharacter.id}
-                  onChange={(value) =>
-                    setNewCharacter({ ...newCharacter, id: value })
-                  }
-                />
-                <TextInput
-                  label="Name"
-                  ariaLabel="New character name"
-                  value={newCharacter.name}
-                  onChange={(value) =>
-                    setNewCharacter({ ...newCharacter, name: value })
-                  }
-                />
-                <TextInput
-                  label="Role"
-                  ariaLabel="New character role"
-                  value={newCharacter.role}
-                  onChange={(value) =>
-                    setNewCharacter({ ...newCharacter, role: value })
-                  }
-                />
-                <TextareaInput
-                  label="Traits"
-                  ariaLabel="New character traits"
-                  value={newCharacter.traits_text}
-                  onChange={(value) =>
-                    setNewCharacter({ ...newCharacter, traits_text: value })
-                  }
-                  minHeight="min-h-24"
-                />
-                <TextareaInput
-                  label="Visual card"
-                  ariaLabel="New visual card"
-                  value={newCharacter.visual_card}
-                  onChange={(value) =>
-                    setNewCharacter({ ...newCharacter, visual_card: value })
-                  }
-                  minHeight="min-h-24"
-                />
-                <TextareaInput
-                  label="Voice card"
-                  ariaLabel="New voice card"
-                  value={newCharacter.voice_card}
-                  onChange={(value) =>
-                    setNewCharacter({ ...newCharacter, voice_card: value })
-                  }
-                  minHeight="min-h-24"
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <EmptyPanel label="Character edit document not loaded." />
         )}
       </section>
     );

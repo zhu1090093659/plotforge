@@ -9,7 +9,7 @@ use plotforge_export::{export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 pub use plotforge_schema::{
     AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
-    AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterEditDocument,
+    AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft, CharacterEditDocument,
     CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect, ExportProfile,
     ProjectCreationReport, ProjectCreationRequest, ProjectData, ProjectTemplateId,
     ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
@@ -383,6 +383,20 @@ pub fn create_character(
     let path = path.as_ref();
     plotforge_storage::create_character(path, character)
         .map_err(|source| command_error("create_character", path, source))
+}
+
+/// Create a new character from a UI draft, assembling the `Character` value in
+/// Rust (trimming all string fields and splitting `traits_text` by newlines).
+/// This keeps character construction logic inside the Rust boundary per
+/// AGENTS.md line 51 — the Creator Desktop must not reimplement storage logic.
+pub fn create_character_from_draft(
+    path: impl AsRef<Path>,
+    draft: CharacterDraft,
+) -> StudioCommandResult<CharacterEditDocument> {
+    let path = path.as_ref();
+    let character = draft.into_character();
+    plotforge_storage::create_character(path, character)
+        .map_err(|source| command_error("create_character_from_draft", path, source))
 }
 
 pub fn read_state_variables_edit_document(
@@ -945,9 +959,10 @@ mod tests {
 
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
-        AiUsageSourceKind, Character, Effect, ExportProfile, ResourceDefinition, Rule,
+        AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, ResourceDefinition, Rule,
         SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
         WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
+        create_character_from_draft,
         create_project, create_resource, create_rule, delete_workshop_library_item,
         export_static_project, export_static_project_zip, generate_character, generate_story_craft,
         generate_world_expansion, import_workshop_library_package, list_asset_records,
@@ -1898,5 +1913,93 @@ mod tests {
 
     fn workshop_preview_png() -> &'static [u8] {
         b"studio-preview"
+    }
+
+    // -----------------------------------------------------------------------
+    // create_character_from_draft tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn create_character_from_draft_trims_fields_and_splits_traits() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("dynasty-embers");
+        plotforge_storage::create_demo_project(&project_path, true).expect("demo");
+
+        let draft = CharacterDraft {
+            id: "  envoy  ".into(),
+            name: "  Lady Envoy  ".into(),
+            role: "  Court Envoy  ".into(),
+            traits_text: "  cautious  \n  articulate  \n\n  loyal  ".into(),
+            visual_card: "  ink portrait  ".into(),
+            voice_card: "  measured tone  ".into(),
+        };
+
+        let document = create_character_from_draft(&project_path, draft)
+            .expect("create character from draft");
+
+        let created = document
+            .characters
+            .iter()
+            .find(|c| c.id == "envoy")
+            .expect("created character not found");
+
+        assert_eq!(created.id, "envoy");
+        assert_eq!(created.name, "Lady Envoy");
+        assert_eq!(created.role, "Court Envoy");
+        assert_eq!(created.traits, vec!["cautious", "articulate", "loyal"]);
+        assert_eq!(created.visual_card, "ink portrait");
+        assert_eq!(created.voice_card, "measured tone");
+        assert!(created.portrait_request.is_none());
+    }
+
+    #[test]
+    fn create_character_from_draft_empty_traits_produces_empty_vec() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("dynasty-embers");
+        plotforge_storage::create_demo_project(&project_path, true).expect("demo");
+
+        let draft = CharacterDraft {
+            id: "silent-envoy".into(),
+            name: "Silent Envoy".into(),
+            role: "Observer".into(),
+            traits_text: "   \n\n  ".into(),
+            visual_card: "ink wash portrait".into(),
+            voice_card: "calm measured tone".into(),
+        };
+
+        let document = create_character_from_draft(&project_path, draft)
+            .expect("create character with empty traits");
+
+        let created = document
+            .characters
+            .iter()
+            .find(|c| c.id == "silent-envoy")
+            .expect("created character not found");
+
+        assert!(created.traits.is_empty());
+    }
+
+    #[test]
+    fn create_character_from_draft_rejects_duplicate_id() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("dynasty-embers");
+        plotforge_storage::create_demo_project(&project_path, true).expect("demo");
+
+        // dynasty-embers fixture has a "censor" character — try to create a
+        // draft with the same id (trimmed) to trigger the duplicate error.
+        let draft = CharacterDraft {
+            id: "  censor  ".into(),
+            name: "Another Censor".into(),
+            role: "Duplicate".into(),
+            traits_text: "".into(),
+            visual_card: "ink portrait".into(),
+            voice_card: "formal tone".into(),
+        };
+
+        let error = create_character_from_draft(&project_path, draft)
+            .expect_err("duplicate id should fail");
+
+        assert_eq!(error.code, "create_character_from_draft");
+        assert!(error.message.contains("duplicate character id"));
     }
 }
