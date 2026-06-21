@@ -330,6 +330,21 @@ function workspaceTestDataSource(
         rules: [...demoProjectData.rules, rule],
       };
     },
+    async createRuleFromDraft(_path, draft) {
+      return {
+        rules: [
+          ...demoProjectData.rules,
+          {
+            id: draft.id,
+            action_type: draft.action_type,
+            conditions: [],
+            effects: draft.resource_key
+              ? [{ kind: "add_resource" as const, key: draft.resource_key, amount: draft.amount }]
+              : [],
+          },
+        ],
+      };
+    },
     async generateWorldExpansion() {
       throw new Error("not used");
     },

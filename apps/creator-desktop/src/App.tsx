@@ -30,6 +30,7 @@ import { StateView, type ResourceDraft } from "./StateView";
 import { CommandCenterView } from "./CommandCenterView";
 import { DirectorModeView } from "./DirectorModeView";
 import { ExportView } from "./ExportView";
+import { RulesView } from "./RulesView";
 import { RuntimeTracePanel } from "./runtimeTraceView";
 import {
   createDefaultStudioDataSource,
@@ -424,24 +425,8 @@ export function App({
   }
 
   async function createRuleFromDraft() {
-    const rule: Rule = {
-      id: newRule.id.trim(),
-      action_type: newRule.action_type.trim(),
-      conditions: [],
-      effects: [
-        {
-          kind: "add_resource",
-          key:
-            newRule.resource_key ||
-            stateVariablesEditDocument?.resources[0]?.key ||
-            "",
-          amount: newRule.amount,
-        },
-      ],
-    };
-
     await runFormAction("rules", "Rule created.", async () => {
-      const updated = await dataSource.createRule(loadedPath, rule);
+      const updated = await dataSource.createRuleFromDraft(loadedPath, newRule);
       setRulesEditDocument(updated);
       setNewRule(emptyRuleDraft());
       await refreshProjectOverview(loadedPath);
@@ -692,7 +677,21 @@ export function App({
           />
         );
       case "rules":
-        return renderRulesPanel();
+        return (
+          <RulesView
+            rulesEditDocument={rulesEditDocument}
+            resourceKeys={
+              stateVariablesEditDocument?.resources.map((r) => r.key) ?? []
+            }
+            saving={formSaving === "rules"}
+            formStatus={formStatus}
+            ruleDraft={newRule}
+            onRuleDraftChange={setNewRule}
+            onSave={() => void saveRulesEditDocument()}
+            onCreateRuleFromDraft={() => void createRuleFromDraft()}
+            onUpdateRule={updateRule}
+          />
+        );
       case "assets":
         return (
           <ArtifactReviewView
@@ -1044,131 +1043,6 @@ export function App({
           </div>
         ) : (
           <EmptyPanel label="Story Craft edit document not loaded." />
-        )}
-      </section>
-    );
-  }
-
-  function renderRulesPanel() {
-    const resourceKeys =
-      stateVariablesEditDocument?.resources.map((resource) => resource.key) ?? [];
-
-    return (
-      <section className={panelClassName}>
-        <PanelHeader
-          title="Rules"
-          subtitle={`${rulesEditDocument?.rules.length ?? 0} rules`}
-          action={
-            <SaveButton
-              label="Save Rules"
-              saving={formSaving === "rules"}
-              onClick={() => void saveRulesEditDocument()}
-            />
-          }
-        />
-        <SectionMessage section="rules" status={formStatus} />
-        {rulesEditDocument ? (
-          <div className="mt-4 grid gap-4">
-            <div className="grid gap-4 xl:grid-cols-2">
-              {rulesEditDocument.rules.map((rule, index) => (
-                <article
-                  key={`${rule.id}:${index}`}
-                  className="rounded-md border border-ink/10 bg-parchment p-4"
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <TextInput
-                      label="Rule id"
-                      ariaLabel={`Rule id ${index + 1}`}
-                      value={rule.id}
-                      onChange={(value) => updateRule(index, { id: value })}
-                    />
-                    <TextInput
-                      label="Action type"
-                      ariaLabel={`Rule action type ${index + 1}`}
-                      value={rule.action_type}
-                      onChange={(value) =>
-                        updateRule(index, { action_type: value })
-                      }
-                    />
-                  </div>
-                  <div className="mt-3 grid gap-2 text-sm">
-                    <p className="text-xs font-medium uppercase text-ink/55">
-                      Conditions
-                    </p>
-                    <code className="break-words rounded-md bg-white px-3 py-2 text-xs text-ink/70">
-                      {JSON.stringify(rule.conditions)}
-                    </code>
-                    <p className="text-xs font-medium uppercase text-ink/55">
-                      Effects
-                    </p>
-                    <code className="break-words rounded-md bg-white px-3 py-2 text-xs text-ink/70">
-                      {JSON.stringify(rule.effects)}
-                    </code>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="rounded-md border border-ink/10 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h4 className="text-sm font-semibold uppercase text-ink/55">
-                  New Rule
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => void createRuleFromDraft()}
-                  disabled={formSaving === "rules"}
-                  className={secondaryButtonClassName}
-                >
-                  Create Rule
-                </button>
-              </div>
-              <div className="mt-3 grid gap-3 lg:grid-cols-4">
-                <TextInput
-                  label="Rule id"
-                  ariaLabel="New rule id"
-                  value={newRule.id}
-                  onChange={(value) => setNewRule({ ...newRule, id: value })}
-                />
-                <TextInput
-                  label="Action type"
-                  ariaLabel="New rule action type"
-                  value={newRule.action_type}
-                  onChange={(value) =>
-                    setNewRule({ ...newRule, action_type: value })
-                  }
-                />
-                <label className="grid gap-1">
-                  <FieldLabel>Resource</FieldLabel>
-                  <select
-                    aria-label="New rule resource"
-                    value={newRule.resource_key}
-                    onChange={(event) =>
-                      setNewRule({
-                        ...newRule,
-                        resource_key: event.target.value,
-                      })
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select resource</option>
-                    {resourceKeys.map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <NumberInput
-                  label="Amount"
-                  ariaLabel="New rule amount"
-                  value={newRule.amount}
-                  onChange={(value) => setNewRule({ ...newRule, amount: value })}
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <EmptyPanel label="Rules edit document not loaded." />
         )}
       </section>
     );

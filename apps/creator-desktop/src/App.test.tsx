@@ -795,6 +795,22 @@ describe("App", () => {
           rules: [...demoProjectData.rules, rule],
         };
       },
+      async createRuleFromDraft(_path, draft) {
+        updates.push(`rule-draft:${draft.id}`);
+        return {
+          rules: [
+            ...demoProjectData.rules,
+            {
+              id: draft.id,
+              action_type: draft.action_type,
+              conditions: [],
+              effects: draft.resource_key
+                ? [{ kind: "add_resource" as const, key: draft.resource_key, amount: draft.amount }]
+                : [],
+            },
+          ],
+        };
+      },
     });
 
     render(
@@ -864,6 +880,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Resource" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Rules/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Rule/ }));
     fireEvent.change(screen.getByLabelText("New rule id"), {
       target: { value: "spend-grain" },
     });
@@ -884,7 +901,7 @@ describe("App", () => {
         "story:A sharper political survival story.",
         "character-draft:regent:cautious|clear",
         "resource:grain:30",
-        "rule:spend-grain:add_resource",
+        "rule-draft:spend-grain",
       ]);
     });
   });
@@ -1191,6 +1208,21 @@ function appTestDataSource(
     async createRule(_path, rule) {
       return {
         rules: [...demoProjectData.rules, rule],
+      };
+    },
+    async createRuleFromDraft(_path, draft) {
+      return {
+        rules: [
+          ...demoProjectData.rules,
+          {
+            id: draft.id,
+            action_type: draft.action_type,
+            conditions: [],
+            effects: draft.resource_key
+              ? [{ kind: "add_resource" as const, key: draft.resource_key, amount: draft.amount }]
+              : [],
+          },
+        ],
       };
     },
     async generateWorldExpansion(_path, expansionGoal) {

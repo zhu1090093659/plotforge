@@ -2450,6 +2450,34 @@
       ],
       "type": "object"
     },
+    "RuleDraft": {
+      "additionalProperties": false,
+      "description": "Lightweight draft used by the Studio UI when creating a new rule manually.\nOnly supports a single `add_resource` effect (the most common case for\nmanual rule creation). More complex rules are authored directly in TOML.\nThe Rust side assembles the full `Rule` (including `effects` array) so the\nCreator Desktop never reconstructs domain objects from raw field data.",
+      "properties": {
+        "action_type": {
+          "type": "string"
+        },
+        "amount": {
+          "description": "Amount for the `add_resource` effect.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "resource_key": {
+          "description": "Key of the resource to add (empty string = skip effect if no resource exists).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action_type",
+        "resource_key",
+        "amount"
+      ],
+      "type": "object"
+    },
     "RulesEditDocument": {
       "additionalProperties": false,
       "properties": {
@@ -3836,6 +3864,9 @@
     "reproducibility_metadata": {
       "$ref": "#/$defs/ReproducibilityMetadata"
     },
+    "rule_draft": {
+      "$ref": "#/$defs/RuleDraft"
+    },
     "rules_edit_document": {
       "$ref": "#/$defs/RulesEditDocument"
     },
@@ -3906,6 +3937,7 @@
     "character_generation_report",
     "character_portrait_request",
     "character_draft",
+    "rule_draft",
     "reference_analysis",
     "asset_record",
     "media_asset_reference",

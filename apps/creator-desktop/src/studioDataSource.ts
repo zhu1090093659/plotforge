@@ -12,6 +12,7 @@ import type {
   ProjectData,
   ResourceDefinition,
   Rule,
+  RuleDraft,
   RulesEditDocument,
   StateVariablesEditDocument,
   StoryCraftEditDocument,
@@ -81,6 +82,10 @@ export interface StudioDataSource {
     document: RulesEditDocument,
   ): Promise<RulesEditDocument>;
   createRule(path: string, rule: Rule): Promise<RulesEditDocument>;
+  createRuleFromDraft(
+    path: string,
+    draft: RuleDraft,
+  ): Promise<RulesEditDocument>;
   generateWorldExpansion(
     path: string,
     expansionGoal: string,
@@ -187,6 +192,7 @@ function createStudioDataSource(
     readRulesEditDocument: bridge.readRulesEditDocument,
     updateRulesEditDocument: bridge.updateRulesEditDocument,
     createRule: bridge.createRule,
+    createRuleFromDraft: bridge.createRuleFromDraft,
     generateWorldExpansion: bridge.generateWorldExpansion,
     generateStoryCraft: bridge.generateStoryCraft,
     generateCharacter: bridge.generateCharacter,

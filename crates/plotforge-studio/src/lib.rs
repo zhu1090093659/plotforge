@@ -12,7 +12,7 @@ pub use plotforge_schema::{
     AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft, CharacterEditDocument,
     CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect, ExportProfile,
     ProjectCreationReport, ProjectCreationRequest, ProjectData, ProjectTemplateId,
-    ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
+    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
     StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
     StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, VisualBible,
     WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
@@ -444,6 +444,20 @@ pub fn create_rule(path: impl AsRef<Path>, rule: Rule) -> StudioCommandResult<Ru
     let path = path.as_ref();
     plotforge_storage::create_rule(path, rule)
         .map_err(|source| command_error("create_rule", path, source))
+}
+
+/// Create a new rule from a UI draft, assembling the `Rule` value in Rust
+/// (trimming fields and building the `effects` array). This keeps rule
+/// construction logic inside the Rust boundary per AGENTS.md line 51 — the
+/// Creator Desktop must not reimplement storage logic.
+pub fn create_rule_from_draft(
+    path: impl AsRef<Path>,
+    draft: RuleDraft,
+) -> StudioCommandResult<RulesEditDocument> {
+    let path = path.as_ref();
+    let rule = draft.into_rule();
+    plotforge_storage::create_rule(path, rule)
+        .map_err(|source| command_error("create_rule_from_draft", path, source))
 }
 
 pub fn generate_world_expansion(
@@ -960,10 +974,10 @@ mod tests {
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
         AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, ResourceDefinition, Rule,
-        SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
+        RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
         WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
         create_character_from_draft,
-        create_project, create_resource, create_rule, delete_workshop_library_item,
+        create_project, create_resource, create_rule, create_rule_from_draft, delete_workshop_library_item,
         export_static_project, export_static_project_zip, generate_character, generate_story_craft,
         generate_world_expansion, import_workshop_library_package, list_asset_records,
         list_export_profiles, list_source_files, list_workshop_library, load_workshop_library_item,
@@ -2001,5 +2015,89 @@ mod tests {
 
         assert_eq!(error.code, "create_character_from_draft");
         assert!(error.message.contains("duplicate character id"));
+    }
+
+    // create_rule_from_draft tests
+
+    #[test]
+    fn create_rule_from_draft_assembles_add_resource_effect() {
+        let dir = tempdir().unwrap();
+        let project_path = dir.path().join("project");
+        create_demo_project(&project_path, true).unwrap();
+
+        let draft = RuleDraft {
+            id: "  harvest-treasury  ".into(),
+            action_type: "  harvest  ".into(),
+            resource_key: "treasury".into(),
+            amount: 10,
+        };
+
+        let document = create_rule_from_draft(&project_path, draft)
+            .expect("create rule from draft");
+
+        let rule = document
+            .rules
+            .iter()
+            .find(|r| r.id == "harvest-treasury")
+            .expect("rule with trimmed id must be present");
+
+        assert_eq!(rule.action_type, "harvest");
+        assert!(rule.conditions.is_empty());
+        assert_eq!(rule.effects.len(), 1);
+        match &rule.effects[0] {
+            Effect::AddResource { key, amount } => {
+                assert_eq!(key, "treasury");
+                assert_eq!(*amount, 10);
+            }
+            other => panic!("expected AddResource effect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn create_rule_from_draft_empty_resource_key_produces_no_effects_and_storage_rejects() {
+        let dir = tempdir().unwrap();
+        let project_path = dir.path().join("project");
+        create_demo_project(&project_path, true).unwrap();
+
+        // RuleDraft.into_rule() produces an empty effects vec when resource_key is blank.
+        // plotforge-storage validates that rules must have at least one effect, so this
+        // should be rejected at the storage boundary.
+        let draft = RuleDraft {
+            id: "no-effect-rule".into(),
+            action_type: "noop".into(),
+            resource_key: "".into(),
+            amount: 0,
+        };
+
+        let error = create_rule_from_draft(&project_path, draft)
+            .expect_err("empty resource key yields no effects, storage should reject");
+
+        assert_eq!(error.code, "create_rule_from_draft");
+    }
+
+    #[test]
+    fn create_rule_from_draft_rejects_duplicate_id() {
+        let dir = tempdir().unwrap();
+        let project_path = dir.path().join("project");
+        create_demo_project(&project_path, true).unwrap();
+
+        let draft = RuleDraft {
+            id: "unique-rule".into(),
+            action_type: "first".into(),
+            resource_key: "treasury".into(),
+            amount: 5,
+        };
+        create_rule_from_draft(&project_path, draft).expect("first create succeeds");
+
+        let duplicate = RuleDraft {
+            id: "unique-rule".into(),
+            action_type: "second".into(),
+            resource_key: "treasury".into(),
+            amount: 5,
+        };
+        let error = create_rule_from_draft(&project_path, duplicate)
+            .expect_err("duplicate rule id should fail");
+
+        assert_eq!(error.code, "create_rule_from_draft");
     }
 }

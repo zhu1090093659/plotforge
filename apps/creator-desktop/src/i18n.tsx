@@ -560,12 +560,31 @@ const zhText: Record<string, string> = {
   "New resource min": "新资源最小值",
   "New resource max": "新资源最大值",
   "State edit document not loaded.": "状态编辑文档未加载。",
+  // rules.* namespace
+  "Add Rule": "添加规则",
+  "Save Rules": "保存规则",
+  "Create Rule": "创建规则",
+  "Rule id": "规则 ID",
+  "Action type": "动作类型",
+  "New rule id": "新规则 ID",
+  "New rule action type": "新规则动作类型",
+  "New rule resource": "新规则资源",
+  "New rule amount": "新规则数量",
+  "Note: only add_resource effect is supported when creating rules manually. Edit the rules TOML file directly for complex conditions and effects.":
+    "注意：手动创建规则时仅支持 add_resource 效果。如需复杂条件和效果，请直接编辑规则 TOML 文件。",
+  "Rule edit document not loaded.": "规则编辑文档未加载。",
+  Conditions: "条件",
+  Effects: "效果",
+  Amount: "数量",
+  Resource: "资源",
+  "(none)": "（无）",
 };
 
 const zhPatterns: Array<[RegExp, (...matches: string[]) => string]> = [
   [/^(\d+) files$/, (count) => `${count} 个文件`],
   [/^(\d+) choices$/, (count) => `${count} 个选择`],
   [/^(\d+) resources$/, (count) => `${count} 个资源`],
+  [/^(\d+) rules$/, (count) => `${count} 条规则`],
   [/^(\d+) source files$/, (count) => `${count} 个源文件`],
   [/^(\d+) listed files from storage adapter\.$/, (count) => `${count} 个来自 storage adapter 的文件。`],
   [/^(\d+) editable surfaces loaded from the project\.$/, (count) => `项目中已加载 ${count} 个可编辑界面。`],

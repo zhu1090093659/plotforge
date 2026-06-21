@@ -13,6 +13,7 @@ import type {
   ProjectData,
   ResourceDefinition,
   Rule,
+  RuleDraft,
   RulesEditDocument,
   RuntimeTrace,
   RuntimeSnapshot,
@@ -44,6 +45,7 @@ export const studioCommandNames = {
   readRulesEditDocument: "read_rules_edit_document",
   updateRulesEditDocument: "update_rules_edit_document",
   createRule: "create_rule",
+  createRuleFromDraft: "create_rule_from_draft",
   generateWorldExpansion: "generate_world_expansion",
   generateStoryCraft: "generate_story_craft",
   generateCharacter: "generate_character",
@@ -272,6 +274,15 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
         path,
         rule,
       });
+    },
+    createRuleFromDraft(
+      path: string,
+      draft: RuleDraft,
+    ): Promise<RulesEditDocument> {
+      return invokeCommand<RulesEditDocument>(
+        studioCommandNames.createRuleFromDraft,
+        { path, draft },
+      );
     },
     generateWorldExpansion(
       path: string,
