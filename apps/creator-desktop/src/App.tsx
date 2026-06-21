@@ -26,6 +26,7 @@ import { AgentMeshView } from "./AgentMeshView";
 import { ArtifactReviewView } from "./ArtifactReviewView";
 import { LaunchpadView } from "./LaunchpadView";
 import { CharactersView } from "./CharactersView";
+import { StateView, type ResourceDraft } from "./StateView";
 import { CommandCenterView } from "./CommandCenterView";
 import { DirectorModeView } from "./DirectorModeView";
 import { ExportView } from "./ExportView";
@@ -68,13 +69,6 @@ type FormStatus = {
 };
 
 
-interface ResourceDraft {
-  key: string;
-  label: string;
-  initial: number;
-  min: number;
-  max: number;
-}
 
 interface RuleDraft {
   id: string;
@@ -662,7 +656,41 @@ export function App({
           />
         );
       case "state":
-        return renderStatePanel();
+        return (
+          <StateView
+            stateVariablesEditDocument={stateVariablesEditDocument}
+            saving={formSaving === "state"}
+            formStatus={formStatus}
+            newResource={newResource}
+            onNewResourceChange={setNewResource}
+            onSave={() => void saveStateVariablesEditDocument()}
+            onUpdateResource={updateResource}
+            onUpdateInitialWorldResource={updateInitialWorldResource}
+            onUpdateInitialSceneKey={(value) => {
+              if (stateVariablesEditDocument) {
+                setStateVariablesEditDocument({
+                  ...stateVariablesEditDocument,
+                  initial_story_state: {
+                    ...stateVariablesEditDocument.initial_story_state,
+                    current_scene_key: value,
+                  },
+                });
+              }
+            }}
+            onUpdateInitialTurn={(value) => {
+              if (stateVariablesEditDocument) {
+                setStateVariablesEditDocument({
+                  ...stateVariablesEditDocument,
+                  initial_story_state: {
+                    ...stateVariablesEditDocument.initial_story_state,
+                    turn: value,
+                  },
+                });
+              }
+            }}
+            onCreateResourceFromDraft={() => void createResourceFromDraft()}
+          />
+        );
       case "rules":
         return renderRulesPanel();
       case "assets":
@@ -1016,185 +1044,6 @@ export function App({
           </div>
         ) : (
           <EmptyPanel label="Story Craft edit document not loaded." />
-        )}
-      </section>
-    );
-  }
-
-  function renderStatePanel() {
-    return (
-      <section className={panelClassName}>
-        <PanelHeader
-          title="State"
-          subtitle={`${stateVariablesEditDocument?.resources.length ?? 0} resources`}
-          action={
-            <SaveButton
-              label="Save State"
-              saving={formSaving === "state"}
-              onClick={() => void saveStateVariablesEditDocument()}
-            />
-          }
-        />
-        <SectionMessage section="state" status={formStatus} />
-        {stateVariablesEditDocument ? (
-          <div className="mt-4 grid gap-4">
-            <div className="grid gap-4 xl:grid-cols-2">
-              {stateVariablesEditDocument.resources.map((resource, index) => (
-                <article
-                  key={`${resource.key}:${index}`}
-                  className="rounded-md border border-ink/10 bg-parchment p-4"
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <TextInput
-                      label="Resource key"
-                      ariaLabel={`Resource key ${index + 1}`}
-                      value={resource.key}
-                      onChange={(value) => updateResource(index, { key: value })}
-                    />
-                    <TextInput
-                      label="Label"
-                      ariaLabel={`Resource label ${index + 1}`}
-                      value={resource.label}
-                      onChange={(value) =>
-                        updateResource(index, { label: value })
-                      }
-                    />
-                    <NumberInput
-                      label="Initial"
-                      ariaLabel={`Resource initial ${index + 1}`}
-                      value={resource.initial}
-                      onChange={(value) =>
-                        updateResource(index, { initial: value })
-                      }
-                    />
-                    <NumberInput
-                      label="Initial world value"
-                      ariaLabel={`Initial world value ${index + 1}`}
-                      value={
-                        stateVariablesEditDocument.initial_world_state.resources[
-                          resource.key
-                        ] ?? resource.initial
-                      }
-                      onChange={(value) =>
-                        updateInitialWorldResource(resource.key, value)
-                      }
-                    />
-                    <NumberInput
-                      label="Min"
-                      ariaLabel={`Resource min ${index + 1}`}
-                      value={resource.min}
-                      onChange={(value) => updateResource(index, { min: value })}
-                    />
-                    <NumberInput
-                      label="Max"
-                      ariaLabel={`Resource max ${index + 1}`}
-                      value={resource.max}
-                      onChange={(value) => updateResource(index, { max: value })}
-                    />
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-              <div className="rounded-md border border-ink/10 bg-white p-4">
-                <h4 className="text-sm font-semibold uppercase text-ink/55">
-                  Initial Story State
-                </h4>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <TextInput
-                    label="Current scene"
-                    ariaLabel="Initial current scene"
-                    value={
-                      stateVariablesEditDocument.initial_story_state
-                        .current_scene_key
-                    }
-                    onChange={(value) =>
-                      setStateVariablesEditDocument({
-                        ...stateVariablesEditDocument,
-                        initial_story_state: {
-                          ...stateVariablesEditDocument.initial_story_state,
-                          current_scene_key: value,
-                        },
-                      })
-                    }
-                  />
-                  <NumberInput
-                    label="Turn"
-                    ariaLabel="Initial turn"
-                    value={stateVariablesEditDocument.initial_story_state.turn}
-                    onChange={(value) =>
-                      setStateVariablesEditDocument({
-                        ...stateVariablesEditDocument,
-                        initial_story_state: {
-                          ...stateVariablesEditDocument.initial_story_state,
-                          turn: value,
-                        },
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="rounded-md border border-ink/10 bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h4 className="text-sm font-semibold uppercase text-ink/55">
-                    New Resource
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => void createResourceFromDraft()}
-                    disabled={formSaving === "state"}
-                    className={secondaryButtonClassName}
-                  >
-                    Create Resource
-                  </button>
-                </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <TextInput
-                    label="Resource key"
-                    ariaLabel="New resource key"
-                    value={newResource.key}
-                    onChange={(value) =>
-                      setNewResource({ ...newResource, key: value })
-                    }
-                  />
-                  <TextInput
-                    label="Label"
-                    ariaLabel="New resource label"
-                    value={newResource.label}
-                    onChange={(value) =>
-                      setNewResource({ ...newResource, label: value })
-                    }
-                  />
-                  <NumberInput
-                    label="Initial"
-                    ariaLabel="New resource initial"
-                    value={newResource.initial}
-                    onChange={(value) =>
-                      setNewResource({ ...newResource, initial: value })
-                    }
-                  />
-                  <NumberInput
-                    label="Min"
-                    ariaLabel="New resource min"
-                    value={newResource.min}
-                    onChange={(value) =>
-                      setNewResource({ ...newResource, min: value })
-                    }
-                  />
-                  <NumberInput
-                    label="Max"
-                    ariaLabel="New resource max"
-                    value={newResource.max}
-                    onChange={(value) =>
-                      setNewResource({ ...newResource, max: value })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <EmptyPanel label="State edit document not loaded." />
         )}
       </section>
     );

@@ -851,13 +851,14 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Character" }));
 
     fireEvent.click(screen.getByRole("button", { name: /State/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Resource" }));
     fireEvent.change(screen.getByLabelText("New resource key"), {
       target: { value: "grain" },
     });
     fireEvent.change(screen.getByLabelText("New resource label"), {
       target: { value: "Grain" },
     });
-    fireEvent.change(screen.getByLabelText("New resource initial"), {
+    fireEvent.change(screen.getByLabelText("New resource default initial value"), {
       target: { value: "30" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Resource" }));

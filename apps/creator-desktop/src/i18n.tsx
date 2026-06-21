@@ -544,11 +544,28 @@ const zhText: Record<string, string> = {
   "New visual card": "新视觉卡",
   "New voice card": "新语音卡",
   "Character edit document not loaded.": "角色编辑文档未加载。",
+  // state.* namespace
+  "Save State": "保存状态",
+  "Add Resource": "添加资源",
+  "Initial Story State": "初始故事状态",
+  "The starting scene and turn for a new game session.": "新游戏会话的初始场景和回合。",
+  "Create Resource": "创建资源",
+  "Current scene": "当前场景",
+  "Default initial value": "默认初始值",
+  "World initial value": "世界初始值",
+  "Resource key": "资源键",
+  "New resource key": "新资源键",
+  "New resource label": "新资源标签",
+  "New resource default initial value": "新资源默认初始值",
+  "New resource min": "新资源最小值",
+  "New resource max": "新资源最大值",
+  "State edit document not loaded.": "状态编辑文档未加载。",
 };
 
 const zhPatterns: Array<[RegExp, (...matches: string[]) => string]> = [
   [/^(\d+) files$/, (count) => `${count} 个文件`],
   [/^(\d+) choices$/, (count) => `${count} 个选择`],
+  [/^(\d+) resources$/, (count) => `${count} 个资源`],
   [/^(\d+) source files$/, (count) => `${count} 个源文件`],
   [/^(\d+) listed files from storage adapter\.$/, (count) => `${count} 个来自 storage adapter 的文件。`],
   [/^(\d+) editable surfaces loaded from the project\.$/, (count) => `项目中已加载 ${count} 个可编辑界面。`],
