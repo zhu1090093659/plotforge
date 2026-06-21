@@ -521,6 +521,7 @@ const zhText: Record<string, string> = {
   "Reporting path": "举报路径",
   "Moderation policy": "审核策略",
   "Safety guardrails": "安全防护栏",
+  files: "个文件",
 };
 
 const zhPatterns: Array<[RegExp, (...matches: string[]) => string]> = [

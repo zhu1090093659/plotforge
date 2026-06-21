@@ -80,7 +80,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue(/The dynasty is under pressure/)).toBeTruthy();
 
@@ -106,7 +106,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     expect(getWorkflowButton("Command Center")).toBeTruthy();
     expect(getWorkflowButton("Director Mode")).toBeTruthy();
     expect(getWorkflowButton("Agent Mesh")).toBeTruthy();
@@ -168,7 +168,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     expect(screen.getByText("Backend Boundary")).toBeTruthy();
     expect(screen.getByText("Real Studio command surface")).toBeTruthy();
     expect(screen.getAllByText("External agents").length).toBeGreaterThan(0);
@@ -192,7 +192,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     expect(screen.getAllByText("Project Launchpad").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Language"), {
@@ -253,7 +253,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
@@ -300,7 +300,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
@@ -332,7 +332,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
@@ -390,7 +390,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
@@ -478,7 +478,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
@@ -546,7 +546,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(getWorkflowButton("Export Package"));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(screen.getByText("byo-key-web")).toBeTruthy();
@@ -595,7 +595,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     const launchpad = screen.getByRole("region", { name: "Project Launchpad" });
     fireEvent.click(within(launchpad).getByRole("button", { name: "Export Package" }));
 
@@ -621,7 +621,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(getWorkflowButton("Export Package"));
     fireEvent.click(
       screen.getByRole("button", {
@@ -699,7 +699,10 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+
+    // Expand the New Project collapsible section
+    fireEvent.click(screen.getByRole("button", { name: "New Project" }));
 
     fireEvent.change(screen.getByLabelText("New project path"), {
       target: { value: "/tmp/winter-regency" },
@@ -782,7 +785,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     for (const label of [
       "Command Center",
       "Director Mode",
@@ -962,7 +965,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
     );
 
-    expect(await screen.findByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /World Bible/ }));
     fireEvent.change(screen.getByLabelText("World generation goal"), {

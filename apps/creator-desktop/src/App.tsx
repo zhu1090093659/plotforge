@@ -1,12 +1,9 @@
 import {
-  CheckCircle2,
   Download,
   Loader2,
-  PlusCircle,
   Play,
   RefreshCcw,
   Save,
-  TerminalSquare,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
@@ -26,7 +23,7 @@ import type {
 } from "../../../contracts/plotforge";
 import { AgentMeshView } from "./AgentMeshView";
 import { ArtifactReviewView } from "./ArtifactReviewView";
-import { CommandCenterView } from "./CommandCenterView";
+import { LaunchpadView } from "./LaunchpadView";
 import { DirectorModeView } from "./DirectorModeView";
 import { ExportView } from "./ExportView";
 import { RuntimeTracePanel } from "./runtimeTraceView";
@@ -60,12 +57,6 @@ import {
 } from "./useStudioWorkspace";
 import { LanguageToggle, StudioI18nProvider } from "./i18n";
 import { errorMessage } from "./errorMessage";
-
-const boundaryChecks = [
-  { label: "Generated contracts", value: "plotforge.d.ts", ok: true },
-  { label: "Rust core boundary", value: "UI adapter only", ok: true },
-  { label: "Tauri bridge", value: "commands wired", ok: true },
-];
 
 type FormStatus = {
   section: StudioSectionId;
@@ -115,6 +106,7 @@ export function App({
     audioBible,
     setAudioBible,
     projectSummary,
+    checkReport,
     sourceFiles,
     selectedFile,
     editorContent,
@@ -219,41 +211,6 @@ export function App({
     await loadWorkspaceProject(path);
   }
 
-  async function createProjectFromWizard() {
-    const path = createProjectPath.trim();
-    const request: ProjectCreationRequest = {
-      template: createTemplate,
-      concept: createConcept.trim(),
-      visual_style: createVisualStyle.trim(),
-      voice_enabled: createVoiceEnabled,
-      initial_scene_request: createInitialSceneRequest.trim(),
-    };
-
-    if (
-      !path ||
-      !request.concept ||
-      !request.visual_style ||
-      !request.initial_scene_request
-    ) {
-      setCreateError(
-        "Project path, concept, visual style, and initial scene are required.",
-      );
-      return;
-    }
-
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const report = await dataSource.createProject(path, request, createForce);
-      setCreateReport(report);
-      setCreateProjectPath(report.project_path);
-      await loadProject(report.project_path);
-    } catch (source) {
-      setCreateError(errorMessage(source));
-    } finally {
-      setCreating(false);
-    }
-  }
 
   async function runPlaytest() {
     const succeeded = await runWorkspacePlaytest();
@@ -781,166 +738,84 @@ export function App({
 
   function renderLaunchpad() {
     return (
-      <div className="grid gap-5">
-        <CommandCenterView
-          projectSummary={projectSummary}
-          projectData={projectData}
-          loadedPath={loadedPath}
-          metrics={metrics}
-          sourceFiles={sourceFiles}
-          selectedFile={selectedFile}
-          playtestInput={playtestInput}
-          playtesting={playtesting}
-          playtestReport={playtestReport}
-          playtestError={playtestError}
-          exportProfiles={exportProfiles}
-          dirty={dirty}
-          onIntentChange={setPlaytestInput}
-          onRunPlayableProof={() => void runPlaytest()}
-          onOpenSection={openStudioSection}
-          onOpenExportProfile={openExportProfile}
-        />
-
-        <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          {renderProjectCreationPanel()}
-          {renderCreationReportPanel()}
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-          {renderSourceFileList()}
-          {renderBoundaryChecks()}
-        </section>
-
-        {renderSourceEditor()}
-      </div>
+      <LaunchpadView
+        projectSummary={projectSummary}
+        projectData={projectData}
+        loadedPath={loadedPath}
+        checkReport={checkReport}
+        metrics={metrics}
+        sourceFiles={sourceFiles}
+        selectedFile={selectedFile}
+        editorContent={editorContent}
+        setEditorContent={setEditorContent}
+        dirty={dirty}
+        saving={saving}
+        error={error}
+        playtestInput={playtestInput}
+        setPlaytestInput={setPlaytestInput}
+        playtesting={playtesting}
+        playtestReport={playtestReport}
+        playtestError={playtestError}
+        exportProfiles={exportProfiles}
+        exportReport={exportReport}
+        assetCatalog={assetCatalog}
+        createProjectPath={createProjectPath}
+        setCreateProjectPath={setCreateProjectPath}
+        createTemplate={createTemplate}
+        setCreateTemplate={setCreateTemplate}
+        createConcept={createConcept}
+        setCreateConcept={setCreateConcept}
+        createVisualStyle={createVisualStyle}
+        setCreateVisualStyle={setCreateVisualStyle}
+        createVoiceEnabled={createVoiceEnabled}
+        setCreateVoiceEnabled={setCreateVoiceEnabled}
+        createInitialSceneRequest={createInitialSceneRequest}
+        setCreateInitialSceneRequest={setCreateInitialSceneRequest}
+        createForce={createForce}
+        setCreateForce={setCreateForce}
+        createReport={createReport}
+        creating={creating}
+        createError={createError}
+        onRunPlayableProof={() => void runPlaytest()}
+        onOpenSection={openStudioSection}
+        onOpenExportProfile={openExportProfile}
+        onSelectSourceFile={(file) => void selectSourceFile(file)}
+        onSaveSelectedFile={() => void saveSelectedFile()}
+        onCreateProject={(path, request, force) => void handleCreateProject(path, request, force)}
+        dataSource={dataSource}
+      />
     );
   }
 
-  function renderProjectCreationPanel() {
-    return (
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void createProjectFromWizard();
-        }}
-        className="rounded-md border border-ink/10 bg-white p-5 shadow-sm"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold">New Project</h3>
-            <p className="mt-1 truncate text-sm text-ink/55">
-              Folder-backed project scaffold
-            </p>
-          </div>
-          <button
-            type="submit"
-            disabled={creating}
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
-          >
-            {creating ? (
-              <Loader2 aria-hidden size={16} className="animate-spin" />
-            ) : (
-              <PlusCircle aria-hidden size={16} />
-            )}
-            Create project
-          </button>
-        </div>
+  async function handleCreateProject(
+    path: string,
+    request: ProjectCreationRequest,
+    force: boolean,
+  ) {
+    if (
+      !path ||
+      !request.concept ||
+      !request.visual_style ||
+      !request.initial_scene_request
+    ) {
+      setCreateError(
+        "Project path, concept, visual style, and initial scene are required.",
+      );
+      return;
+    }
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <TextInput
-            label="Project path"
-            ariaLabel="New project path"
-            value={createProjectPath}
-            onChange={setCreateProjectPath}
-            className="lg:col-span-2"
-          />
-          <label className="grid gap-1">
-            <FieldLabel>Template</FieldLabel>
-            <select
-              aria-label="Template"
-              value={createTemplate}
-              onChange={(event) =>
-                setCreateTemplate(event.target.value as ProjectTemplateId)
-              }
-              className={inputClassName}
-            >
-              <option value="historical_crisis">Historical Crisis</option>
-              <option value="dynasty_embers">Dynasty Embers</option>
-            </select>
-          </label>
-          <TextInput
-            label="Visual style"
-            ariaLabel="Visual style"
-            value={createVisualStyle}
-            onChange={setCreateVisualStyle}
-          />
-          <TextareaInput
-            label="Concept"
-            ariaLabel="Concept"
-            value={createConcept}
-            onChange={setCreateConcept}
-            className="lg:col-span-2"
-            minHeight="min-h-20"
-          />
-          <TextareaInput
-            label="Initial scene"
-            ariaLabel="Initial scene request"
-            value={createInitialSceneRequest}
-            onChange={setCreateInitialSceneRequest}
-            className="lg:col-span-2"
-            minHeight="min-h-20"
-          />
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm font-medium text-ink/70">
-          <CheckboxInput
-            label="Voice enabled"
-            checked={createVoiceEnabled}
-            onChange={setCreateVoiceEnabled}
-          />
-          <CheckboxInput
-            label="Overwrite existing path"
-            checked={createForce}
-            onChange={setCreateForce}
-          />
-        </div>
-
-        {createError ? (
-          <Message tone="error" className="mt-4">
-            {createError}
-          </Message>
-        ) : null}
-      </form>
-    );
-  }
-
-  function renderCreationReportPanel() {
-    return (
-      <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-        <h3 className="text-lg font-semibold">Creation Report</h3>
-        {createReport ? (
-          <div className="mt-4 grid gap-3 text-sm">
-            <div className="rounded-md border border-jade/25 bg-jade/10 px-3 py-2">
-              <p className="text-xs font-medium uppercase text-jade">Project</p>
-              <p className="mt-1 truncate font-semibold text-ink">
-                {createReport.project.game.title}
-              </p>
-              <p className="mt-1 truncate text-ink/60">
-                {createReport.project_path}
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <MetricBox label="Files" value={createReport.files_created.length} />
-              <MetricBox label="Template" value={createReport.template} />
-            </div>
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-ink/55">
-            No project created in this session.
-          </p>
-        )}
-      </section>
-    );
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const report = await dataSource.createProject(path, request, force);
+      setCreateReport(report);
+      setCreateProjectPath(report.project_path);
+      await loadProject(report.project_path);
+    } catch (source) {
+      setCreateError(errorMessage(source));
+    } finally {
+      setCreating(false);
+    }
   }
 
   function renderWorldPanel() {
@@ -1877,120 +1752,6 @@ export function App({
               No Audio Bible voice cards in project data.
             </p>
           )}
-        </div>
-      </section>
-    );
-  }
-  function renderSourceFileList() {
-    return (
-      <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold">Source Artifacts</h3>
-            <p className="mt-1 text-sm text-ink/55">{sourceFiles.length} files</p>
-          </div>
-          <TerminalSquare aria-hidden className="text-signal" size={22} />
-        </div>
-
-        <div className="mt-4 grid max-h-80 gap-2 overflow-auto pr-1">
-          {sourceFiles.map((file) => (
-            <button
-              type="button"
-              key={file.path}
-              onClick={() => void selectSourceFile(file)}
-              className={[
-                "flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition",
-                selectedFile?.path === file.path
-                  ? "border-ink/45 bg-parchment"
-                  : "border-ink/10 hover:border-ink/30",
-              ].join(" ")}
-            >
-              <code className="truncate text-sm text-ink/80">{file.path}</code>
-              <span
-                className={[
-                  "shrink-0 rounded-sm px-2 py-1 text-xs font-medium",
-                  file.editable
-                    ? "bg-jade/10 text-jade"
-                    : "bg-ink/5 text-ink/55",
-                ].join(" ")}
-              >
-                {file.editable ? "editable" : file.kind}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  function renderBoundaryChecks() {
-    return (
-      <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-        <h3 className="text-lg font-semibold">Boundary Checks</h3>
-        <div className="mt-4 grid gap-3">
-          {boundaryChecks.map((check) => (
-            <div key={check.label} className="flex items-start gap-3">
-              <CheckCircle2
-                aria-hidden
-                className="mt-0.5 shrink-0 text-jade"
-                size={18}
-              />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">{check.label}</p>
-                <p className="truncate text-sm text-ink/55">{check.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  function renderSourceEditor() {
-    return (
-      <section className={panelClassName}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold">Artifact Text Editor</h3>
-            <p className="truncate text-sm text-ink/55">
-              {selectedFile?.path ?? "No source file selected"}
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={!dirty || saving}
-            onClick={() => void saveSelectedFile()}
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
-          >
-            {saving ? (
-              <Loader2 aria-hidden size={16} className="animate-spin" />
-            ) : (
-              <Save aria-hidden size={16} />
-            )}
-            Save
-          </button>
-        </div>
-
-        {error ? (
-          <Message tone="error" className="mt-4">
-            {error}
-          </Message>
-        ) : null}
-
-        <div className="mt-4">
-          <textarea
-            aria-label="Source editor"
-            value={editorContent}
-            readOnly={!selectedFile?.editable}
-            onChange={(event) => setEditorContent(event.target.value)}
-            spellCheck={false}
-            className="min-h-72 w-full resize-y rounded-md border border-ink/15 bg-parchment px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-ink/45 read-only:bg-ink/5"
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-ink/55">
-            <span>{selectedFile?.kind ?? "none"}</span>
-            <span>{selectedFile?.editable ? "editable" : "read only"}</span>
-            {dirty ? <span className="text-brass">modified</span> : null}
-          </div>
         </div>
       </section>
     );
