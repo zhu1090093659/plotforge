@@ -407,6 +407,9 @@ describe("App", () => {
     expect(screen.getAllByText("trace-fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("provider_timeout").length).toBeGreaterThan(0);
+
+    // Expand Technical Details to verify trace debug content
+    fireEvent.click(screen.getByText("Technical Details"));
     expect(screen.getByText("weak_hook")).toBeTruthy();
     expect(screen.getByText("Trace Evidence")).toBeTruthy();
     expect(screen.getByText("Action Intent")).toBeTruthy();

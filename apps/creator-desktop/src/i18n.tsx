@@ -481,6 +481,8 @@ const zhText: Record<string, string> = {
   "Export zip": "导出 zip",
   "Evidence & Boundaries": "证据与边界",
   "Local export package only": "仅本地导出包",
+  // trace.* namespace
+  "Run Result Summary": "运行结果摘要",
   "Technical Details": "技术详情",
   "These checks remain pending until a separate smoke test is run after export.":
     "这些检查在导出后运行独立冒烟测试前将保持待处理状态。",

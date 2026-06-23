@@ -30,7 +30,7 @@ import { CommandCenterView } from "./CommandCenterView";
 import { DirectorModeView } from "./DirectorModeView";
 import { ExportView } from "./ExportView";
 import { RulesView } from "./RulesView";
-import { RuntimeTracePanel } from "./runtimeTraceView";
+import { TraceDebugView } from "./TraceDebugView";
 import { WorldView } from "./WorldView";
 import { StoryView } from "./StoryView";
 import {
@@ -771,7 +771,7 @@ export function App({
         );
       case "debugger":
         return (
-          <RuntimeTracePanel
+          <TraceDebugView
             report={playtestReport}
             error={playtestError}
             selectedExportProfile={selectedExportProfile}
