@@ -973,12 +973,12 @@ mod tests {
 
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
-        AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, ResourceDefinition, Rule,
-        RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
+        AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, ResourceDefinition,
+        Rule, RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
         WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
-        create_character_from_draft,
-        create_project, create_resource, create_rule, create_rule_from_draft, delete_workshop_library_item,
-        export_static_project, export_static_project_zip, generate_character, generate_story_craft,
+        create_character_from_draft, create_project, create_resource, create_rule,
+        create_rule_from_draft, delete_workshop_library_item, export_static_project,
+        export_static_project_zip, generate_character, generate_story_craft,
         generate_world_expansion, import_workshop_library_package, list_asset_records,
         list_export_profiles, list_source_files, list_workshop_library, load_workshop_library_item,
         open_project, play_once_project, play_once_project_from_latest_snapshot,
@@ -1948,8 +1948,8 @@ mod tests {
             voice_card: "  measured tone  ".into(),
         };
 
-        let document = create_character_from_draft(&project_path, draft)
-            .expect("create character from draft");
+        let document =
+            create_character_from_draft(&project_path, draft).expect("create character from draft");
 
         let created = document
             .characters
@@ -2032,8 +2032,8 @@ mod tests {
             amount: 10,
         };
 
-        let document = create_rule_from_draft(&project_path, draft)
-            .expect("create rule from draft");
+        let document =
+            create_rule_from_draft(&project_path, draft).expect("create rule from draft");
 
         let rule = document
             .rules
