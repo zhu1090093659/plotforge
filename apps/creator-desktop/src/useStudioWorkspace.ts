@@ -1,31 +1,28 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type {
-  AiSafetyPolicy,
   AssetRecord,
-  AudioBible,
-  CharacterEditDocument,
   ExportProfile,
   ProjectData,
-  RulesEditDocument,
-  StateVariablesEditDocument,
-  StoryCraftEditDocument,
-  VisualBible,
-  WorldEditDocument,
 } from "../../../contracts/plotforge";
 import { summarizeProject, type CreatorProjectSummary } from "./projectSummary";
 import type { StudioDataSource } from "./studioDataSource";
 import { projectAssetCatalog, type AssetCatalog } from "./assetCatalog";
 import type {
-  PlayOnceReport,
   ProjectCheckReport,
   SourceFileContent,
   SourceFileSummary,
-  StaticExportReport,
 } from "./tauriBridge";
 import { errorMessage } from "./errorMessage";
+import {
+  useProjectEditing,
+  type EditingWorkspace,
+} from "./useProjectEditing";
+import { usePlaytest, type PlaytestWorkspace } from "./usePlaytest";
+import { useExport, type ExportWorkspace } from "./useExport";
 
-export const defaultPlaytestInput =
-  "Raise emergency taxes while auditing corrupt officials.";
+// ---------------------------------------------------------------------------
+// Exported types
+// ---------------------------------------------------------------------------
 
 export interface StudioMetric {
   label: string;
@@ -39,16 +36,11 @@ export interface UseStudioWorkspaceOptions {
 }
 
 export interface StudioWorkspace {
+  // Project-level state
   projectPath: string;
   setProjectPath: Dispatch<SetStateAction<string>>;
   loadedPath: string;
   projectData: ProjectData | null;
-  setProjectData: Dispatch<SetStateAction<ProjectData | null>>;
-  assetRecords: AssetRecord[];
-  visualBible: VisualBible | null;
-  setVisualBible: Dispatch<SetStateAction<VisualBible | null>>;
-  audioBible: AudioBible | null;
-  setAudioBible: Dispatch<SetStateAction<AudioBible | null>>;
   projectSummary: CreatorProjectSummary | null;
   checkReport: ProjectCheckReport | null;
   sourceFiles: SourceFileSummary[];
@@ -57,53 +49,27 @@ export interface StudioWorkspace {
   setEditorContent: Dispatch<SetStateAction<string>>;
   savedContent: string;
   dirty: boolean;
-  worldEditDocument: WorldEditDocument | null;
-  setWorldEditDocument: Dispatch<SetStateAction<WorldEditDocument | null>>;
-  storyCraftEditDocument: StoryCraftEditDocument | null;
-  setStoryCraftEditDocument: Dispatch<SetStateAction<StoryCraftEditDocument | null>>;
-  characterEditDocument: CharacterEditDocument | null;
-  setCharacterEditDocument: Dispatch<SetStateAction<CharacterEditDocument | null>>;
-  stateVariablesEditDocument: StateVariablesEditDocument | null;
-  setStateVariablesEditDocument: Dispatch<SetStateAction<StateVariablesEditDocument | null>>;
-  rulesEditDocument: RulesEditDocument | null;
-  setRulesEditDocument: Dispatch<SetStateAction<RulesEditDocument | null>>;
-  aiSafetyPolicy: AiSafetyPolicy | null;
-  setAiSafetyPolicy: Dispatch<SetStateAction<AiSafetyPolicy | null>>;
-  playtestInput: string;
-  setPlaytestInput: Dispatch<SetStateAction<string>>;
-  playtestSaveId: string;
-  setPlaytestSaveId: Dispatch<SetStateAction<string>>;
-  playtestRestoreId: string;
-  setPlaytestRestoreId: Dispatch<SetStateAction<string>>;
-  playtestRestoreLatest: boolean;
-  setPlaytestRestoreLatest: Dispatch<SetStateAction<boolean>>;
-  playtestReport: PlayOnceReport | null;
-  playtesting: boolean;
-  playtestError: string | null;
-  exportDir: string;
-  setExportDir: Dispatch<SetStateAction<string>>;
-  archivePath: string;
-  setArchivePath: Dispatch<SetStateAction<string>>;
-  exportProfiles: ExportProfile[];
-  selectedExportProfileId: string;
-  selectedExportProfile: ExportProfile | null;
-  staticExportSelected: boolean;
-  exportReport: StaticExportReport | null;
-  exporting: boolean;
-  exportError: string | null;
   loading: boolean;
   saving: boolean;
   error: string | null;
   assetCatalog: AssetCatalog;
   metrics: StudioMetric[];
+
+  // Project-level methods
   loadProject(path: string): Promise<void>;
   refreshProjectOverview(path?: string): Promise<void>;
   selectSourceFile(file: SourceFileSummary): Promise<void>;
   saveSelectedFile(): Promise<void>;
-  runPlaytest(): Promise<boolean>;
-  runStaticZipExport(): Promise<void>;
-  selectExportProfile(profileId: string): void;
+
+  // Aggregated sub-hooks (grouped)
+  editing: EditingWorkspace;
+  playtest: PlaytestWorkspace;
+  export: ExportWorkspace;
 }
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 export function useStudioWorkspace({
   dataSource,
@@ -113,8 +79,6 @@ export function useStudioWorkspace({
   const [loadedPath, setLoadedPath] = useState(initialProjectPath);
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
   const [assetRecords, setAssetRecords] = useState<AssetRecord[]>([]);
-  const [visualBible, setVisualBible] = useState<VisualBible | null>(null);
-  const [audioBible, setAudioBible] = useState<AudioBible | null>(null);
   const [projectSummary, setProjectSummary] =
     useState<CreatorProjectSummary | null>(null);
   const [checkReport, setCheckReport] = useState<ProjectCheckReport | null>(
@@ -126,61 +90,24 @@ export function useStudioWorkspace({
   );
   const [editorContent, setEditorContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
-  const [worldEditDocument, setWorldEditDocument] =
-    useState<WorldEditDocument | null>(null);
-  const [storyCraftEditDocument, setStoryCraftEditDocument] =
-    useState<StoryCraftEditDocument | null>(null);
-  const [characterEditDocument, setCharacterEditDocument] =
-    useState<CharacterEditDocument | null>(null);
-  const [stateVariablesEditDocument, setStateVariablesEditDocument] =
-    useState<StateVariablesEditDocument | null>(null);
-  const [rulesEditDocument, setRulesEditDocument] =
-    useState<RulesEditDocument | null>(null);
-  const [aiSafetyPolicy, setAiSafetyPolicy] =
-    useState<AiSafetyPolicy | null>(null);
-  const [playtestInput, setPlaytestInput] = useState(defaultPlaytestInput);
-  const [playtestSaveId, setPlaytestSaveId] = useState("save-001");
-  const [playtestRestoreId, setPlaytestRestoreId] = useState("");
-  const [playtestRestoreLatest, setPlaytestRestoreLatest] = useState(false);
-  const [playtestReport, setPlaytestReport] = useState<PlayOnceReport | null>(
-    null,
-  );
-  const [playtesting, setPlaytesting] = useState(false);
-  const [playtestError, setPlaytestError] = useState<string | null>(null);
-  const [exportDir, setExportDir] = useState(
-    defaultStaticExportDir(initialProjectPath),
-  );
-  const [archivePath, setArchivePath] = useState(
-    defaultStaticArchivePath(initialProjectPath),
-  );
-  const [exportProfiles, setExportProfiles] = useState<ExportProfile[]>([]);
-  const [selectedExportProfileId, setSelectedExportProfileId] = useState("");
-  const [exportReport, setExportReport] = useState<StaticExportReport | null>(
-    null,
-  );
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dirty = Boolean(selectedFile?.editable && editorContent !== savedContent);
+
   const assetCatalog = useMemo(
     () => projectAssetCatalog(projectData, assetRecords),
     [assetRecords, projectData],
   );
-  const selectedExportProfile = useMemo(
-    () =>
-      exportProfiles.find((profile) => profile.id === selectedExportProfileId) ??
-      null,
-    [exportProfiles, selectedExportProfileId],
-  );
-  const staticExportSelected = selectedExportProfile?.target === "static_web";
+
   const metrics = useMemo(
     () => [
       {
         label: "Scenes",
-        value: String(checkReport?.scene_count ?? projectSummary?.sceneCount ?? 0),
+        value: String(
+          checkReport?.scene_count ?? projectSummary?.sceneCount ?? 0,
+        ),
         tone: "border-jade/50 text-jade",
       },
       {
@@ -192,7 +119,9 @@ export function useStudioWorkspace({
       },
       {
         label: "Rules",
-        value: String(checkReport?.rule_count ?? projectSummary?.ruleCount ?? 0),
+        value: String(
+          checkReport?.rule_count ?? projectSummary?.ruleCount ?? 0,
+        ),
         tone: "border-signal/50 text-signal",
       },
       {
@@ -204,9 +133,27 @@ export function useStudioWorkspace({
     [checkReport, projectSummary],
   );
 
-  useEffect(() => {
-    void loadProject(initialProjectPath);
-  }, [initialProjectPath]);
+  // Ref for refreshProjectOverview so useProjectEditing can call it
+  // without a circular dependency.
+  const refreshRef = useRef<(path?: string) => Promise<void>>(
+    async () => {},
+  );
+
+  // Sub-hooks --------------------------------------------------------------
+
+  const editing = useProjectEditing({
+    dataSource,
+    onRefreshProjectOverview: async (path?: string) => {
+      await refreshRef.current?.(path);
+    },
+    onSetProjectData: setProjectData,
+  });
+
+  const playtest = usePlaytest(dataSource);
+
+  const exportWorkspace = useExport({ dataSource, initialProjectPath });
+
+  // Core operations --------------------------------------------------------
 
   async function loadProject(path: string) {
     setLoading(true);
@@ -241,7 +188,8 @@ export function useStudioWorkspace({
         dataSource.readAudioBible(path),
         dataSource.listAssetRecords(path),
       ]);
-      const firstEditable = files.find((file) => file.editable) ?? files[0];
+      const firstEditable =
+        files.find((file) => file.editable) ?? files[0];
       const firstContent = firstEditable
         ? await dataSource.readSourceFile(path, firstEditable.path)
         : null;
@@ -254,31 +202,27 @@ export function useStudioWorkspace({
       setLoadedPath(path);
       setProjectPath(path);
       setProjectData(projectWithBible);
-      setExportProfiles(profiles);
-      setSelectedExportProfileId((currentId) =>
-        resolveExportProfileId(profiles, currentId),
-      );
       setAssetRecords(records);
-      setVisualBible(visualBibleDocument);
-      setAudioBible(audioBibleDocument);
       setProjectSummary(summarizeProject(projectWithBible));
       setCheckReport(report);
       setSourceFiles(files);
       setSelectedFile(firstContent);
       setEditorContent(firstContent?.content ?? "");
       setSavedContent(firstContent?.content ?? "");
-      setWorldEditDocument(worldDocument);
-      setStoryCraftEditDocument(storyCraftDocument);
-      setCharacterEditDocument(characterDocument);
-      setStateVariablesEditDocument(stateVariablesDocument);
-      setRulesEditDocument(rulesDocument);
-      setAiSafetyPolicy(safetyPolicy);
-      setPlaytestReport(null);
-      setPlaytestError(null);
-      setExportDir(defaultStaticExportDir(path));
-      setArchivePath(defaultStaticArchivePath(path));
-      setExportReport(null);
-      setExportError(null);
+
+      // Sync to sub-hooks
+      editing.loadEditingDocuments({
+        worldEditDocument: worldDocument,
+        storyCraftEditDocument: storyCraftDocument,
+        characterEditDocument: characterDocument,
+        stateVariablesEditDocument: stateVariablesDocument,
+        rulesEditDocument: rulesDocument,
+        aiSafetyPolicy: safetyPolicy,
+        visualBible: visualBibleDocument,
+        audioBible: audioBibleDocument,
+      });
+      playtest.resetPlaytest();
+      exportWorkspace.resetExport(path, profiles);
     } catch (source) {
       setError(errorMessage(source));
     } finally {
@@ -311,8 +255,8 @@ export function useStudioWorkspace({
       );
       setProjectData(projectWithBible);
       setAssetRecords(records);
-      setVisualBible(visualBibleDocument);
-      setAudioBible(audioBibleDocument);
+      editing.setVisualBible(visualBibleDocument);
+      editing.setAudioBible(audioBibleDocument);
       setProjectSummary(summarizeProject(projectWithBible));
       setCheckReport(report);
       setSourceFiles(files);
@@ -321,6 +265,9 @@ export function useStudioWorkspace({
       throw source;
     }
   }
+
+  // Wire up the ref so useProjectEditing's onRefreshProjectOverview works
+  refreshRef.current = refreshProjectOverview;
 
   async function selectSourceFile(file: SourceFileSummary) {
     setError(null);
@@ -356,90 +303,18 @@ export function useStudioWorkspace({
     }
   }
 
-  async function runPlaytest(): Promise<boolean> {
-    const input = playtestInput.trim();
-    if (!input) {
-      setPlaytestError("Playtest input is required.");
-      return false;
-    }
+  // Auto-load on mount
+  useEffect(() => {
+    void loadProject(initialProjectPath);
+  }, [initialProjectPath]);
 
-    setPlaytesting(true);
-    setPlaytestError(null);
-    try {
-      const saveId = playtestSaveId.trim() || null;
-      const restoreId = playtestRestoreId.trim();
-      const report = playtestRestoreLatest
-        ? await dataSource.playOnceProjectFromLatestSnapshot(
-            loadedPath,
-            input,
-            saveId,
-          )
-        : restoreId
-          ? await dataSource.playOnceProjectFromSnapshot(
-              loadedPath,
-              input,
-              restoreId,
-              saveId,
-            )
-          : saveId
-            ? await dataSource.playOnceProjectWithSave(loadedPath, input, saveId)
-            : await dataSource.playOnceProject(loadedPath, input);
-      setPlaytestReport(report);
-      return true;
-    } catch (source) {
-      setPlaytestError(errorMessage(source));
-      return false;
-    } finally {
-      setPlaytesting(false);
-    }
-  }
-
-  async function runStaticZipExport() {
-    if (!staticExportSelected) {
-      setExportError("Selected export profile has no executable Studio command.");
-      return;
-    }
-
-    const outputDir = exportDir.trim();
-    const zipPath = archivePath.trim();
-    if (!outputDir || !zipPath) {
-      setExportError("Output directory and zip archive are required.");
-      return;
-    }
-
-    setExporting(true);
-    setExportError(null);
-    try {
-      const report = await dataSource.exportStaticProjectZip(
-        loadedPath,
-        outputDir,
-        zipPath,
-      );
-      setExportReport(report);
-    } catch (source) {
-      setExportError(errorMessage(source));
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  function selectExportProfile(profileId: string) {
-    setSelectedExportProfileId(profileId);
-    setExportReport(null);
-    setExportError(null);
-  }
+  // Return ----------------------------------------------------------------
 
   return {
     projectPath,
     setProjectPath,
     loadedPath,
     projectData,
-    setProjectData,
-    assetRecords,
-    visualBible,
-    setVisualBible,
-    audioBible,
-    setAudioBible,
     projectSummary,
     checkReport,
     sourceFiles,
@@ -448,40 +323,6 @@ export function useStudioWorkspace({
     setEditorContent,
     savedContent,
     dirty,
-    worldEditDocument,
-    setWorldEditDocument,
-    storyCraftEditDocument,
-    setStoryCraftEditDocument,
-    characterEditDocument,
-    setCharacterEditDocument,
-    stateVariablesEditDocument,
-    setStateVariablesEditDocument,
-    rulesEditDocument,
-    setRulesEditDocument,
-    aiSafetyPolicy,
-    setAiSafetyPolicy,
-    playtestInput,
-    setPlaytestInput,
-    playtestSaveId,
-    setPlaytestSaveId,
-    playtestRestoreId,
-    setPlaytestRestoreId,
-    playtestRestoreLatest,
-    setPlaytestRestoreLatest,
-    playtestReport,
-    playtesting,
-    playtestError,
-    exportDir,
-    setExportDir,
-    archivePath,
-    setArchivePath,
-    exportProfiles,
-    selectedExportProfileId,
-    selectedExportProfile,
-    staticExportSelected,
-    exportReport,
-    exporting,
-    exportError,
     loading,
     saving,
     error,
@@ -491,38 +332,26 @@ export function useStudioWorkspace({
     refreshProjectOverview,
     selectSourceFile,
     saveSelectedFile,
-    runPlaytest,
-    runStaticZipExport,
-    selectExportProfile,
+    editing,
+    playtest,
+    export: exportWorkspace,
   };
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function attachBibles(
   project: ProjectData,
-  visualBible: VisualBible,
-  audioBible: AudioBible,
+  visualBible: import("../../../contracts/plotforge").VisualBible,
+  audioBible: import("../../../contracts/plotforge").AudioBible,
 ): ProjectData {
   return {
     ...project,
     visual_bible: visualBible,
     audio_bible: audioBible,
   };
-}
-
-function resolveExportProfileId(profiles: ExportProfile[], currentId: string) {
-  if (profiles.some((profile) => profile.id === currentId)) {
-    return currentId;
-  }
-
-  return profiles[0]?.id ?? "";
-}
-
-export function defaultStaticExportDir(projectPath: string) {
-  return `${trimTrailingSlashes(projectPath)}/exports/static`;
-}
-
-export function defaultStaticArchivePath(projectPath: string) {
-  return `${trimTrailingSlashes(projectPath)}/exports/static.zip`;
 }
 
 export function defaultNewProjectPath(projectPath: string) {

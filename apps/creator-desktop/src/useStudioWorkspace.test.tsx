@@ -141,6 +141,7 @@ function WorkspaceProbe({ dataSource }: { dataSource: StudioDataSource }) {
     initialProjectPath: "/tmp/dynasty-embers",
   });
   const sceneMetric = workspace.metrics.find((metric) => metric.label === "Scenes");
+  const wp = workspace.loadedPath;
 
   return (
     <div>
@@ -149,13 +150,13 @@ function WorkspaceProbe({ dataSource }: { dataSource: StudioDataSource }) {
       <p>selected:{workspace.selectedFile?.path ?? "none"}</p>
       <p>metric-scenes:{sceneMetric?.value ?? "none"}</p>
       <p>dirty:{String(workspace.dirty)}</p>
-      <p>selected-export:{workspace.selectedExportProfileId || "none"}</p>
+      <p>selected-export:{workspace.export.selectedExportProfileId || "none"}</p>
       <p>
-        playtest:{String(Boolean(workspace.playtestReport))}:
-        {workspace.playtestReport?.trace.player_input ?? "none"}
+        playtest:{String(Boolean(workspace.playtest.playtestReport))}:
+        {workspace.playtest.playtestReport?.trace.player_input ?? "none"}
       </p>
-      <p>export:{workspace.exportReport?.archive_path ?? "none"}</p>
-      <p>export-error:{workspace.exportError ?? "none"}</p>
+      <p>export:{workspace.export.exportReport?.archive_path ?? "none"}</p>
+      <p>export-error:{workspace.export.exportError ?? "none"}</p>
       <p>error:{workspace.error ?? "none"}</p>
       <textarea
         aria-label="Probe editor"
@@ -164,8 +165,8 @@ function WorkspaceProbe({ dataSource }: { dataSource: StudioDataSource }) {
       />
       <input
         aria-label="Probe playtest input"
-        value={workspace.playtestInput}
-        onChange={(event) => workspace.setPlaytestInput(event.target.value)}
+        value={workspace.playtest.playtestInput}
+        onChange={(event) => workspace.playtest.setPlaytestInput(event.target.value)}
       />
       <button
         type="button"
@@ -176,22 +177,28 @@ function WorkspaceProbe({ dataSource }: { dataSource: StudioDataSource }) {
       <button type="button" onClick={() => void workspace.saveSelectedFile()}>
         Save source
       </button>
-      <button type="button" onClick={() => void workspace.runPlaytest()}>
+      <button
+        type="button"
+        onClick={() => void workspace.playtest.runPlaytest(wp)}
+      >
         Run playtest
       </button>
       <button
         type="button"
-        onClick={() => workspace.selectExportProfile("steam-submission-kit")}
+        onClick={() => workspace.export.selectExportProfile("steam-submission-kit")}
       >
         Select draft export
       </button>
       <button
         type="button"
-        onClick={() => workspace.selectExportProfile("static-web")}
+        onClick={() => workspace.export.selectExportProfile("static-web")}
       >
         Select static export
       </button>
-      <button type="button" onClick={() => void workspace.runStaticZipExport()}>
+      <button
+        type="button"
+        onClick={() => void workspace.export.runStaticZipExport(wp)}
+      >
         Run export
       </button>
     </div>
