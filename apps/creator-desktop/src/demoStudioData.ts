@@ -1,3 +1,7 @@
+// Test fixture only — mock project/export/playtest data for unit tests.
+// NOT imported by production code (production uses the StudioDataSource bridge).
+// Safe to keep here as a co-located test helper; do not re-introduce as a
+// second source of truth for export profiles or project state.
 import type {
   AiSafetyPolicy,
   AssetRecord,
