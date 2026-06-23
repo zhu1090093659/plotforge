@@ -1,6 +1,8 @@
 import {
   Boxes,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FileText,
   Lock,
   Network,
@@ -8,12 +10,13 @@ import {
   Play,
   ShieldCheck,
   TerminalSquare,
+  XCircle,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { CreatorProjectSummary } from "./projectSummary";
 import type { PlayOnceReport, SourceFileSummary } from "./tauriBridge";
-import { StudioButton, StudioStatusChip } from "./studioUi";
+import { Collapsible, StudioButton, StudioStatusChip } from "./studioUi";
 
 interface AgentMeshViewProps {
   projectSummary: CreatorProjectSummary | null;
@@ -124,14 +127,8 @@ export function AgentMeshView({
             <BridgeFact label="Provider calls" value="not implemented" />
           </div>
 
-          <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-canvas-50">
-                Removed Fake Surfaces
-              </p>
-              <StudioStatusChip tone="danger">disabled</StudioStatusChip>
-            </div>
-            <ul className="mt-3 grid gap-2 text-xs leading-5 text-canvas-200/70">
+          <DarkCollapsible label="Removed Fake Surfaces" badge="disabled">
+            <ul className="grid gap-2 text-xs leading-5 text-canvas-200/70">
               <BoundaryLine icon={Lock}>
                 No mock external workers or mock connected state.
               </BoundaryLine>
@@ -142,7 +139,7 @@ export function AgentMeshView({
                 No generated artifact bundle without persisted evidence.
               </BoundaryLine>
             </ul>
-          </div>
+          </DarkCollapsible>
         </aside>
 
         <div className="grid gap-4">
@@ -210,7 +207,7 @@ export function AgentMeshView({
 
           <div
             aria-label="Capability Matrix"
-            className="overflow-hidden rounded-lg border border-graphite-700/15 bg-canvas-50 shadow-studio-panel"
+            className="rounded-lg border border-graphite-700/15 bg-canvas-50 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-4 py-3">
               <div>
@@ -224,36 +221,13 @@ export function AgentMeshView({
               <StudioStatusChip tone="health">{wiredCount} wired</StudioStatusChip>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-[760px] w-full border-collapse text-left text-sm">
-                <thead className="bg-parchment text-xs uppercase text-ink/50">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">Capability</th>
-                    <th className="px-4 py-3 font-semibold">Real source</th>
-                    <th className="px-4 py-3 font-semibold">Evidence</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {realCapabilities.map((capability) => (
-                    <tr key={capability.id} className="border-t border-ink/10 align-top">
-                      <td className="px-4 py-3 font-semibold text-ink">
-                        {capability.label}
-                      </td>
-                      <td className="px-4 py-3 text-ink/70">{capability.source}</td>
-                      <td className="px-4 py-3 text-ink/70">{capability.evidence}</td>
-                      <td className="px-4 py-3">
-                        <StudioStatusChip
-                          tone={capability.status === "wired" ? "health" : "danger"}
-                        >
-                          {capability.status}
-                        </StudioStatusChip>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+              {realCapabilities.map((capability) => (
+                <li key={capability.id}>
+                  <CapabilityCard capability={capability} />
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
@@ -323,6 +297,93 @@ function BoundaryLine({
       <Icon aria-hidden size={14} className="mt-0.5 shrink-0 text-signal" />
       <span>{children}</span>
     </li>
+  );
+}
+
+/**
+ * Dark-themed collapsible for the "Removed Fake Surfaces" technical section.
+ * Collapsed by default to keep the surface focused on creator-relevant facts;
+ * the boundary detail is available on demand for technical reviewers.
+ */
+function DarkCollapsible({
+  label,
+  badge,
+  children,
+}: {
+  label: string;
+  badge: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const slug = label.toLowerCase().replace(/\s+/g, "-");
+  const headingId = `dark-collapsible-heading-${slug}`;
+  const regionId = `dark-collapsible-region-${slug}`;
+  return (
+    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+      <button
+        type="button"
+        id={headingId}
+        aria-expanded={open}
+        aria-controls={regionId}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-canvas-50">
+          {open ? (
+            <ChevronDown aria-hidden size={15} className="shrink-0 text-canvas-200/55" />
+          ) : (
+            <ChevronRight aria-hidden size={15} className="shrink-0 text-canvas-200/55" />
+          )}
+          {label}
+        </span>
+        <StudioStatusChip tone="danger">{badge}</StudioStatusChip>
+      </button>
+      {open ? (
+        <div
+          id={regionId}
+          role="region"
+          aria-labelledby={headingId}
+          className="mt-3"
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Single responsive capability card replacing the fixed-width matrix table.
+ * Stacks source/evidence as labeled fields so the matrix reads without
+ * horizontal scrolling on narrow screens.
+ */
+function CapabilityCard({ capability }: { capability: Capability }) {
+  const wired = capability.status === "wired";
+  const StatusIcon = wired ? CheckCircle2 : XCircle;
+  return (
+    <article className="flex h-full flex-col gap-2 rounded-md border border-ink/10 bg-parchment px-3 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="text-sm font-semibold text-ink">{capability.label}</h4>
+        <StatusIcon
+          aria-hidden
+          size={16}
+          className={wired ? "shrink-0 text-health-500" : "shrink-0 text-signal"}
+        />
+      </div>
+      <dl className="grid gap-1.5 text-xs leading-5">
+        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+          <dt className="font-semibold uppercase text-ink/45">Real source</dt>
+          <dd className="text-ink/70">{capability.source}</dd>
+        </div>
+        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+          <dt className="font-semibold uppercase text-ink/45">Evidence</dt>
+          <dd className="text-ink/70">{capability.evidence}</dd>
+        </div>
+      </dl>
+      <StudioStatusChip tone={wired ? "health" : "danger"}>
+        {capability.status}
+      </StudioStatusChip>
+    </article>
   );
 }
 

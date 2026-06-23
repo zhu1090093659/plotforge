@@ -263,6 +263,7 @@ const zhText: Record<string, string> = {
   "Available Actions": "可用操作",
   "Running proof": "正在运行证明",
   "View trace": "查看追踪",
+  // agents.* namespace (AgentMeshView)
   "Studio Backend Bridge": "Studio 后端桥接",
   explicit: "明确",
   "No mock external workers or mock connected state.":
