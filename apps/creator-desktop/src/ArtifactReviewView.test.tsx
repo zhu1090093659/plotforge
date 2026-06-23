@@ -32,7 +32,6 @@ describe("ArtifactReviewView", () => {
           allowed_files: ["index.html", "game.json"],
           files_found: ["index.html", "game.json"],
         }}
-        assetMaintenance={<div>Asset Maintenance Slot</div>}
         onOpenTrace={openTrace}
         onRunPlayableProof={runProof}
       />,
@@ -51,7 +50,7 @@ describe("ArtifactReviewView", () => {
     expect(screen.getByText("Asset registry")).toBeTruthy();
     expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
     expect(screen.getByText("/tmp/export.zip")).toBeTruthy();
-    expect(screen.getByText("Asset Maintenance Slot")).toBeTruthy();
+    // AssetMaintenanceView is now rendered directly (ReactNode injection removed); slot text no longer applies.
     expect(screen.queryByText("Court Crisis Pressure Bundle")).toBeNull();
     expect(screen.queryByText("Approve Bundle")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(

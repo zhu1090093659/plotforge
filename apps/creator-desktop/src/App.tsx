@@ -7,7 +7,6 @@ import {
 import { useEffect, useState } from "react";
 import type {
   AiSafetyPolicy,
-  AssetRecord,
   AiUsageContentKind,
   AudioVoiceCard,
   Character,
@@ -23,6 +22,7 @@ import type {
 } from "../../../contracts/plotforge";
 import { AgentMeshView } from "./AgentMeshView";
 import { ArtifactReviewView } from "./ArtifactReviewView";
+import { AssetMaintenanceView } from "./AssetMaintenanceView";
 import { LaunchpadView } from "./LaunchpadView";
 import { CharactersView } from "./CharactersView";
 import { StateView, type ResourceDraft } from "./StateView";
@@ -47,7 +47,6 @@ import {
   screenReferencesForWorkflow,
   workflowForSection,
   type AgentNativeWorkflowId,
-  type AssetCatalogItem,
   type StudioSectionId,
 } from "./studioModel";
 import {
@@ -56,6 +55,7 @@ import {
   StudioShell,
   StudioStatusChip,
   studioUiClassNames,
+  EmptyPanel,
 } from "./studioUi";
 import {
   defaultNewProjectPath,
@@ -733,8 +733,20 @@ export function App({
             exportReport={exportReport}
             onOpenTrace={() => openStudioSection("debugger")}
             onRunPlayableProof={() => void runPlaytest()}
-            assetMaintenance={renderAssetMaintenancePanel()}
-          />
+          >
+            <AssetMaintenanceView
+              assetCatalog={assetCatalog}
+              sourceFiles={sourceFiles}
+              visualBible={visualBible}
+              audioBible={audioBible}
+              saving={formSaving === "assets"}
+              formStatus={formStatus}
+              onUpdateVisualStyleCard={updateVisualStyleCard}
+              onUpdateAudioVoiceCard={updateAudioVoiceCard}
+              onSaveVisualBible={() => void saveVisualBible()}
+              onSaveAudioBible={() => void saveAudioBible()}
+            />
+          </ArtifactReviewView>
         );
       case "playtest":
         return (
@@ -880,254 +892,6 @@ export function App({
     } finally {
       setCreating(false);
     }
-  }
-
-  function renderAssetMaintenancePanel() {
-    const recordCount = assetCatalog.items.filter(
-      (item) => item.source === "record",
-    ).length;
-    const referenceCount = assetCatalog.items.reduce(
-      (total, item) =>
-        item.source === "record" ? total + item.record.references.length : total,
-      0,
-    );
-    return (
-      <section className={panelClassName}>
-        <PanelHeader
-          title="Asset Maintenance"
-          subtitle={
-            assetCatalog.source === "records"
-              ? `${recordCount} asset records`
-              : `${assetCatalog.items.length} scene background fallbacks`
-          }
-        />
-        <SectionMessage section="assets" status={formStatus} />
-        <div className="mt-4 grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <MetricBox label="Source files" value={sourceFiles.length} />
-            <MetricBox label="Asset records" value={recordCount} />
-            <MetricBox label="References" value={referenceCount} />
-            <MetricBox
-              label="Visual cards"
-              value={visualBible?.style_cards.length ?? 0}
-            />
-            <MetricBox
-              label="Audio cards"
-              value={audioBible?.voice_cards.length ?? 0}
-            />
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {assetCatalog.items.length > 0 ? (
-              assetCatalog.items.map((item) => (
-                <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />
-              ))
-            ) : (
-              <EmptyPanel label="No asset records or scene background paths found." />
-            )}
-          </div>
-        </div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          {renderVisualBibleEditor()}
-          {renderAudioBibleEditor()}
-        </div>
-      </section>
-    );
-  }
-
-  function renderVisualBibleEditor() {
-    return (
-      <section className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h4 className="text-sm font-semibold">Visual Bible</h4>
-            <p className="mt-1 text-xs font-medium uppercase text-ink/45">
-              {visualBible?.style_cards.length ?? 0} style cards
-            </p>
-          </div>
-          <SaveButton
-            label="Save Visual Bible"
-            saving={formSaving === "assets"}
-            onClick={() => void saveVisualBible()}
-          />
-        </div>
-        <div className="mt-3 grid gap-3">
-          {visualBible && visualBible.style_cards.length > 0 ? (
-            visualBible.style_cards.map((card, index) => (
-              <article
-                key={`${card.id}:${index}`}
-                className="rounded-md border border-ink/10 bg-white px-3 py-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h5 className="truncate text-sm font-semibold">
-                      {card.title}
-                    </h5>
-                    <code className="mt-1 block truncate text-xs text-ink/45">
-                      {card.id}
-                    </code>
-                  </div>
-                  <span className="rounded-md border border-ink/10 bg-parchment px-2 py-1 text-xs text-ink/60">
-                    style
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-3">
-                  <TextareaInput
-                    label="Prompt"
-                    ariaLabel={`Visual style prompt ${index + 1}`}
-                    value={card.prompt}
-                    onChange={(value) =>
-                      updateVisualStyleCard(index, { prompt: value })
-                    }
-                    minHeight="min-h-28"
-                  />
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <TextareaInput
-                      label="Palette"
-                      ariaLabel={`Visual style palette ${index + 1}`}
-                      value={listToLines(card.palette)}
-                      onChange={(value) =>
-                        updateVisualStyleCard(index, {
-                          palette: linesToList(value),
-                        })
-                      }
-                      minHeight="min-h-24"
-                    />
-                    <TextareaInput
-                      label="Tags"
-                      ariaLabel={`Visual style tags ${index + 1}`}
-                      value={listToLines(card.tags)}
-                      onChange={(value) =>
-                        updateVisualStyleCard(index, {
-                          tags: linesToList(value),
-                        })
-                      }
-                      minHeight="min-h-24"
-                    />
-                    <TextareaInput
-                      label="Reference assets"
-                      ariaLabel={`Visual style reference asset ids ${index + 1}`}
-                      value={listToLines(card.reference_asset_ids)}
-                      onChange={(value) =>
-                        updateVisualStyleCard(index, {
-                          reference_asset_ids: linesToList(value),
-                        })
-                      }
-                      minHeight="min-h-24"
-                    />
-                  </div>
-                </div>
-              </article>
-            ))
-          ) : (
-            <p className="text-sm text-ink/55">
-              No Visual Bible style cards in project data.
-            </p>
-          )}
-        </div>
-      </section>
-    );
-  }
-
-  function renderAudioBibleEditor() {
-    return (
-      <section className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h4 className="text-sm font-semibold">Audio Bible</h4>
-            <p className="mt-1 text-xs font-medium uppercase text-ink/45">
-              {audioBible?.voice_cards.length ?? 0} voice cards
-            </p>
-          </div>
-          <SaveButton
-            label="Save Audio Bible"
-            saving={formSaving === "assets"}
-            onClick={() => void saveAudioBible()}
-          />
-        </div>
-        <div className="mt-3 grid gap-3">
-          {audioBible && audioBible.voice_cards.length > 0 ? (
-            audioBible.voice_cards.map((card, index) => (
-              <article
-                key={`${card.id}:${index}`}
-                className="rounded-md border border-ink/10 bg-white px-3 py-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h5 className="truncate text-sm font-semibold">
-                      {card.title}
-                    </h5>
-                    <code className="mt-1 block truncate text-xs text-ink/45">
-                      {card.id}
-                    </code>
-                  </div>
-                  <span className="rounded-md border border-ink/10 bg-parchment px-2 py-1 text-xs text-ink/60">
-                    voice
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-3">
-                  <TextInput
-                    label="Voice"
-                    ariaLabel={`Audio voice ${index + 1}`}
-                    value={card.voice}
-                    onChange={(value) =>
-                      updateAudioVoiceCard(index, { voice: value })
-                    }
-                  />
-                  <TextareaInput
-                    label="Delivery"
-                    ariaLabel={`Audio delivery ${index + 1}`}
-                    value={card.delivery}
-                    onChange={(value) =>
-                      updateAudioVoiceCard(index, { delivery: value })
-                    }
-                    minHeight="min-h-24"
-                  />
-                  <TextareaInput
-                    label="Sample text"
-                    ariaLabel={`Audio sample text ${index + 1}`}
-                    value={card.sample_text ?? ""}
-                    onChange={(value) =>
-                      updateAudioVoiceCard(index, {
-                        sample_text: optionalText(value),
-                      })
-                    }
-                    minHeight="min-h-24"
-                  />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <TextareaInput
-                      label="Tags"
-                      ariaLabel={`Audio tags ${index + 1}`}
-                      value={listToLines(card.tags)}
-                      onChange={(value) =>
-                        updateAudioVoiceCard(index, {
-                          tags: linesToList(value),
-                        })
-                      }
-                      minHeight="min-h-24"
-                    />
-                    <TextareaInput
-                      label="Reference assets"
-                      ariaLabel={`Audio reference asset ids ${index + 1}`}
-                      value={listToLines(card.reference_asset_ids)}
-                      onChange={(value) =>
-                        updateAudioVoiceCard(index, {
-                          reference_asset_ids: linesToList(value),
-                        })
-                      }
-                      minHeight="min-h-24"
-                    />
-                  </div>
-                </div>
-              </article>
-            ))
-          ) : (
-            <p className="text-sm text-ink/55">
-              No Audio Bible voice cards in project data.
-            </p>
-          )}
-        </div>
-      </section>
-    );
   }
 
   function renderEvidencePanel() {
@@ -1564,118 +1328,6 @@ function PreviewEvidenceLine({
       <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
     </div>
   );
-}
-
-function AssetCatalogCard({ item }: { item: AssetCatalogItem }) {
-  if (item.source === "scene-background-fallback") {
-    return (
-      <article className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
-        <p className="text-xs font-medium uppercase text-ink/45">
-          Scene background fallback
-        </p>
-        <code className="mt-2 block truncate text-sm text-ink/80">
-          {item.path}
-        </code>
-      </article>
-    );
-  }
-
-  const { record } = item;
-  return (
-    <article className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase text-ink/45">
-            {record.kind} / {record.source}
-          </p>
-          <h4 className="mt-1 truncate text-sm font-semibold">{record.id}</h4>
-        </div>
-        {record.provider_metadata?.fallback_used ? (
-          <span className="rounded-md border border-signal/30 bg-signal/10 px-2 py-1 text-xs font-semibold text-signal">
-            Fallback
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-3 grid gap-2 text-sm text-ink/70">
-        <AssetField label="Project path" value={record.project_path} code />
-        <AssetField label="Export path" value={record.export_path} code />
-        <AssetField label="Content hash" value={record.content_hash} code />
-        <AssetField label="Hash algorithm" value={record.hash_algorithm} />
-        <AssetField label="Bytes" value={String(record.byte_length)} />
-        <AssetField label="Provider" value={providerLabel(record)} />
-        <AssetField
-          label="Request id"
-          value={record.provider_metadata?.request_id ?? "none"}
-          code={Boolean(record.provider_metadata?.request_id)}
-        />
-        <AssetField
-          label="Prompt hash"
-          value={record.provider_metadata?.prompt_hash ?? "none"}
-          code={Boolean(record.provider_metadata?.prompt_hash)}
-        />
-        <AssetField
-          label="References"
-          value={referenceLabel(record)}
-          code={record.references.length > 0}
-        />
-      </div>
-    </article>
-  );
-}
-
-function AssetField({
-  label,
-  value,
-  code = false,
-}: {
-  label: string;
-  value: string;
-  code?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[11px] font-medium uppercase text-ink/45">{label}</p>
-      {code ? (
-        <code className="block truncate text-xs text-ink/75">{value}</code>
-      ) : (
-        <p className="truncate text-xs text-ink/75">{value}</p>
-      )}
-    </div>
-  );
-}
-
-function EmptyPanel({ label }: { label: string }) {
-  return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm text-ink/55">
-      {label}
-    </div>
-  );
-}
-
-function assetCatalogItemKey(item: AssetCatalogItem): string {
-  return item.source === "record" ? item.record.id : item.path;
-}
-
-function providerLabel(record: AssetRecord): string {
-  const metadata = record.provider_metadata;
-  if (!metadata) {
-    return "none";
-  }
-
-  return [metadata.provider, metadata.model].filter(Boolean).join(" / ");
-}
-
-function referenceLabel(record: AssetRecord): string {
-  if (record.references.length === 0) {
-    return "none";
-  }
-
-  return record.references
-    .map(
-      (reference) =>
-        `${reference.reference_kind}:${reference.reference_id}:${reference.slot}`,
-    )
-    .join(", ");
 }
 
 function emptyCharacterDraft(): CharacterDraft {

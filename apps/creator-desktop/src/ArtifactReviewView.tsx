@@ -17,7 +17,7 @@ import type {
   StaticExportReport,
 } from "./tauriBridge";
 
-interface ArtifactReviewViewProps {
+export interface ArtifactReviewViewProps {
   projectSummary: CreatorProjectSummary | null;
   loadedPath: string;
   sourceFiles: SourceFileSummary[];
@@ -26,9 +26,10 @@ interface ArtifactReviewViewProps {
   playtesting: boolean;
   playtestError: string | null;
   exportReport: StaticExportReport | null;
-  assetMaintenance: ReactNode;
   onOpenTrace(): void;
   onRunPlayableProof(): void;
+  /** Optional slot for additional content rendered below the main grid (e.g. AssetMaintenanceView). */
+  children?: ReactNode;
 }
 
 export function ArtifactReviewView({
@@ -40,9 +41,9 @@ export function ArtifactReviewView({
   playtesting,
   playtestError,
   exportReport,
-  assetMaintenance,
   onOpenTrace,
   onRunPlayableProof,
+  children,
 }: ArtifactReviewViewProps) {
   const editableFiles = sourceFiles.filter((file) => file.editable);
   const assetRecordCount = assetCatalog.items.filter(
@@ -281,7 +282,7 @@ export function ArtifactReviewView({
         </aside>
       </div>
 
-      {assetMaintenance}
+      {children}
     </section>
   );
 }

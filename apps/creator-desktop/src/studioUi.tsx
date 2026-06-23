@@ -196,6 +196,15 @@ export function StudioShell({
   );
 }
 
+
+export function EmptyPanel({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-ink/15 bg-ink/[0.02] p-6 text-center text-sm text-ink/50">
+      {label}
+    </div>
+  );
+}
+
 export function StudioPanel({
   children,
   className = "",

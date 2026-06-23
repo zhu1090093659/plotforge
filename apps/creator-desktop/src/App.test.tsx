@@ -334,6 +334,7 @@ describe("App", () => {
 
     expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
+    fireEvent.click(screen.getByRole("button", { name: /Winter court ink wash/ }));
 
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
       target: { value: "Ink court with harsher winter lanterns." },
@@ -352,6 +353,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(updates).toHaveLength(1);
     });
+    fireEvent.click(screen.getByRole("button", { name: /Court Censor/ }));
 
     fireEvent.change(screen.getByLabelText("Audio voice 1"), {
       target: { value: "dry formal court voice" },
