@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LaunchpadView } from "./LaunchpadView";
 import { demoExportProfiles, demoPlayOnceReport, demoProjectData } from "./demoStudioData";
 import { summarizeProject } from "./projectSummary";
-import { projectAssetCatalog } from "./studioModel";
+import { projectAssetCatalog } from "./assetCatalog";
 import { createDefaultStudioDataSource } from "./studioDataSource";
 import type { ProjectCreationRequest, ProjectTemplateId } from "../../../contracts/plotforge";
 import type { ProjectCheckReport } from "./tauriBridge";

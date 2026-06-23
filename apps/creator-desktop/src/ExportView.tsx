@@ -6,7 +6,7 @@ import type {
   ProjectData,
 } from "../../../contracts/plotforge";
 import type { StaticExportReport } from "./tauriBridge";
-import type { AssetCatalog } from "./studioModel";
+import type { AssetCatalog } from "./assetCatalog";
 import { Collapsible, StudioStatusChip } from "./studioUi";
 
 // ---------------------------------------------------------------------------

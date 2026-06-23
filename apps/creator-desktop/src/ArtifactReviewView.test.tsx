@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArtifactReviewView } from "./ArtifactReviewView";
 import { demoPlayOnceReport, demoProjectData } from "./demoStudioData";
 import { summarizeProject } from "./projectSummary";
-import { projectAssetCatalog } from "./studioModel";
+import { projectAssetCatalog } from "./assetCatalog";
 
 afterEach(cleanup);
 

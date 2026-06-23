@@ -1,7 +1,7 @@
 import { Loader2, Save } from "lucide-react";
 import type { AssetRecord, AudioVoiceCard, VisualStyleCard } from "../../../contracts/plotforge";
 import type { StudioSectionId } from "./studioModel";
-import type { AssetCatalogItem, AssetCatalog } from "./studioModel";
+import type { AssetCatalogItem, AssetCatalog } from "./assetCatalog";
 import type { SourceFileSummary } from "./tauriBridge";
 import { Collapsible, studioUiClassNames } from "./studioUi";
 

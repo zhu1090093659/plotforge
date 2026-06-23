@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AssetMaintenanceView } from "./AssetMaintenanceView";
-import type { AssetCatalog } from "./studioModel";
+import type { AssetCatalog } from "./assetCatalog";
 import type { SourceFileSummary } from "./tauriBridge";
 
 afterEach(() => {

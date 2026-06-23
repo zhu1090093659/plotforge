@@ -14,7 +14,7 @@ import type {
 } from "../../../contracts/plotforge";
 import { summarizeProject, type CreatorProjectSummary } from "./projectSummary";
 import type { StudioDataSource } from "./studioDataSource";
-import { projectAssetCatalog, type AssetCatalog } from "./studioModel";
+import { projectAssetCatalog, type AssetCatalog } from "./assetCatalog";
 import type {
   PlayOnceReport,
   ProjectCheckReport,

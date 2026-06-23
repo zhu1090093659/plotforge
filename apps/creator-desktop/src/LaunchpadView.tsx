@@ -29,7 +29,7 @@ import type {
   SourceFileContent,
   StaticExportReport,
 } from "./tauriBridge";
-import type { AssetCatalog } from "./studioModel";
+import type { AssetCatalog } from "./assetCatalog";
 import {
   CollapsibleSection,
 } from "./studioUi";

@@ -10,7 +10,7 @@ import {
 import type { ReactNode } from "react";
 import type { CreatorProjectSummary } from "./projectSummary";
 import { StudioButton, StudioStatusChip } from "./studioUi";
-import type { AssetCatalog } from "./studioModel";
+import type { AssetCatalog } from "./assetCatalog";
 import type {
   PlayOnceReport,
   SourceFileSummary,
