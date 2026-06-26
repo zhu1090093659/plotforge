@@ -5,14 +5,20 @@ import {
   demoProjectData,
 } from "./demoStudioData";
 import { DirectorModeView } from "./DirectorModeView";
+import { StudioI18nProvider } from "./i18n";
 
 afterEach(cleanup);
+
+
+function renderView(ui: React.ReactElement) {
+  return render(ui, { wrapper: StudioI18nProvider });
+}
 
 describe("DirectorModeView", () => {
   it("renders a director-first playable scene preview and real runtime boundary", () => {
     const callbacks = directorCallbacks();
 
-    render(
+    renderView(
       <DirectorModeView
         projectData={demoProjectData}
         loadedPath="/tmp/dynasty-embers"
@@ -55,7 +61,7 @@ describe("DirectorModeView", () => {
   it("routes suggested directions, run requests, and trace/story actions through callbacks", () => {
     const callbacks = directorCallbacks();
 
-    render(
+    renderView(
       <DirectorModeView
         projectData={demoProjectData}
         loadedPath="/tmp/dynasty-embers"
@@ -85,7 +91,7 @@ describe("DirectorModeView", () => {
     const callbacks = directorCallbacks();
     const report = demoPlayOnceReport("raise emergency taxes");
 
-    render(
+    renderView(
       <DirectorModeView
         projectData={demoProjectData}
         loadedPath="/tmp/dynasty-embers"
@@ -114,7 +120,7 @@ describe("DirectorModeView", () => {
       current_beat_id: "court-crisis-001-beat-002",
     };
 
-    render(
+    renderView(
       <DirectorModeView
         projectData={demoProjectData}
         loadedPath="/tmp/dynasty-embers"

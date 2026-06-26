@@ -210,6 +210,7 @@ describe("App", () => {
     }
 
     fireEvent.click(screen.getByRole("button", { name: "导演模式" }));
+    fireEvent.click(screen.getByRole("button", { name: "高级快照控制" }));
     await waitFor(() => {
       expect(screen.getByText("导演指令栏")).toBeTruthy();
       expect(screen.getByText("运行一次运行时回合")).toBeTruthy();
@@ -398,6 +399,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "continue" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Advanced snapshot controls" }));
     fireEvent.change(screen.getByLabelText("Playtest save id"), {
       target: { value: "" },
     });
@@ -489,6 +491,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "pay the army" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Advanced snapshot controls" }));
     fireEvent.change(screen.getByLabelText("Playtest save id"), {
       target: { value: "save-after-army" },
     });
@@ -503,6 +506,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "raise emergency taxes" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Advanced snapshot controls" }));
     fireEvent.change(screen.getByLabelText("Playtest save id"), {
       target: { value: "save-after-tax" },
     });

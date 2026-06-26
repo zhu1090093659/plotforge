@@ -4,7 +4,6 @@ import {
   FlaskConical,
   Loader2,
   Play,
-  RefreshCcw,
   ShieldCheck,
   Sparkles,
   Target,
@@ -13,11 +12,13 @@ import type { ProjectData } from "../../../contracts/plotforge";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport } from "./tauriBridge";
 import {
+  Collapsible,
   ScenePreviewPlaceholder,
   StudioButton,
   StudioStatusChip,
   studioUiClassNames,
 } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 interface DirectorModeViewProps {
   projectData: ProjectData | null;
@@ -56,6 +57,7 @@ export function DirectorModeView({
   onOpenStory,
   onOpenTrace,
 }: DirectorModeViewProps) {
+  const { t } = useStudioI18n();
   const scene = report?.scene ?? resolveEntryScene(projectData);
   const beat = resolveSceneBeat(
     scene,
@@ -176,10 +178,6 @@ export function DirectorModeView({
                   )}
                   Play
                 </StudioButton>
-                <StudioButton onClick={() => onInputChange(input)}>
-                  <RefreshCcw aria-hidden size={16} />
-                  Reload
-                </StudioButton>
               </div>
             </div>
 
@@ -261,56 +259,65 @@ export function DirectorModeView({
               className={`${studioUiClassNames.textarea} mt-3 min-h-24 border-amber-500/45 bg-canvas-100 text-base leading-7`}
             />
 
-            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
-              <label className="grid min-w-0 gap-1">
-                <span className="text-xs font-medium uppercase text-ink/45">
-                  Save ID
-                </span>
-                <input
-                  aria-label="Playtest save id"
-                  value={saveId}
-                  onChange={(event) => onSaveIdChange(event.target.value)}
-                  className={studioUiClassNames.input}
-                />
-              </label>
-              <label className="grid min-w-0 gap-1">
-                <span className="text-xs font-medium uppercase text-ink/45">
-                  Restore ID
-                </span>
-                <input
-                  aria-label="Playtest restore id"
-                  value={restoreId}
-                  disabled={restoreLatest}
-                  onChange={(event) => onRestoreIdChange(event.target.value)}
-                  className={`${studioUiClassNames.input} disabled:cursor-not-allowed disabled:bg-ink/5 disabled:text-ink/35`}
-                />
-              </label>
-              <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-ink/10 px-3 text-sm font-medium text-ink/70">
-                <input
-                  type="checkbox"
-                  aria-label="Restore latest save"
-                  checked={restoreLatest}
-                  onChange={(event) =>
-                    onRestoreLatestChange(event.target.checked)
-                  }
-                  className="h-4 w-4 accent-ink"
-                />
-                Restore latest
-              </label>
-            </div>
+            <Collapsible
+              label={t("Advanced snapshot controls")}
+              defaultOpen={false}
+              id="director-snapshot-controls"
+              className="mt-3"
+            >
+              <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-medium uppercase text-ink/45">
+                    {t("Save ID")}
+                  </span>
+                  <input
+                    aria-label="Playtest save id"
+                    value={saveId}
+                    onChange={(event) => onSaveIdChange(event.target.value)}
+                    className={studioUiClassNames.input}
+                  />
+                </label>
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-medium uppercase text-ink/45">
+                    {t("Restore ID")}
+                  </span>
+                  <input
+                    aria-label="Playtest restore id"
+                    value={restoreId}
+                    disabled={restoreLatest}
+                    onChange={(event) => onRestoreIdChange(event.target.value)}
+                    className={`${studioUiClassNames.input} disabled:cursor-not-allowed disabled:bg-ink/5 disabled:text-ink/35`}
+                  />
+                </label>
+                <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-ink/10 px-3 text-sm font-medium text-ink/70">
+                  <input
+                    type="checkbox"
+                    aria-label="Restore latest save"
+                    checked={restoreLatest}
+                    onChange={(event) =>
+                      onRestoreLatestChange(event.target.checked)
+                    }
+                    className="h-4 w-4 accent-ink"
+                  />
+                  {t("Restore latest")}
+                </label>
+              </div>
+            </Collapsible>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
-                {suggestedDirections.map((direction) => (
-                  <button
-                    type="button"
-                    key={direction}
-                    onClick={() => onInputChange(direction)}
-                    className="inline-flex min-h-9 items-center rounded-md border border-graphite-700/20 bg-canvas-100 px-3 text-sm font-semibold text-ink transition hover:border-amber-500/45"
-                  >
-                    {direction}
-                  </button>
-                ))}
+                {projectData && suggestedDirections.length > 0
+                  ? suggestedDirections.map((direction) => (
+                      <button
+                        type="button"
+                        key={direction}
+                        onClick={() => onInputChange(direction)}
+                        className="inline-flex min-h-9 items-center rounded-md border border-graphite-700/20 bg-canvas-100 px-3 text-sm font-semibold text-ink transition hover:border-amber-500/45"
+                      >
+                        {direction}
+                      </button>
+                    ))
+                  : null}
               </div>
               <StudioButton variant="primary" aria-label="Run turn" onClick={onRun} disabled={running}>
                 {running ? (

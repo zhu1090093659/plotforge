@@ -605,6 +605,8 @@ const zhText: Record<string, string> = {
   Amount: "数量",
   Resource: "资源",
   "(none)": "（无）",
+  // director.* namespace
+  "Advanced snapshot controls": "高级快照控制",
 };
 
 const zhPatterns: Array<[RegExp, (...matches: string[]) => string]> = [
