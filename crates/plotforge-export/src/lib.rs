@@ -28,6 +28,22 @@ const PLAYER_PACKAGE_FILES: &[(&str, &str)] = &[
         include_str!("../../../apps/player-web/static/styles.css"),
     ),
     (
+        "player-types.js",
+        include_str!("../../../apps/player-web/static/player-types.js"),
+    ),
+    (
+        "player-save.js",
+        include_str!("../../../apps/player-web/static/player-save.js"),
+    ),
+    (
+        "player-i18n.js",
+        include_str!("../../../apps/player-web/static/player-i18n.js"),
+    ),
+    (
+        "player-audio.js",
+        include_str!("../../../apps/player-web/static/player-audio.js"),
+    ),
+    (
         "player-core.js",
         include_str!("../../../apps/player-web/static/player-core.js"),
     ),

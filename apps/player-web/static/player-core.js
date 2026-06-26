@@ -1,7 +1,41 @@
+/**
+ * @fileoverview Static player core — owns manifest loading, scene/beat routing,
+ * and DOM rendering. Persists progress via `player-save`, localizes chrome via
+ * `player-i18n`, and renders audio via `player-audio`. Runs without external
+ * network URLs and never duplicates the rule/runtime state machine.
+ */
+
+import { createSaveStore } from "./player-save.js";
+import { createPlayerI18n, applyLocale, wireLanguageControl } from "./player-i18n.js";
+import { renderAudio } from "./player-audio.js";
+
+/**
+ * Player i18n facade, re-exported for cross-module JSDoc references
+ * (player-audio annotates its `ui` parameter with this type).
+ *
+ * @typedef {Object} PlayerI18n
+ * @property {"en" | "zh"} locale
+ * @property {(key: string, values?: Record<string, string | number>) => string} t
+ */
+
+/**
+ * Load the export manifest. The fetcher is injectable so tests can supply a
+ * fixture manifest without a network round-trip.
+ *
+ * @param {() => Promise<import("./player-types.js").ExportManifestLike>} [fetchManifest]
+ * @returns {Promise<import("./player-types.js").ExportManifestLike>}
+ */
 export async function loadManifest(fetchManifest = defaultFetchManifest) {
   return fetchManifest();
 }
 
+/**
+ * Boot the player: load the manifest and render it, or surface a localized
+ * error state on the mount when loading fails.
+ *
+ * @param {{ root?: Document | ShadowRoot, locale?: string, fetchManifest?: () => Promise<import("./player-types.js").ExportManifestLike> }} [options]
+ * @returns {Promise<void>}
+ */
 export async function bootPlayer(options = {}) {
   const root = options.root ?? document;
   const mount = playerRoot(root);
@@ -18,6 +52,16 @@ export async function bootPlayer(options = {}) {
   }
 }
 
+/**
+ * Render a manifest onto the DOM. Resumes from localStorage when a valid save
+ * exists, otherwise starts at the manifest entry scene/beat. Returns a small
+ * summary used by tests and any host shell.
+ *
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {Document | ShadowRoot} [root]
+ * @param {{ locale?: string }} [options]
+ * @returns {{ sceneKey: string, choiceCount: number }}
+ */
 export function renderPlayer(manifest, root = document, options = {}) {
   const mount = playerRoot(root);
   const ui = createPlayerI18n(root, options.locale);
@@ -44,12 +88,29 @@ export function renderPlayer(manifest, root = document, options = {}) {
   return { sceneKey: scene.key, choiceCount: firstBeat?.choices.length ?? 0 };
 }
 
+/**
+ * Tag the mount with a mobile/desktop viewport bucket so CSS can adapt layout.
+ * The breakpoint mirrors the static player's mobile design (see styles.css).
+ *
+ * @param {Document | ShadowRoot} [root]
+ * @returns {void}
+ */
 export function updateViewportMode(root = document) {
   const view = root.defaultView ?? globalThis.window;
   playerRoot(root).dataset.viewport =
     (view?.innerWidth ?? 1024) < 760 ? "mobile" : "desktop";
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @param {Document | ShadowRoot} root
+ * @param {HTMLElement} mount
+ * @param {import("./player-save.js").PlayerSaveStore} saveStore
+ * @param {PlayerI18n} ui
+ * @returns {void}
+ */
 function renderSceneBeat(manifest, scene, beat, root, mount, saveStore, ui) {
   const image = field(root, "scene-image");
   const sceneIndex = manifest.scenes.findIndex((candidate) => candidate.key === scene.key);
@@ -73,6 +134,16 @@ function renderSceneBeat(manifest, scene, beat, root, mount, saveStore, ui) {
   renderChoices(manifest, beat, scene, root, mount, saveStore, ui);
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {Document | ShadowRoot} root
+ * @param {HTMLElement} mount
+ * @param {import("./player-save.js").PlayerSaveStore} saveStore
+ * @param {PlayerI18n} ui
+ * @returns {void}
+ */
 function renderChoices(manifest, beat, scene, root, mount, saveStore, ui) {
   const choices = field(root, "choices");
   choices.replaceChildren();
@@ -98,6 +169,17 @@ function renderChoices(manifest, beat, scene, root, mount, saveStore, ui) {
   }
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @param {import("./player-types.js").ChoiceLike} choice
+ * @param {Document | ShadowRoot} root
+ * @param {HTMLElement} mount
+ * @param {import("./player-save.js").PlayerSaveStore} saveStore
+ * @param {PlayerI18n} ui
+ * @returns {void}
+ */
 function applyChoiceTransition(manifest, scene, beat, choice, root, mount, saveStore, ui) {
   const transition = resolveChoiceTransition(manifest, scene, beat, choice);
   if (transition.kind === "beat") {
@@ -116,6 +198,17 @@ function applyChoiceTransition(manifest, scene, beat, choice, root, mount, saveS
   renderEndState(manifest, scene, beat, choice, root, mount, saveStore, ui);
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @param {import("./player-types.js").ChoiceLike} choice
+ * @param {Document | ShadowRoot} root
+ * @param {HTMLElement} mount
+ * @param {import("./player-save.js").PlayerSaveStore} saveStore
+ * @param {PlayerI18n} ui
+ * @returns {void}
+ */
 function renderEndState(manifest, scene, beat, choice, root, mount, saveStore, ui) {
   mount.dataset.mode = "ended";
   mount.dataset.currentSceneKey = scene.key;
@@ -137,6 +230,17 @@ function renderEndState(manifest, scene, beat, choice, root, mount, saveStore, u
   saveStore.save({ sceneKey: scene.key, beatId: beat?.id ?? null });
 }
 
+/**
+ * Resolve a typed transition for a choice. The static player only renders
+ * scene/beat navigation authored in the manifest; it never recomputes runtime
+ * state or calls a planner.
+ *
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @param {import("./player-types.js").ChoiceLike} choice
+ * @returns {{ kind: "beat", beat: import("./player-types.js").BeatLike } | { kind: "scene", scene: import("./player-types.js").SceneLike } | { kind: "end" }}
+ */
 function resolveChoiceTransition(manifest, scene, beat, choice) {
   if (!beat) {
     return { kind: "end" };
@@ -162,6 +266,10 @@ async function defaultFetchManifest() {
   return response.json();
 }
 
+/**
+ * @param {Document | ShadowRoot} root
+ * @returns {HTMLElement}
+ */
 function playerRoot(root) {
   const mount = root.querySelector("[data-player-root]");
   if (!mount) {
@@ -170,6 +278,11 @@ function playerRoot(root) {
   return mount;
 }
 
+/**
+ * @param {Document | ShadowRoot} root
+ * @param {string} name
+ * @returns {HTMLElement}
+ */
 function field(root, name) {
   const element = root.querySelector(`[data-field="${name}"]`);
   if (!element) {
@@ -178,10 +291,20 @@ function field(root, name) {
   return element;
 }
 
+/**
+ * @param {Document | ShadowRoot} root
+ * @param {string} name
+ * @param {string} value
+ * @returns {void}
+ */
 function text(root, name, value) {
   field(root, name).textContent = value;
 }
 
+/**
+ * @param {import("./player-types.js").SceneLike} scene
+ * @returns {import("./player-types.js").BeatLike | null}
+ */
 function entryBeat(scene) {
   if (typeof scene.entry_beat_id !== "string" || scene.entry_beat_id.length === 0) {
     throw new Error(`Scene is missing explicit entry_beat_id: ${scene.key}`);
@@ -189,6 +312,10 @@ function entryBeat(scene) {
   return scene.beats.find((beat) => beat.id === scene.entry_beat_id) ?? null;
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @returns {import("./player-types.js").SceneLike}
+ */
 function requiredEntryScene(manifest) {
   if (manifest.scenes.length === 0) {
     throw new Error("ExportManifest contains no scenes.");
@@ -200,6 +327,10 @@ function requiredEntryScene(manifest) {
   return scene;
 }
 
+/**
+ * @param {import("./player-types.js").SceneLike} scene
+ * @returns {import("./player-types.js").BeatLike}
+ */
 function requiredEntryBeat(scene) {
   const beat = entryBeat(scene);
   if (!beat) {
@@ -210,6 +341,11 @@ function requiredEntryBeat(scene) {
   return beat;
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {string | null | undefined} sceneKey
+ * @returns {import("./player-types.js").SceneLike | null}
+ */
 function sceneByKey(manifest, sceneKey) {
   if (!sceneKey) {
     return null;
@@ -217,6 +353,11 @@ function sceneByKey(manifest, sceneKey) {
   return manifest.scenes.find((scene) => scene.key === sceneKey) ?? null;
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {string | null | undefined} sceneKey
+ * @returns {import("./player-types.js").SceneLike}
+ */
 function requiredSavedScene(manifest, sceneKey) {
   const scene = sceneByKey(manifest, sceneKey);
   if (!scene) {
@@ -225,6 +366,11 @@ function requiredSavedScene(manifest, sceneKey) {
   return scene;
 }
 
+/**
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {string | null | undefined} beatId
+ * @returns {import("./player-types.js").BeatLike | null}
+ */
 function beatById(scene, beatId) {
   if (!beatId) {
     return null;
@@ -232,6 +378,11 @@ function beatById(scene, beatId) {
   return scene.beats.find((beat) => beat.id === beatId) ?? null;
 }
 
+/**
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {string | null | undefined} beatId
+ * @returns {import("./player-types.js").BeatLike}
+ */
 function requiredSavedBeat(scene, beatId) {
   const beat = beatById(scene, beatId);
   if (!beat) {
@@ -240,6 +391,11 @@ function requiredSavedBeat(scene, beatId) {
   return beat;
 }
 
+/**
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @returns {import("./player-types.js").BeatLike | null}
+ */
 function nextBeatInScene(scene, beat) {
   if (beat?.next?.kind !== "beat") {
     return null;
@@ -247,6 +403,11 @@ function nextBeatInScene(scene, beat) {
   return scene.beats.find((candidate) => candidate.id === beat.next.payload) ?? null;
 }
 
+/**
+ * @param {import("./player-types.js").SceneLike} scene
+ * @param {import("./player-types.js").BeatLike | null | undefined} beat
+ * @returns {import("./player-types.js").BeatLike}
+ */
 function requiredNextBeatInScene(scene, beat) {
   const nextBeat = nextBeatInScene(scene, beat);
   if (!nextBeat) {
@@ -257,6 +418,11 @@ function requiredNextBeatInScene(scene, beat) {
   return nextBeat;
 }
 
+/**
+ * @param {import("./player-types.js").ExportManifestLike} manifest
+ * @param {import("./player-types.js").SceneLike} scene
+ * @returns {import("./player-types.js").SceneLike | null}
+ */
 function sceneAfter(manifest, scene) {
   const index = manifest.scenes.findIndex((candidate) => candidate.key === scene.key);
   if (index < 0) {
@@ -265,6 +431,14 @@ function sceneAfter(manifest, scene) {
   return manifest.scenes[index + 1] ?? null;
 }
 
+/**
+ * @param {number} sceneIndex
+ * @param {number} sceneCount
+ * @param {number} beatIndex
+ * @param {number} beatCount
+ * @param {PlayerI18n} ui
+ * @returns {string}
+ */
 function progressLabel(sceneIndex, sceneCount, beatIndex, beatCount, ui) {
   const scenePart =
     sceneIndex >= 0
@@ -275,305 +449,4 @@ function progressLabel(sceneIndex, sceneCount, beatIndex, beatCount, ui) {
       ? ui.t("beatProgress", { current: beatIndex + 1, total: beatCount })
       : ui.t("beat");
   return `${scenePart} · ${beatPart}`;
-}
-
-function renderAudio(manifest, scene, beat, root, mount, ui) {
-  const panel = field(root, "audio-panel");
-  const audioReference = audioReferenceFor(manifest, scene, beat);
-  if (!audioReference) {
-    panel.replaceChildren();
-    panel.hidden = true;
-    mount.dataset.audioState = "none";
-    delete mount.dataset.audioSrc;
-    return;
-  }
-
-  if (audioReference.status !== "ready") {
-    panel.replaceChildren();
-    panel.hidden = true;
-    mount.dataset.audioState = audioReference.status;
-    delete mount.dataset.audioSrc;
-    return;
-  }
-
-  const audioPath = audioReference.path;
-  const audio = ensureAudioElement(panel, root, ui);
-  if (audio.getAttribute("src") !== audioPath) {
-    audio.setAttribute("src", audioPath);
-  }
-  panel.hidden = false;
-  mount.dataset.audioState = "ready";
-  mount.dataset.audioSrc = audioPath;
-}
-
-function ensureAudioElement(panel, root, ui) {
-  const existing = panel.querySelector("audio");
-  if (existing) {
-    return existing;
-  }
-  const audio = root.createElement("audio");
-  audio.controls = true;
-  audio.preload = "none";
-  audio.dataset.field = "scene-audio";
-  audio.setAttribute("aria-label", ui.t("sceneAudio"));
-  audio.addEventListener("error", () => {
-    const mount = playerRoot(root);
-    mount.dataset.audioState = "error";
-  });
-  panel.replaceChildren(audio);
-  return audio;
-}
-
-function audioReferenceFor(manifest, scene, beat) {
-  return (
-    resolveAudioRefs(manifest, beat?.audio_refs) ??
-    resolveAudioRefs(manifest, scene?.audio_refs) ??
-    null
-  );
-}
-
-function resolveAudioRefs(manifest, refs) {
-  if (!Array.isArray(refs)) {
-    return null;
-  }
-  for (const ref of refs) {
-    const resolved = resolveAudioRef(manifest, ref);
-    if (resolved) {
-      return resolved;
-    }
-  }
-  return null;
-}
-
-function resolveAudioRef(manifest, ref) {
-  if (!ref || typeof ref !== "object") {
-    return null;
-  }
-  if (ref.kind !== "audio" && ref.kind !== "voice") {
-    return null;
-  }
-  const record = assetRecordForReference(manifest, ref);
-  if (!record) {
-    return { status: "missing-asset" };
-  }
-  const path = record.export_path;
-  if (!isReachableAudioPath(manifest, path)) {
-    return { status: "missing-asset" };
-  }
-  if (!isLocalAssetPath(path)) {
-    return { status: "blocked-external" };
-  }
-  return { status: "ready", path };
-}
-
-function assetRecordForReference(manifest, ref) {
-  const records = Array.isArray(manifest.asset_records) ? manifest.asset_records : [];
-  return (
-    records.find((record) => {
-      const idMatches = typeof ref.asset_id === "string" && record.id === ref.asset_id;
-      const pathMatches =
-        typeof ref.export_path === "string" && record.export_path === ref.export_path;
-      return (
-        (idMatches || pathMatches) &&
-        (record.kind === "audio" || record.kind === "voice")
-      );
-    }) ?? null
-  );
-}
-
-function isReachableAudioPath(manifest, path) {
-  if (typeof path !== "string") {
-    return false;
-  }
-  const assets = Array.isArray(manifest.assets) ? manifest.assets : [];
-  if (!assets.includes(path)) {
-    return false;
-  }
-  if (!path.startsWith("assets/")) {
-    return false;
-  }
-  for (const part of path.split("/")) {
-    if (!part || part === "." || part === "..") {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isLocalAssetPath(path) {
-  if (typeof path !== "string") {
-    return false;
-  }
-  const trimmed = path.trim();
-  if (trimmed.length === 0) {
-    return false;
-  }
-  if (trimmed.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
-    return false;
-  }
-  return trimmed === path;
-}
-
-const playerLocaleStorageKey = "plotforge:player:locale";
-const playerLocales = new Set(["en", "zh"]);
-
-const playerMessages = {
-  en: {
-    exportFailed: "Export failed to load",
-    unableToLoad: "Unable to load PlotForge export",
-    staticExport: "Static export",
-    selectedAction: ({ actionType }) => `Selected ${actionType}`,
-    storyComplete: "Story complete",
-    storyEnded: "This static story path has ended.",
-    sceneProgress: ({ current, total }) => `Scene ${current} of ${total}`,
-    beatProgress: ({ current, total }) => `Beat ${current} of ${total}`,
-    scene: "Scene",
-    beat: "Beat",
-    sceneArtwork: ({ title }) => `${title} scene artwork`,
-    sceneAudio: "Scene audio",
-  },
-  zh: {
-    exportFailed: "导出加载失败",
-    unableToLoad: "无法加载 PlotForge 导出",
-    staticExport: "静态导出",
-    selectedAction: ({ actionType }) => `已选择 ${actionType}`,
-    storyComplete: "故事完成",
-    storyEnded: "这条静态故事路径已结束。",
-    sceneProgress: ({ current, total }) => `场景 ${current} / ${total}`,
-    beatProgress: ({ current, total }) => `节拍 ${current} / ${total}`,
-    scene: "场景",
-    beat: "节拍",
-    sceneArtwork: ({ title }) => `${title} 场景图`,
-    sceneAudio: "场景音频",
-  },
-};
-
-function createPlayerI18n(root, requestedLocale) {
-  const locale = resolvePlayerLocale(root, requestedLocale);
-  return {
-    locale,
-    t(key, values = {}) {
-      const message = playerMessages[locale][key] ?? playerMessages.en[key];
-      return typeof message === "function" ? message(values) : message;
-    },
-  };
-}
-
-function resolvePlayerLocale(root, requestedLocale) {
-  if (isPlayerLocale(requestedLocale)) {
-    return requestedLocale;
-  }
-  const view = root.defaultView ?? globalThis.window;
-  const urlLocale = localeFromSearch(view?.location?.search);
-  if (urlLocale) {
-    return urlLocale;
-  }
-  const storedLocale = localStorageFor(view)?.getItem(playerLocaleStorageKey);
-  if (isPlayerLocale(storedLocale)) {
-    return storedLocale;
-  }
-  const htmlLocale = root.documentElement?.getAttribute("lang");
-  if (isPlayerLocale(htmlLocale)) {
-    return htmlLocale;
-  }
-  return view?.navigator?.language?.toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-
-function localeFromSearch(search) {
-  if (!search) {
-    return null;
-  }
-  const params = new URLSearchParams(search);
-  const value = params.get("lang") ?? params.get("language");
-  return isPlayerLocale(value) ? value : null;
-}
-
-function isPlayerLocale(value) {
-  return typeof value === "string" && playerLocales.has(value);
-}
-
-function applyLocale(root, mount, locale) {
-  mount.dataset.locale = locale;
-  root.documentElement?.setAttribute("lang", locale === "zh" ? "zh-CN" : "en");
-}
-
-function wireLanguageControl(manifest, root, mount, locale) {
-  const select = root.querySelector('[data-field="language-select"]');
-  if (!select) {
-    return;
-  }
-  select.value = locale;
-  select.addEventListener(
-    "change",
-    () => {
-      const nextLocale = select.value;
-      if (!isPlayerLocale(nextLocale)) {
-        return;
-      }
-      const storage = localStorageFor(root.defaultView ?? globalThis.window);
-      storage?.setItem(playerLocaleStorageKey, nextLocale);
-      renderPlayer(manifest, root, { locale: nextLocale });
-    },
-    { once: true },
-  );
-  mount.dataset.languageControl = "ready";
-}
-
-function createSaveStore(root, manifest) {
-  const view = root.defaultView ?? globalThis.window;
-  const storage = localStorageFor(view);
-  const key = `plotforge:${manifest.game.id}:${manifest.game.version}:player-progress`;
-  return {
-    key,
-    available: Boolean(storage),
-    load() {
-      if (!storage) {
-        return null;
-      }
-      const raw = storage.getItem(key);
-      if (!raw) {
-        return null;
-      }
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (error) {
-        throw new Error("Invalid PlotForge player save: malformed JSON", {
-          cause: error,
-        });
-      }
-      if (
-        parsed?.project_id !== manifest.game.id ||
-        parsed?.project_version !== manifest.game.version
-      ) {
-        throw new Error("Invalid PlotForge player save: project mismatch");
-      }
-      return {
-        sceneKey: typeof parsed.scene_key === "string" ? parsed.scene_key : null,
-        beatId: typeof parsed.beat_id === "string" ? parsed.beat_id : null,
-      };
-    },
-    save(position) {
-      if (!storage) {
-        return;
-      }
-      storage.setItem(
-        key,
-        JSON.stringify({
-          project_id: manifest.game.id,
-          project_version: manifest.game.version,
-          scene_key: position.sceneKey,
-          beat_id: position.beatId,
-        }),
-      );
-    },
-  };
-}
-
-function localStorageFor(view) {
-  try {
-    return view?.localStorage ?? null;
-  } catch {
-    return null;
-  }
 }

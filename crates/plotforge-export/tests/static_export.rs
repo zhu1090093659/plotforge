@@ -112,6 +112,10 @@ fn export_package_includes_player_web_surface_without_network_urls() {
     let index = fs::read_to_string(output_dir.join("index.html")).expect("index");
     let player = fs::read_to_string(output_dir.join("player.js")).expect("player");
     let player_core = fs::read_to_string(output_dir.join("player-core.js")).expect("player core");
+    let player_save = fs::read_to_string(output_dir.join("player-save.js")).expect("player save");
+    let player_i18n = fs::read_to_string(output_dir.join("player-i18n.js")).expect("player i18n");
+    let player_audio = fs::read_to_string(output_dir.join("player-audio.js")).expect("player audio");
+    let player_types = fs::read_to_string(output_dir.join("player-types.js")).expect("player types");
     let styles = fs::read_to_string(output_dir.join("styles.css")).expect("styles");
     assert!(index.contains("data-player-root"));
     assert!(index.contains("src=\"./player.js\""));
@@ -121,7 +125,10 @@ fn export_package_includes_player_web_surface_without_network_urls() {
     assert!(player.contains("bootPlayer"));
     assert!(player_core.contains("fetch(\"./game.json\""));
     assert!(player_core.contains("resolveChoiceTransition"));
-    for file in [index, player, player_core, styles] {
+    assert!(player_save.contains("createSaveStore"));
+    assert!(player_i18n.contains("createPlayerI18n"));
+    assert!(player_audio.contains("renderAudio"));
+    for file in [index, player, player_core, player_save, player_i18n, player_audio, player_types, styles] {
         assert!(!file.contains("https://"));
         assert!(!file.contains("http://"));
         assert!(!file.contains("//cdn."));
@@ -527,7 +534,11 @@ fn expected_export_files() -> Vec<PathBuf> {
         PathBuf::from("assets/generated/court-crisis-001.png"),
         PathBuf::from("game.json"),
         PathBuf::from("index.html"),
+        PathBuf::from("player-audio.js"),
         PathBuf::from("player-core.js"),
+        PathBuf::from("player-i18n.js"),
+        PathBuf::from("player-save.js"),
+        PathBuf::from("player-types.js"),
         PathBuf::from("player.js"),
         PathBuf::from("styles.css"),
     ]

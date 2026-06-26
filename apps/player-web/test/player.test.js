@@ -3,11 +3,29 @@ import { resolve } from "node:path";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import { renderPlayer } from "../static/player-core.js";
+import { createSaveStore } from "../static/player-save.js";
+import { createPlayerI18n, applyLocale } from "../static/player-i18n.js";
+import { renderAudio } from "../static/player-audio.js";
 
 const indexHtml = readStaticFile("index.html");
 const playerJs = readStaticFile("player.js");
 const playerCoreJs = readStaticFile("player-core.js");
+const playerTypesJs = readStaticFile("player-types.js");
+const playerSaveJs = readStaticFile("player-save.js");
+const playerI18nJs = readStaticFile("player-i18n.js");
+const playerAudioJs = readStaticFile("player-audio.js");
 const stylesCss = readStaticFile("styles.css");
+
+const playerSourceFiles = [
+  indexHtml,
+  playerJs,
+  playerCoreJs,
+  playerTypesJs,
+  playerSaveJs,
+  playerI18nJs,
+  playerAudioJs,
+  stylesCss,
+];
 
 describe("PlotForge static player", () => {
   it("renders ExportManifest and handles DOM choice clicks", () => {
@@ -434,10 +452,198 @@ describe("PlotForge static player", () => {
     expect(indexHtml).toContain('name="viewport"');
     expect(indexHtml).toContain('src="./player.js"');
     expect(indexHtml).toContain('data-field="language-select"');
-    for (const file of [indexHtml, playerJs, playerCoreJs, stylesCss]) {
+    for (const file of playerSourceFiles) {
       expect(file).not.toMatch(/https?:\/\//);
       expect(file).not.toMatch(/\/\/cdn\.|\/\/unpkg\.|\/\/fonts\./);
     }
+  });
+});
+
+describe("player-save module", () => {
+  it("scopes the save key to the game id and version", () => {
+    const dom = newJSDOM();
+    const store = createSaveStore(dom.window.document, sampleManifest());
+
+    expect(store.key).toBe("plotforge:dynasty-embers:0.1.0:player-progress");
+    expect(store.available).toBe(true);
+  });
+
+  it("round-trips a scene/beat position through localStorage", () => {
+    const dom = newJSDOM();
+    const store = createSaveStore(dom.window.document, sampleManifest());
+
+    store.save({ sceneKey: "tax-riot-002", beatId: "tax-riot-002-beat-001" });
+    expect(store.load()).toEqual({
+      sceneKey: "tax-riot-002",
+      beatId: "tax-riot-002-beat-001",
+    });
+  });
+
+  it("returns null when no save exists", () => {
+    const dom = newJSDOM();
+    const store = createSaveStore(dom.window.document, sampleManifest());
+
+    expect(store.load()).toBeNull();
+  });
+
+  it("rejects saves written for a different project or version", () => {
+    const dom = newJSDOM();
+    const store = createSaveStore(dom.window.document, sampleManifest());
+    dom.window.localStorage.setItem(
+      "plotforge:dynasty-embers:0.1.0:player-progress",
+      JSON.stringify({
+        project_id: "other-game",
+        project_version: "0.1.0",
+        scene_key: "court-crisis-001",
+        beat_id: "court-crisis-001-beat-001",
+      }),
+    );
+
+    expect(() => store.load()).toThrow(
+      "Invalid PlotForge player save: project mismatch",
+    );
+  });
+
+  it("reports the store unavailable when localStorage is absent", () => {
+    const dom = newJSDOM();
+    // Drop localStorage so the store degrades gracefully.
+    Object.defineProperty(dom.window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("localStorage blocked");
+      },
+    });
+
+    const store = createSaveStore(dom.window.document, sampleManifest());
+    expect(store.available).toBe(false);
+    expect(store.load()).toBeNull();
+    expect(() => store.save({ sceneKey: "x", beatId: null })).not.toThrow();
+  });
+});
+
+describe("player-i18n module", () => {
+  it("translates chrome keys in English and Chinese", () => {
+    const dom = newJSDOM();
+    const en = createPlayerI18n(dom.window.document, "en");
+    const zh = createPlayerI18n(dom.window.document, "zh");
+
+    expect(en.t("storyComplete")).toBe("Story complete");
+    expect(zh.t("storyComplete")).toBe("故事完成");
+    expect(en.t("sceneProgress", { current: 1, total: 2 })).toBe("Scene 1 of 2");
+    expect(zh.t("sceneProgress", { current: 1, total: 2 })).toBe("场景 1 / 2");
+  });
+
+  it("falls back to English for unknown keys", () => {
+    const dom = newJSDOM();
+    const zh = createPlayerI18n(dom.window.document, "zh");
+    expect(zh.t("not-a-real-key")).toBeUndefined();
+  });
+
+  it("resolves the locale from the URL ?lang= parameter", () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/?lang=zh",
+      pretendToBeVisual: true,
+    });
+    expect(createPlayerI18n(dom.window.document).locale).toBe("zh");
+  });
+
+  it("persists the chosen locale and reflects it on <html lang>", () => {
+    const dom = newJSDOM();
+    const mount = dom.window.document.querySelector("[data-player-root]");
+    applyLocale(dom.window.document, mount, "zh");
+    expect(mount.dataset.locale).toBe("zh");
+    expect(dom.window.document.documentElement.lang).toBe("zh-CN");
+  });
+});
+
+describe("player-audio module", () => {
+  it("renders a lazy audio element for a ready, package-local audio ref", () => {
+    const dom = newJSDOM();
+    const manifest = manifestWithAudio();
+    const mount = dom.window.document.querySelector("[data-player-root]");
+    const ui = createPlayerI18n(dom.window.document, "en");
+    const scene = manifest.scenes[0];
+    const beat = scene.beats[0];
+
+    renderAudio(manifest, scene, beat, dom.window.document, mount, ui);
+
+    const audio = dom.window.document.querySelector('[data-field="scene-audio"]');
+    expect(audio).not.toBeNull();
+    expect(audio.getAttribute("preload")).toBe("none");
+    expect(audio.hasAttribute("autoplay")).toBe(false);
+    expect(audio.getAttribute("src")).toBe("assets/audio/court-theme.ogg");
+    expect(mount.dataset.audioState).toBe("ready");
+    expect(mount.dataset.audioSrc).toBe("assets/audio/court-theme.ogg");
+  });
+
+  it("reports missing-asset when the audio ref is absent from asset records", () => {
+    const dom = newJSDOM();
+    const manifest = sampleManifest();
+    manifest.scenes[0].beats[0].audio_refs = [
+      {
+        asset_id: "missing-audio",
+        kind: "audio",
+        source: "generated",
+        project_path: "assets/audio/missing.ogg",
+        export_path: "assets/audio/missing.ogg",
+        slot: "narration",
+      },
+    ];
+    const mount = dom.window.document.querySelector("[data-player-root]");
+    const ui = createPlayerI18n(dom.window.document, "en");
+
+    renderAudio(manifest, manifest.scenes[0], manifest.scenes[0].beats[0], dom.window.document, mount, ui);
+
+    expect(mount.dataset.audioState).toBe("missing-asset");
+    expect(dom.window.document.querySelector('[data-field="scene-audio"]')).toBeNull();
+  });
+
+  it("blocks external protocol-relative audio paths", () => {
+    const dom = newJSDOM();
+    const manifest = sampleManifest();
+    manifest.scenes[0].beats[0].audio_refs = [
+      {
+        asset_id: "external-audio",
+        kind: "audio",
+        source: "external",
+        project_path: "//cdn.example/track.ogg",
+        export_path: "//cdn.example/track.ogg",
+        slot: "narration",
+      },
+    ];
+    manifest.asset_records.push({
+      kind: "audio",
+      id: "external-audio",
+      source: "external",
+      project_path: "//cdn.example/track.ogg",
+      export_path: "//cdn.example/track.ogg",
+      content_hash: "2".repeat(64),
+      hash_algorithm: "sha256",
+      byte_length: 0,
+      references: [],
+    });
+    manifest.assets.push("//cdn.example/track.ogg");
+    const mount = dom.window.document.querySelector("[data-player-root]");
+    const ui = createPlayerI18n(dom.window.document, "en");
+
+    renderAudio(manifest, manifest.scenes[0], manifest.scenes[0].beats[0], dom.window.document, mount, ui);
+
+    expect(mount.dataset.audioState).toBe("missing-asset");
+    expect(dom.window.document.querySelector('[data-field="scene-audio"]')).toBeNull();
+  });
+
+  it("clears the panel and hides it when no audio refs exist", () => {
+    const dom = newJSDOM();
+    const manifest = sampleManifest();
+    const mount = dom.window.document.querySelector("[data-player-root]");
+    const ui = createPlayerI18n(dom.window.document, "en");
+
+    renderAudio(manifest, manifest.scenes[0], manifest.scenes[0].beats[0], dom.window.document, mount, ui);
+
+    expect(mount.dataset.audioState).toBe("none");
+    const panel = dom.window.document.querySelector('[data-field="audio-panel"]');
+    expect(panel.hidden).toBe(true);
+    expect(panel.children.length).toBe(0);
   });
 });
 
@@ -552,4 +758,38 @@ function sampleManifest() {
 
 function readStaticFile(fileName) {
   return readFileSync(resolve(process.cwd(), "static", fileName), "utf8");
+}
+
+function newJSDOM() {
+  return new JSDOM(indexHtml, {
+    url: "http://127.0.0.1:4173/",
+    pretendToBeVisual: true,
+  });
+}
+
+function manifestWithAudio() {
+  const manifest = sampleManifest();
+  manifest.scenes[0].beats[0].audio_refs = [
+    {
+      asset_id: "asset-audio-court-theme",
+      kind: "audio",
+      source: "generated",
+      project_path: "assets/audio/court-theme.ogg",
+      export_path: "assets/audio/court-theme.ogg",
+      slot: "scene_audio",
+    },
+  ];
+  manifest.asset_records.push({
+    kind: "audio",
+    id: "asset-audio-court-theme",
+    source: "generated",
+    project_path: "assets/audio/court-theme.ogg",
+    export_path: "assets/audio/court-theme.ogg",
+    content_hash: "0".repeat(64),
+    hash_algorithm: "sha256",
+    byte_length: 12,
+    references: [],
+  });
+  manifest.assets.push("assets/audio/court-theme.ogg");
+  return manifest;
 }
