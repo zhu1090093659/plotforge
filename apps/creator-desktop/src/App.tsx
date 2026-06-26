@@ -655,10 +655,6 @@ export function App({
                 <RefreshCcw aria-hidden size={18} />
               )}
             </StudioButton>
-            <StudioButton onClick={() => openStudioSection("playtest")}>
-              <Play aria-hidden size={16} />
-              Playtest
-            </StudioButton>
           </>
         }
         rightPanel={renderEvidencePanel()}
