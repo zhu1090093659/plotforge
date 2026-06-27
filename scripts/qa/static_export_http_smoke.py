@@ -19,10 +19,21 @@ def main() -> int:
     index_html = export_dir / "index.html"
     player_js = export_dir / "player.js"
     player_core_js = export_dir / "player-core.js"
+    # T5.1 split player-core into save/i18n/audio modules + a JSDoc types file.
+    # These mirror `PLAYER_PACKAGE_FILES` in plotforge-export and must stay in
+    # sync with that whitelist (see AGENTS.md: explicit player-file whitelist).
+    player_module_js = [
+        export_dir / "player-types.js",
+        export_dir / "player-save.js",
+        export_dir / "player-i18n.js",
+        export_dir / "player-audio.js",
+    ]
     styles_css = export_dir / "styles.css"
     assert_file(index_html)
     assert_file(player_js)
     assert_file(player_core_js)
+    for module in player_module_js:
+        assert_file(module)
     assert_file(styles_css)
     game_json = export_dir / "game.json"
     ai_usage_json = export_dir / "ai-usage.json"
@@ -48,7 +59,7 @@ def main() -> int:
     for asset in manifest["assets"]:
         assert_file(export_dir / asset)
     assert_whitelisted_files(export_dir, manifest["assets"])
-    assert_no_network_urls([index_html, player_js, player_core_js, styles_css])
+    assert_no_network_urls([index_html, player_js, player_core_js, *player_module_js, styles_css])
     assert_no_secret_markers([game_json, ai_usage_json])
 
     port = free_port()
@@ -91,6 +102,10 @@ def assert_whitelisted_files(export_dir: pathlib.Path, assets: list[str]) -> Non
         "index.html",
         "ai-usage.json",
         "game.json",
+        "player-types.js",
+        "player-save.js",
+        "player-i18n.js",
+        "player-audio.js",
         "player-core.js",
         "player.js",
         "styles.css",
