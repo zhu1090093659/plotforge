@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import { renderPlayer } from "../static/player-core.js";
+import { renderPlayer, bootPlayer } from "../static/player-core.js";
 import { createSaveStore } from "../static/player-save.js";
 import { createPlayerI18n, applyLocale } from "../static/player-i18n.js";
 import { renderAudio } from "../static/player-audio.js";
@@ -446,6 +446,69 @@ describe("PlotForge static player", () => {
       "none",
     );
     expect(dom.window.document.querySelector('[data-field="scene-audio"]')).toBeNull();
+  });
+
+  it("renders a friendly error state when the manifest fails to load", async () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+    const fetchManifest = () =>
+      Promise.reject(new Error("Unable to load game.json: 404"));
+
+    await bootPlayer({
+      root: dom.window.document,
+      locale: "en",
+      fetchManifest,
+    });
+
+    const doc = dom.window.document;
+    expect(doc.querySelector("[data-player-root]")?.dataset.state).toBe(
+      "error",
+    );
+    expect(doc.querySelector('[data-field="status"]')?.textContent).toBe(
+      "Export failed to load",
+    );
+    expect(doc.querySelector('[data-field="scene-title"]')?.textContent).toBe(
+      "Unable to load PlotForge export",
+    );
+    expect(doc.querySelector('[data-field="beat"]')?.textContent).toBe(
+      "Unable to load game.json: 404",
+    );
+    // Authored chrome cleared so no stale "Loading" text or broken image remains.
+    expect(doc.querySelector('[data-field="game-title"]')?.textContent).toBe("");
+    expect(doc.querySelector('[data-field="hook"]')?.textContent).toBe("");
+    expect(doc.querySelector('[data-field="outcome"]')?.textContent).toBe("");
+    expect(
+      doc.querySelectorAll('[data-field="choices"] button').length,
+    ).toBe(0);
+    expect(
+      doc.querySelector('[data-field="scene-image"]')?.hasAttribute("src"),
+    ).toBe(false);
+  });
+
+  it("renders a friendly localized error state in Chinese", async () => {
+    const dom = new JSDOM(indexHtml, {
+      url: "http://127.0.0.1:4173/",
+      pretendToBeVisual: true,
+    });
+    const fetchManifest = () =>
+      Promise.reject(new Error("Unable to load game.json: 404"));
+
+    await bootPlayer({
+      root: dom.window.document,
+      locale: "zh",
+      fetchManifest,
+    });
+
+    const doc = dom.window.document;
+    expect(doc.querySelector('[data-field="status"]')?.textContent).toBe(
+      "导出加载失败",
+    );
+    expect(doc.querySelector('[data-field="scene-title"]')?.textContent).toBe(
+      "无法加载 PlotForge 导出",
+    );
+    expect(doc.documentElement.lang).toBe("zh-CN");
   });
 
   it("ships static player files without external network URLs", () => {

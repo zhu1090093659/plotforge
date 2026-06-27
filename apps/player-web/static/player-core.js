@@ -44,12 +44,36 @@ export async function bootPlayer(options = {}) {
     const manifest = await loadManifest(options.fetchManifest);
     renderPlayer(manifest, root, { locale: ui.locale });
   } catch (error) {
-    mount.dataset.state = "error";
-    applyLocale(root, mount, ui.locale);
-    text(root, "status", ui.t("exportFailed"));
-    text(root, "scene-title", ui.t("unableToLoad"));
-    text(root, "beat", error instanceof Error ? error.message : String(error));
+    renderErrorState(root, mount, ui, error);
   }
+}
+
+/**
+ * Render a friendly, localized error state when the manifest fails to load.
+ * Clears the playing surface (choices, scene image, authored chrome) so the
+ * mount never shows a broken image or stale "Loading" text, then surfaces a
+ * short title plus the underlying diagnostic message. The mount's
+ * `data-state="error"` drives the restrained error layout in styles.css.
+ *
+ * @param {Document | ShadowRoot} root
+ * @param {HTMLElement} mount
+ * @param {PlayerI18n} ui
+ * @param {unknown} error
+ * @returns {void}
+ */
+function renderErrorState(root, mount, ui, error) {
+  mount.dataset.state = "error";
+  applyLocale(root, mount, ui.locale);
+  text(root, "status", ui.t("exportFailed"));
+  text(root, "game-title", "");
+  text(root, "scene-title", ui.t("unableToLoad"));
+  text(root, "hook", "");
+  text(root, "outcome", "");
+  text(root, "beat", error instanceof Error ? error.message : String(error));
+  field(root, "choices").replaceChildren();
+  const image = field(root, "scene-image");
+  image.removeAttribute("src");
+  image.setAttribute("alt", "");
 }
 
 /**
