@@ -114,8 +114,10 @@ fn export_package_includes_player_web_surface_without_network_urls() {
     let player_core = fs::read_to_string(output_dir.join("player-core.js")).expect("player core");
     let player_save = fs::read_to_string(output_dir.join("player-save.js")).expect("player save");
     let player_i18n = fs::read_to_string(output_dir.join("player-i18n.js")).expect("player i18n");
-    let player_audio = fs::read_to_string(output_dir.join("player-audio.js")).expect("player audio");
-    let player_types = fs::read_to_string(output_dir.join("player-types.js")).expect("player types");
+    let player_audio =
+        fs::read_to_string(output_dir.join("player-audio.js")).expect("player audio");
+    let player_types =
+        fs::read_to_string(output_dir.join("player-types.js")).expect("player types");
     let styles = fs::read_to_string(output_dir.join("styles.css")).expect("styles");
     assert!(index.contains("data-player-root"));
     assert!(index.contains("src=\"./player.js\""));
@@ -128,7 +130,16 @@ fn export_package_includes_player_web_surface_without_network_urls() {
     assert!(player_save.contains("createSaveStore"));
     assert!(player_i18n.contains("createPlayerI18n"));
     assert!(player_audio.contains("renderAudio"));
-    for file in [index, player, player_core, player_save, player_i18n, player_audio, player_types, styles] {
+    for file in [
+        index,
+        player,
+        player_core,
+        player_save,
+        player_i18n,
+        player_audio,
+        player_types,
+        styles,
+    ] {
         assert!(!file.contains("https://"));
         assert!(!file.contains("http://"));
         assert!(!file.contains("//cdn."));
