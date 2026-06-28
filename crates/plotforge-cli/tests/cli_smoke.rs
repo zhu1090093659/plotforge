@@ -268,6 +268,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "workshop",
         "submission-kit",
         package.to_str().unwrap(),
+        "--batch",
         "--out",
         kit_out.to_str().unwrap(),
         "--product-name",
@@ -306,6 +307,24 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
     ] {
         assert!(kit_out.join(file).is_file(), "missing {file}");
     }
+}
+
+#[test]
+fn cli_submission_kit_wizard_requires_tty_without_batch() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let package = temp.path().join("workshop-package");
+    write_valid_workshop_package(&package);
+
+    let output = cli()
+        .args(["workshop", "submission-kit", package.to_str().unwrap()])
+        .output()
+        .expect("run command");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("interactive wizard requires a TTY"),
+        "expected TTY guard error, got: {stderr}"
+    );
 }
 
 #[test]

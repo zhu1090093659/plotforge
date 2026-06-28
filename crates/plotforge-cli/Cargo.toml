@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+dialoguer.workspace = true
 plotforge-export.workspace = true
 plotforge-runtime.workspace = true
 plotforge-schema.workspace = true

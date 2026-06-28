@@ -1,5 +1,6 @@
 mod cli_output;
 
+use std::io::IsTerminal;
 use std::{fs, io, path::PathBuf};
 
 use anyhow::{Context, Result};
@@ -8,6 +9,7 @@ use cli_output::{
     OutputLanguage, cli_term, export_profile_target_label, none_label, print_studio_json,
     print_workshop_validation, render_check_summary, resolve_output_language, unsupported_label,
 };
+use dialoguer::Input;
 use plotforge_export::{export_desktop_runtime_draft, export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 use plotforge_schema::{
@@ -257,12 +259,15 @@ struct WorkshopSubmissionKitArgs {
     package_dir: PathBuf,
     #[arg(long, default_value = "exports/steam-submission-kit")]
     out: PathBuf,
+    /// Skip the interactive wizard; all fields must be supplied via flags.
     #[arg(long)]
-    product_name: String,
+    batch: bool,
+    #[arg(long)]
+    product_name: Option<String>,
     #[arg(long)]
     desktop_build_path: Option<String>,
     #[arg(long)]
-    store_short_description: String,
+    store_short_description: Option<String>,
     #[arg(long = "screenshot")]
     screenshot_paths: Vec<String>,
     #[arg(long = "capsule-asset")]
@@ -272,9 +277,9 @@ struct WorkshopSubmissionKitArgs {
     #[arg(long = "safety-guardrail")]
     safety_guardrails: Vec<String>,
     #[arg(long)]
-    user_reporting_path: String,
+    user_reporting_path: Option<String>,
     #[arg(long)]
-    moderation_policy: String,
+    moderation_policy: Option<String>,
     #[arg(long = "build-note")]
     build_notes: Vec<String>,
 }
@@ -1169,24 +1174,15 @@ fn handle_workshop(command: WorkshopCommand, language: OutputLanguage) -> Result
             println!("{}", report.message);
         }
         WorkshopSubcommand::SubmissionKit(args) => {
-            let request = SteamSubmissionKitRequest {
-                product_name: args.product_name,
-                desktop_build_path: args.desktop_build_path,
-                store_short_description: args.store_short_description,
-                screenshot_paths: args.screenshot_paths,
-                capsule_asset_paths: args.capsule_asset_paths,
-                content_warnings: args.content_warnings,
-                safety_guardrails: args.safety_guardrails,
-                user_reporting_path: args.user_reporting_path,
-                moderation_policy: args.moderation_policy,
-                build_notes: args.build_notes,
-            };
-            let report = write_steam_submission_kit(&args.package_dir, &args.out, &request)
-                .with_context(|| {
+            let package_dir = args.package_dir.clone();
+            let out = args.out.clone();
+            let request = build_submission_kit_request(&args, language)?;
+            let report =
+                write_steam_submission_kit(&package_dir, &out, &request).with_context(|| {
                     format!(
                         "write Steam Submission Kit drafts from {} to {}",
-                        args.package_dir.display(),
-                        args.out.display()
+                        package_dir.display(),
+                        out.display()
                     )
                 })?;
             println!(
@@ -1198,4 +1194,212 @@ fn handle_workshop(command: WorkshopCommand, language: OutputLanguage) -> Result
         }
     }
     Ok(())
+}
+
+/// Build the Steam Submission Kit request either from full `--batch` flags or
+/// by stepping through an interactive dialoguer wizard. The wizard only
+/// collects parameters; all validation and draft generation stay in
+/// `plotforge-workshop`.
+fn build_submission_kit_request(
+    args: &WorkshopSubmissionKitArgs,
+    language: OutputLanguage,
+) -> Result<SteamSubmissionKitRequest> {
+    if args.batch {
+        build_submission_kit_batch(args)
+    } else {
+        build_submission_kit_interactive(args, language)
+    }
+}
+
+/// `--batch` path: every required field must already be supplied via flags.
+fn build_submission_kit_batch(
+    args: &WorkshopSubmissionKitArgs,
+) -> Result<SteamSubmissionKitRequest> {
+    let product_name = args
+        .product_name
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --product-name"))?;
+    let store_short_description = args
+        .store_short_description
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --store-short-description"))?;
+    let user_reporting_path = args
+        .user_reporting_path
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --user-reporting-path"))?;
+    let moderation_policy = args
+        .moderation_policy
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --moderation-policy"))?;
+    Ok(SteamSubmissionKitRequest {
+        product_name,
+        desktop_build_path: args.desktop_build_path.clone(),
+        store_short_description,
+        screenshot_paths: args.screenshot_paths.clone(),
+        capsule_asset_paths: args.capsule_asset_paths.clone(),
+        content_warnings: args.content_warnings.clone(),
+        safety_guardrails: args.safety_guardrails.clone(),
+        user_reporting_path,
+        moderation_policy,
+        build_notes: args.build_notes.clone(),
+    })
+}
+
+/// Interactive wizard: prompts for each field, pre-filling any flag-supplied
+/// values. Refuses to run without a TTY so pipes/CI get an explicit error
+/// directing them to `--batch` instead of hanging on a blocked stdin.
+fn build_submission_kit_interactive(
+    args: &WorkshopSubmissionKitArgs,
+    language: OutputLanguage,
+) -> Result<SteamSubmissionKitRequest> {
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "submission-kit interactive wizard requires a TTY; pass --batch with full arguments"
+        );
+    }
+
+    let product_name = prompt_required_string(
+        args.product_name.as_deref(),
+        "Product name",
+        "产品名称",
+        language,
+    )?;
+    let store_short_description = prompt_required_string(
+        args.store_short_description.as_deref(),
+        "Store short description",
+        "商店简短描述",
+        language,
+    )?;
+    let desktop_build_path = prompt_optional_string(
+        args.desktop_build_path.as_deref(),
+        "Desktop build path (optional)",
+        "桌面构建路径（可选）",
+        language,
+    )?;
+    let user_reporting_path = prompt_required_string(
+        args.user_reporting_path.as_deref(),
+        "User reporting path",
+        "用户举报路径",
+        language,
+    )?;
+    let moderation_policy = prompt_required_string(
+        args.moderation_policy.as_deref(),
+        "Moderation policy",
+        "审核策略",
+        language,
+    )?;
+    let screenshot_paths = prompt_string_list(
+        &args.screenshot_paths,
+        "Screenshot path",
+        "截图路径",
+        language,
+    )?;
+    let capsule_asset_paths = prompt_string_list(
+        &args.capsule_asset_paths,
+        "Capsule asset path",
+        "胶囊素材路径",
+        language,
+    )?;
+    let content_warnings = prompt_string_list(
+        &args.content_warnings,
+        "Content warning",
+        "内容警告",
+        language,
+    )?;
+    let safety_guardrails = prompt_string_list(
+        &args.safety_guardrails,
+        "Safety guardrail",
+        "安全护栏",
+        language,
+    )?;
+    let build_notes = prompt_string_list(&args.build_notes, "Build note", "构建说明", language)?;
+
+    Ok(SteamSubmissionKitRequest {
+        product_name,
+        desktop_build_path,
+        store_short_description,
+        screenshot_paths,
+        capsule_asset_paths,
+        content_warnings,
+        safety_guardrails,
+        user_reporting_path,
+        moderation_policy,
+        build_notes,
+    })
+}
+
+fn prompt_label(en: &str, zh: &str, language: OutputLanguage) -> String {
+    match language {
+        OutputLanguage::En => en.to_string(),
+        OutputLanguage::Zh => zh.to_string(),
+    }
+}
+
+fn prompt_required_string(
+    default: Option<&str>,
+    en: &str,
+    zh: &str,
+    language: OutputLanguage,
+) -> Result<String> {
+    let prompt = prompt_label(en, zh, language);
+    let input = Input::<String>::new().with_prompt(prompt);
+    let input = if let Some(default) = default {
+        input.default(default.to_string())
+    } else {
+        input
+    };
+    let value: String = input
+        .validate_with(|v: &String| -> Result<(), &str> {
+            if v.trim().is_empty() {
+                Err("value is required")
+            } else {
+                Ok(())
+            }
+        })
+        .interact_text()?;
+    Ok(value)
+}
+
+fn prompt_optional_string(
+    default: Option<&str>,
+    en: &str,
+    zh: &str,
+    language: OutputLanguage,
+) -> Result<Option<String>> {
+    let prompt = prompt_label(en, zh, language);
+    let input = Input::<String>::new().with_prompt(prompt).allow_empty(true);
+    let input = if let Some(default) = default {
+        input.default(default.to_string())
+    } else {
+        input
+    };
+    let value: String = input.interact_text()?;
+    let trimmed = value.trim().to_string();
+    if trimmed.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(trimmed))
+    }
+}
+
+fn prompt_string_list(
+    existing: &[String],
+    en: &str,
+    zh: &str,
+    language: OutputLanguage,
+) -> Result<Vec<String>> {
+    let label = prompt_label(en, zh, language);
+    let mut values: Vec<String> = existing.to_vec();
+    loop {
+        let prompt = format!("{} #{} (empty to finish)", label, values.len() + 1);
+        let value: String = Input::<String>::new()
+            .with_prompt(prompt)
+            .allow_empty(true)
+            .interact_text()?;
+        if value.trim().is_empty() {
+            break;
+        }
+        values.push(value.trim().to_string());
+    }
+    Ok(values)
 }
