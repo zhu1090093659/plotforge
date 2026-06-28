@@ -1,11 +1,17 @@
-use std::{env, fs, io, path::PathBuf};
+mod cli_output;
+
+use std::{fs, io, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use cli_output::{
+    OutputLanguage, cli_term, export_profile_target_label, none_label, print_studio_json,
+    print_workshop_validation, render_check_summary, resolve_output_language, unsupported_label,
+};
 use plotforge_export::{export_desktop_runtime_draft, export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 use plotforge_schema::{
-    DESKTOP_RUNTIME_DRAFT_FILE, ExportProfileTarget, ProjectCreationRequest, ProjectTemplateId,
+    DESKTOP_RUNTIME_DRAFT_FILE, ProjectCreationRequest, ProjectTemplateId,
     SteamSubmissionKitRequest, WorkshopPublishDraft, supported_export_profiles,
 };
 use plotforge_storage::{
@@ -20,7 +26,7 @@ use plotforge_workshop::{
     upload_workshop_publish_draft, validate_workshop_package, write_steam_submission_kit,
     write_workshop_publish_draft,
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 #[derive(Debug, Parser)]
@@ -31,12 +37,6 @@ struct Cli {
     language: Option<OutputLanguage>,
     #[command(subcommand)]
     command: Command,
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum OutputLanguage {
-    En,
-    Zh,
 }
 
 #[derive(Debug, Subcommand)]
@@ -298,90 +298,6 @@ fn main() -> Result<()> {
     }
 }
 
-fn resolve_output_language(language: Option<OutputLanguage>) -> OutputLanguage {
-    if let Some(language) = language {
-        return language;
-    }
-    match env::var("PLOTFORGE_LANGUAGE")
-        .or_else(|_| env::var("LANG"))
-        .unwrap_or_default()
-        .to_ascii_lowercase()
-    {
-        value if value.starts_with("zh") => OutputLanguage::Zh,
-        _ => OutputLanguage::En,
-    }
-}
-
-fn cli_term(language: OutputLanguage, key: &'static str) -> &'static str {
-    if matches!(language, OutputLanguage::En) {
-        return key;
-    }
-    match key {
-        "scene" => "场景",
-        "choice" => "选择",
-        "delta" => "变化",
-        "trace" => "追踪",
-        "snapshot" => "快照",
-        "run seed" => "运行种子",
-        "prompt version" => "提示词版本",
-        "model version" => "模型版本",
-        "provider config hash" => "Provider 配置哈希",
-        "trace evidence id" => "追踪证据 ID",
-        "snapshot evidence id" => "快照证据 ID",
-        "player input" => "玩家输入",
-        "selected" => "已选择",
-        "intent" => "意图",
-        "intent choice" => "意图选择",
-        "intent action" => "意图动作",
-        "intent matched terms" => "意图匹配词",
-        "intent reason" => "意图原因",
-        "rule" => "规则",
-        "delta empty" => "变化为空",
-        "committed" => "已提交",
-        "rule action" => "规则动作",
-        "rule delta empty" => "规则变化为空",
-        "rule committed" => "规则已提交",
-        "rule error" => "规则错误",
-        "planner" => "规划器",
-        "planner requested" => "规划器请求",
-        "planner scene" => "规划器场景",
-        "planner fallback" => "规划器回退",
-        "planner error" => "规划器错误",
-        "fallback" => "回退",
-        "story before" => "故事前状态",
-        "story after" => "故事后状态",
-        "beat" => "节拍",
-        "turn" => "回合",
-        "world delta" => "世界变化",
-        "diagnostics" => "诊断",
-        "diagnostic" => "诊断",
-        "media references" => "媒体引用",
-        "media" => "媒体",
-        "error" => "错误",
-        "review scene" => "审查场景",
-        "review score" => "审查分数",
-        "review issues" => "审查问题",
-        "review issue" => "审查问题",
-        "desktop runtime draft" => "桌面运行时草稿",
-        "desktop build notes" => "桌面构建说明",
-        _ => key,
-    }
-}
-
-fn none_label(language: OutputLanguage, value: Option<&str>) -> &str {
-    value.unwrap_or(match language {
-        OutputLanguage::En => "none",
-        OutputLanguage::Zh => "无",
-    })
-}
-
-fn unsupported_label(language: OutputLanguage, value: Option<&str>) -> &str {
-    value.unwrap_or(match language {
-        OutputLanguage::En => "unsupported",
-        OutputLanguage::Zh => "不支持",
-    })
-}
-
 fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
     let payload: Value =
         serde_json::from_reader(io::stdin()).context("parse studio command json")?;
@@ -607,14 +523,6 @@ fn studio_result<T>(result: plotforge_studio::StudioCommandResult<T>) -> Result<
     result.map_err(|source| anyhow::anyhow!("{}: {}", source.code, source.message))
 }
 
-fn print_studio_json(value: impl Serialize) -> Result<()> {
-    println!(
-        "{}",
-        serde_json::to_string(&value).context("serialize studio command result")?
-    );
-    Ok(())
-}
-
 fn handle_new(command: NewCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
         NewSubcommand::Demo(args) => {
@@ -661,22 +569,7 @@ fn handle_new(command: NewCommand, language: OutputLanguage) -> Result<()> {
 fn handle_check(args: ProjectPath, language: OutputLanguage) -> Result<()> {
     let project = validate_project(&args.path)
         .with_context(|| format!("validate project at {}", args.path.display()))?;
-    match language {
-        OutputLanguage::En => println!(
-            "ok: {} ({} scenes, {} rules, {} characters)",
-            project.game.title,
-            project.scenes.len(),
-            project.rules.len(),
-            project.characters.len()
-        ),
-        OutputLanguage::Zh => println!(
-            "通过：{}（{} 个场景，{} 条规则，{} 个角色）",
-            project.game.title,
-            project.scenes.len(),
-            project.rules.len(),
-            project.characters.len()
-        ),
-    }
+    render_check_summary(language, &project);
     Ok(())
 }
 
@@ -1088,16 +981,6 @@ fn handle_export(command: ExportCommand, language: OutputLanguage) -> Result<()>
     Ok(())
 }
 
-fn export_profile_target_label(target: &ExportProfileTarget) -> &'static str {
-    match target {
-        ExportProfileTarget::StaticWeb => "static_web",
-        ExportProfileTarget::DynamicWeb => "dynamic_web",
-        ExportProfileTarget::DesktopBundle => "desktop_bundle",
-        ExportProfileTarget::SteamWorkshop => "steam_workshop",
-        ExportProfileTarget::SteamSubmissionKit => "steam_submission_kit",
-    }
-}
-
 fn handle_workshop(command: WorkshopCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
         WorkshopSubcommand::Validate(args) => {
@@ -1315,26 +1198,4 @@ fn handle_workshop(command: WorkshopCommand, language: OutputLanguage) -> Result
         }
     }
     Ok(())
-}
-
-fn print_workshop_validation(
-    language: OutputLanguage,
-    label: &str,
-    report: &plotforge_workshop::WorkshopPackageValidationReport,
-) {
-    let byte_total: u64 = report.files.iter().map(|file| file.byte_length).sum();
-    let label = match (language, label) {
-        (OutputLanguage::Zh, "workshop package ok") => "Workshop 包通过",
-        (OutputLanguage::Zh, "validated imported package") => "已验证导入包",
-        (OutputLanguage::Zh, "validated loaded package") => "已验证加载包",
-        (OutputLanguage::Zh, "validated remixed package") => "已验证 Remix 包",
-        _ => label,
-    };
-    println!(
-        "{label}: {} title={} files={} bytes={}",
-        report.manifest.package_id,
-        report.manifest.title,
-        report.files.len(),
-        byte_total
-    );
 }
