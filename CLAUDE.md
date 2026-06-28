@@ -61,6 +61,7 @@ cargo run -p plotforge-cli -- check "$tmp/dynasty-embers"
 cargo run -p plotforge-cli -- play "$tmp/dynasty-embers" --once
 cargo run -p plotforge-cli -- trace inspect "$tmp/dynasty-embers/traces/latest.json"
 cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+python3 scripts/qa/static_export_http_smoke.py --export-dir "$tmp/export"  # player-module whitelist + no network URLs
 ```
 
 ### Fixture Validation
@@ -110,7 +111,7 @@ plotforge-cli (orchestration only, no business logic)
 - **Export** copies only whitelisted player files + referenced assets (no secrets, no traces)
 - **Workshop/Steam** is local-only draft validation; no upload, no compliance claims
 - **Creator Desktop** is a UI adapter; must not reimplement business logic in TypeScript
-- **CLI** orchestrates crates; must not own business logic
+- **CLI** orchestrates crates; must not own business logic. Output formatting (i18n chrome, colorized summaries, report rendering) lives in `crates/plotforge-cli/src/cli_output.rs`; `main.rs` only dispatches and orchestrates handlers. Interactive wizards (e.g. `workshop submission-kit`) default to `dialoguer` prompts; `--batch` enables full flag-driven input for scripts/tests.
 
 See `AGENTS.md` for the complete set of architecture boundaries, testing policy, error handling rules, and change discipline.
 
@@ -127,6 +128,7 @@ See `AGENTS.md` for the complete set of architecture boundaries, testing policy,
 
 - Rust: unit tests co-located in crates, CLI black-box tests under `crates/plotforge-cli/tests/`
 - TypeScript: `*.test.ts(x)` files alongside source, Vitest + jsdom
+- Creator Desktop: one `*View.tsx` per workspace region with co-located behavior-based tests (assert via role/accessible-name/text, not className); `npm run creator-desktop:test` verifies a single View, `npm run creator-desktop:qa` is the full gate
 - All tests must use temp directories for generated output; never mutate committed fixtures
 - Every feature/fix requires tests in the same change
 
