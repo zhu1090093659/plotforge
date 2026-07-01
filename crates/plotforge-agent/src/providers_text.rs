@@ -371,11 +371,55 @@ where
 #[derive(Clone, Debug, Default)]
 pub struct FakeTextModelProvider {
     failure: Option<FakeTextModelFailure>,
+    reproducibility: FakeTextReproducibility,
 }
+
+/// Reproducibility identity used by `FakeTextModelProvider`. The generic mock
+/// (`success()`) uses the shared `FAKE_TEXT_*` constants; the pi-Agent local
+/// provider (`local_pi()`) overrides them with pi-Agent-specific versions so
+/// the two surfaces are distinguishable in traces.
+#[derive(Clone, Debug)]
+struct FakeTextReproducibility {
+    prompt_version: &'static str,
+    model_version: &'static str,
+    provider_config_hash: &'static str,
+}
+
+impl Default for FakeTextReproducibility {
+    fn default() -> Self {
+        Self {
+            prompt_version: TEXT_PROMPT_VERSION,
+            model_version: FAKE_TEXT_MODEL_VERSION,
+            provider_config_hash: FAKE_TEXT_PROVIDER_CONFIG_HASH,
+        }
+    }
+}
+
+/// pi-Agent local provider reproducibility identity. Kept redaction-safe: the
+/// config hash is a fixed descriptive string, never a credential.
+const PI_AGENT_PROMPT_VERSION: &str = "plotforge-pi-agent-prompt-v1";
+const PI_AGENT_MODEL_VERSION: &str = "plotforge-pi-agent-model-v1";
+const PI_AGENT_PROVIDER_CONFIG_HASH: &str = "sha256:plotforge-pi-agent-local-config-v1";
 
 impl FakeTextModelProvider {
     pub fn success() -> Self {
         Self::default()
+    }
+
+    /// Construct a deterministic local pi-Agent text provider. Distinct from
+    /// the generic mock: it carries pi-Agent-appropriate prompt/model versions
+    /// and a pi-Agent-local provider config hash so traces distinguish the
+    /// pi-Agent surface from the generic fake. It performs no network calls
+    /// and stores no credentials or raw provider responses.
+    pub fn local_pi() -> Self {
+        Self {
+            failure: None,
+            reproducibility: FakeTextReproducibility {
+                prompt_version: PI_AGENT_PROMPT_VERSION,
+                model_version: PI_AGENT_MODEL_VERSION,
+                provider_config_hash: PI_AGENT_PROVIDER_CONFIG_HASH,
+            },
+        }
     }
 
     pub fn provider_error(agent: AgentRole) -> Self {
@@ -405,6 +449,7 @@ impl FakeTextModelProvider {
     fn with_failure(agent: AgentRole, kind: FakeTextModelFailureKind) -> Self {
         Self {
             failure: Some(FakeTextModelFailure { agent, kind }),
+            reproducibility: FakeTextReproducibility::default(),
         }
     }
 }
@@ -413,9 +458,9 @@ impl TextModelProvider for FakeTextModelProvider {
     fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
         ReproducibilityMetadata {
             run_seed,
-            prompt_version: TEXT_PROMPT_VERSION.into(),
-            model_version: FAKE_TEXT_MODEL_VERSION.into(),
-            provider_config_hash: FAKE_TEXT_PROVIDER_CONFIG_HASH.into(),
+            prompt_version: self.reproducibility.prompt_version.into(),
+            model_version: self.reproducibility.model_version.into(),
+            provider_config_hash: self.reproducibility.provider_config_hash.into(),
             trace_id: None,
             snapshot_id: None,
         }

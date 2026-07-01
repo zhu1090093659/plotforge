@@ -1,4 +1,3 @@
-
 use std::{cell::RefCell, fs, rc::Rc};
 
 use plotforge_job::{JobClock, JobQueue};

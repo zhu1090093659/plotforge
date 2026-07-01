@@ -92,7 +92,16 @@ impl PiAgent {
             }
         })?;
 
-        let reproducibility = envelope.reproducibility.clone();
+        let mut reproducibility = envelope.reproducibility.clone();
+        // Derive a deterministic trace evidence id from the run seed so the
+        // pi-Agent result carries stable, reproducible trace identity without
+        // relying on the provider to set one. The id is redaction-safe (a
+        // hex digest) and never contains raw provider responses or secrets.
+        let trace_evidence_id = format!(
+            "pi-agent-evidence-{}",
+            crate::shared::stable_sha256_hash(&format!("{}:{}", self.agent_id, request.run_seed))
+        );
+        reproducibility = reproducibility.with_trace_id(&trace_evidence_id);
         let trace_id = reproducibility.trace_id.clone();
         let descriptor = PiAgentDescriptor {
             agent_id: self.agent_id.clone(),
