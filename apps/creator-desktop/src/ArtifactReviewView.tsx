@@ -61,7 +61,7 @@ export function ArtifactReviewView({
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-acp-400">
+              <p className="text-xs font-semibold uppercase text-accent-400">
                 Live Build Room
               </p>
               <h3 className="mt-1 text-lg font-semibold text-canvas-50">

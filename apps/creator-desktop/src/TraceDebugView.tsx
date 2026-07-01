@@ -238,7 +238,7 @@ export function TraceDebugView({
               <section aria-label="Trace Debug" className="grid gap-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase text-acp-500">
+                    <p className="text-xs font-semibold uppercase text-accent-500">
                       Trace Debug
                     </p>
                     <h3 className="mt-1 text-lg font-semibold">
@@ -252,7 +252,7 @@ export function TraceDebugView({
                       size={22}
                     />
                   ) : (
-                    <Network aria-hidden className="text-acp-500" size={22} />
+                    <Network aria-hidden className="text-accent-500" size={22} />
                   )}
                 </div>
 
@@ -575,7 +575,7 @@ function CausalityGraph({
       id: "intent",
       label: "Director Intent",
       detail: trace.action_intent?.action_type ?? "unsupported",
-      tone: "border-acp-500/35 bg-acp-500/10 text-acp-600",
+      tone: "border-accent-500/35 bg-accent-500/10 text-accent-600",
     },
     {
       id: "rule",

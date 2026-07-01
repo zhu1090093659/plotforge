@@ -481,7 +481,7 @@ export function App({
         <StudioPanel>
           <div className="flex flex-wrap gap-2">
             <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
-            <StudioStatusChip tone="acp">{dataSource.runtimeName}</StudioStatusChip>
+            <StudioStatusChip tone="accent">{dataSource.runtimeName}</StudioStatusChip>
             <StudioStatusChip tone="agent">
               {activeSectionMeta.status}
             </StudioStatusChip>

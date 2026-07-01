@@ -330,7 +330,7 @@ function NewProjectForm({
               onChange={(event) =>
                 setCreateTemplate(event.target.value as ProjectTemplateId)
               }
-              className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-acp-400"
+              className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400"
             >
               <option value="historical_crisis">{t("Custom Story Project")}</option>
             </select>
@@ -657,7 +657,7 @@ function LaunchpadTextInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-acp-400"
+        className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400"
       />
     </label>
   );
@@ -683,7 +683,7 @@ function LaunchpadTextareaInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-20 w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-acp-400"
+        className="min-h-20 w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400"
       />
     </label>
   );

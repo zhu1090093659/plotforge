@@ -18,7 +18,7 @@ describe("studioUi", () => {
     expect(agentNativeDesignTokens.shell.warmCanvas).toBe("#f7f0df");
     expect(agentNativeDesignTokens.accent.amberAction).toBe("#c98b2f");
     expect(agentNativeDesignTokens.accent.healthGreen).toBe("#34815f");
-    expect(agentNativeDesignTokens.accent.acpCyan).toBe("#2e8ca0");
+    expect(agentNativeDesignTokens.accent.accentCyan).toBe("#2e8ca0");
     expect(agentNativeDesignTokens.accent.agentPurple).toBe("#7559a8");
   });
 

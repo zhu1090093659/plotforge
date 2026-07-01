@@ -16,7 +16,7 @@ export const agentNativeDesignTokens = {
   accent: {
     amberAction: "#c98b2f",
     healthGreen: "#34815f",
-    acpCyan: "#2e8ca0",
+    accentCyan: "#2e8ca0",
     agentPurple: "#7559a8",
   },
 } as const;
@@ -26,9 +26,9 @@ export const studioUiClassNames = {
     "rounded-lg border border-ink/10 bg-canvas-50 p-5 text-ink shadow-studio-panel",
   insetPanel: "rounded-lg border border-ink/10 bg-canvas-100 px-3 py-3 text-ink",
   input:
-    "h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-acp-400",
+    "h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400",
   textarea:
-    "w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-acp-400",
+    "w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400",
   primaryButton:
     "inline-flex h-10 items-center gap-2 rounded-md bg-amber-500 px-4 text-sm font-semibold text-graphite-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/35 disabled:text-graphite-950/45",
   secondaryButton:
@@ -245,7 +245,7 @@ export function StudioStatusChip({
   title,
   children,
 }: {
-  tone?: "neutral" | "action" | "health" | "acp" | "agent" | "danger";
+  tone?: "neutral" | "action" | "health" | "accent" | "agent" | "danger";
   title?: string;
   children: ReactNode;
 }) {
@@ -253,7 +253,7 @@ export function StudioStatusChip({
     neutral: "border-graphite-700/15 bg-canvas-50 text-graphite-700/70",
     action: "border-amber-500/30 bg-amber-500/15 text-amber-600",
     health: "border-health-500/30 bg-health-500/15 text-health-500",
-    acp: "border-acp-500/30 bg-acp-500/15 text-acp-500",
+    accent: "border-accent-500/30 bg-accent-500/15 text-accent-500",
     agent: "border-agent-500/30 bg-agent-500/15 text-agent-500",
     danger: "border-signal/30 bg-signal/10 text-signal",
   }[tone];
@@ -299,7 +299,7 @@ function StudioNavButton({
   const selectedClass =
     selectedTone === "workflow"
       ? "border-amber-400/45 bg-amber-500 text-graphite-950"
-      : "border-acp-400/35 bg-acp-500/20 text-canvas-50";
+      : "border-accent-400/35 bg-accent-500/20 text-canvas-50";
   return (
     <button
       type="button"
