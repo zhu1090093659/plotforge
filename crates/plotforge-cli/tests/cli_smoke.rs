@@ -378,6 +378,105 @@ fn cli_studio_json_invokes_real_studio_commands() {
 }
 
 #[test]
+fn cli_studio_pi_agent_run_returns_redaction_safe_envelope() {
+    let result = run_with_stdin(
+        ["studio", "pi_agent_run"],
+        &serde_json::json!({
+            "request": {
+                "agent_id": "pi-agent-local",
+                "run_seed": 7,
+                "prompt_summary": "Generate a validated scene plan proposal.",
+                "prompt_hash": "sha256:cli-smoke-prompt"
+            }
+        })
+        .to_string(),
+    )
+    .assert_success_contains("\"is_local_pi\":true")
+    .stdout_json();
+
+    // The descriptor must identify the local pi-Agent and expose capabilities.
+    assert_eq!(result["descriptor"]["agent_id"], "pi-agent-local");
+    assert_eq!(result["descriptor"]["is_local_pi"], true);
+    assert!(
+        result["descriptor"]["capabilities"].is_array(),
+        "capabilities must be a list"
+    );
+    assert!(
+        !result["descriptor"]["capabilities"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "capabilities must not be empty"
+    );
+
+    // Reproducibility metadata must be present and complete.
+    assert_eq!(result["reproducibility"]["run_seed"], 7);
+    assert!(
+        result["reproducibility"]["provider_config_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:"),
+        "provider_config_hash must be present"
+    );
+    assert!(
+        !result["reproducibility"]["prompt_version"].as_str().unwrap().is_empty(),
+        "prompt_version must be present"
+    );
+    assert!(
+        !result["reproducibility"]["model_version"].as_str().unwrap().is_empty(),
+        "model_version must be present"
+    );
+
+    // The serialized output must be redaction-safe: no raw provider responses
+    // or secret markers anywhere in the envelope.
+    let raw_run = run_with_stdin(
+        ["studio", "pi_agent_run"],
+        &serde_json::json!({
+            "request": {
+                "agent_id": "pi-agent-local",
+                "run_seed": 7,
+                "prompt_summary": "Generate a validated scene plan proposal.",
+                "prompt_hash": "sha256:cli-smoke-prompt"
+            }
+        })
+        .to_string(),
+    );
+    let stdout = String::from_utf8_lossy(&raw_run.output.stdout);
+    assert!(!stdout.contains("raw_provider_response"));
+    assert!(!stdout.contains("api_key"));
+    assert!(!stdout.contains("sk-"));
+    assert!(!stdout.contains("OPENAI_API_KEY"));
+}
+
+#[test]
+fn cli_studio_pi_agent_capabilities_lists_wired_capability() {
+    let capabilities = run_with_stdin(
+        ["studio", "pi_agent_capabilities"],
+        &serde_json::json!({}).to_string(),
+    )
+    .assert_success_contains("\"status\":\"wired\"")
+    .stdout_json();
+
+    assert!(capabilities.is_array(), "capabilities must be a list");
+    let list = capabilities.as_array().unwrap();
+    assert!(!list.is_empty(), "capabilities must not be empty");
+    let wired = list
+        .iter()
+        .filter(|capability| capability["status"] == "wired")
+        .count();
+    assert_ne!(wired, 0, "at least one capability should be wired");
+
+    // Capability evidence must be redaction-safe.
+    let raw_capabilities = run_with_stdin(
+        ["studio", "pi_agent_capabilities"],
+        &serde_json::json!({}).to_string(),
+    );
+    let stdout = String::from_utf8_lossy(&raw_capabilities.output.stdout);
+    assert!(!stdout.contains("sk-"));
+    assert!(!stdout.contains("OPENAI_API_KEY"));
+}
+
+#[test]
 fn cli_new_project_rejects_secret_markers() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("winter-regency");
