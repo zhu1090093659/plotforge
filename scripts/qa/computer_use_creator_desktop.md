@@ -35,7 +35,7 @@ npm --workspace @plotforge/creator-desktop run dev -- --host 127.0.0.1
    - World delta or package readiness evidence is visible.
 5. Open `Agent Mesh` and verify `Studio Backend Bridge`, `Command Boundary Map`, `Capability Matrix`, and real Studio command boundary copy are visible.
    - Wired capabilities should describe folder project source, structured editing, source file read/write, runtime proof, and static export.
-   - Unavailable interfaces such as ACP/external agent bridge, approval queues, provider calls, and publishing automation must remain explicitly `not implemented`.
+   - Unavailable interfaces such as external agent execution (non-pi-Agent), approval queues, hidden network provider calls, and publishing automation must remain explicitly `not implemented`. The internal pi-Agent runtime is wired (local, schema-backed).
 6. Open `Export Package` and verify:
    - `Local export package only`
    - `Package Readiness`
@@ -56,4 +56,4 @@ Record the URL, viewport, clicked command, visible trace id, proof section, trac
 - Do not use `file://`; Creator Desktop is validated through the Vite dev server or Tauri dev shell.
 - Vite browser mode calls the local HTTP dev bridge backed by `plotforge-cli studio`; this is local command execution, not an in-browser fake source.
 - Do not treat Browser or Computer Use smoke as a replacement for TypeScript, Vitest, build, Tauri, Rust, CLI, and export checks.
-- Forbidden copy includes automatic publishing, legal/approval guarantees, official-logo ownership claims, real ACP execution claims, hidden network/model execution claims, raw provider responses, provider credentials, and secret marker text.
+- Forbidden copy includes automatic publishing, legal/approval guarantees, official-logo ownership claims, real external agent execution claims (pi-Agent is local and allowed), hidden network/model execution claims, raw provider responses, provider credentials, and secret marker text.

@@ -180,7 +180,7 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
       .toBeTruthy();
     expect(screen.getByText("Studio-backed capabilities")).toBeTruthy();
-    expect(screen.getByText("pi-Agent runtime")).toBeTruthy();
+    expect(screen.getAllByText("pi-Agent runtime").length).toBeGreaterThan(0);
     expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
     expect(screen.queryByText("Mock Story Agent")).toBeNull();
   });

@@ -54,7 +54,7 @@ describe("DirectorModeView", () => {
     expect(screen.getByText(/No decision queue is available/)).toBeTruthy();
     expect(screen.queryByText("Codex Worker")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
-      /automatic publishing|approval guarantee|legal guarantee|real pi-Agent execution/i,
+      /automatic publishing|approval guarantee|legal guarantee/i,
     );
   });
 
