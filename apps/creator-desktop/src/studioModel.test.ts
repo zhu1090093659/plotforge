@@ -18,7 +18,7 @@ describe("studioModel", () => {
       "01-project-launchpad.png",
       "02-command-center.png",
       "03-director-mode.png",
-      "04-acp-bridge-setup.png",
+      "04-pi-agent-bridge-setup.png",
       "05-live-build-room.png",
       "06-artifact-review.png",
       "07-playable-proof.png",
