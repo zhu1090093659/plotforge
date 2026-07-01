@@ -41,12 +41,12 @@ describe("AgentMeshView", () => {
     expect(screen.getByText("Project open/check")).toBeTruthy();
     expect(screen.getByText("Runtime proof")).toBeTruthy();
     expect(screen.getByText("Static export zip")).toBeTruthy();
-    expect(screen.getByText("ACP / external agent bridge")).toBeTruthy();
+    expect(screen.getByText("pi-Agent runtime")).toBeTruthy();
     expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
     expect(screen.queryByText("Codex Worker")).toBeNull();
     expect(screen.queryByText("Claude Code Worker")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
-      /automatic publishing|approval guarantee|legal guarantee|real ACP execution|official approval|Steam upload automation/i,
+      /automatic publishing|approval guarantee|legal guarantee|real pi-Agent execution|official approval|Steam upload automation/i,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Review trace" }));

@@ -95,7 +95,7 @@ const zhText: Record<string, string> = {
   "Project truth": "项目事实源",
   "folder source files": "文件夹源文件",
   "Command source": "命令来源",
-  "Network ACP": "网络 ACP",
+  "pi-Agent network boundary (local-only)": "pi-Agent 网络边界（仅本地）",
   "Provider calls": "Provider 调用",
   "not implemented": "未实现",
   disabled: "已禁用",
@@ -126,7 +126,7 @@ const zhText: Record<string, string> = {
   "Source file read/write": "源文件读写",
   "Runtime proof": "运行时证明",
   "Static export zip": "静态导出 zip",
-  "ACP / external agent bridge": "ACP / 外部 Agent 桥接",
+  "pi-Agent runtime": "pi-Agent 运行时",
   "No schema-backed Studio command": "没有 schema 支撑的 Studio 命令",
   "Not exposed by Tauri or HTTP dev bridge": "未通过 Tauri 或 HTTP dev bridge 暴露",
   wired: "已接线",
@@ -273,8 +273,8 @@ const zhText: Record<string, string> = {
     "除非真实命令存在，否则不显示本地审批队列。",
   "No generated artifact bundle without persisted evidence.":
     "没有持久化证据时，不显示生成的产物包。",
-  "The UI is now backed by Studio command results. Agent and ACP concepts stay visible only as unavailable boundaries until schema-backed ports are added.":
-    "此 UI 现在由 Studio 命令结果支撑。在加入 schema 支撑的端口之前，Agent 和 ACP 概念只作为不可用边界展示。",
+  "The UI is now backed by Studio command results. pi-Agent runtime is wired locally; external agent boundaries stay unavailable until schema-backed ports are added.":
+    "此 UI 现在由 Studio 命令结果支撑。pi-Agent 运行时已在本地接入；外部 agent 边界在加入 schema 支撑的端口前保持不可用。",
   "Only static web has an executable Studio command":
     "只有静态 Web 有可执行的 Studio 命令",
   "Bridge Evidence": "桥接证据",
@@ -292,8 +292,8 @@ const zhText: Record<string, string> = {
     "浏览器模式使用由 plotforge-studio 支撑的 HTTP dev bridge。",
   "Tauri mode uses the same command names through IPC.":
     "Tauri 模式通过 IPC 使用相同的命令名。",
-  "ACP workers, approval queues, provider calls, and publishing automation are not implemented.":
-    "ACP worker、审批队列、provider 调用和发布自动化尚未实现。",
+  "pi-Agent runtime is local and schema-backed; external agent execution, hidden network calls, and publishing automation remain not implemented.":
+    "pi-Agent 运行时为本地且 schema 支撑；外部 agent 执行、隐藏网络调用和发布自动化尚未实现。",
   Actions: "操作",
   "Review trace": "审查追踪",
   "Describe the game change you want": "描述你想要的游戏变更",
@@ -315,8 +315,8 @@ const zhText: Record<string, string> = {
   "profile loaded": "配置已加载",
   "not loaded": "未加载",
   "Unavailable Agent Interfaces": "不可用的 Agent 接口",
-  "ACP workers are not connected by any Studio command.":
-    "ACP worker 尚未通过任何 Studio 命令连接。",
+  "pi-Agent runtime is connected via Studio command pi_agent_run.":
+    "pi-Agent 运行时通过 Studio 命令 pi_agent_run 连接。",
   "Approval queues are hidden until persisted proposal contracts exist.":
     "在持久化提案 contract 存在前，审批队列会保持隐藏。",
   "Provider-backed generation remains explicit local mock/runtime logic.":
@@ -344,12 +344,12 @@ const zhText: Record<string, string> = {
   Game: "游戏",
   Agents: "Agent",
   "Agent Mesh Core": "Agent 网格核心",
-  "ACP Bridge Setup": "ACP 桥接设置",
+  "pi-Agent Bridge Setup": "pi-Agent 桥接设置",
   "Trace Debug": "追踪调试",
   "Director intent, project health, artifact summary":
     "导演意图、项目健康度、产物摘要",
-  "ACP capability map, approvals, and local boundaries":
-    "ACP 能力图、审批和本地边界",
+  "pi-Agent capability map, approvals, and local boundaries":
+    "pi-Agent 能力图、审批和本地边界",
   "Canon, forbidden facts, setting notes": "正典、禁用事实、设定笔记",
   "Promises, hooks, reversals, emotional arc":
     "承诺、钩子、反转、情绪弧线",
@@ -364,8 +364,8 @@ const zhText: Record<string, string> = {
     "导演意图、项目启动、活动运行摘要",
   "Playable scene preview, creative direction, runtime loop":
     "可玩场景预览、创作指令、运行时循环",
-  "Local capability map, ACP setup, approval boundaries":
-    "本地能力图、ACP 设置、审批边界",
+  "Local capability map, pi-Agent setup, approval boundaries":
+    "本地能力图、pi-Agent 设置、审批边界",
   "Agent proposals, changed assets, validation evidence":
     "Agent 提案、变更资产、验证证据",
   "Trace-visible playtest evidence and reproducibility":

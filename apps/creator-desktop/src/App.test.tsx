@@ -172,7 +172,7 @@ describe("App", () => {
     expect(screen.getByText("Backend Boundary")).toBeTruthy();
     expect(screen.getByText("Real Studio command surface")).toBeTruthy();
     expect(screen.getAllByText("External agents").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Mock ACP Worker")).toBeNull();
+    expect(screen.queryByText("Mock pi-Agent Worker")).toBeNull();
     expect(screen.queryByText("Approve local preview patch")).toBeNull();
     expect(screen.queryByText("local-preview-only")).toBeNull();
 
@@ -180,7 +180,7 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
       .toBeTruthy();
     expect(screen.getByText("Studio-backed capabilities")).toBeTruthy();
-    expect(screen.getByText("ACP / external agent bridge")).toBeTruthy();
+    expect(screen.getByText("pi-Agent runtime")).toBeTruthy();
     expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
     expect(screen.queryByText("Mock Story Agent")).toBeNull();
   });

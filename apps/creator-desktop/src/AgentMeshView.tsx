@@ -75,8 +75,8 @@ const realCapabilities: Capability[] = [
     status: "wired",
   },
   {
-    id: "agent-acp-bridge",
-    label: "ACP / external agent bridge",
+    id: "agent-pi-agent-runtime",
+    label: "pi-Agent runtime",
     source: "No schema-backed Studio command",
     evidence: "Not exposed by Tauri or HTTP dev bridge",
     status: "not-implemented",
@@ -123,7 +123,7 @@ export function AgentMeshView({
           <div className="grid gap-2 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
             <BridgeFact label="Project truth" value="folder source files" />
             <BridgeFact label="Command source" value="plotforge-studio" />
-            <BridgeFact label="Network ACP" value="not implemented" />
+            <BridgeFact label="pi-Agent network boundary (local-only)" value="not implemented" />
             <BridgeFact label="Provider calls" value="not implemented" />
           </div>
 
@@ -156,9 +156,9 @@ export function AgentMeshView({
                   {projectSummary?.title ?? "No project loaded"}
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-canvas-200/60">
-                  The UI is now backed by Studio command results. Agent and ACP
-                  concepts stay visible only as unavailable boundaries until
-                  schema-backed ports are added.
+                  The UI is now backed by Studio command results. pi-Agent
+                  runtime is wired locally; external agent boundaries stay
+                  unavailable until schema-backed ports are added.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
