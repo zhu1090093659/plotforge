@@ -11,15 +11,15 @@
 //! `complete_text_agent_output` pipeline (provider call, JSON repair,
 //! envelope validation, and `validate_agent_output_proposal`) so the
 //! pi-Agent surface benefits from the same validation path as the existing
-//! agent pipelines. The big ACP -> pi-Agent split is tracked separately
-//! (T2.1); this module only adds the new surface without moving existing
-//! symbols.
+//! agent pipelines. The broader agent module reorganization is tracked
+//! separately (T2.1); this module only adds the new surface without moving
+//! existing symbols.
 
 use plotforge_schema::{
     AgentRole, PiAgentCapability, PiAgentDescriptor, PiAgentRunRequest, PiAgentRunResult,
 };
 
-use crate::{TextModelProvider, contains_secret_marker_text, complete_text_agent_output};
+use crate::{TextModelProvider, complete_text_agent_output, contains_secret_marker_text};
 
 /// pi-Agent facade errors. Explicit errors only — no silent fallback.
 ///
@@ -38,10 +38,7 @@ pub enum PiAgentError {
     /// The underlying text provider failed or returned invalid output. The
     /// `code` and `message` are redacted before being stored here.
     #[error("pi-agent provider failure: {code}: {message}")]
-    Provider {
-        code: String,
-        message: String,
-    },
+    Provider { code: String, message: String },
 }
 
 /// The pi-Agent facade. Holds a boxed `TextModelProvider` so it can wrap any
@@ -149,31 +146,34 @@ pub fn pi_agent_capabilities() -> Vec<PiAgentCapability> {
             label: "Image generation".into(),
             status: "not-implemented".into(),
             source: "deferred".into(),
-            evidence: "Deferred to a later phase; no image provider is wired into the pi-Agent facade.".into(),
+            evidence:
+                "Deferred to a later phase; no image provider is wired into the pi-Agent facade."
+                    .into(),
         },
         PiAgentCapability {
             id: "pi-agent.steam-upload".into(),
             label: "Steam upload".into(),
             status: "not-implemented".into(),
             source: "deferred".into(),
-            evidence: "Steam/Workshop integration remains deferred; no upload automation is implied.".into(),
+            evidence:
+                "Steam/Workshop integration remains deferred; no upload automation is implied."
+                    .into(),
         },
     ]
 }
 
 #[cfg(test)]
 mod tests {
-    use plotforge_schema::{CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, contains_secret_marker_text};
+    use plotforge_schema::{
+        CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, contains_secret_marker_text,
+    };
 
     use super::*;
     use crate::FakeTextModelProvider;
 
     #[test]
     fn pi_agent_runs_local_mock_provider() {
-        let agent = PiAgent::new(
-            Box::new(FakeTextModelProvider::success()),
-            "pi-agent-local",
-        );
+        let agent = PiAgent::new(Box::new(FakeTextModelProvider::success()), "pi-agent-local");
         let request = PiAgentRunRequest {
             agent_id: "pi-agent-local".into(),
             run_seed: 7,
@@ -218,10 +218,7 @@ mod tests {
 
     #[test]
     fn pi_agent_run_result_is_serializable_and_redaction_safe() {
-        let agent = PiAgent::new(
-            Box::new(FakeTextModelProvider::success()),
-            "pi-agent-local",
-        );
+        let agent = PiAgent::new(Box::new(FakeTextModelProvider::success()), "pi-agent-local");
         let request = PiAgentRunRequest {
             agent_id: "pi-agent-local".into(),
             run_seed: 42,
@@ -231,8 +228,7 @@ mod tests {
 
         let result = agent.run(request).expect("pi-agent run succeeds");
         let encoded = serde_json::to_string(&result).expect("serialize result");
-        let decoded: PiAgentRunResult =
-            serde_json::from_str(&encoded).expect("deserialize result");
+        let decoded: PiAgentRunResult = serde_json::from_str(&encoded).expect("deserialize result");
         assert_eq!(decoded.descriptor, result.descriptor);
         assert_eq!(decoded.reproducibility.run_seed, 42);
         assert!(
@@ -251,10 +247,7 @@ mod tests {
 
     #[test]
     fn pi_agent_rejects_empty_prompt_hash() {
-        let agent = PiAgent::new(
-            Box::new(FakeTextModelProvider::success()),
-            "pi-agent-local",
-        );
+        let agent = PiAgent::new(Box::new(FakeTextModelProvider::success()), "pi-agent-local");
         let request = PiAgentRunRequest {
             agent_id: "pi-agent-local".into(),
             run_seed: 7,
@@ -268,10 +261,7 @@ mod tests {
 
     #[test]
     fn pi_agent_rejects_secret_marker_in_prompt_summary() {
-        let agent = PiAgent::new(
-            Box::new(FakeTextModelProvider::success()),
-            "pi-agent-local",
-        );
+        let agent = PiAgent::new(Box::new(FakeTextModelProvider::success()), "pi-agent-local");
         let request = PiAgentRunRequest {
             agent_id: "pi-agent-local".into(),
             run_seed: 7,
@@ -290,7 +280,9 @@ mod tests {
         // to the provider pipeline; FakeTextModelProvider::provider_error
         // fails for that agent.
         let agent = PiAgent::new(
-            Box::new(FakeTextModelProvider::provider_error(AgentRole::ScenePlanner)),
+            Box::new(FakeTextModelProvider::provider_error(
+                AgentRole::ScenePlanner,
+            )),
             "pi-agent-local",
         );
         let request = PiAgentRunRequest {
@@ -329,10 +321,7 @@ mod tests {
     /// against accidental drift if the facade ever emits a custom envelope.
     #[test]
     fn pi_agent_reproducibility_metadata_is_complete() {
-        let agent = PiAgent::new(
-            Box::new(FakeTextModelProvider::success()),
-            "pi-agent-local",
-        );
+        let agent = PiAgent::new(Box::new(FakeTextModelProvider::success()), "pi-agent-local");
         let request = PiAgentRunRequest {
             agent_id: "pi-agent-local".into(),
             run_seed: 13,

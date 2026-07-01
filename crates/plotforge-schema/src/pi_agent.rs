@@ -190,12 +190,14 @@ mod tests {
         };
 
         let encoded = serde_json::to_string_pretty(&result).expect("serialize result");
-        let decoded: PiAgentRunResult =
-            serde_json::from_str(&encoded).expect("deserialize result");
+        let decoded: PiAgentRunResult = serde_json::from_str(&encoded).expect("deserialize result");
         assert_eq!(decoded, result);
         assert_eq!(decoded.descriptor, descriptor);
         assert_eq!(decoded.reproducibility.run_seed, 7);
-        assert_eq!(decoded.reproducibility.trace_id.as_deref(), Some("pi-agent-trace-001"));
+        assert_eq!(
+            decoded.reproducibility.trace_id.as_deref(),
+            Some("pi-agent-trace-001")
+        );
         assert_eq!(decoded.trace_id.as_deref(), Some("pi-agent-trace-001"));
 
         let value: serde_json::Value = serde_json::from_str(&encoded).expect("result value");

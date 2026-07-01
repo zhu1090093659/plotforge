@@ -419,11 +419,17 @@ fn cli_studio_pi_agent_run_returns_redaction_safe_envelope() {
         "provider_config_hash must be present"
     );
     assert!(
-        !result["reproducibility"]["prompt_version"].as_str().unwrap().is_empty(),
+        !result["reproducibility"]["prompt_version"]
+            .as_str()
+            .unwrap()
+            .is_empty(),
         "prompt_version must be present"
     );
     assert!(
-        !result["reproducibility"]["model_version"].as_str().unwrap().is_empty(),
+        !result["reproducibility"]["model_version"]
+            .as_str()
+            .unwrap()
+            .is_empty(),
         "model_version must be present"
     );
 
