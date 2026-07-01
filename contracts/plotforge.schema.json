@@ -1952,6 +1952,113 @@
       ],
       "type": "object"
     },
+    "PiAgentCapability": {
+      "additionalProperties": false,
+      "description": "A single pi-Agent capability.\n\n`status` is a descriptive label (\"wired\" or \"not-implemented\") rather than\na typed enum so the contract stays forward-compatible with new capability\nstates introduced by future phases without a schema breaking change.",
+      "properties": {
+        "evidence": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "status",
+        "source",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "PiAgentDescriptor": {
+      "additionalProperties": false,
+      "description": "Describes the pi-Agent runtime: its local identity and the capability list\nit currently exposes. This is a descriptive surface only; it does not\npromise external agent execution, network model calls, or platform\noutcomes.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/PiAgentCapability"
+          },
+          "type": "array"
+        },
+        "is_local_pi": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "agent_id",
+        "is_local_pi",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "PiAgentRunRequest": {
+      "additionalProperties": false,
+      "description": "A redaction-safe pi-Agent run request.\n\nThe prompt is never carried verbatim; callers pass a short summary plus a\nstable hash so traces and results stay free of raw prompt content and\nsecrets.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "prompt_hash": {
+          "type": "string"
+        },
+        "prompt_summary": {
+          "type": "string"
+        },
+        "run_seed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_id",
+        "run_seed",
+        "prompt_summary",
+        "prompt_hash"
+      ],
+      "type": "object"
+    },
+    "PiAgentRunResult": {
+      "additionalProperties": false,
+      "description": "The redaction-safe result of a pi-Agent run.\n\nReuses the shared `ReproducibilityMetadata` type so trace/snapshot\nevidence stays consistent across the runtime. The descriptor echoes the\nagent identity and capabilities used for the run. `evidence_summary` is a\nshort, redacted summary; it must not contain raw provider responses,\ncredentials, or secret markers.",
+      "properties": {
+        "descriptor": {
+          "$ref": "#/$defs/PiAgentDescriptor"
+        },
+        "evidence_summary": {
+          "type": "string"
+        },
+        "reproducibility": {
+          "$ref": "#/$defs/ReproducibilityMetadata"
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "descriptor",
+        "reproducibility",
+        "evidence_summary"
+      ],
+      "type": "object"
+    },
     "PlotThread": {
       "properties": {
         "expected_payoff": {
@@ -3848,6 +3955,18 @@
     "media_asset_reference": {
       "$ref": "#/$defs/MediaAssetReference"
     },
+    "pi_agent_capability": {
+      "$ref": "#/$defs/PiAgentCapability"
+    },
+    "pi_agent_descriptor": {
+      "$ref": "#/$defs/PiAgentDescriptor"
+    },
+    "pi_agent_run_request": {
+      "$ref": "#/$defs/PiAgentRunRequest"
+    },
+    "pi_agent_run_result": {
+      "$ref": "#/$defs/PiAgentRunResult"
+    },
     "project_creation_report": {
       "$ref": "#/$defs/ProjectCreationReport"
     },
@@ -3949,7 +4068,11 @@
     "workshop_publish_draft",
     "steam_submission_kit_request",
     "steam_submission_kit_draft",
-    "export_manifest"
+    "export_manifest",
+    "pi_agent_capability",
+    "pi_agent_descriptor",
+    "pi_agent_run_request",
+    "pi_agent_run_result"
   ],
   "title": "ContractRootSchemas",
   "type": "object"

@@ -29,6 +29,9 @@ const TEXT_PROMPT_VERSION: &str = "plotforge-agent-text-prompt-v1";
 const FAKE_TEXT_MODEL_VERSION: &str = "fake-text-model-v1";
 const FAKE_TEXT_PROVIDER_CONFIG_HASH: &str = "sha256:fake-text-provider-config-v1";
 
+pub mod pi_agent;
+pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities};
+
 #[derive(Clone, Debug)]
 pub struct ScenePlanRequest<'a> {
     pub project: &'a ProjectData,
@@ -877,7 +880,7 @@ fn complete_text_agent_output<P>(
     prompt: String,
 ) -> Result<AgentOutputEnvelope, ProviderPipelineError>
 where
-    P: TextModelProvider,
+    P: TextModelProvider + ?Sized,
 {
     if contains_secret_marker_text(&prompt) {
         return Err(ProviderPipelineError::Validation {

@@ -308,6 +308,12 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
             studio_arg::<PathBuf>(&payload, "path")?,
         ))?),
         "list_export_profiles" => print_studio_json(plotforge_studio::list_export_profiles()),
+        "pi_agent_run" => print_studio_json(studio_result(plotforge_studio::pi_agent_run(
+            studio_arg(&payload, "request")?,
+        ))?),
+        "pi_agent_capabilities" => {
+            print_studio_json(studio_result(plotforge_studio::pi_agent_capabilities())?)
+        }
         "read_world_edit_document" => print_studio_json(studio_result(
             plotforge_studio::read_world_edit_document(studio_arg::<PathBuf>(&payload, "path")?),
         )?),

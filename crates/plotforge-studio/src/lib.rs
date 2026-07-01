@@ -18,6 +18,7 @@ pub use plotforge_schema::{
     WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
     WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
 };
+use plotforge_schema::{PiAgentCapability, PiAgentRunRequest, PiAgentRunResult};
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
     validate_project, validate_runtime_snapshot_id, write_runtime_snapshot, write_trace,
@@ -191,6 +192,26 @@ pub fn check_project(path: impl AsRef<Path>) -> StudioCommandResult<ProjectCheck
 
 pub fn list_export_profiles() -> Vec<ExportProfile> {
     plotforge_schema::supported_export_profiles()
+}
+
+/// Run the local pi-Agent facade against a redaction-safe request. This is a
+/// thin adapter: it constructs a `PiAgent` with a `FakeTextModelProvider`
+/// (local, no network) and delegates to `plotforge_agent::PiAgent::run`.
+/// Business logic lives in the agent crate, not here.
+pub fn pi_agent_run(request: PiAgentRunRequest) -> StudioCommandResult<PiAgentRunResult> {
+    let provider = Box::new(plotforge_agent::FakeTextModelProvider::success());
+    let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
+    agent.run(request).map_err(|error| StudioCommandError {
+        code: "pi_agent_run".into(),
+        message: error.to_string(),
+    })
+}
+
+/// Return the static pi-Agent capability list the runtime exposes. The list
+/// describes what is wired and what is deferred; it never promises external
+/// agent execution, network model calls, or platform outcomes.
+pub fn pi_agent_capabilities() -> StudioCommandResult<Vec<PiAgentCapability>> {
+    Ok(plotforge_agent::pi_agent_capabilities())
 }
 
 pub fn validate_workshop_package(
