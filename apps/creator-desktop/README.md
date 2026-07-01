@@ -19,6 +19,6 @@ Do not hand-maintain contract shapes in this app. Regenerate `contracts/` from `
 
 Tauri commands are thin IPC wrappers in `src-tauri`; command behavior belongs in Rust adapter crates such as `plotforge-studio`.
 
-Browser development mode uses the Vite-only `__plotforge_studio/invoke` middleware to call `plotforge-cli studio <command>`, which forwards to `plotforge-studio`. Tauri mode uses the same command names through IPC. Neither mode provides ACP workers, approval queues, provider calls, or publishing automation unless those schema-backed interfaces are added explicitly.
+Browser development mode uses the Vite-only `__plotforge_studio/invoke` middleware to call `plotforge-cli studio <command>`, which forwards to `plotforge-studio`. Tauri mode uses the same command names through IPC. The internal pi-Agent runtime is wired (local, schema-backed) via the `pi_agent_run`/`pi_agent_capabilities` Studio commands. External agent execution, hidden network provider calls, approval queues, and publishing automation remain not implemented unless those schema-backed interfaces are added explicitly.
 
 `npm run creator-desktop:qa` runs typecheck, Vitest, Vite build, `scripts/qa/creator_desktop_build_smoke.py`, and Tauri check. Local interactive Browser/Computer Use smoke steps live in `scripts/qa/computer_use_creator_desktop.md` and must stay local-only.

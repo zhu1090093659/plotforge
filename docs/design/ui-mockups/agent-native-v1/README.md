@@ -11,7 +11,7 @@ PlotForge is an agent-native AI story game studio where a creator directs extern
 The UI should emphasize:
 
 - Director intent: the creator states what should change in the game.
-- Agent mesh: external ACP workers and PlotForge subAgents collaborate through explicit capabilities.
+- Agent mesh: PlotForge pi-Agent (local, schema-backed) and external coding agents collaborate through explicit capabilities.
 - Playable proof: every agent run returns to a playable scene, state changes, validation evidence, and exportable artifacts.
 - Human approval: agents propose patches; the creator approves commits.
 - Trace-visible execution: runs show trace ids, seeds, prompt versions, files changed, tests, and evidence.
@@ -19,7 +19,7 @@ The UI should emphasize:
 ## Visual System
 
 - Foundation: dark graphite desktop app with warm game-canvas surfaces.
-- Accent colors: restrained amber for primary action, green for healthy state, cyan for ACP connections, muted purple for secondary agents.
+- Accent colors: restrained amber for primary action, green for healthy state, cyan for pi-Agent connections, muted purple for secondary agents.
 - Layout: thin left navigation, central workspace, right capability/evidence/approval panel, bottom command dock when needed.
 - Shape: flat panels with subtle depth and 6-8px radius.
 - Typography: crisp, readable hierarchy; no tiny decorative labels.
@@ -29,11 +29,11 @@ The UI should emphasize:
 
 Use `00-agent-mesh-core.png` as the master composition reference, then use the remaining screens as implementation-grade examples for each product workflow:
 
-1. `00-agent-mesh-core.png` - Core visual direction for ACP bridge, external workers, PlotForge subAgents, capabilities, permissions, and evidence.
+1. `00-agent-mesh-core.png` - Core visual direction for pi-Agent bridge, external coding agents, PlotForge subAgents, capabilities, permissions, and evidence.
 2. `01-project-launchpad.png` - Project entry point with recent games, playable proof status, connected agents, project health, and quick director commands.
 3. `02-command-center.png` - Natural-language command center with live game canvas, active agent run, approval queue, and evidence snapshot.
 4. `03-director-mode.png` - Director-first creative workflow with intent framing, playable scene preview, decision queue, and direction suggestions.
-5. `04-acp-bridge-setup.png` - Capability bridge setup for external ACP workers, PlotForge subAgents, permission policies, approval boundaries, and trace levels.
+5. `04-pi-agent-bridge-setup.png` - Capability bridge setup for the PlotForge pi-Agent runtime, external coding agents, permission policies, approval boundaries, and trace levels.
 6. `05-live-build-room.png` - Live agent production run with orchestration timeline, proposed changes, validation checks, playtest output, and run status.
 7. `06-artifact-review.png` - Agent-proposed artifact bundle review across story, rules, assets, risk notes, playtest evidence, and approval actions.
 8. `07-playable-proof.png` - Playable result, state deltas, run evidence, artifact diff summary, package readiness, and disclosure drafts.
