@@ -195,11 +195,24 @@ pub fn list_export_profiles() -> Vec<ExportProfile> {
 }
 
 /// Run the local pi-Agent facade against a redaction-safe request. This is a
-/// thin adapter: it constructs a `PiAgent` with a `FakeTextModelProvider`
-/// (local, no network) and delegates to `plotforge_agent::PiAgent::run`.
-/// Business logic lives in the agent crate, not here.
+/// thin adapter: it constructs a `PiAgent` with a deterministic local
+/// `FakeTextModelProvider::local_pi()` provider (no network, no external
+/// config) and delegates to `plotforge_agent::PiAgent::run`. Business logic
+/// lives in the agent crate, not here.
+///
+/// The pi-Agent local default needs no external provider config: credentials
+/// and network endpoints remain deferred. If the run fails for any reason
+/// (invalid prompt, provider failure, validation failure), the error is
+/// surfaced explicitly as a `StudioCommandError` — there is no silent
+/// fallback. The returned `PiAgentRunResult` carries `is_local_pi == true`,
+/// fully populated reproducibility metadata, and a deterministic trace
+/// evidence id derived from the run seed.
 pub fn pi_agent_run(request: PiAgentRunRequest) -> StudioCommandResult<PiAgentRunResult> {
-    let provider = Box::new(plotforge_agent::FakeTextModelProvider::success());
+    // The local pi-Agent provider requires no external config, so there is no
+    // missing-config fallback path here. Real provider config wiring remains
+    // deferred; when it lands, a missing-config branch must return an explicit
+    // error (never a silent degraded result).
+    let provider = Box::new(plotforge_agent::FakeTextModelProvider::local_pi());
     let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
     agent.run(request).map_err(|error| StudioCommandError {
         code: "pi_agent_run".into(),
@@ -1001,15 +1014,140 @@ mod tests {
         export_static_project_zip, generate_character, generate_story_craft,
         generate_world_expansion, import_workshop_library_package, list_asset_records,
         list_export_profiles, list_source_files, list_workshop_library, load_workshop_library_item,
-        open_project, play_once_project, play_once_project_from_latest_snapshot,
-        play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
-        read_character_edit_document, read_rules_edit_document, read_source_file,
-        read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        update_ai_safety_policy, update_story_craft_edit_document, update_world_edit_document,
-        validate_workshop_package, write_source_file, write_steam_submission_kit,
-        write_workshop_publish_draft,
+        open_project, pi_agent_capabilities, pi_agent_run, play_once_project,
+        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
+        play_once_project_with_save, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, update_ai_safety_policy, update_story_craft_edit_document,
+        update_world_edit_document, validate_workshop_package, write_source_file,
+        write_steam_submission_kit, write_workshop_publish_draft,
     };
+    use plotforge_schema::{PiAgentRunRequest, contains_secret_marker_text};
+
+    #[test]
+    fn pi_agent_run_returns_local_pi_marker() {
+        // The local pi-Agent default must return the local marker, fully
+        // populated reproducibility metadata, a deterministic trace evidence
+        // id, and a redaction-safe evidence summary (no raw provider
+        // responses or secret markers anywhere in the result).
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:studio-pi-agent-prompt".into(),
+        };
+
+        let result = pi_agent_run(request).expect("pi-agent run succeeds");
+
+        // Local marker must be present on the descriptor.
+        assert!(
+            result.descriptor.is_local_pi,
+            "pi-Agent run must mark itself as the local pi-Agent"
+        );
+        assert_eq!(result.descriptor.agent_id, "pi-agent-local");
+        assert!(!result.descriptor.capabilities.is_empty());
+
+        // Reproducibility metadata must be present and use the pi-Agent local
+        // provider config hash (distinct from the generic fake provider).
+        let reproducibility = &result.reproducibility;
+        assert_eq!(reproducibility.run_seed, 7);
+        assert_eq!(
+            reproducibility.prompt_version, "plotforge-pi-agent-prompt-v1",
+            "pi-Agent local provider must use the pi-Agent prompt version"
+        );
+        assert_eq!(
+            reproducibility.model_version, "plotforge-pi-agent-model-v1",
+            "pi-Agent local provider must use the pi-Agent model version"
+        );
+        assert_eq!(
+            reproducibility.provider_config_hash, "sha256:plotforge-pi-agent-local-config-v1",
+            "pi-Agent local provider must use the pi-Agent config hash"
+        );
+
+        // A deterministic trace evidence id must be present on both the
+        // reproducibility metadata and the top-level trace_id, derived from
+        // the run seed so it is reproducible.
+        let trace_id = result
+            .trace_id
+            .as_ref()
+            .expect("trace evidence id must be present");
+        assert!(
+            trace_id.starts_with("pi-agent-evidence-"),
+            "trace evidence id must follow the pi-Agent evidence format"
+        );
+        assert_eq!(
+            reproducibility.trace_id.as_deref(),
+            Some(trace_id.as_str()),
+            "reproducibility trace_id must match the top-level trace evidence id"
+        );
+
+        // Running again with the same seed must reproduce the same trace id.
+        let again = pi_agent_run(PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:studio-pi-agent-prompt".into(),
+        })
+        .expect("pi-agent run succeeds");
+        assert_eq!(
+            again.trace_id, result.trace_id,
+            "trace evidence id must be deterministic for the same run seed"
+        );
+
+        // The serialized result must be redaction-safe: no raw provider
+        // responses, no secret markers, no credentials anywhere.
+        let encoded = serde_json::to_string(&result).expect("serialize result");
+        assert!(
+            !encoded.contains("raw_provider_response"),
+            "serialized result must not reference raw provider responses"
+        );
+        assert!(
+            !encoded.contains("api_key"),
+            "serialized result must not reference api_key"
+        );
+        assert!(
+            !encoded.contains("sk-"),
+            "serialized result must not contain secret markers"
+        );
+        assert!(
+            !contains_secret_marker_text(&result.evidence_summary),
+            "evidence summary must be redaction-safe"
+        );
+    }
+
+    #[test]
+    fn pi_agent_run_surfaces_explicit_error_without_silent_fallback() {
+        // A request with an empty prompt hash must surface an explicit error,
+        // never a silent fallback result. This guards the no-silent-fallback
+        // boundary required by the agent crate.
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "   ".into(),
+        };
+
+        let error = pi_agent_run(request).expect_err("empty prompt hash rejected");
+        assert_eq!(error.code, "pi_agent_run");
+        assert!(!error.message.contains("sk-"));
+    }
+
+    #[test]
+    fn pi_agent_capabilities_lists_wired_capability() {
+        let capabilities = pi_agent_capabilities().expect("capabilities list");
+        assert!(!capabilities.is_empty());
+        assert!(
+            capabilities
+                .iter()
+                .any(|capability| capability.status == "wired"),
+            "at least one capability should be wired"
+        );
+        for capability in &capabilities {
+            assert!(!contains_secret_marker_text(&capability.evidence));
+            assert!(!capability.evidence.contains("sk-"));
+        }
+    }
 
     #[test]
     fn create_project_delegates_to_storage_and_reopens() {
