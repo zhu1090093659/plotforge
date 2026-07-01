@@ -8,12 +8,12 @@ afterEach(() => {
 });
 
 const demoStoryCraftDoc: StoryCraftEditDocument = {
-  story_bible_markdown: "# Story Bible\n\nThe dynasty crisis unfolds.\n",
+  story_bible_markdown: "# Story Bible\n\nThe city crisis unfolds.\n",
   style_guide_markdown: "# Style Guide\n\nConsequence-first choices.\n",
   story_craft: {
     bible: {
       genre_promise: "Political survival drama",
-      central_question: "Who pays for the dynasty?",
+      central_question: "Who pays for the city?",
       target_emotions: ["tension", "dread"],
       core_foreshadowing: ["The seal is broken"],
       emotional_contract: [],
@@ -35,7 +35,7 @@ const demoStoryCraftDoc: StoryCraftEditDocument = {
         promise: "The treasury will run dry.",
         thread_type: "political",
         status: "open",
-        introduced_at: "court-crisis-001",
+        introduced_at: "opening-scene",
         related_characters: [],
         related_world_flags: [],
         last_update: "scene-001",
@@ -54,7 +54,7 @@ function defaultProps(overrides: Partial<StoryViewProps> = {}): StoryViewProps {
     saving: false,
     formStatus: null,
     storyGenerationConcept:
-      "Generate three linked court pressures.",
+      "Generate three linked council pressures.",
     onStoryGenerationConceptChange: vi.fn(),
     onSave: vi.fn(),
     onGenerateStoryCraft: vi.fn(),
@@ -71,7 +71,7 @@ describe("StoryView", () => {
     expect(screen.getByLabelText("Story bible markdown")).toBeTruthy();
     expect(screen.getByLabelText("Style guide markdown")).toBeTruthy();
     expect(
-      screen.getByDisplayValue(/The dynasty crisis unfolds/),
+      screen.getByDisplayValue(/The city crisis unfolds/),
     ).toBeTruthy();
     expect(
       screen.getByDisplayValue(/Consequence-first choices/),
@@ -96,7 +96,7 @@ describe("StoryView", () => {
     // The Story generation concept textarea should be immediately visible
     expect(screen.getByLabelText("Story generation concept")).toBeTruthy();
     expect(
-      screen.getByDisplayValue(/Generate three linked court pressures/),
+      screen.getByDisplayValue(/Generate three linked council pressures/),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Generate StoryCraft" }),

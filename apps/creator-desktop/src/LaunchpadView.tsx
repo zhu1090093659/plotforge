@@ -332,8 +332,7 @@ function NewProjectForm({
               }
               className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-acp-400"
             >
-              <option value="historical_crisis">{t("Historical Crisis")}</option>
-              <option value="dynasty_embers">{t("Dynasty Embers")}</option>
+              <option value="historical_crisis">{t("Custom Story Project")}</option>
             </select>
           </label>
           <LaunchpadTextInput

@@ -7,7 +7,7 @@ import re
 REQUIRED_UI_MARKERS = [
     "PlotForge Studio",
     "Creator Desktop",
-    "Dynasty Embers",
+    "No project loaded",
     "Project Launchpad",
     "Command Dock",
     "Agent Mesh",

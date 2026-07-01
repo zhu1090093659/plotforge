@@ -6,18 +6,19 @@ use std::{
 
 use plotforge_schema::{
     AiSafetyPolicy, AiUsageContentKind, AssetKind, AssetRecord, AssetReference, AssetReferenceKind,
-    AssetSourceKind, AudioBible, AudioVoiceCard, Beat, BeatNext, Character, CharacterEditDocument,
-    CharacterGenerationReport, CharacterGenerationRequest, Choice, Condition, Effect, GameProject,
-    GenerationEvidence, GenerationStatus, MAX_REFERENCE_STRUCTURE_NOTE_CHARS,
-    MAX_REFERENCE_SUMMARY_CHARS, MediaAssetReference, PlotThread, ProjectCreationReport,
-    ProjectCreationRequest, ProjectData, ProjectTemplateId, ReferenceAnalysis, ReferenceRights,
-    ReferenceSource, ReferenceSourceType, ReferenceStructureNote, ResourceDefinition, Rule,
-    RulesEditDocument, RuntimeSnapshot, Scene, StateVariablesEditDocument, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, StoryState, VisualBible,
-    VisualStyleCard, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, WorldState,
+    AssetSourceKind, AudioBible, AudioVoiceCard, Beat, BeatNext, Character, CharacterArc,
+    CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Choice,
+    Condition, Effect, EmotionalArcPoint, GameProject, GenerationEvidence, GenerationStatus,
+    HookStrategy, MAX_REFERENCE_STRUCTURE_NOTE_CHARS, MAX_REFERENCE_SUMMARY_CHARS,
+    MediaAssetReference, PacingProfile, PlotThread, ProjectCreationReport, ProjectCreationRequest,
+    ProjectData, ProjectTemplateId, ReferenceAnalysis, ReferenceModule, ReferenceRights,
+    ReferenceSource, ReferenceSourceType, ResourceDefinition, Rule, RulesEditDocument,
+    RuntimeSnapshot, Scene, Severity, StateVariablesEditDocument, StoryCraftBible,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest,
+    StoryCraftState, StoryPromise, StoryPromiseStatus, StoryState, VisualBible, VisualStyleCard,
+    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, WorldState,
     contains_secret_marker_text,
 };
-use plotforge_storycraft::dynasty_embers_story_craft;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
@@ -120,19 +121,6 @@ struct PlotThreadsFile {
 #[derive(Debug, Serialize, Deserialize)]
 struct ForbiddenFactsFile {
     forbidden_facts: Vec<String>,
-}
-
-pub fn create_demo_project(
-    path: impl AsRef<Path>,
-    force: bool,
-) -> Result<ProjectData, StorageError> {
-    let path = path.as_ref();
-    ensure_project_path_available(path, force)?;
-    let project = dynasty_embers_project();
-    fs::create_dir_all(path).map_io(path)?;
-    create_project_dirs(path)?;
-    write_project(path, &project, None)?;
-    load_project(path)
 }
 
 pub fn create_project_from_request(
@@ -1469,11 +1457,6 @@ fn structured_edit_error(
 }
 
 fn project_from_creation_request(path: &Path, request: &ProjectCreationRequest) -> ProjectData {
-    let mut project = match request.template {
-        ProjectTemplateId::HistoricalCrisis | ProjectTemplateId::DynastyEmbers => {
-            dynasty_embers_project()
-        }
-    };
     let project_id = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -1481,17 +1464,7 @@ fn project_from_creation_request(path: &Path, request: &ProjectCreationRequest) 
         .filter(|id| !id.is_empty())
         .unwrap_or_else(|| "plotforge-project".into());
     let title = title_from_project_id(&project_id);
-
-    project.game.id = project_id;
-    project.game.title = title;
-    project.game.description = request.concept.trim().to_string();
-    project.story_craft.bible.genre_promise = request.concept.trim().to_string();
-    project.story_craft.bible.prose_style_guide = Some(request.visual_style.trim().to_string());
-    if let Some(scene) = project.scenes.first_mut() {
-        scene.dramatic_purpose = request.initial_scene_request.trim().to_string();
-        scene.hook = request.initial_scene_request.trim().to_string();
-    }
-    project
+    starter_project(project_id, title, request)
 }
 
 fn slugify_project_id(input: &str) -> String {
@@ -1531,7 +1504,10 @@ fn world_bible_markdown(request: Option<&ProjectCreationRequest>) -> String {
             request.concept.trim(),
             template_label(&request.template)
         ),
-        None => "# World Bible\n\nThe dynasty is still standing, but every resource is under pressure.\n".into(),
+        None => {
+            "# World Bible\n\nThe city is still standing, but every resource is under pressure.\n"
+                .into()
+        }
     }
 }
 
@@ -1543,7 +1519,7 @@ fn story_bible_markdown(request: Option<&ProjectCreationRequest>) -> String {
             request.initial_scene_request.trim()
         ),
         None => {
-            "# Story Bible\n\nThe throne must trade stability, silver, and legitimacy to survive.\n"
+            "# Story Bible\n\nThe council must trade stability, silver, and legitimacy to survive.\n"
                 .into()
         }
     }
@@ -1566,8 +1542,186 @@ fn style_guide_markdown(request: Option<&ProjectCreationRequest>) -> String {
 
 fn template_label(template: &ProjectTemplateId) -> &'static str {
     match template {
-        ProjectTemplateId::HistoricalCrisis => "Historical Crisis",
-        ProjectTemplateId::DynastyEmbers => "Dynasty Embers",
+        ProjectTemplateId::HistoricalCrisis => "Custom Story Project",
+    }
+}
+
+fn starter_project(
+    project_id: String,
+    title: String,
+    request: &ProjectCreationRequest,
+) -> ProjectData {
+    let scene_key = "opening-scene".to_string();
+    let first_beat_id = "opening-scene-beat-001".to_string();
+    let second_beat_id = "opening-scene-beat-002".to_string();
+    let third_beat_id = "opening-scene-beat-003".to_string();
+    let fourth_beat_id = "opening-scene-beat-004".to_string();
+    let concept = request.concept.trim().to_string();
+    let initial_scene = request.initial_scene_request.trim().to_string();
+    let visual_style = request.visual_style.trim().to_string();
+    let resources = vec![resource("momentum", "Momentum", 50, 0, 100)];
+    let world_state = WorldState {
+        resources: resources
+            .iter()
+            .map(|definition| (definition.key.clone(), definition.initial))
+            .collect(),
+        flags: BTreeMap::new(),
+        triggered_events: Vec::new(),
+    };
+    let story_state = StoryState {
+        current_scene_key: scene_key.clone(),
+        current_beat_id: Some(first_beat_id.clone()),
+        completed_scene_keys: Vec::new(),
+        turn: 0,
+    };
+
+    let mut project = ProjectData {
+        game: GameProject {
+            id: project_id,
+            title,
+            version: "0.1.0".into(),
+            description: concept.clone(),
+            entry_scene: scene_key.clone(),
+            run_seed: 7,
+        },
+        resources,
+        world_state,
+        story_state,
+        story_craft: starter_story_craft(&scene_key, &concept, &visual_style),
+        characters: Vec::new(),
+        rules: Vec::new(),
+        scenes: vec![Scene {
+            key: scene_key,
+            title: "Opening Scene".into(),
+            location: "Unspecified".into(),
+            dramatic_purpose: initial_scene.clone(),
+            hook: initial_scene.clone(),
+            background_asset: "assets/generated/placeholder.png".into(),
+            audio_refs: Vec::new(),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::new(),
+            entry_beat_id: Some(first_beat_id.clone()),
+            beats: vec![
+                Beat {
+                    id: first_beat_id,
+                    text: initial_scene,
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
+                    choices: vec![Choice {
+                        id: "continue".into(),
+                        label: "Continue".into(),
+                        action_type: "continue".into(),
+                        input_terms: vec!["continue".into(), "next".into()],
+                        dramatic_purpose: "Advance the opening beat.".into(),
+                        change_scene: false,
+                    }],
+                    next: BeatNext::Beat(second_beat_id.clone()),
+                },
+                Beat {
+                    id: second_beat_id,
+                    text: "The project is ready for the creator to replace this starter beat."
+                        .into(),
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
+                    choices: vec![Choice {
+                        id: "continue".into(),
+                        label: "Continue".into(),
+                        action_type: "continue".into(),
+                        input_terms: vec!["continue".into(), "next".into()],
+                        dramatic_purpose: "Advance the starter beat.".into(),
+                        change_scene: false,
+                    }],
+                    next: BeatNext::Beat(third_beat_id.clone()),
+                },
+                Beat {
+                    id: third_beat_id,
+                    text: "Replace this beat with the next authored scene moment.".into(),
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
+                    choices: vec![Choice {
+                        id: "continue".into(),
+                        label: "Continue".into(),
+                        action_type: "continue".into(),
+                        input_terms: vec!["continue".into(), "next".into()],
+                        dramatic_purpose: "Advance the final starter beat.".into(),
+                        change_scene: false,
+                    }],
+                    next: BeatNext::Beat(fourth_beat_id.clone()),
+                },
+                Beat {
+                    id: fourth_beat_id,
+                    text: "The starter sequence is complete.".into(),
+                    speaker: None,
+                    line_delivery: None,
+                    audio_refs: Vec::new(),
+                    choices: Vec::new(),
+                    next: BeatNext::None,
+                },
+            ],
+        }],
+        visual_bible: default_visual_bible(),
+        audio_bible: default_audio_bible(),
+        asset_records: Vec::new(),
+        ai_safety_policy: default_ai_safety_policy(),
+    };
+    project.asset_records = rebuild_asset_records_from_project_files(&project);
+    project
+}
+
+fn starter_story_craft(scene_key: &str, concept: &str, visual_style: &str) -> StoryCraftState {
+    StoryCraftState {
+        bible: StoryCraftBible {
+            target_audience: None,
+            genre_promise: concept.into(),
+            central_question: "What must change for this story to become playable?".into(),
+            target_emotions: vec!["curiosity".into()],
+            core_foreshadowing: Vec::new(),
+            emotional_contract: vec!["creator-authored consequence".into()],
+            pacing_profile: PacingProfile {
+                escalation_interval_scenes: 2,
+                target_tension_curve: vec![50],
+                breather_scene_frequency: None,
+            },
+            hook_strategy: HookStrategy {
+                primary_hook: "Start with the creator-provided opening scene request.".into(),
+                recurring_hook_patterns: Vec::new(),
+            },
+            reversal_strategy: None,
+            prose_style_guide: Some(visual_style.into()),
+            banned_cliches: Vec::new(),
+            reference_modules: vec![ReferenceModule {
+                id: "creator-brief".into(),
+                title: "Creator brief".into(),
+                summary: "Use the creator's concept as the source of truth for expansion.".into(),
+            }],
+        },
+        active_promises: vec![StoryPromise {
+            id: "opening-promise".into(),
+            text: "The opening scene establishes a playable direction.".into(),
+            status: StoryPromiseStatus::Active,
+            introduced_at: scene_key.into(),
+            payoff_hint: None,
+        }],
+        emotional_arc: vec![EmotionalArcPoint {
+            scene_key: scene_key.into(),
+            target_emotion: "curiosity".into(),
+            intensity: 50,
+        }],
+        plot_threads: Vec::new(),
+        character_arcs: Vec::<CharacterArc>::new(),
+        pacing_score: None,
+        tension_score: None,
+        ai_slop_risk: None,
+        review_notes: vec![plotforge_schema::NarrativeReviewNote {
+            id: "starter-project".into(),
+            scene_key: Some(scene_key.into()),
+            severity: Severity::Info,
+            message: "Starter project created without bundled story examples.".into(),
+            resolved: true,
+        }],
     }
 }
 
@@ -1647,56 +1801,6 @@ pub fn read_latest_runtime_snapshot(
             .as_ref()
             .join("saves/latest.runtime_snapshot.json"),
     )
-}
-
-pub fn dynasty_embers_project() -> ProjectData {
-    let game = GameProject {
-        id: "dynasty-embers".into(),
-        title: "Dynasty Embers".into(),
-        version: "0.1.0".into(),
-        description: "Historical crisis simulation about a collapsing dynasty.".into(),
-        entry_scene: "court-crisis-001".into(),
-        run_seed: 7,
-    };
-    let resources = vec![
-        resource("treasury", "Treasury", 40, 0, 100),
-        resource("public_order", "Public order", 55, 0, 100),
-        resource("army_morale", "Army morale", 45, 0, 100),
-        resource("court_stability", "Court stability", 50, 0, 100),
-        resource("local_control", "Local control", 48, 0, 100),
-        resource("enemy_pressure", "Enemy pressure", 70, 0, 100),
-    ];
-    let world_state = WorldState {
-        resources: resources
-            .iter()
-            .map(|definition| (definition.key.clone(), definition.initial))
-            .collect(),
-        flags: BTreeMap::new(),
-        triggered_events: Vec::new(),
-    };
-    let story_state = StoryState {
-        current_scene_key: game.entry_scene.clone(),
-        current_beat_id: Some("court-crisis-001-beat-001".into()),
-        completed_scene_keys: Vec::new(),
-        turn: 0,
-    };
-
-    let mut project = ProjectData {
-        game,
-        resources,
-        world_state,
-        story_state,
-        story_craft: dynasty_embers_story_craft(),
-        characters: dynasty_characters(),
-        rules: dynasty_rules(),
-        scenes: vec![initial_scene()],
-        visual_bible: default_visual_bible(),
-        audio_bible: default_audio_bible(),
-        asset_records: Vec::new(),
-        ai_safety_policy: default_ai_safety_policy(),
-    };
-    project.asset_records = rebuild_asset_records_from_project_files(&project);
-    project
 }
 
 fn create_project_dirs(path: &Path) -> Result<(), StorageError> {
@@ -1865,16 +1969,17 @@ fn write_project(
         "# Reference Library\n\nStore metadata, short summaries, and structure notes only. Do not store raw copyrighted bodies here.\n",
         &mut files,
     )?;
-    write_json_tracked(
-        path,
-        "references/methods/political-crisis-patterns.reference.json",
-        &demo_reference_analysis(),
-        &mut files,
-    )?;
     write_text_tracked(path, "AGENTS.md", project_agents_md(), &mut files)?;
     write_placeholder_png_tracked(path, "assets/generated/placeholder.png", &mut files)?;
-    write_placeholder_png_tracked(path, "assets/generated/court-crisis-001.png", &mut files)?;
+    for scene in &project.scenes {
+        if scene.background_asset.starts_with("assets/generated/")
+            && scene.background_asset != "assets/generated/placeholder.png"
+        {
+            write_placeholder_png_tracked(path, &scene.background_asset, &mut files)?;
+        }
+    }
     files.sort();
+    files.dedup();
     Ok(files)
 }
 
@@ -2237,314 +2342,6 @@ fn resource(key: &str, label: &str, initial: i32, min: i32, max: i32) -> Resourc
     }
 }
 
-fn dynasty_characters() -> Vec<Character> {
-    vec![
-        character(
-            "grand-secretary",
-            "Grand Secretary",
-            "Court administrator",
-            &["cautious", "faction-aware"],
-        ),
-        character(
-            "war-minister",
-            "Minister of War",
-            "Military logistics",
-            &["urgent", "pragmatic"],
-        ),
-        character(
-            "eunuch-director",
-            "Eunuch Director",
-            "Palace intelligence channel",
-            &["watchful", "ambiguous"],
-        ),
-        character(
-            "border-general",
-            "Border General",
-            "Frontier commander",
-            &["loyal-if-paid", "blunt"],
-        ),
-        character(
-            "censor",
-            "Court Censor",
-            "Moral and legal critic",
-            &["severe", "public-minded"],
-        ),
-        character(
-            "provincial-governor",
-            "Provincial Governor",
-            "Local implementation",
-            &["strained", "risk-averse"],
-        ),
-    ]
-}
-
-fn character(id: &str, name: &str, role: &str, traits: &[&str]) -> Character {
-    Character {
-        id: id.into(),
-        name: name.into(),
-        role: role.into(),
-        traits: traits
-            .iter()
-            .map(|trait_name| (*trait_name).into())
-            .collect(),
-        visual_card: format!("{name}, restrained historical portrait"),
-        voice_card: format!("{name}, concise court speech"),
-        portrait_request: None,
-    }
-}
-
-fn dynasty_rules() -> Vec<Rule> {
-    vec![
-        Rule {
-            id: "raise-tax-emergency".into(),
-            action_type: "raise_tax".into(),
-            conditions: vec![Condition::ResourceAtMost {
-                key: "treasury".into(),
-                value: 80,
-            }],
-            effects: vec![
-                Effect::AddResource {
-                    key: "treasury".into(),
-                    amount: 12,
-                },
-                Effect::AddResource {
-                    key: "public_order".into(),
-                    amount: -8,
-                },
-                Effect::AddResource {
-                    key: "court_stability".into(),
-                    amount: -5,
-                },
-                Effect::AddResource {
-                    key: "army_morale".into(),
-                    amount: 4,
-                },
-                Effect::TriggerEvent {
-                    event: "local_tax_resistance".into(),
-                },
-            ],
-        },
-        Rule {
-            id: "inspect-corruption-ledger".into(),
-            action_type: "inspect_corruption".into(),
-            conditions: Vec::new(),
-            effects: vec![
-                Effect::AddResource {
-                    key: "treasury".into(),
-                    amount: 4,
-                },
-                Effect::AddResource {
-                    key: "court_stability".into(),
-                    amount: -8,
-                },
-                Effect::SetFlag {
-                    key: "corruption_investigation".into(),
-                    value: true,
-                },
-                Effect::TriggerEvent {
-                    event: "officials_submit_memorials".into(),
-                },
-            ],
-        },
-        Rule {
-            id: "pay-border-army".into(),
-            action_type: "pay_army".into(),
-            conditions: vec![Condition::ResourceAtLeast {
-                key: "treasury".into(),
-                value: 10,
-            }],
-            effects: vec![
-                Effect::AddResource {
-                    key: "treasury".into(),
-                    amount: -10,
-                },
-                Effect::AddResource {
-                    key: "army_morale".into(),
-                    amount: 12,
-                },
-                Effect::AddResource {
-                    key: "enemy_pressure".into(),
-                    amount: -3,
-                },
-                Effect::TriggerEvent {
-                    event: "border_army_paid".into(),
-                },
-            ],
-        },
-    ]
-}
-
-fn demo_reference_analysis() -> ReferenceAnalysis {
-    ReferenceAnalysis {
-        id: "political-crisis-patterns".into(),
-        title: "Political Crisis Pattern Notes".into(),
-        source: ReferenceSource {
-            source_type: ReferenceSourceType::MethodTemplate,
-            rights: ReferenceRights::GenericMethod,
-            citation: "PlotForge built-in generic method template".into(),
-            user_authorized: false,
-        },
-        summary: "Escalate political pressure through visible tradeoffs, not copied source prose."
-            .into(),
-        structure_notes: vec![
-            ReferenceStructureNote {
-                label: "resource squeeze".into(),
-                summary: "Start with a concrete shortage the ruler cannot ignore.".into(),
-            },
-            ReferenceStructureNote {
-                label: "legitimacy collision".into(),
-                summary: "Make each practical fix damage trust, order, or faction alignment."
-                    .into(),
-            },
-        ],
-        tags: vec!["method".into(), "political".into(), "pacing".into()],
-    }
-}
-
-fn initial_scene() -> Scene {
-    let first_beat_id = "court-crisis-001-beat-001".to_string();
-    let second_beat_id = "court-crisis-001-beat-002".to_string();
-    Scene {
-        key: "court-crisis-001".into(),
-        title: "The Red Deficit Ledger".into(),
-        location: "Qianqing Palace".into(),
-        dramatic_purpose: "Force the player to choose between revenue, order, and military loyalty.".into(),
-        hook: "The border payroll ledger arrives with a fresh red deficit mark beside the army columns.".into(),
-        background_asset: "assets/generated/court-crisis-001.png".into(),
-        audio_refs: Vec::new(),
-        character_ids: vec![
-            "grand-secretary".into(),
-            "war-minister".into(),
-            "eunuch-director".into(),
-        ],
-        plot_thread_updates: BTreeMap::from([(
-            "border-payroll".into(),
-            "The unpaid army becomes the first visible crisis.".into(),
-        )]),
-        entry_beat_id: Some(first_beat_id.clone()),
-        beats: vec![Beat {
-            id: first_beat_id,
-            text: "The court kneels around a ledger that says the border army is two months from mutiny.".into(),
-            speaker: Some("grand-secretary".into()),
-            line_delivery: Some("measured court alarm".into()),
-            audio_refs: Vec::new(),
-            choices: vec![
-                Choice {
-                    id: "continue-council".into(),
-                    label: "听一位大臣继续陈情".into(),
-                    action_type: "continue".into(),
-                    input_terms: vec![
-                        "continue".into(),
-                        "minister".into(),
-                        "hear".into(),
-                        "听".into(),
-                        "继续".into(),
-                        "陈情".into(),
-                    ],
-                    dramatic_purpose: "Stay in the council scene to gather more pressure before issuing an order.".into(),
-                    change_scene: false,
-                },
-                Choice {
-                    id: "raise-tax".into(),
-                    label: "加征辽饷，立刻补军饷".into(),
-                    action_type: "raise_tax".into(),
-                    input_terms: vec![
-                        "raise".into(),
-                        "tax".into(),
-                        "levy".into(),
-                        "加征".into(),
-                        "辽饷".into(),
-                    ],
-                    dramatic_purpose: "Trade public order for immediate treasury relief.".into(),
-                    change_scene: true,
-                },
-                Choice {
-                    id: "inspect-corruption".into(),
-                    label: "严查军饷贪墨".into(),
-                    action_type: "inspect_corruption".into(),
-                    input_terms: vec![
-                        "inspect".into(),
-                        "corruption".into(),
-                        "严查".into(),
-                        "贪墨".into(),
-                        "查".into(),
-                    ],
-                    dramatic_purpose: "Seek stolen funds while angering court factions.".into(),
-                    change_scene: true,
-                },
-                Choice {
-                    id: "pay-army".into(),
-                    label: "先拨内帑稳住边军".into(),
-                    action_type: "pay_army".into(),
-                    input_terms: vec![
-                        "pay".into(),
-                        "army".into(),
-                        "军饷".into(),
-                        "拨".into(),
-                        "内帑".into(),
-                        "边军".into(),
-                    ],
-                    dramatic_purpose: "Spend scarce treasury to buy military time.".into(),
-                    change_scene: true,
-                },
-            ],
-            next: BeatNext::Beat(second_beat_id.clone()),
-        }, Beat {
-            id: second_beat_id,
-            text: "The war minister steps forward: delay will keep the court calm today, but the frontier will remember it tomorrow.".into(),
-            speaker: Some("war-minister".into()),
-            line_delivery: Some("terse warning".into()),
-            audio_refs: Vec::new(),
-            choices: vec![
-                Choice {
-                    id: "raise-tax".into(),
-                    label: "加征辽饷，立刻补军饷".into(),
-                    action_type: "raise_tax".into(),
-                    input_terms: vec![
-                        "raise".into(),
-                        "tax".into(),
-                        "levy".into(),
-                        "加征".into(),
-                        "辽饷".into(),
-                    ],
-                    dramatic_purpose: "Trade public order for immediate treasury relief.".into(),
-                    change_scene: true,
-                },
-                Choice {
-                    id: "inspect-corruption".into(),
-                    label: "严查军饷贪墨".into(),
-                    action_type: "inspect_corruption".into(),
-                    input_terms: vec![
-                        "inspect".into(),
-                        "corruption".into(),
-                        "严查".into(),
-                        "贪墨".into(),
-                        "查".into(),
-                    ],
-                    dramatic_purpose: "Seek stolen funds while angering court factions.".into(),
-                    change_scene: true,
-                },
-                Choice {
-                    id: "pay-army".into(),
-                    label: "先拨内帑稳住边军".into(),
-                    action_type: "pay_army".into(),
-                    input_terms: vec![
-                        "pay".into(),
-                        "army".into(),
-                        "军饷".into(),
-                        "拨".into(),
-                        "内帑".into(),
-                        "边军".into(),
-                    ],
-                    dramatic_purpose: "Spend scarce treasury to buy military time.".into(),
-                    change_scene: true,
-                },
-            ],
-            next: BeatNext::Scene,
-        }],
-    }
-}
-
 fn project_agents_md() -> &'static str {
     "# AGENTS.md\n\n## Project goal\n\nBuild a playable PlotForge story project from local files.\n\n## Commands\n\n- `plotforge check .`\n- `plotforge play . --once`\n- `plotforge export static . --out exports/static`\n\n## Rules\n\n- Files are source of truth.\n- Do not put API keys in project files or exports.\n- AI output proposes content; engine rules commit state.\n- Reference imports store metadata, rights, short summaries, and structure notes only; do not store large raw copyrighted bodies.\n"
 }
@@ -2567,28 +2364,3 @@ const PLACEHOLDER_PNG: &[u8] = &[
     0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 100, 96, 96, 248, 15, 0, 1,
     5, 1, 2, 161, 13, 197, 111, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ];
-
-#[cfg(test)]
-mod tests {
-    use super::{create_demo_project, load_project, validate_project};
-
-    #[test]
-    fn creates_and_loads_demo_project() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-
-        create_demo_project(&project_path, false).expect("create demo");
-        let loaded = load_project(&project_path).expect("load project");
-        validate_project(&project_path).expect("validate project");
-
-        assert_eq!(loaded.game.id, "dynasty-embers");
-        assert!(project_path.join("story/story_craft.toml").exists());
-        assert!(project_path.join("AGENTS.md").exists());
-        assert!(
-            loaded
-                .rules
-                .iter()
-                .any(|rule| rule.action_type == "raise_tax")
-        );
-    }
-}

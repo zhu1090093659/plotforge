@@ -28,7 +28,6 @@ pub struct GameProject {
 pub enum ProjectTemplateId {
     #[default]
     HistoricalCrisis,
-    DynastyEmbers,
 }
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
@@ -1798,7 +1797,7 @@ pub fn contract_typescript() -> String {
         r#"export type ResourceMap = { [key: string]: number };
 export type FlagMap = { [key: string]: boolean };
 export type ContractEnvelope<T> = { contract_version: typeof PLOTFORGE_CONTRACT_VERSION; schema_version: typeof PLOTFORGE_CONTRACT_SCHEMA_VERSION; payload: T };
-export type ProjectTemplateId = "historical_crisis" | "dynasty_embers";
+export type ProjectTemplateId = "historical_crisis";
 export interface ProjectCreationRequest { template: ProjectTemplateId; concept: string; visual_style: string; voice_enabled: boolean; initial_scene_request: string; }
 export interface ProjectCreationReport { project_path: string; template: ProjectTemplateId; concept: string; visual_style: string; voice_enabled: boolean; initial_scene_request: string; files_created: string[]; project: ProjectData; }
 export interface WorldEditDocument { world_bible_markdown: string; canon_markdown: string; forbidden_facts: string[]; }
@@ -1957,11 +1956,11 @@ mod tests {
     #[test]
     fn game_project_roundtrips_json() {
         let game = GameProject {
-            id: "dynasty-embers".into(),
-            title: "Dynasty Embers".into(),
+            id: "starter-project".into(),
+            title: "Starter Project".into(),
             version: "0.1.0".into(),
             description: "A historical crisis simulation.".into(),
-            entry_scene: "court-crisis-001".into(),
+            entry_scene: "opening-scene".into(),
             run_seed: 7,
         };
 
@@ -2051,7 +2050,7 @@ mod tests {
 
     #[test]
     fn action_intent_roundtrips_json() {
-        let intent = ActionIntent::supported("raise_tax", vec!["加征".into(), "辽饷".into()]);
+        let intent = ActionIntent::supported("raise_tax", vec!["加征".into(), "港税".into()]);
 
         let encoded = serde_json::to_string(&intent).expect("serialize intent");
         let decoded: ActionIntent = serde_json::from_str(&encoded).expect("deserialize intent");
@@ -2285,8 +2284,8 @@ mod tests {
     #[test]
     fn runtime_trace_roundtrips_json() {
         let story_state = StoryState {
-            current_scene_key: "court-crisis-001".into(),
-            current_beat_id: Some("court-crisis-001-beat-001".into()),
+            current_scene_key: "opening-scene".into(),
+            current_beat_id: Some("opening-scene-beat-001".into()),
             completed_scene_keys: Vec::new(),
             turn: 0,
         };
@@ -2305,7 +2304,7 @@ mod tests {
             }),
             planner_result: Some(RuntimePlannerResult {
                 requested_action_type: "raise_tax".into(),
-                scene_key: Some("court-crisis-002".into()),
+                scene_key: Some("civic-crisis-002".into()),
                 fallback_used: false,
                 error: None,
             }),
@@ -2323,10 +2322,10 @@ mod tests {
             media_references: vec![RuntimeMediaReference {
                 reference: AssetReference {
                     reference_kind: AssetReferenceKind::Scene,
-                    reference_id: "court-crisis-001".into(),
+                    reference_id: "opening-scene".into(),
                     slot: "background_asset".into(),
                 },
-                project_path: "assets/generated/court-crisis-001.png".into(),
+                project_path: "assets/generated/opening-scene.png".into(),
             }],
             errors: Vec::new(),
             fallback_used: false,
@@ -2343,11 +2342,11 @@ mod tests {
             id: "save-001".into(),
             timestamp_ms: 42,
             reproducibility: sample_reproducibility_metadata().with_snapshot_id("save-001"),
-            project_id: "dynasty-embers".into(),
+            project_id: "starter-project".into(),
             project_version: "0.1.0".into(),
             story_state: StoryState {
-                current_scene_key: "court-crisis-001".into(),
-                current_beat_id: Some("court-crisis-001-beat-001".into()),
+                current_scene_key: "opening-scene".into(),
+                current_beat_id: Some("opening-scene-beat-001".into()),
                 completed_scene_keys: vec!["opening-court".into()],
                 turn: 1,
             },
@@ -2357,19 +2356,19 @@ mod tests {
                 triggered_events: vec!["officials_submit_memorials".into()],
             },
             scenes: vec![Scene {
-                key: "court-crisis-001".into(),
+                key: "opening-scene".into(),
                 title: "The Red Deficit Ledger".into(),
-                location: "Qianqing Palace".into(),
+                location: "Civic Hall".into(),
                 dramatic_purpose: "Keep runtime restore deterministic.".into(),
                 hook: "A saved crisis returns exactly where it paused.".into(),
-                background_asset: "assets/generated/court-crisis-001.png".into(),
+                background_asset: "assets/generated/opening-scene.png".into(),
                 audio_refs: Vec::new(),
                 character_ids: Vec::new(),
                 plot_thread_updates: BTreeMap::new(),
-                entry_beat_id: Some("court-crisis-001-beat-001".into()),
+                entry_beat_id: Some("opening-scene-beat-001".into()),
                 beats: vec![Beat {
-                    id: "court-crisis-001-beat-001".into(),
-                    text: "The court resumes from the saved beat.".into(),
+                    id: "opening-scene-beat-001".into(),
+                    text: "The council resumes from the saved beat.".into(),
                     speaker: None,
                     line_delivery: None,
                     audio_refs: Vec::new(),
@@ -2428,11 +2427,11 @@ mod tests {
                 id: "survival-cost".into(),
                 text: "Every survival move has a visible cost.".into(),
                 status: StoryPromiseStatus::Active,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "opening-scene".into(),
                 payoff_hint: Some("force a legitimacy tradeoff".into()),
             }],
             emotional_arc: vec![EmotionalArcPoint {
-                scene_key: "court-crisis-001".into(),
+                scene_key: "opening-scene".into(),
                 target_emotion: "pressure".into(),
                 intensity: 80,
             }],
@@ -2442,7 +2441,7 @@ mod tests {
                 promise: "Soldiers stay loyal while paid.".into(),
                 thread_type: PlotThreadType::Survival,
                 status: PlotThreadStatus::Open,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "opening-scene".into(),
                 expected_payoff: Some("army paid or defects".into()),
                 related_characters: vec!["war-minister".into()],
                 related_world_flags: vec!["border_army_paid".into()],
@@ -2462,7 +2461,7 @@ mod tests {
             ai_slop_risk: Some(10),
             review_notes: vec![NarrativeReviewNote {
                 id: "opening-hook".into(),
-                scene_key: Some("court-crisis-001".into()),
+                scene_key: Some("opening-scene".into()),
                 severity: Severity::Info,
                 message: "Opening hook is concrete.".into(),
                 resolved: true,
@@ -2515,7 +2514,7 @@ mod tests {
 
     #[test]
     fn trace_redaction_removes_secret_markers() {
-        let text = "朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value";
+        let text = "决定加征港税 OPENAI_API_KEY=sk-test-secret-marker bearer token=value";
 
         let redacted = redact_trace_text(text);
         let error = RuntimeError::redacted(text, text);
@@ -2542,7 +2541,7 @@ mod tests {
         .redacted();
 
         assert!(redacted.contains(REDACTED_TRACE_SECRET));
-        assert!(redacted.contains("朕决定加征辽饷"));
+        assert!(redacted.contains("决定加征港税"));
         assert!(!redacted.contains("OPENAI_API_KEY"));
         assert!(!redacted.contains("sk-test-secret-marker"));
         assert!(!error.code.contains("OPENAI_API_KEY"));
@@ -2556,11 +2555,11 @@ mod tests {
     fn project_data_and_export_manifest_roundtrip_json() {
         let project = ProjectData {
             game: GameProject {
-                id: "dynasty-embers".into(),
-                title: "Dynasty Embers".into(),
+                id: "starter-project".into(),
+                title: "Starter Project".into(),
                 version: "0.1.0".into(),
                 description: "Demo".into(),
-                entry_scene: "court-crisis-001".into(),
+                entry_scene: "opening-scene".into(),
                 run_seed: 7,
             },
             resources: vec![ResourceDefinition {
@@ -2572,8 +2571,8 @@ mod tests {
             }],
             world_state: WorldState::default(),
             story_state: StoryState {
-                current_scene_key: "court-crisis-001".into(),
-                current_beat_id: Some("court-crisis-001-beat-001".into()),
+                current_scene_key: "opening-scene".into(),
+                current_beat_id: Some("opening-scene-beat-001".into()),
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
@@ -2648,14 +2647,14 @@ mod tests {
     fn legacy_export_manifest_defaults_profile_fields() {
         let legacy = r#"{
             "game": {
-                "id": "dynasty-embers",
-                "title": "Dynasty Embers",
+                "id": "starter-project",
+                "title": "Starter Project",
                 "version": "0.1.0",
                 "description": "Demo",
-                "entry_scene": "court-crisis-001",
+                "entry_scene": "opening-scene",
                 "run_seed": 7
             },
-            "entry_scene": "court-crisis-001",
+            "entry_scene": "opening-scene",
             "scenes": [],
             "assets": ["assets/generated/placeholder.png"],
             "generated_by": "test"
@@ -2709,11 +2708,11 @@ mod tests {
     #[test]
     fn ai_usage_manifest_rejects_raw_provider_fields() {
         let project = GameProject {
-            id: "dynasty-embers".into(),
-            title: "Dynasty Embers".into(),
+            id: "starter-project".into(),
+            title: "Starter Project".into(),
             version: "0.1.0".into(),
             description: "Demo".into(),
-            entry_scene: "court-crisis-001".into(),
+            entry_scene: "opening-scene".into(),
             run_seed: 7,
         };
         let mut manifest =
@@ -2730,11 +2729,11 @@ mod tests {
     #[test]
     fn desktop_runtime_draft_roundtrips_and_rejects_private_or_upload_fields() {
         let game = GameProject {
-            id: "dynasty-embers".into(),
-            title: "Dynasty Embers".into(),
+            id: "starter-project".into(),
+            title: "Starter Project".into(),
             version: "0.1.0".into(),
             description: "Demo".into(),
-            entry_scene: "court-crisis-001".into(),
+            entry_scene: "opening-scene".into(),
             run_seed: 7,
         };
         let draft = sample_desktop_runtime_draft(&game);
@@ -2753,7 +2752,7 @@ mod tests {
 
         let mut upload = serde_json::json!({
             "manifest_version": "2026-06-08",
-            "project_id": "dynasty-embers",
+            "project_id": "starter-project",
             "project_version": "0.1.0",
             "export_profile": ExportProfile::desktop_bundle(),
             "static_manifest_path": "game.json",
@@ -2852,11 +2851,11 @@ mod tests {
     fn sample_project_data() -> ProjectData {
         ProjectData {
             game: GameProject {
-                id: "dynasty-embers".into(),
-                title: "Dynasty Embers".into(),
+                id: "starter-project".into(),
+                title: "Starter Project".into(),
                 version: "0.1.0".into(),
                 description: "Demo".into(),
-                entry_scene: "court-crisis-001".into(),
+                entry_scene: "opening-scene".into(),
                 run_seed: 7,
             },
             resources: vec![ResourceDefinition {
@@ -2868,8 +2867,8 @@ mod tests {
             }],
             world_state: WorldState::default(),
             story_state: StoryState {
-                current_scene_key: "court-crisis-001".into(),
-                current_beat_id: Some("court-crisis-001-beat-001".into()),
+                current_scene_key: "opening-scene".into(),
+                current_beat_id: Some("opening-scene-beat-001".into()),
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
@@ -2985,8 +2984,8 @@ mod tests {
     fn sample_workshop_item_package() -> WorkshopItemPackage {
         WorkshopItemPackage {
             manifest_version: "2026-06-08".into(),
-            package_id: "dynasty-embers-workshop-draft".into(),
-            title: "Dynasty Embers".into(),
+            package_id: "starter-workshop-draft".into(),
+            title: "Starter Project".into(),
             description: "Offline Workshop package draft for local validation.".into(),
             visibility: WorkshopDraftVisibility::PrivateDraft,
             preview_image: "preview.png".into(),
@@ -3010,8 +3009,8 @@ mod tests {
     fn sample_workshop_publish_draft() -> WorkshopPublishDraft {
         WorkshopPublishDraft {
             manifest_version: "2026-06-09".into(),
-            package_id: "dynasty-embers-workshop-draft".into(),
-            title: "Dynasty Embers".into(),
+            package_id: "starter-workshop-draft".into(),
+            title: "Starter Project".into(),
             description: "Offline Workshop package draft for local validation.".into(),
             visibility: WorkshopDraftVisibility::PrivateDraft,
             preview_image: "preview.png".into(),
@@ -3067,10 +3066,10 @@ mod tests {
 
     fn sample_steam_submission_kit_request() -> SteamSubmissionKitRequest {
         SteamSubmissionKitRequest {
-            product_name: "Dynasty Embers".into(),
-            desktop_build_path: Some("builds/dynasty-embers-desktop.zip".into()),
-            store_short_description: "A branching court drama built with PlotForge.".into(),
-            screenshot_paths: vec!["media/screenshots/court-crisis.png".into()],
+            product_name: "Starter Project".into(),
+            desktop_build_path: Some("builds/starter-project-desktop.zip".into()),
+            store_short_description: "A branching civic drama built with PlotForge.".into(),
+            screenshot_paths: vec!["media/screenshots/civic-crisis.png".into()],
             capsule_asset_paths: vec!["media/capsules/header.png".into()],
             content_warnings: vec!["Political conflict".into(), "Textual violence".into()],
             safety_guardrails: vec![
@@ -3088,8 +3087,8 @@ mod tests {
     fn sample_steam_submission_kit_draft() -> SteamSubmissionKitDraft {
         SteamSubmissionKitDraft {
             manifest_version: "2026-06-08".into(),
-            product_name: "Dynasty Embers".into(),
-            workshop_package_id: "dynasty-embers-workshop-draft".into(),
+            product_name: "Starter Project".into(),
+            workshop_package_id: "starter-workshop-draft".into(),
             generated_by: "plotforge-workshop 0.1.0".into(),
             source_workshop_manifest_path: "workshop-item.json".into(),
             store_copy_markdown: "# Store Copy Draft\n".into(),
@@ -3116,7 +3115,7 @@ mod tests {
             id: "beat-drafts-proposal-001".into(),
             agent: AgentRole::BeatWriter,
             output: AgentProposalPayload::BeatDrafts(Box::new(BeatDraftsProposal {
-                scene_key: "court-crisis-002".into(),
+                scene_key: "civic-crisis-002".into(),
                 beats: vec![sample_beat_draft_proposal()],
             })),
         }
@@ -3132,30 +3131,30 @@ mod tests {
 
     fn sample_scene_plan_proposal() -> ScenePlanProposal {
         ScenePlanProposal {
-            scene_key: "court-crisis-002".into(),
+            scene_key: "civic-crisis-002".into(),
             title: "Tax Resistance Memorials".into(),
-            location: "Qianqing Palace".into(),
+            location: "Civic Hall".into(),
             scene_summary: "The levy creates immediate provincial resistance.".into(),
             dramatic_purpose: "Show the cost of emergency revenue.".into(),
             hook: "Three memorials arrive with broken tax seals.".into(),
             emotional_goal: Some("consequence".into()),
-            cast: vec!["grand-secretary".into()],
-            entry_beat_id: "court-crisis-002-beat-001".into(),
-            background_asset: Some("assets/generated/court-crisis-002.png".into()),
+            cast: vec!["city-treasurer".into()],
+            entry_beat_id: "civic-crisis-002-beat-001".into(),
+            background_asset: Some("assets/generated/civic-crisis-002.png".into()),
         }
     }
 
     fn sample_beat_draft_proposal() -> BeatDraftProposal {
         BeatDraftProposal {
-            id: "court-crisis-002-beat-001".into(),
-            scene_key: "court-crisis-002".into(),
-            text: "The court reads three provincial reports in silence.".into(),
+            id: "civic-crisis-002-beat-001".into(),
+            scene_key: "civic-crisis-002".into(),
+            text: "The council reads three provincial reports in silence.".into(),
             choices: vec![Choice {
                 id: "inspect-corruption".into(),
                 label: "Investigate the collectors".into(),
                 action_type: "inspect_corruption".into(),
                 input_terms: vec!["inspect".into(), "corruption".into()],
-                dramatic_purpose: "Trade court stability for cleaner revenue.".into(),
+                dramatic_purpose: "Trade civic stability for cleaner revenue.".into(),
                 change_scene: true,
             }],
             narrative_function: NarrativeFunction::Hook,
@@ -3164,9 +3163,9 @@ mod tests {
 
     fn sample_review_proposal() -> ReviewProposal {
         ReviewProposal {
-            scene_key: "court-crisis-002".into(),
+            scene_key: "civic-crisis-002".into(),
             review: NarrativeReview {
-                scene_key: "court-crisis-002".into(),
+                scene_key: "civic-crisis-002".into(),
                 score: 95,
                 hook_score: 95,
                 pacing_score: 95,
@@ -3178,7 +3177,7 @@ mod tests {
             },
             notes: vec![NarrativeReviewNote {
                 id: "proposal-review-note".into(),
-                scene_key: Some("court-crisis-002".into()),
+                scene_key: Some("civic-crisis-002".into()),
                 severity: Severity::Info,
                 message: "Proposal advances tax disorder visibly.".into(),
                 resolved: true,
@@ -3213,8 +3212,8 @@ mod tests {
             id: "asset-image-abcdef0123456789".into(),
             kind: AssetKind::Image,
             source: AssetSourceKind::Generated,
-            project_path: "assets/generated/court-crisis-001.png".into(),
-            export_path: "assets/generated/court-crisis-001.png".into(),
+            project_path: "assets/generated/opening-scene.png".into(),
+            export_path: "assets/generated/opening-scene.png".into(),
             content_hash: "a".repeat(64),
             hash_algorithm: "sha256".into(),
             byte_length: 256,
@@ -3227,7 +3226,7 @@ mod tests {
             }),
             references: vec![AssetReference {
                 reference_kind: AssetReferenceKind::Scene,
-                reference_id: "court-crisis-001".into(),
+                reference_id: "opening-scene".into(),
                 slot: "background_asset".into(),
             }],
         }

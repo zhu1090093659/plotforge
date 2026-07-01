@@ -22,7 +22,7 @@ npm --workspace @plotforge/creator-desktop run dev -- --host 127.0.0.1
 1. Open the Vite URL in the Codex in-app Browser or a local browser controlled through Computer Use.
 2. Verify visible agent-native Studio shell content:
    - Sidebar label: `PLOTFORGE STUDIO`
-   - Project title: `Dynasty Embers`
+   - Project title area starts as `No project loaded`
    - Primary workflow: `Command Center`
    - Main region: `Project Launchpad`
    - Bottom region: `Command Dock`

@@ -1,9 +1,0 @@
-id = "border-general"
-name = "Border General"
-role = "Frontier commander"
-traits = [
-    "loyal-if-paid",
-    "blunt",
-]
-visual_card = "Border General, restrained historical portrait"
-voice_card = "Border General, concise court speech"

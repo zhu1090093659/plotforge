@@ -1040,8 +1040,8 @@ fn character_generation_prompt(request: &CharacterGenerationRequest) -> String {
 }
 
 fn generated_story_craft_state() -> plotforge_schema::StoryCraftState {
-    let mut story_craft = plotforge_storycraft::dynasty_embers_story_craft();
-    story_craft.bible.genre_promise = "A pressure-driven interactive court drama.".into();
+    let mut story_craft = plotforge_storycraft::sample_story_craft_state();
+    story_craft.bible.genre_promise = "A pressure-driven interactive civic drama.".into();
     story_craft.bible.central_question =
         "Can the player preserve legitimacy while every survival choice has a cost?".into();
     story_craft.emotional_arc = vec![
@@ -1077,8 +1077,8 @@ fn generated_story_craft_state() -> plotforge_schema::StoryCraftState {
             last_update: "Generated from StoryCraft planner.".into(),
         },
         PlotThread {
-            id: "hidden-court-cost".into(),
-            title: "Hidden court cost".into(),
+            id: "hidden-civic-cost".into(),
+            title: "Hidden civic cost".into(),
             promise: "A useful ally demands a future compromise.".into(),
             thread_type: PlotThreadType::Mystery,
             status: PlotThreadStatus::Open,
@@ -1086,7 +1086,7 @@ fn generated_story_craft_state() -> plotforge_schema::StoryCraftState {
             expected_payoff: Some(
                 "The ally's price becomes visible after the first success.".into(),
             ),
-            related_characters: vec!["grand-secretary".into()],
+            related_characters: Vec::new(),
             related_world_flags: vec!["ally_price_unpaid".into()],
             last_update: "Generated from StoryCraft planner.".into(),
         },
@@ -1103,6 +1103,7 @@ fn generated_story_craft_state() -> plotforge_schema::StoryCraftState {
             last_update: "Generated from StoryCraft planner.".into(),
         },
     ];
+    story_craft.character_arcs = Vec::new();
     story_craft
 }
 
@@ -2773,14 +2774,14 @@ fn fake_success_response(
             output: AgentProposalPayload::ScenePlan(Box::new(ScenePlanProposal {
                 scene_key: request.scene_key.clone(),
                 title: "Provider Planned Scene".into(),
-                location: "Qianqing Palace".into(),
-                scene_summary: "A fake text model proposes the next court crisis.".into(),
+                location: "Civic Hall".into(),
+                scene_summary: "A fake text model proposes the next civic crisis.".into(),
                 dramatic_purpose:
                     "Exercise the provider-backed scene pipeline without external network calls."
                         .into(),
                 hook: "The fake provider returns a schema-checked scene plan.".into(),
                 emotional_goal: Some("controlled generation".into()),
-                cast: vec!["grand-secretary".into(), "eunuch-director".into()],
+                cast: vec!["city-treasurer".into(), "guild-liaison".into()],
                 entry_beat_id: format!("{}-beat-001", request.scene_key),
                 background_asset: Some(format!("assets/generated/{}.png", request.scene_key)),
             })),
@@ -2883,7 +2884,7 @@ fn fake_invalid_schema_response(
             output: AgentProposalPayload::ScenePlan(Box::new(ScenePlanProposal {
                 scene_key: String::new(),
                 title: "Invalid Scene Plan".into(),
-                location: "Qianqing Palace".into(),
+                location: "Civic Hall".into(),
                 scene_summary: "This payload is structurally valid JSON but fails validation."
                     .into(),
                 dramatic_purpose: "Test schema validation failure.".into(),
@@ -3031,7 +3032,7 @@ impl ScenePlanner for MockAgentPipeline {
             });
         }
 
-        let scene = dynasty_scene(next_turn, &request);
+        let scene = civic_scene(next_turn, &request);
         let review = review_scene(
             &scene,
             &request.project.story_craft,
@@ -3047,8 +3048,8 @@ impl ScenePlanner for MockAgentPipeline {
     }
 }
 
-fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
-    let scene_key = format!("court-crisis-{turn:03}");
+fn civic_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
+    let scene_key = format!("civic-crisis-{turn:03}");
     let (title, hook, thread_update) = match request.action_type {
         "raise_tax" => (
             "Tax Resistance Memorials",
@@ -3057,7 +3058,7 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
         ),
         "inspect_corruption" => (
             "The Sealed Corruption Ledger",
-            "A trembling clerk presents accounts that name both border officers and palace brokers.",
+            "A trembling clerk presents accounts that name both border officers and civic brokers.",
             "The insider channel becomes harder to dismiss.",
         ),
         "pay_army" => (
@@ -3066,9 +3067,9 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
             "The army is calmed for now, at a visible treasury cost.",
         ),
         _ => (
-            "Council of Unsteady Ministers",
+            "Council of Unsteady Advisers",
             "Every minister bows lower than usual while avoiding the map of burning counties.",
-            "The court delays, and every delay becomes a political fact.",
+            "The council delays, and every delay becomes a political fact.",
         ),
     };
 
@@ -3078,15 +3079,15 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
     Scene {
         key: scene_key.clone(),
         title: title.into(),
-        location: "Qianqing Palace".into(),
+        location: "Civic Hall".into(),
         dramatic_purpose: format!(
-            "Show the consequence of `{}` and push the dynasty toward a harder tradeoff.",
+            "Show the consequence of `{}` and push the city toward a harder tradeoff.",
             request.action_type
         ),
         hook: hook.into(),
         background_asset: format!("assets/generated/{scene_key}.png"),
         audio_refs: Vec::new(),
-        character_ids: vec!["grand-secretary".into(), "eunuch-director".into()],
+        character_ids: vec!["city-treasurer".into(), "guild-liaison".into()],
         plot_thread_updates: BTreeMap::from([(
             thread_for_action(request.action_type).into(),
             thread_update.into(),
@@ -3096,13 +3097,13 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
             Beat {
                 id: first_beat_id,
                 text: format!(
-                    "The court absorbs the order: {} The treasury stands at {}, public order at {}, and army morale at {}.",
+                    "The council absorbs the order: {} The treasury stands at {}, public order at {}, and army morale at {}.",
                     request.player_input,
                     resource(request.world_state, "treasury"),
                     resource(request.world_state, "public_order"),
                     resource(request.world_state, "army_morale")
                 ),
-                speaker: Some("grand-secretary".into()),
+                speaker: Some("city-treasurer".into()),
                 line_delivery: Some("controlled alarm".into()),
                 audio_refs: Vec::new(),
                 choices: vec![
@@ -3119,7 +3120,7 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
                         label: "Investigate payroll corruption".into(),
                         action_type: "inspect_corruption".into(),
                         input_terms: choice_input_terms("inspect_corruption"),
-                        dramatic_purpose: "Seek hidden leakage while destabilizing court factions."
+                        dramatic_purpose: "Seek hidden leakage while destabilizing civic factions."
                             .into(),
                         change_scene: true,
                     },
@@ -3131,6 +3132,14 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
                         dramatic_purpose:
                             "Stay in the scene to gather more pressure before committing.".into(),
                         change_scene: false,
+                    },
+                    Choice {
+                        id: "pay-army".into(),
+                        label: "Pay the border army first".into(),
+                        action_type: "pay_army".into(),
+                        input_terms: choice_input_terms("pay_army"),
+                        dramatic_purpose: "Spend scarce treasury to buy military time.".into(),
+                        change_scene: true,
                     },
                 ],
                 next: BeatNext::Beat(second_beat_id.clone()),
@@ -3157,7 +3166,7 @@ fn dynasty_scene(turn: u32, request: &ScenePlanRequest<'_>) -> Scene {
                         label: "Investigate payroll corruption".into(),
                         action_type: "inspect_corruption".into(),
                         input_terms: choice_input_terms("inspect_corruption"),
-                        dramatic_purpose: "Seek hidden leakage while destabilizing court factions."
+                        dramatic_purpose: "Seek hidden leakage while destabilizing civic factions."
                             .into(),
                         change_scene: true,
                     },
@@ -3183,7 +3192,7 @@ fn fallback_scene(turn: u32, action_type: &str) -> Scene {
     Scene {
         key: scene_key.clone(),
         title: "Fallback Council".into(),
-        location: "Qianqing Palace".into(),
+        location: "Civic Hall".into(),
         dramatic_purpose: "Keep the deterministic mock loop visible after a missing scene.".into(),
         hook: "A fallback council forms because the requested scene was missing.".into(),
         background_asset: format!("assets/generated/{scene_key}.png"),
@@ -3197,7 +3206,7 @@ fn fallback_scene(turn: u32, action_type: &str) -> Scene {
         beats: vec![
             Beat {
                 id: first_beat_id,
-                text: "The court waits for the engine to recover a valid scene.".into(),
+                text: "The council waits for the engine to recover a valid scene.".into(),
                 speaker: None,
                 line_delivery: None,
                 audio_refs: Vec::new(),
@@ -3232,7 +3241,7 @@ fn resource(world_state: &WorldState, key: &str) -> i32 {
 fn thread_for_action(action_type: &str) -> &'static str {
     match action_type {
         "raise_tax" => "tax-disorder",
-        "inspect_corruption" => "court-insider",
+        "inspect_corruption" => "council-insider",
         "pay_army" => "border-payroll",
         _ => "tax-disorder",
     }
@@ -3241,7 +3250,7 @@ fn thread_for_action(action_type: &str) -> &'static str {
 fn choice_input_terms(action_type: &str) -> Vec<String> {
     let terms: &[&str] = match action_type {
         "continue" => &["continue", "hear", "minister", "听", "继续", "陈情"],
-        "raise_tax" => &["raise", "tax", "levy", "加征", "辽饷"],
+        "raise_tax" => &["raise", "tax", "levy", "加征", "港税"],
         "inspect_corruption" => &["inspect", "corruption", "严查", "贪墨", "查"],
         "pay_army" => &["pay", "army", "军饷", "拨", "内帑", "边军"],
         _ => &[],
@@ -3259,9 +3268,9 @@ mod tests {
         AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind, AssetReferenceKind,
         AssetSourceKind, BeatDraftProposal, BeatDraftsProposal, CharacterGenerationRequest, Choice,
         GameProject, GenerationStatus, JobStatus, NarrativeFunction, NarrativeReview,
-        REDACTED_TRACE_SECRET, ReviewProposal, ScenePlanProposal, Severity, StoryCraftEditDocument,
-        StoryCraftGenerationRequest, StoryState, WorldEditDocument, WorldGenerationRequest,
-        WorldState,
+        ProjectCreationRequest, ProjectTemplateId, REDACTED_TRACE_SECRET, ReviewProposal,
+        ScenePlanProposal, Severity, StoryCraftEditDocument, StoryCraftGenerationRequest,
+        StoryState, WorldEditDocument, WorldGenerationRequest, WorldState,
     };
 
     use super::{
@@ -3275,6 +3284,36 @@ mod tests {
         generate_world_expansion, generate_world_expansion_with_provider, scene_from_proposals,
         validate_agent_output_proposal,
     };
+
+    fn agent_test_project() -> plotforge_schema::ProjectData {
+        let temp = tempfile::tempdir().expect("tempdir");
+        plotforge_storage::create_project_from_request(
+            temp.path().join("agent-test-project"),
+            sample_creation_request(),
+            false,
+        )
+        .expect("create project")
+        .project
+    }
+
+    fn create_starter_project(project_path: &std::path::Path) {
+        plotforge_storage::create_project_from_request(
+            project_path,
+            sample_creation_request(),
+            false,
+        )
+        .expect("create project");
+    }
+
+    fn sample_creation_request() -> ProjectCreationRequest {
+        ProjectCreationRequest {
+            template: ProjectTemplateId::HistoricalCrisis,
+            concept: "A local starter project for agent tests.".into(),
+            visual_style: "clear readable test style".into(),
+            voice_enabled: false,
+            initial_scene_request: "A creator opens a fresh PlotForge project.".into(),
+        }
+    }
 
     #[derive(Clone, Debug)]
     struct FakeClock {
@@ -3382,34 +3421,34 @@ mod tests {
                 title: "Demo".into(),
                 version: "0.1.0".into(),
                 description: "Demo".into(),
-                entry_scene: "court-crisis-001".into(),
+                entry_scene: "opening-scene".into(),
                 run_seed: 7,
             },
             resources: Vec::new(),
             world_state: WorldState::default(),
             story_state: StoryState {
-                current_scene_key: "court-crisis-001".into(),
-                current_beat_id: Some("court-crisis-001-beat-001".into()),
+                current_scene_key: "opening-scene".into(),
+                current_beat_id: Some("opening-scene-beat-001".into()),
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
-            story_craft: plotforge_storycraft::dynasty_embers_story_craft(),
+            story_craft: plotforge_storycraft::sample_story_craft_state(),
             characters: vec![
                 plotforge_schema::Character {
-                    id: "grand-secretary".into(),
-                    name: "Grand Secretary".into(),
-                    role: "Court administrator".into(),
+                    id: "city-treasurer".into(),
+                    name: "City Treasurer".into(),
+                    role: "Civic administrator".into(),
                     traits: vec!["cautious".into()],
                     visual_card: "elder official".into(),
                     voice_card: "restrained".into(),
                     portrait_request: None,
                 },
                 plotforge_schema::Character {
-                    id: "eunuch-director".into(),
-                    name: "Eunuch Director".into(),
-                    role: "Palace channel".into(),
+                    id: "guild-liaison".into(),
+                    name: "Guild Liaison".into(),
+                    role: "Civic channel".into(),
                     traits: vec!["watchful".into()],
-                    visual_card: "palace official".into(),
+                    visual_card: "guild official".into(),
                     voice_card: "quiet".into(),
                     portrait_request: None,
                 },
@@ -3432,7 +3471,7 @@ mod tests {
             })
             .expect("plan");
 
-        assert_eq!(plan.scene.key, "court-crisis-001");
+        assert_eq!(plan.scene.key, "civic-crisis-001");
         assert!(plan.review.passes());
         assert!(!plan.fallback_used);
     }
@@ -3456,7 +3495,7 @@ mod tests {
                 completed_scene_keys: Vec::new(),
                 turn: 0,
             },
-            story_craft: plotforge_storycraft::dynasty_embers_story_craft(),
+            story_craft: plotforge_schema::StoryCraftState::default(),
             characters: Vec::new(),
             rules: Vec::new(),
             scenes: Vec::new(),
@@ -3482,13 +3521,13 @@ mod tests {
 
     #[test]
     fn mock_pipeline_maps_actions_to_plot_threads() {
-        let mut project = plotforge_storage::dynasty_embers_project();
+        let mut project = agent_test_project();
         project.story_state.turn = 1;
         let pipeline = MockAgentPipeline;
 
         for (action_type, expected_thread) in [
             ("raise_tax", "tax-disorder"),
-            ("inspect_corruption", "court-insider"),
+            ("inspect_corruption", "council-insider"),
             ("pay_army", "border-payroll"),
         ] {
             let plan = pipeline
@@ -3523,9 +3562,9 @@ mod tests {
         let review = sample_review_proposal();
         let scene = scene_from_proposals(&scene_plan, &beat_drafts, Some(&review)).expect("scene");
 
-        assert_eq!(scene.key, "court-crisis-002");
-        assert_eq!(scene.beats[0].id, "court-crisis-002-beat-001");
-        assert_eq!(scene.character_ids, vec!["grand-secretary"]);
+        assert_eq!(scene.key, "civic-crisis-002");
+        assert_eq!(scene.beats[0].id, "civic-crisis-002-beat-001");
+        assert_eq!(scene.character_ids, vec!["city-treasurer"]);
         assert!(scene.plot_thread_updates.is_empty());
     }
 
@@ -3577,7 +3616,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_builds_scene_from_json_proposals() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::success());
 
         let plan = pipeline
@@ -3604,7 +3643,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_repairs_wrapped_json_output() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::wrapped_json(
             AgentRole::ScenePlanner,
         ));
@@ -3625,7 +3664,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_falls_back_on_provider_error() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::provider_error(
             AgentRole::ScenePlanner,
         ));
@@ -3644,7 +3683,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_falls_back_on_timeout() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline =
             ProviderAgentPipeline::new(FakeTextModelProvider::timeout(AgentRole::BeatWriter));
 
@@ -3661,7 +3700,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_falls_back_on_schema_validation() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::invalid_schema(
             AgentRole::BeatWriter,
         ));
@@ -3679,7 +3718,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_falls_back_on_secret_marker_output() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(FakeTextModelProvider::secret_marker(
             AgentRole::ScenePlanner,
         ));
@@ -3698,7 +3737,7 @@ mod tests {
 
     #[test]
     fn fake_text_provider_pipeline_falls_back_on_invalid_json() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline =
             ProviderAgentPipeline::new(FakeTextModelProvider::invalid_json(AgentRole::PlotDoctor));
 
@@ -3876,7 +3915,7 @@ mod tests {
 
     #[test]
     fn configured_text_provider_uses_local_credential_without_persisting_it() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let client = RecordingTextModelClient::success();
         let client_probe = client.clone();
         let config = text_provider_config();
@@ -3906,7 +3945,7 @@ mod tests {
 
     #[test]
     fn configured_text_provider_disabled_falls_back_explicitly() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
             TextProviderConfig::disabled(),
             RecordingTextModelClient::success(),
@@ -3926,7 +3965,7 @@ mod tests {
 
     #[test]
     fn configured_text_provider_missing_credential_falls_back_without_secret_leak() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
             text_provider_config(),
             RecordingTextModelClient::success(),
@@ -3946,7 +3985,7 @@ mod tests {
 
     #[test]
     fn configured_text_provider_rejects_secret_player_input_before_client_call() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let client = RecordingTextModelClient::success();
         let client_probe = client.clone();
         let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
@@ -3976,7 +4015,7 @@ mod tests {
 
     #[test]
     fn configured_text_provider_client_errors_are_redacted_and_trace_visible() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let pipeline = ProviderAgentPipeline::new(ConfiguredTextModelProvider::new(
             text_provider_config(),
             RecordingTextModelClient::provider_error(
@@ -4138,7 +4177,7 @@ mod tests {
 
     #[test]
     fn fake_tts_provider_registers_scene_audio_and_successful_job() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let scene = &project.scenes[0];
         let mut registry = AssetRegistry::new();
         let mut jobs = JobQueue::new(FakeClock::new(360));
@@ -4176,15 +4215,22 @@ mod tests {
 
     #[test]
     fn fake_tts_provider_registers_character_voice_asset() {
-        let project = plotforge_storage::dynasty_embers_project();
-        let character = &project.characters[0];
+        let character = plotforge_schema::Character {
+            id: "test-speaker".into(),
+            name: "Test Speaker".into(),
+            role: "Fixture character".into(),
+            traits: vec!["clear".into()],
+            visual_card: "simple portrait".into(),
+            voice_card: "measured".into(),
+            portrait_request: None,
+        };
         let mut registry = AssetRegistry::new();
         let mut jobs = JobQueue::new(FakeClock::new(365));
         let pipeline = TtsPipeline::new(FakeTtsProvider::success());
 
         let result = pipeline
             .synthesize(
-                TtsRequest::character_voice(character, "The treasury crisis has a price."),
+                TtsRequest::character_voice(&character, "The treasury crisis has a price."),
                 &mut registry,
                 &mut jobs,
             )
@@ -4211,7 +4257,7 @@ mod tests {
 
     #[test]
     fn fake_tts_provider_failure_registers_silent_fallback_and_failed_job() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let scene = &project.scenes[0];
         let beat = &scene.beats[0];
         let mut registry = AssetRegistry::new();
@@ -4220,7 +4266,7 @@ mod tests {
 
         let result = pipeline
             .synthesize(
-                TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator"),
+                TtsRequest::beat_narration(scene.key.clone(), beat, "civic narrator"),
                 &mut registry,
                 &mut jobs,
             )
@@ -4271,8 +4317,8 @@ mod tests {
     #[test]
     fn tts_pipeline_for_project_writes_audio_asset_file() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        plotforge_storage::create_demo_project(&project_path, false).expect("create project");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
         let project = plotforge_storage::load_project(&project_path).expect("load project");
         let scene = &project.scenes[0];
         let beat = &scene.beats[0];
@@ -4283,7 +4329,7 @@ mod tests {
         let result = pipeline
             .synthesize_for_project(
                 &project_path,
-                TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator"),
+                TtsRequest::beat_narration(scene.key.clone(), beat, "civic narrator"),
                 &mut registry,
                 &mut jobs,
             )
@@ -4304,14 +4350,14 @@ mod tests {
 
     #[test]
     fn tts_pipeline_reuses_matching_cached_asset_without_new_job() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let scene = &project.scenes[0];
         let beat = &scene.beats[0];
         let mut registry = AssetRegistry::new();
         let mut jobs = JobQueue::new(FakeClock::new(375));
         let provider = FakeTtsProvider::success();
         let pipeline = TtsPipeline::new(provider.clone());
-        let request = TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator");
+        let request = TtsRequest::beat_narration(scene.key.clone(), beat, "civic narrator");
 
         let first = pipeline
             .synthesize(request.clone(), &mut registry, &mut jobs)
@@ -4328,7 +4374,7 @@ mod tests {
 
     #[test]
     fn tts_pipeline_does_not_cache_silent_fallback_as_success() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let scene = &project.scenes[0];
         let beat = &scene.beats[0];
         let mut registry = AssetRegistry::new();
@@ -4336,7 +4382,7 @@ mod tests {
         let failing_pipeline = TtsPipeline::new(FakeTtsProvider::provider_error());
         let success_provider = FakeTtsProvider::success();
         let success_pipeline = TtsPipeline::new(success_provider.clone());
-        let request = TtsRequest::beat_narration(scene.key.clone(), beat, "court narrator");
+        let request = TtsRequest::beat_narration(scene.key.clone(), beat, "civic narrator");
 
         let fallback = failing_pipeline
             .synthesize(request.clone(), &mut registry, &mut jobs)
@@ -4353,7 +4399,7 @@ mod tests {
 
     #[test]
     fn image_provider_agent_pipeline_generates_scene_background_asset() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let planner = ImageProviderAgentPipeline::new(
             FakeTextModelProvider::success(),
             FakeImageProvider::success(),
@@ -4377,7 +4423,7 @@ mod tests {
 
     #[test]
     fn image_provider_agent_pipeline_marks_image_fallback_visible() {
-        let project = plotforge_storage::dynasty_embers_project();
+        let project = agent_test_project();
         let planner = ImageProviderAgentPipeline::new(
             FakeTextModelProvider::success(),
             FakeImageProvider::timeout(),
@@ -4427,37 +4473,37 @@ mod tests {
 
     fn sample_scene_plan_proposal() -> ScenePlanProposal {
         ScenePlanProposal {
-            scene_key: "court-crisis-002".into(),
+            scene_key: "civic-crisis-002".into(),
             title: "Tax Resistance Memorials".into(),
-            location: "Qianqing Palace".into(),
+            location: "Civic Hall".into(),
             scene_summary: "The levy creates immediate provincial resistance.".into(),
             dramatic_purpose: "Show the cost of emergency revenue.".into(),
             hook: "Three memorials arrive with broken tax seals.".into(),
             emotional_goal: Some("consequence".into()),
-            cast: vec!["grand-secretary".into()],
-            entry_beat_id: "court-crisis-002-beat-001".into(),
-            background_asset: Some("assets/generated/court-crisis-002.png".into()),
+            cast: vec!["city-treasurer".into()],
+            entry_beat_id: "civic-crisis-002-beat-001".into(),
+            background_asset: Some("assets/generated/civic-crisis-002.png".into()),
         }
     }
 
     fn sample_beat_drafts_proposal() -> BeatDraftsProposal {
         BeatDraftsProposal {
-            scene_key: "court-crisis-002".into(),
+            scene_key: "civic-crisis-002".into(),
             beats: vec![sample_beat_draft_proposal()],
         }
     }
 
     fn sample_beat_draft_proposal() -> BeatDraftProposal {
         BeatDraftProposal {
-            id: "court-crisis-002-beat-001".into(),
-            scene_key: "court-crisis-002".into(),
-            text: "The court reads three provincial reports in silence.".into(),
+            id: "civic-crisis-002-beat-001".into(),
+            scene_key: "civic-crisis-002".into(),
+            text: "The council reads three provincial reports in silence.".into(),
             choices: vec![Choice {
                 id: "inspect-corruption".into(),
                 label: "Investigate the collectors".into(),
                 action_type: "inspect_corruption".into(),
                 input_terms: vec!["inspect".into(), "corruption".into()],
-                dramatic_purpose: "Trade court stability for cleaner revenue.".into(),
+                dramatic_purpose: "Trade civic stability for cleaner revenue.".into(),
                 change_scene: true,
             }],
             narrative_function: NarrativeFunction::Hook,
@@ -4466,9 +4512,9 @@ mod tests {
 
     fn sample_review_proposal() -> ReviewProposal {
         ReviewProposal {
-            scene_key: "court-crisis-002".into(),
+            scene_key: "civic-crisis-002".into(),
             review: NarrativeReview {
-                scene_key: "court-crisis-002".into(),
+                scene_key: "civic-crisis-002".into(),
                 score: 95,
                 hook_score: 95,
                 pacing_score: 95,
@@ -4480,7 +4526,7 @@ mod tests {
             },
             notes: vec![plotforge_schema::NarrativeReviewNote {
                 id: "proposal-review-note".into(),
-                scene_key: Some("court-crisis-002".into()),
+                scene_key: Some("civic-crisis-002".into()),
                 severity: Severity::Info,
                 message: "Proposal advances tax disorder visibly.".into(),
                 resolved: true,
@@ -4510,17 +4556,17 @@ mod tests {
     fn scene_image_request() -> SceneImageRequest {
         SceneImageRequest {
             scene_key: "scene-one".into(),
-            prompt: "paint a tense court hearing".into(),
+            prompt: "paint a tense civic hearing".into(),
             output_path: "assets/generated/scene-one.png".into(),
         }
     }
 
     fn world_generation_request() -> WorldGenerationRequest {
         WorldGenerationRequest {
-            expansion_goal: "Expand the court crisis into factions, canon, and forbidden facts."
+            expansion_goal: "Expand the civic crisis into factions, canon, and forbidden facts."
                 .into(),
             document: WorldEditDocument {
-                world_bible_markdown: "# Existing World\n\nA court crisis strains the treasury."
+                world_bible_markdown: "# Existing World\n\nA civic crisis strains the treasury."
                     .into(),
                 canon_markdown: "# Existing Canon\n\nVisible choices must have consequences."
                     .into(),
@@ -4532,14 +4578,14 @@ mod tests {
     fn story_craft_generation_request() -> StoryCraftGenerationRequest {
         StoryCraftGenerationRequest {
             concept: "A ruler must survive an escalating fiscal and legitimacy crisis.".into(),
-            world_bible_markdown: "# World Bible\n\nThe court is divided by emergency revenue."
-                .into(),
+            world_bible_markdown:
+                "# World Bible\n\nThe city council is divided by emergency revenue.".into(),
             canon_markdown: "# Canon Rules\n\nNo crisis solution is free.".into(),
             forbidden_facts: vec!["No hidden prophecy rescue.".into()],
             document: StoryCraftEditDocument {
                 story_bible_markdown: "# Draft Story Bible\n\nInitial premise only.".into(),
                 style_guide_markdown: "# Draft Style\n\nGrounded and specific.".into(),
-                story_craft: plotforge_storycraft::dynasty_embers_story_craft(),
+                story_craft: plotforge_schema::StoryCraftState::default(),
             },
             characters: Vec::new(),
         }
@@ -4547,7 +4593,7 @@ mod tests {
 
     fn character_generation_request() -> CharacterGenerationRequest {
         CharacterGenerationRequest {
-            concept: "A diplomatic envoy pressures the court with concrete tradeoffs.".into(),
+            concept: "A diplomatic envoy pressures the council with concrete tradeoffs.".into(),
             role_hint: "Envoy".into(),
             world_bible_markdown: "# World Bible\n\nFactions trade legitimacy for resources."
                 .into(),

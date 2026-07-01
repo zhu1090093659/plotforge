@@ -549,35 +549,38 @@ pub fn summarize_delta(delta: &WorldDelta) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use plotforge_storage::dynasty_embers_project;
+    use std::collections::BTreeMap;
 
     use super::{RuntimeSession, interpret_action};
+    use plotforge_schema::{
+        Beat, BeatNext, Character, Choice, Effect, GameProject, ProjectData, ResourceDefinition,
+        Rule, Scene, StoryState, WorldState,
+    };
 
     #[test]
     fn interprets_chinese_action_text() {
-        let project = dynasty_embers_project();
-        let choices = &project.scenes[0].beats[0].choices;
+        let choices = test_choices();
 
         assert_eq!(
-            interpret_action("朕决定加征辽饷", choices)
+            interpret_action("决定加征港税", &choices)
                 .expect("tax intent")
                 .action_type(),
             Some("raise_tax")
         );
         assert_eq!(
-            interpret_action("严查贪墨", choices)
+            interpret_action("严查贪墨", &choices)
                 .expect("corruption intent")
                 .action_type(),
             Some("inspect_corruption")
         );
         assert_eq!(
-            interpret_action("先拨内帑稳住边军军饷", choices)
+            interpret_action("先拨内帑稳住边军军饷", &choices)
                 .expect("army intent")
                 .action_type(),
             Some("pay_army")
         );
         assert_eq!(
-            interpret_action("题诗赏月", choices)
+            interpret_action("题诗赏月", &choices)
                 .expect("unsupported intent")
                 .action_type(),
             None
@@ -586,10 +589,10 @@ mod tests {
 
     #[test]
     fn play_once_commits_rule_delta_and_trace() {
-        let project = dynasty_embers_project();
+        let project = test_project();
         let mut session = RuntimeSession::new(project);
 
-        let step = session.play_once("朕决定加征辽饷").expect("play");
+        let step = session.play_once("决定加征港税").expect("play");
 
         assert_eq!(
             step.trace.world_state_delta.resource_changes["treasury"],
@@ -601,7 +604,130 @@ mod tests {
                 .triggered_events
                 .contains(&"local_tax_resistance".into())
         );
-        assert_eq!(step.scene.key, "court-crisis-001");
+        assert_eq!(step.scene.key, "civic-crisis-001");
         assert!(step.trace.narrative_review.expect("review").passes());
+    }
+
+    fn test_project() -> ProjectData {
+        let resources = vec![ResourceDefinition {
+            key: "treasury".into(),
+            label: "Treasury".into(),
+            initial: 40,
+            min: 0,
+            max: 100,
+        }];
+        let scene = Scene {
+            key: "runtime-unit-scene".into(),
+            title: "Runtime Unit Scene".into(),
+            location: "Test Court".into(),
+            dramatic_purpose: "Test runtime commits.".into(),
+            hook: "A test ledger waits.".into(),
+            background_asset: "assets/generated/runtime-unit-scene.png".into(),
+            audio_refs: Vec::new(),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::new(),
+            entry_beat_id: Some("runtime-unit-scene-beat-001".into()),
+            beats: vec![Beat {
+                id: "runtime-unit-scene-beat-001".into(),
+                text: "The test scene begins.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
+                choices: test_choices(),
+                next: BeatNext::Scene,
+            }],
+        };
+
+        ProjectData {
+            game: GameProject {
+                id: "runtime-unit-fixture".into(),
+                title: "Runtime Unit Fixture".into(),
+                version: "0.1.0".into(),
+                description: "Runtime unit fixture.".into(),
+                entry_scene: scene.key.clone(),
+                run_seed: 7,
+            },
+            resources: resources.clone(),
+            world_state: WorldState {
+                resources: BTreeMap::from([("treasury".into(), 40)]),
+                flags: BTreeMap::new(),
+                triggered_events: Vec::new(),
+            },
+            story_state: StoryState {
+                current_scene_key: scene.key.clone(),
+                current_beat_id: Some("runtime-unit-scene-beat-001".into()),
+                completed_scene_keys: Vec::new(),
+                turn: 0,
+            },
+            story_craft: plotforge_storycraft::sample_story_craft_state(),
+            characters: vec![
+                Character {
+                    id: "city-treasurer".into(),
+                    name: "City Treasurer".into(),
+                    role: "Civic administrator".into(),
+                    traits: vec!["cautious".into()],
+                    visual_card: "elder official".into(),
+                    voice_card: "restrained".into(),
+                    portrait_request: None,
+                },
+                Character {
+                    id: "guild-liaison".into(),
+                    name: "Guild Liaison".into(),
+                    role: "Civic channel".into(),
+                    traits: vec!["watchful".into()],
+                    visual_card: "guild official".into(),
+                    voice_card: "quiet".into(),
+                    portrait_request: None,
+                },
+            ],
+            rules: vec![Rule {
+                id: "raise-tax".into(),
+                action_type: "raise_tax".into(),
+                conditions: Vec::new(),
+                effects: vec![
+                    Effect::AddResource {
+                        key: "treasury".into(),
+                        amount: 12,
+                    },
+                    Effect::TriggerEvent {
+                        event: "local_tax_resistance".into(),
+                    },
+                ],
+            }],
+            scenes: vec![scene],
+            visual_bible: plotforge_schema::VisualBible::default(),
+            audio_bible: plotforge_schema::AudioBible::default(),
+            asset_records: Vec::new(),
+            ai_safety_policy: plotforge_schema::AiSafetyPolicy::default(),
+        }
+    }
+
+    fn test_choices() -> Vec<Choice> {
+        vec![
+            Choice {
+                id: "raise-tax".into(),
+                label: "Raise tax".into(),
+                action_type: "raise_tax".into(),
+                input_terms: vec!["加征".into(), "港税".into(), "raise".into(), "tax".into()],
+                dramatic_purpose: "Trade order for revenue.".into(),
+                change_scene: true,
+            },
+            Choice {
+                id: "inspect-corruption".into(),
+                label: "Inspect corruption".into(),
+                action_type: "inspect_corruption".into(),
+                input_terms: vec!["严查".into(), "贪墨".into()],
+                dramatic_purpose: "Investigate corruption.".into(),
+                change_scene: true,
+            },
+            Choice {
+                id: "pay-army".into(),
+                label: "Pay army".into(),
+                action_type: "pay_army".into(),
+                input_terms: vec!["内帑".into(), "边军".into(), "军饷".into()],
+                dramatic_purpose: "Pay the army.".into(),
+                change_scene: true,
+            },
+        ]
     }
 }

@@ -8,9 +8,9 @@ afterEach(() => {
 });
 
 const demoWorldDoc: WorldEditDocument = {
-  world_bible_markdown: "# World\n\nDynasty under pressure.\n",
-  canon_markdown: "# Canon\n\nThe dynasty fell.\n",
-  forbidden_facts: ["No secret heir", "No undead emperor"],
+  world_bible_markdown: "# World\n\nCity under pressure.\n",
+  canon_markdown: "# Canon\n\nThe city fell.\n",
+  forbidden_facts: ["No secret heir", "No undead mayor"],
 };
 
 function defaultProps(overrides: Partial<WorldViewProps> = {}): WorldViewProps {
@@ -35,9 +35,9 @@ describe("WorldView", () => {
     expect(screen.getByLabelText("Canon markdown")).toBeTruthy();
     expect(screen.getByLabelText("Forbidden facts")).toBeTruthy();
     expect(
-      screen.getByDisplayValue(/Dynasty under pressure/),
+      screen.getByDisplayValue(/City under pressure/),
     ).toBeTruthy();
-    expect(screen.getByDisplayValue(/The dynasty fell/)).toBeTruthy();
+    expect(screen.getByDisplayValue(/The city fell/)).toBeTruthy();
     expect(screen.getByDisplayValue(/No secret heir/)).toBeTruthy();
   });
 

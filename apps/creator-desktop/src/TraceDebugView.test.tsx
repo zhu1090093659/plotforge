@@ -85,7 +85,7 @@ describe("TraceDebugView", () => {
     const report = demoPlayOnceReport("continue");
     report.trace.story_state_after = {
       ...report.trace.story_state_after,
-      current_beat_id: "court-crisis-001-beat-002",
+      current_beat_id: "opening-scene-beat-002",
     };
 
     render(<TraceDebugView report={report} error={null} />);

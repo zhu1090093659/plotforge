@@ -25,12 +25,12 @@ const sourceFiles: SourceFileSummary[] = [
 const visualBible = {
   style_cards: [
     {
-      id: "style-court-001",
-      title: "Winter court ink wash",
-      summary: "Ink wash courtyard style.",
-      prompt: "Ink wash courtyard with winter lanterns",
+      id: "style-council-001",
+      title: "Winter council ink wash",
+      summary: "Ink wash councilyard style.",
+      prompt: "Ink wash councilyard with winter lanterns",
       palette: ["bone white", "ink black"],
-      tags: ["court", "winter"],
+      tags: ["council", "winter"],
       reference_asset_ids: ["asset-style-ref-001"],
     },
   ],
@@ -40,12 +40,12 @@ const audioBible = {
   voice_cards: [
     {
       id: "voice-censor-001",
-      title: "Court Censor",
-      summary: "Dry formal court voice.",
-      voice: "dry formal court voice",
+      title: "Civic Auditor",
+      summary: "Dry formal council voice.",
+      voice: "dry formal council voice",
       delivery: "quiet but cutting",
       sample_text: "The ledgers do not accuse by accident.",
-      tags: ["court", "formal"],
+      tags: ["council", "formal"],
       reference_asset_ids: ["asset-voice-ref-001"],
     },
   ],
@@ -112,37 +112,37 @@ describe("AssetMaintenanceView", () => {
   it("renders Visual Bible section with style card title as collapsible label", () => {
     renderView();
     expect(screen.getByText("Visual Bible")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Winter court ink wash/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Winter council ink wash/ })).toBeTruthy();
   });
 
   it("renders Audio Bible section with voice card title as collapsible label", () => {
     renderView();
     expect(screen.getByText("Audio Bible")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Court Censor/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Civic Auditor/ })).toBeTruthy();
   });
 
   it("expands Visual Bible card and shows editable prompt field", () => {
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: /Winter court ink wash/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Winter council ink wash/ }));
     expect(screen.getByLabelText("Visual style prompt 1")).toBeTruthy();
     expect(
       (screen.getByLabelText("Visual style prompt 1") as HTMLTextAreaElement).value,
-    ).toBe("Ink wash courtyard with winter lanterns");
+    ).toBe("Ink wash councilyard with winter lanterns");
   });
 
   it("expands Audio Bible card and shows editable voice field", () => {
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: /Court Censor/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
     expect(screen.getByLabelText("Audio voice 1")).toBeTruthy();
     expect(
       (screen.getByLabelText("Audio voice 1") as HTMLInputElement).value,
-    ).toBe("dry formal court voice");
+    ).toBe("dry formal council voice");
   });
 
   it("calls onUpdateVisualStyleCard when prompt field changes", () => {
     const onUpdate = vi.fn();
     renderView({ onUpdateVisualStyleCard: onUpdate });
-    fireEvent.click(screen.getByRole("button", { name: /Winter court ink wash/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Winter council ink wash/ }));
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
       target: { value: "New prompt value" },
     });
@@ -152,7 +152,7 @@ describe("AssetMaintenanceView", () => {
   it("calls onUpdateAudioVoiceCard when voice field changes", () => {
     const onUpdate = vi.fn();
     renderView({ onUpdateAudioVoiceCard: onUpdate });
-    fireEvent.click(screen.getByRole("button", { name: /Court Censor/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
     fireEvent.change(screen.getByLabelText("Audio voice 1"), {
       target: { value: "deeper resonant voice" },
     });

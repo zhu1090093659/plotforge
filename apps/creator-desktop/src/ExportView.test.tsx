@@ -14,9 +14,9 @@ afterEach(() => {
 
 function makeProps(overrides: Partial<ExportViewProps> = {}): ExportViewProps {
   return {
-    exportDir: "/tmp/dynasty-embers/export",
+    exportDir: "/tmp/starter-project/export",
     setExportDir: vi.fn(),
-    archivePath: "/tmp/dynasty-embers/export.zip",
+    archivePath: "/tmp/starter-project/export.zip",
     setArchivePath: vi.fn(),
     exportProfiles: demoExportProfiles,
     selectedExportProfileId: null,
@@ -142,16 +142,16 @@ describe("ExportView", () => {
 
   it("shows export metrics when export report is available", () => {
     const exportReport: StaticExportReport = {
-      output_dir: "/tmp/dynasty-embers/export",
+      output_dir: "/tmp/starter-project/export",
       files_found: ["index.html", "player.js"],
       allowed_files: ["index.html", "player.js"],
       archived_files: ["index.html", "player.js"],
       files_written: ["index.html", "player.js"],
-      archive_path: "/tmp/dynasty-embers/export.zip",
+      archive_path: "/tmp/starter-project/export.zip",
     };
     renderView({ exportReport });
     expect(
-      screen.getAllByText("/tmp/dynasty-embers/export.zip").length,
+      screen.getAllByText("/tmp/starter-project/export.zip").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("matched")).toBeTruthy();
   });

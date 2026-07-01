@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::fs;
 
 use plotforge_schema::{
     ActionIntent, AiSafetyPolicy, AiUsageContentKind, AssetKind, AssetSourceKind, Character,
@@ -19,28 +15,29 @@ use plotforge_storage::{
     apply_story_craft_generation_report, apply_world_generation_report,
     attach_beat_audio_reference, attach_scene_audio_reference, build_character_generation_request,
     build_story_craft_generation_request, build_world_generation_request, create_character,
-    create_demo_project, create_project_from_request, create_resource, create_rule,
-    dynasty_embers_project, load_project, read_ai_safety_policy, read_character_edit_document,
-    read_latest_runtime_snapshot, read_rules_edit_document, read_runtime_snapshot,
-    read_sqlite_cache_summary, read_state_variables_edit_document, read_story_craft_edit_document,
-    read_world_edit_document, rebuild_sqlite_cache, sqlite_cache_path, update_ai_safety_policy,
-    update_character_edit_document, update_rules_edit_document,
-    update_state_variables_edit_document, update_story_craft_edit_document,
-    update_world_edit_document, validate_project, validate_reference_library,
-    write_reference_analysis, write_runtime_snapshot, write_trace,
+    create_project_from_request, create_resource, create_rule, load_project, read_ai_safety_policy,
+    read_character_edit_document, read_latest_runtime_snapshot, read_rules_edit_document,
+    read_runtime_snapshot, read_sqlite_cache_summary, read_state_variables_edit_document,
+    read_story_craft_edit_document, read_world_edit_document, rebuild_sqlite_cache,
+    sqlite_cache_path, update_ai_safety_policy, update_character_edit_document,
+    update_rules_edit_document, update_state_variables_edit_document,
+    update_story_craft_edit_document, update_world_edit_document, validate_project,
+    validate_reference_library, write_reference_analysis, write_runtime_snapshot, write_trace,
 };
 use rusqlite::Connection;
 
 #[test]
-fn create_demo_respects_force_flag() {
+fn create_project_from_request_respects_force_flag() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
+    let project = temp.path().join("starter-project");
 
-    create_demo_project(&project, false).expect("first create");
-    let error = create_demo_project(&project, false).expect_err("force=false should fail");
+    create_starter_project(&project);
+    let error = create_project_from_request(&project, sample_project_creation_request(), false)
+        .expect_err("force=false should fail");
     assert!(matches!(error, StorageError::ProjectExists(_)));
 
-    create_demo_project(&project, true).expect("force=true recreates");
+    create_project_from_request(&project, sample_project_creation_request(), true)
+        .expect("force=true recreates");
 }
 
 #[test]
@@ -63,15 +60,15 @@ fn create_project_from_request_persists_wizard_fields_and_reopens() {
     assert_eq!(loaded.game.title, "Winter Regency");
     assert_eq!(
         loaded.game.description,
-        "A regency court must survive a winter coup."
+        "A regency council must survive a winter coup."
     );
     assert_eq!(
         loaded.story_craft.bible.genre_promise,
-        "A regency court must survive a winter coup."
+        "A regency council must survive a winter coup."
     );
     assert_eq!(
         loaded.story_craft.bible.prose_style_guide.as_deref(),
-        Some("ink wash court drama")
+        Some("ink wash civic drama")
     );
     assert!(project.join("game.toml").is_file());
     assert!(project.join("story/story_craft.toml").is_file());
@@ -105,17 +102,17 @@ fn create_project_from_request_persists_wizard_fields_and_reopens() {
     let world = fs::read_to_string(project.join("world/world.md")).expect("world bible");
     let story = fs::read_to_string(project.join("story/story_bible.md")).expect("story bible");
     let style = fs::read_to_string(project.join("story/style_guide.md")).expect("style guide");
-    assert!(world.contains("A regency court must survive a winter coup."));
+    assert!(world.contains("A regency council must survive a winter coup."));
     assert!(story.contains("Open on an empty granary ledger."));
-    assert!(style.contains("ink wash court drama"));
+    assert!(style.contains("ink wash civic drama"));
     assert!(style.contains("Voice generation requested"));
 }
 
 #[test]
 fn structured_edit_documents_roundtrip_and_persist_source_files() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let mut world = read_world_edit_document(&project).expect("read world edit");
     world
@@ -219,9 +216,9 @@ fn structured_edit_documents_roundtrip_and_persist_source_files() {
 #[test]
 fn audio_references_attach_persist_and_rebuild_asset_records() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
-    let audio_path = "assets/generated/audio/court-crisis-001-beat-001.wav";
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
+    let audio_path = "assets/generated/audio/opening-scene-beat-001.wav";
     fs::create_dir_all(project.join("assets/generated/audio")).expect("audio dir");
     fs::write(project.join(audio_path), b"fake beat wav bytes").expect("write audio");
     let reference = MediaAssetReference {
@@ -235,8 +232,8 @@ fn audio_references_attach_persist_and_rebuild_asset_records() {
 
     let updated = attach_beat_audio_reference(
         &project,
-        "court-crisis-001",
-        "court-crisis-001-beat-001",
+        "opening-scene",
+        "opening-scene-beat-001",
         reference.clone(),
     )
     .expect("attach beat audio");
@@ -256,16 +253,16 @@ fn audio_references_attach_persist_and_rebuild_asset_records() {
         b"fake beat wav bytes".len() as u64
     );
     assert!(audio_record.references.iter().any(|record_reference| {
-        record_reference.reference_id == "court-crisis-001"
-            && record_reference.slot == "beat_audio:court-crisis-001-beat-001:narration"
+        record_reference.reference_id == "opening-scene"
+            && record_reference.slot == "beat_audio:opening-scene-beat-001:narration"
     }));
 }
 
 #[test]
 fn audio_reference_attach_rejects_non_audio_external_and_unsafe_paths() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let mut reference = MediaAssetReference {
         asset_id: None,
@@ -277,8 +274,8 @@ fn audio_reference_attach_rejects_non_audio_external_and_unsafe_paths() {
     };
     let error = attach_beat_audio_reference(
         &project,
-        "court-crisis-001",
-        "court-crisis-001-beat-001",
+        "opening-scene",
+        "opening-scene-beat-001",
         reference.clone(),
     )
     .expect_err("image audio ref should fail");
@@ -290,7 +287,7 @@ fn audio_reference_attach_rejects_non_audio_external_and_unsafe_paths() {
 
     reference.kind = AssetKind::Audio;
     reference.source = AssetSourceKind::External;
-    let error = attach_scene_audio_reference(&project, "court-crisis-001", reference.clone())
+    let error = attach_scene_audio_reference(&project, "opening-scene", reference.clone())
         .expect_err("external audio ref should fail");
     assert!(matches!(
         error,
@@ -301,7 +298,7 @@ fn audio_reference_attach_rejects_non_audio_external_and_unsafe_paths() {
     reference.source = AssetSourceKind::Generated;
     reference.project_path = "../outside.wav".into();
     reference.export_path = "assets/generated/not-audio.wav".into();
-    let error = attach_scene_audio_reference(&project, "court-crisis-001", reference)
+    let error = attach_scene_audio_reference(&project, "opening-scene", reference)
         .expect_err("unsafe audio path should fail");
     assert!(matches!(
         error,
@@ -313,8 +310,8 @@ fn audio_reference_attach_rejects_non_audio_external_and_unsafe_paths() {
 #[test]
 fn ai_safety_policy_defaults_when_absent_and_roundtrips() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let loaded = load_project(&project).expect("load project");
     let policy = read_ai_safety_policy(&project).expect("read policy");
@@ -371,8 +368,8 @@ fn ai_safety_policy_defaults_when_absent_and_roundtrips() {
 #[test]
 fn generation_requests_build_from_project_source_and_reports_apply() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let world_request =
         build_world_generation_request(&project, "Expand the northern border crisis.")
@@ -385,7 +382,7 @@ fn generation_requests_build_from_project_source_and_reports_apply() {
         world_request
             .document
             .world_bible_markdown
-            .contains("dynasty")
+            .contains("regency council")
     );
 
     let mut world_document = world_request.document.clone();
@@ -410,18 +407,22 @@ fn generation_requests_build_from_project_source_and_reports_apply() {
     let story_request =
         build_story_craft_generation_request(&project, "Tighten the winter crisis.")
             .expect("build story request");
-    assert!(story_request.world_bible_markdown.contains("dynasty"));
+    assert!(
+        story_request
+            .world_bible_markdown
+            .contains("regency council")
+    );
     assert!(
         story_request
             .forbidden_facts
             .contains(&"The northern border cannot be solved off-screen.".into())
     );
-    assert!(!story_request.characters.is_empty());
+    assert!(story_request.characters.is_empty());
 
     let mut story_document = story_request.document.clone();
     story_document
         .style_guide_markdown
-        .push_str("\nKeep court reversals concrete.\n");
+        .push_str("\nKeep council reversals concrete.\n");
     apply_story_craft_generation_report(
         &project,
         StoryCraftGenerationReport {
@@ -436,11 +437,15 @@ fn generation_requests_build_from_project_source_and_reports_apply() {
     );
 
     let character_request =
-        build_character_generation_request(&project, "Design a grain envoy.", "court envoy")
+        build_character_generation_request(&project, "Design a grain envoy.", "civic envoy")
             .expect("build character request");
-    assert_eq!(character_request.role_hint, "court envoy");
-    assert!(character_request.story_bible_markdown.contains("throne"));
-    assert!(!character_request.existing_characters.is_empty());
+    assert_eq!(character_request.role_hint, "civic envoy");
+    assert!(
+        character_request
+            .story_bible_markdown
+            .contains("Open on an empty granary ledger.")
+    );
+    assert!(character_request.existing_characters.is_empty());
 
     apply_character_generation_report(
         &project,
@@ -462,8 +467,8 @@ fn generation_requests_build_from_project_source_and_reports_apply() {
 #[test]
 fn failed_generation_report_does_not_mutate_project_source() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let original = read_world_edit_document(&project).expect("read original");
     let mut rejected = original.clone();
@@ -493,8 +498,8 @@ fn failed_generation_report_does_not_mutate_project_source() {
 #[test]
 fn structured_edit_documents_reject_invalid_data_explicitly() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let error = update_world_edit_document(
         &project,
@@ -586,7 +591,7 @@ fn create_project_from_request_rejects_secret_markers() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("winter-regency");
     let mut request = sample_project_creation_request();
-    request.concept = "A court drama OPENAI_API_KEY=sk-test-secret-marker".into();
+    request.concept = "A civic drama OPENAI_API_KEY=sk-test-secret-marker".into();
 
     let error = create_project_from_request(&project, request, false)
         .expect_err("secret marker should fail explicitly");
@@ -602,9 +607,9 @@ fn create_project_from_request_rejects_secret_markers() {
 #[test]
 fn validate_fails_when_entry_scene_is_missing() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
-    fs::remove_file(project.join("scenes/court-crisis-001.scene.json")).expect("remove scene");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
+    fs::remove_file(project.join("scenes/opening-scene.scene.json")).expect("remove scene");
 
     let error = validate_project(&project).expect_err("missing scene should fail");
     assert!(matches!(error, StorageError::MissingFile(_)));
@@ -613,11 +618,11 @@ fn validate_fails_when_entry_scene_is_missing() {
 #[test]
 fn write_trace_writes_trace_id_and_latest() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
     let story = StoryState {
-        current_scene_key: "court-crisis-001".into(),
-        current_beat_id: Some("court-crisis-001-beat-001".into()),
+        current_scene_key: "opening-scene".into(),
+        current_beat_id: Some("opening-scene-beat-001".into()),
         completed_scene_keys: Vec::new(),
         turn: 1,
     };
@@ -626,17 +631,17 @@ fn write_trace_writes_trace_id_and_latest() {
         timestamp_ms: 1,
         reproducibility: ReproducibilityMetadata::local_mock(7).with_trace_id("trace-test"),
         player_input: Some("test".into()),
-        selected_choice: Some("raise-tax".into()),
-        action_intent: Some(ActionIntent::supported("raise_tax", vec!["test".into()])),
+        selected_choice: Some("continue".into()),
+        action_intent: Some(ActionIntent::supported("continue", vec!["test".into()])),
         rule_result: Some(RuntimeRuleResult {
-            action_type: "raise_tax".into(),
+            action_type: "continue".into(),
             delta_empty: true,
             state_committed: true,
             error: None,
         }),
         planner_result: Some(RuntimePlannerResult {
-            requested_action_type: "raise_tax".into(),
-            scene_key: Some("court-crisis-002".into()),
+            requested_action_type: "continue".into(),
+            scene_key: None,
             fallback_used: false,
             error: None,
         }),
@@ -666,8 +671,8 @@ fn write_trace_writes_trace_id_and_latest() {
 #[test]
 fn write_runtime_snapshot_roundtrips_snapshot_id_and_latest() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
     let snapshot = sample_runtime_snapshot("save-001");
 
     let snapshot_path = write_runtime_snapshot(&project, &snapshot).expect("write snapshot");
@@ -695,8 +700,8 @@ fn write_runtime_snapshot_roundtrips_snapshot_id_and_latest() {
 #[test]
 fn write_runtime_snapshot_rejects_unsafe_snapshot_id() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
     let snapshot = sample_runtime_snapshot("../escape");
 
     let error = write_runtime_snapshot(&project, &snapshot).expect_err("unsafe snapshot id");
@@ -708,15 +713,15 @@ fn write_runtime_snapshot_rejects_unsafe_snapshot_id() {
 #[test]
 fn sqlite_cache_migrates_and_rebuilds_from_folder_state() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
     write_trace(&project, &sample_runtime_trace("trace-cache-001")).expect("write trace");
 
     let summary = rebuild_sqlite_cache(&project).expect("rebuild cache");
 
     assert_eq!(summary.schema_version, SQLITE_CACHE_SCHEMA_VERSION);
-    assert_eq!(summary.project_id, "dynasty-embers");
-    assert_eq!(summary.title, "Dynasty Embers");
+    assert_eq!(summary.project_id, "starter-project");
+    assert_eq!(summary.title, "Starter Project");
     assert_eq!(summary.scene_count, 1);
     assert_eq!(summary.asset_count, 1);
     assert_eq!(summary.trace_count, 1);
@@ -757,8 +762,8 @@ fn sqlite_cache_migrates_and_rebuilds_from_folder_state() {
 #[test]
 fn project_loads_without_sqlite_cache() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     assert!(!sqlite_cache_path(&project).exists());
     assert_eq!(
@@ -770,23 +775,23 @@ fn project_loads_without_sqlite_cache() {
             .expect("load without cache")
             .game
             .title,
-        "Dynasty Embers"
+        "Starter Project"
     );
 }
 
 #[test]
 fn folder_source_takes_precedence_over_stale_sqlite_cache() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
     let original = rebuild_sqlite_cache(&project).expect("initial rebuild");
-    assert_eq!(original.title, "Dynasty Embers");
+    assert_eq!(original.title, "Starter Project");
 
     let game_path = project.join("game.toml");
     let game_toml = fs::read_to_string(&game_path).expect("read game");
     fs::write(
         &game_path,
-        game_toml.replace("title = \"Dynasty Embers\"", "title = \"Cache Ignored\""),
+        game_toml.replace("title = \"Starter Project\"", "title = \"Cache Ignored\""),
     )
     .expect("write game");
 
@@ -799,7 +804,7 @@ fn folder_source_takes_precedence_over_stale_sqlite_cache() {
             .expect("read stale cache")
             .expect("stale cache exists")
             .title,
-        "Dynasty Embers"
+        "Starter Project"
     );
     assert_eq!(
         rebuild_sqlite_cache(&project).expect("rebuild cache").title,
@@ -810,8 +815,8 @@ fn folder_source_takes_precedence_over_stale_sqlite_cache() {
 #[test]
 fn reference_imports_store_metadata_and_summary_only() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
 
     let path =
         write_reference_analysis(&project, &sample_reference_analysis()).expect("write reference");
@@ -828,8 +833,8 @@ fn reference_imports_store_metadata_and_summary_only() {
 #[test]
 fn reference_library_rejects_large_raw_copyrighted_text_fixture() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    create_demo_project(&project, false).expect("create");
+    let project = temp.path().join("starter-project");
+    create_starter_project(&project);
     let raw_path = project.join("references/user_imports/paid_novel_chapter.txt");
     fs::write(&raw_path, "paid novel chapter body ".repeat(400)).expect("write raw text");
 
@@ -841,50 +846,15 @@ fn reference_library_rejects_large_raw_copyrighted_text_fixture() {
     ));
 }
 
-#[test]
-fn committed_fixture_matches_generated_demo_semantics() {
-    let committed_fixture = repo_root().join("examples/dynasty-embers");
-    let temp = tempfile::tempdir().expect("tempdir");
-    let generated_fixture = temp.path().join("dynasty-embers");
-    create_demo_project(&generated_fixture, false).expect("generate fixture");
-
-    assert_fixture_files_match_generated_demo(&committed_fixture, &generated_fixture);
-
-    let committed =
-        canonical_project(load_project(&committed_fixture).expect("load committed fixture"));
-    let generated_loaded =
-        canonical_project(load_project(&generated_fixture).expect("load generated fixture"));
-    let generated_in_memory = canonical_project(dynasty_embers_project());
-
-    assert_eq!(committed, generated_loaded);
-    assert_eq!(committed, generated_in_memory);
-}
-
-#[test]
-fn committed_fixture_contains_no_generated_trace_json() {
-    let fixture = repo_root().join("examples/dynasty-embers");
-    let trace_files = trace_json_files(&fixture);
-    let trace_file_list = trace_files
-        .iter()
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    assert!(
-        trace_files.is_empty(),
-        "committed fixture contains generated trace json: {trace_file_list}"
-    );
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("repo root")
-}
-
 fn sample_runtime_snapshot(id: &str) -> RuntimeSnapshot {
-    let project = dynasty_embers_project();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let report = create_project_from_request(
+        temp.path().join("starter-project"),
+        sample_project_creation_request(),
+        false,
+    )
+    .expect("create starter project");
+    let project = report.project;
     RuntimeSnapshot {
         id: id.into(),
         timestamp_ms: 42,
@@ -900,8 +870,8 @@ fn sample_runtime_snapshot(id: &str) -> RuntimeSnapshot {
 
 fn sample_runtime_trace(id: &str) -> RuntimeTrace {
     let story = StoryState {
-        current_scene_key: "court-crisis-001".into(),
-        current_beat_id: Some("court-crisis-001-beat-001".into()),
+        current_scene_key: "opening-scene".into(),
+        current_beat_id: Some("opening-scene-beat-001".into()),
         completed_scene_keys: Vec::new(),
         turn: 1,
     };
@@ -910,17 +880,17 @@ fn sample_runtime_trace(id: &str) -> RuntimeTrace {
         timestamp_ms: 1,
         reproducibility: ReproducibilityMetadata::local_mock(7).with_trace_id(id),
         player_input: Some("test".into()),
-        selected_choice: Some("raise-tax".into()),
-        action_intent: Some(ActionIntent::supported("raise_tax", vec!["test".into()])),
+        selected_choice: Some("continue".into()),
+        action_intent: Some(ActionIntent::supported("continue", vec!["test".into()])),
         rule_result: Some(RuntimeRuleResult {
-            action_type: "raise_tax".into(),
+            action_type: "continue".into(),
             delta_empty: true,
             state_committed: true,
             error: None,
         }),
         planner_result: Some(RuntimePlannerResult {
-            requested_action_type: "raise_tax".into(),
-            scene_key: Some("court-crisis-002".into()),
+            requested_action_type: "continue".into(),
+            scene_key: None,
             fallback_used: false,
             error: None,
         }),
@@ -952,131 +922,29 @@ fn sample_generation_evidence(status: GenerationStatus) -> GenerationEvidence {
     }
 }
 
-fn assert_fixture_files_match_generated_demo(committed_fixture: &Path, generated_fixture: &Path) {
-    let committed_manifest = source_file_manifest(committed_fixture);
-    let mut generated_manifest = source_file_manifest(generated_fixture);
-    for optional_path in [PathBuf::from("safety/ai_safety_policy.toml")] {
-        if !committed_manifest.contains_key(&optional_path) {
-            generated_manifest.remove(&optional_path);
-        }
-    }
-    let committed_paths = committed_manifest.keys().collect::<Vec<_>>();
-    let generated_paths = generated_manifest.keys().collect::<Vec<_>>();
-
-    assert_eq!(committed_paths, generated_paths);
-    for (relative_path, generated_bytes) in generated_manifest {
-        let committed_bytes = committed_manifest
-            .get(&relative_path)
-            .unwrap_or_else(|| panic!("committed fixture missing {}", relative_path.display()));
-        assert!(
-            committed_bytes == &generated_bytes,
-            "fixture source file drifted from generated demo: {}",
-            relative_path.display()
-        );
-    }
-}
-
-fn canonical_project(mut project: plotforge_schema::ProjectData) -> plotforge_schema::ProjectData {
-    project
-        .resources
-        .sort_by(|left, right| left.key.cmp(&right.key));
-    project
-        .characters
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    project.rules.sort_by(|left, right| left.id.cmp(&right.id));
-    project
-        .scenes
-        .sort_by(|left, right| left.key.cmp(&right.key));
-    project
-        .story_craft
-        .plot_threads
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    project
-        .story_craft
-        .active_promises
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    project
-        .story_craft
-        .character_arcs
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    project
-        .story_craft
-        .review_notes
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    project
-        .story_craft
-        .bible
-        .reference_modules
-        .sort_by(|left, right| left.id.cmp(&right.id));
-    project.story_craft.emotional_arc.sort_by(|left, right| {
-        left.scene_key
-            .cmp(&right.scene_key)
-            .then_with(|| left.target_emotion.cmp(&right.target_emotion))
-            .then_with(|| left.intensity.cmp(&right.intensity))
-    });
-    project
-}
-
-fn source_file_manifest(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
-    let mut manifest = BTreeMap::new();
-    collect_source_files(root, root, &mut manifest);
-    manifest
-}
-
-fn collect_source_files(root: &Path, dir: &Path, manifest: &mut BTreeMap<PathBuf, Vec<u8>>) {
-    let mut entries = fs::read_dir(dir)
-        .unwrap_or_else(|error| panic!("read fixture directory {}: {error}", dir.display()))
-        .map(|entry| entry.expect("fixture directory entry").path())
-        .collect::<Vec<_>>();
-    entries.sort();
-
-    for path in entries {
-        if path.is_dir() {
-            collect_source_files(root, &path, manifest);
-            continue;
-        }
-
-        let relative_path = path
-            .strip_prefix(root)
-            .unwrap_or_else(|error| panic!("strip fixture prefix {}: {error}", path.display()))
-            .to_path_buf();
-        let bytes = fs::read(&path)
-            .unwrap_or_else(|error| panic!("read fixture file {}: {error}", path.display()));
-        manifest.insert(relative_path, bytes);
-    }
-}
-
-fn trace_json_files(root: &Path) -> Vec<PathBuf> {
-    source_file_manifest(root)
-        .into_keys()
-        .filter(|path| {
-            path.components()
-                .any(|component| component.as_os_str() == "traces")
-                && path
-                    .extension()
-                    .is_some_and(|extension| extension == "json")
-        })
-        .collect()
-}
-
 fn sample_project_creation_request() -> ProjectCreationRequest {
     ProjectCreationRequest {
         template: ProjectTemplateId::HistoricalCrisis,
-        concept: "A regency court must survive a winter coup.".into(),
-        visual_style: "ink wash court drama".into(),
+        concept: "A regency council must survive a winter coup.".into(),
+        visual_style: "ink wash civic drama".into(),
         voice_enabled: true,
         initial_scene_request: "Open on an empty granary ledger.".into(),
     }
+}
+
+fn create_starter_project(project_path: &std::path::Path) {
+    create_project_from_request(project_path, sample_project_creation_request(), false)
+        .expect("create starter project");
 }
 
 fn sample_character(id: &str) -> Character {
     Character {
         id: id.into(),
         name: "Regent".into(),
-        role: "Temporary court authority".into(),
+        role: "Temporary civic authority".into(),
         traits: vec!["cautious".into(), "clear".into()],
         visual_card: "ink portrait with winter robes".into(),
-        voice_card: "measured court speech".into(),
+        voice_card: "measured civic speech".into(),
         portrait_request: None,
     }
 }

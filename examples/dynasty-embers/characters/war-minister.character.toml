@@ -1,9 +1,0 @@
-id = "war-minister"
-name = "Minister of War"
-role = "Military logistics"
-traits = [
-    "urgent",
-    "pragmatic",
-]
-visual_card = "Minister of War, restrained historical portrait"
-voice_card = "Minister of War, concise court speech"

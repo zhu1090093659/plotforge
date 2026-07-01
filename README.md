@@ -30,7 +30,6 @@ The current repository contains the MVP foundation:
 - A folder-project format where source files are the truth and caches are rebuildable.
 - A Vite/React/Tailwind Creator Desktop workspace with a thin Tauri bridge.
 - A static no-network player package under `apps/player-web/static`.
-- The committed demo fixture at `examples/dynasty-embers`.
 - Local export profiles, AI usage disclosure files, package hashes, and Steam Submission Kit drafts.
 - A local-only Workshop package schema and validator.
 
@@ -55,24 +54,20 @@ The creator writes the world. The engine keeps it honest.
 
 Generated contracts live under `contracts/`. They come from Rust. They are not hand-maintained.
 
-## Try The Demo
-
-```bash
-cargo run -p plotforge-cli -- check examples/dynasty-embers
-cargo run -p plotforge-cli -- play examples/dynasty-embers --once
-cargo run -p plotforge-cli -- trace inspect examples/dynasty-embers/traces/latest.json
-cargo run -p plotforge-cli -- export static examples/dynasty-embers --out dist/dynasty-embers
-python3 scripts/qa/static_export_http_smoke.py --export-dir dist/dynasty-embers
-```
-
-Create a fresh demo in a temp directory:
+## Create A Starter Project
 
 ```bash
 tmp="$(mktemp -d)"
-cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
-cargo run -p plotforge-cli -- check "$tmp/dynasty-embers"
-cargo run -p plotforge-cli -- play "$tmp/dynasty-embers" --once
-cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+cargo run -p plotforge-cli -- new project \
+  --path "$tmp/starter-project" \
+  --force \
+  --concept "A local starter project." \
+  --visual-style "clear readable test style" \
+  --initial-scene "A creator opens a fresh PlotForge project."
+cargo run -p plotforge-cli -- check "$tmp/starter-project"
+cargo run -p plotforge-cli -- play "$tmp/starter-project" --once
+cargo run -p plotforge-cli -- trace inspect "$tmp/starter-project/traces/latest.json"
+cargo run -p plotforge-cli -- export static "$tmp/starter-project" --out "$tmp/export"
 python3 scripts/qa/static_export_http_smoke.py --export-dir "$tmp/export"
 ```
 

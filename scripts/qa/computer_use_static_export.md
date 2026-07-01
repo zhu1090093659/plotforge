@@ -7,8 +7,15 @@ This runbook verifies the exported PlotForge player in a real desktop browser wi
 Run from the repository root:
 
 ```bash
-cargo run -p plotforge-cli -- export static examples/dynasty-embers --out dist/dynasty-embers
-python3 -m http.server 4173 --directory dist/dynasty-embers
+tmp="$(mktemp -d)"
+cargo run -p plotforge-cli -- new project \
+  --path "$tmp/starter-project" \
+  --force \
+  --concept "A local starter project." \
+  --visual-style "clear readable test style" \
+  --initial-scene "A creator opens a fresh PlotForge project."
+cargo run -p plotforge-cli -- export static "$tmp/starter-project" --out dist/starter-project
+python3 -m http.server 4173 --directory dist/starter-project
 ```
 
 Use localhost HTTP instead of `file://` because the player loads `game.json` through `fetch("./game.json")`.
@@ -18,10 +25,10 @@ Use localhost HTTP instead of `file://` because the player loads `game.json` thr
 1. Open `http://127.0.0.1:4173` in a local browser.
 2. Call `get_app_state` for the browser and inspect the accessibility tree.
 3. Verify visible content:
-   - Page title or heading: `Dynasty Embers`
-   - Scene title: `The Red Deficit Ledger`
-   - Initial beat text mentions the border army payroll crisis
-   - At least three choice buttons are visible
+   - Page title or heading: `Starter Project`
+   - Scene title: `Opening Scene`
+   - Initial beat text mentions the creator opening a fresh project
+   - At least one choice button is visible
 4. Click a choice by accessibility element index when possible. Use pixel coordinates only as a fallback.
 5. Call `get_app_state` again and verify the beat text changes to the clicked choice's dramatic purpose.
 

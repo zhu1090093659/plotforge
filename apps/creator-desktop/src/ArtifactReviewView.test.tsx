@@ -15,7 +15,7 @@ describe("ArtifactReviewView", () => {
     render(
       <ArtifactReviewView
         projectSummary={summarizeProject(demoProjectData)}
-        loadedPath="/tmp/dynasty-embers"
+        loadedPath="/tmp/starter-project"
         sourceFiles={[
           { path: "game.toml", kind: "toml", bytes: 120, editable: false },
           { path: "world/world.md", kind: "markdown", bytes: 80, editable: true },
@@ -51,7 +51,7 @@ describe("ArtifactReviewView", () => {
     expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
     expect(screen.getByText("/tmp/export.zip")).toBeTruthy();
     // AssetMaintenanceView is now rendered directly (ReactNode injection removed); slot text no longer applies.
-    expect(screen.queryByText("Court Crisis Pressure Bundle")).toBeNull();
+    expect(screen.queryByText("Council Crisis Pressure Bundle")).toBeNull();
     expect(screen.queryByText("Approve Bundle")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
       /automatic publishing|approval guarantee|legal guarantee|Steam upload automation|real ACP execution/i,

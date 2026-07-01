@@ -15,7 +15,7 @@ import type {
   SourceFileSummary,
 } from "./tauriBridge";
 
-export const demoProjectPath = "examples/dynasty-embers";
+export const demoProjectPath = "/tmp/starter-project";
 
 export const demoExportProfiles = [
   {
@@ -166,11 +166,11 @@ export const demoAiSafetyPolicy: AiSafetyPolicy = {
 
 export const demoAssetRecords: AssetRecord[] = [
   {
-    id: "asset-image-court-crisis-001",
+    id: "asset-image-opening-scene",
     kind: "image",
     source: "generated",
-    project_path: "assets/generated/court-crisis-001.png",
-    export_path: "assets/generated/court-crisis-001.png",
+    project_path: "assets/generated/opening-scene.png",
+    export_path: "assets/generated/opening-scene.png",
     content_hash:
       "sha256:2c60d8f6f2f16f4ff6b5a5e4f7a20c2c6a18f3c4d9d3b7319dd6127a98d8a501",
     hash_algorithm: "sha256",
@@ -178,14 +178,14 @@ export const demoAssetRecords: AssetRecord[] = [
     provider_metadata: {
       provider: "plotforge-local-mock",
       model: "plotforge-local-mock-image-v1",
-      request_id: "mock-image-court-crisis-001",
-      prompt_hash: "sha256:demo-court-crisis-prompt",
+      request_id: "mock-image-opening-scene",
+      prompt_hash: "sha256:demo-opening-scene-prompt",
       fallback_used: false,
     },
     references: [
       {
         reference_kind: "scene",
-        reference_id: "court-crisis-001",
+        reference_id: "opening-scene",
         slot: "background_asset",
       },
     ],
@@ -219,11 +219,11 @@ export const demoAssetRecords: AssetRecord[] = [
 
 export const demoProjectData: ProjectData = {
   game: {
-    id: "dynasty-embers",
-    title: "Dynasty Embers",
+    id: "starter-project",
+    title: "Starter Project",
     version: "0.1.0",
-    description: "Historical crisis simulation about a collapsing dynasty.",
-    entry_scene: "court-crisis-001",
+    description: "Historical crisis simulation about a city under pressure.",
+    entry_scene: "opening-scene",
     run_seed: 7,
   },
   resources: [
@@ -237,15 +237,15 @@ export const demoProjectData: ProjectData = {
     triggered_events: [],
   },
   story_state: {
-    current_scene_key: "court-crisis-001",
-    current_beat_id: "court-crisis-001-beat-001",
+    current_scene_key: "opening-scene",
+    current_beat_id: "opening-scene-beat-001",
     completed_scene_keys: [],
     turn: 0,
   },
   story_craft: {
     bible: {
-      genre_promise: "A desperate emperor weighs survival against legitimacy.",
-      central_question: "Can the dynasty survive without becoming what it fears?",
+      genre_promise: "A desperate mayor weighs survival against legitimacy.",
+      central_question: "Can the city survive without becoming what it fears?",
       target_emotions: ["pressure", "suspicion", "resolve"],
       core_foreshadowing: ["Missing silver", "Border arrears"],
       emotional_contract: ["hard tradeoffs", "visible consequences"],
@@ -255,7 +255,7 @@ export const demoProjectData: ProjectData = {
         breather_scene_frequency: 3,
       },
       hook_strategy: {
-        primary_hook: "Contradictory court reports expose a hidden bargain.",
+        primary_hook: "Contradictory civic reports expose a hidden bargain.",
         recurring_hook_patterns: ["ledger mismatch", "factional counsel"],
       },
       reversal_strategy: {
@@ -270,12 +270,12 @@ export const demoProjectData: ProjectData = {
         id: "missing-silver",
         text: "The missing silver will return as political leverage.",
         status: "active",
-        introduced_at: "court-crisis-001",
+        introduced_at: "opening-scene",
       },
     ],
     emotional_arc: [
       {
-        scene_key: "court-crisis-001",
+        scene_key: "opening-scene",
         target_emotion: "pressure",
         intensity: 7,
       },
@@ -287,17 +287,17 @@ export const demoProjectData: ProjectData = {
         promise: "The report hides a factional bargain.",
         thread_type: "political",
         status: "escalating",
-        introduced_at: "court-crisis-001",
+        introduced_at: "opening-scene",
         related_characters: ["censor"],
         related_world_flags: [],
-        last_update: "court-crisis-001",
+        last_update: "opening-scene",
       },
     ],
     character_arcs: [],
     review_notes: [
       {
         id: "opening-stakes",
-        scene_key: "court-crisis-001",
+        scene_key: "opening-scene",
         severity: "warning",
         message: "The first choice needs clearer stakes.",
         resolved: false,
@@ -307,7 +307,7 @@ export const demoProjectData: ProjectData = {
   characters: [
     {
       id: "censor",
-      name: "Court Censor",
+      name: "Civic Auditor",
       role: "Moral and legal critic",
       traits: ["severe", "public-minded"],
       visual_card: "ink portrait",
@@ -319,7 +319,7 @@ export const demoProjectData: ProjectData = {
       name: "Minister of War",
       role: "Military logistics",
       traits: ["urgent", "pragmatic"],
-      visual_card: "armored court official",
+      visual_card: "armored civic official",
       voice_card: "terse",
       portrait_request: null,
     },
@@ -334,19 +334,19 @@ export const demoProjectData: ProjectData = {
   ],
   scenes: [
     {
-      key: "court-crisis-001",
+      key: "opening-scene",
       title: "Tax Resistance Memorials",
-      location: "Forbidden City",
+      location: "Civic Hall",
       dramatic_purpose: "Expose the first crisis.",
       hook: "The treasury report contradicts the war ledger.",
-      background_asset: "assets/generated/court-crisis-001.png",
+      background_asset: "assets/generated/opening-scene.png",
       audio_refs: [],
       character_ids: ["censor", "war-minister"],
       plot_thread_updates: {},
-      entry_beat_id: "court-crisis-001-beat-001",
+      entry_beat_id: "opening-scene-beat-001",
       beats: [
         {
-          id: "court-crisis-001-beat-001",
+          id: "opening-scene-beat-001",
           text: "Memorials arrive before dawn, each asking for silver the treasury cannot admit is missing.",
           speaker: "censor",
           line_delivery: "clipped formal pressure",
@@ -364,15 +364,15 @@ export const demoProjectData: ProjectData = {
               id: "raise-tax",
               label: "Raise emergency taxes",
               action_type: "raise_tax",
-              input_terms: ["raise", "tax", "levy", "加征", "辽饷"],
+              input_terms: ["raise", "tax", "levy", "加征", "港税"],
               dramatic_purpose: "Trade public order for treasury relief.",
               change_scene: true,
             },
           ],
-          next: { kind: "beat", payload: "court-crisis-001-beat-002" },
+          next: { kind: "beat", payload: "opening-scene-beat-002" },
         },
         {
-          id: "court-crisis-001-beat-002",
+          id: "opening-scene-beat-002",
           text: "The war minister points at the unpaid garrison columns and waits for an order.",
           speaker: "war-minister",
           line_delivery: "terse urgency",
@@ -382,7 +382,7 @@ export const demoProjectData: ProjectData = {
               id: "raise-tax",
               label: "Raise emergency taxes",
               action_type: "raise_tax",
-              input_terms: ["raise", "tax", "levy", "加征", "辽饷"],
+              input_terms: ["raise", "tax", "levy", "加征", "港税"],
               dramatic_purpose: "Trade public order for treasury relief.",
               change_scene: true,
             },
@@ -405,15 +405,15 @@ export const demoProjectData: ProjectData = {
   visual_bible: {
     style_cards: [
       {
-        id: "winter-court-ink",
-        title: "Winter court ink wash",
+        id: "winter-council-ink",
+        title: "Winter council ink wash",
         summary:
           "Cold parchment, controlled brush texture, and restrained imperial color.",
         prompt:
-          "Winter court chamber in restrained ink wash, cold parchment, controlled brush texture, muted imperial color.",
+          "Winter council chamber in restrained ink wash, cold parchment, controlled brush texture, muted imperial color.",
         palette: ["soot", "aged jade", "muted vermilion"],
-        tags: ["court", "ink", "historical"],
-        reference_asset_ids: ["asset-image-court-crisis-001"],
+        tags: ["council", "ink", "historical"],
+        reference_asset_ids: ["asset-image-opening-scene"],
       },
       {
         id: "official-portrait",
@@ -431,12 +431,12 @@ export const demoProjectData: ProjectData = {
   audio_bible: {
     voice_cards: [
       {
-        id: "court-censor",
-        title: "Court Censor",
+        id: "council-censor",
+        title: "Civic Auditor",
         summary: "Precise, public-minded, and clipped under pressure.",
-        voice: "precise formal court diction",
+        voice: "precise formal council diction",
         delivery: "clipped and public-minded under pressure",
-        tags: ["voice", "court", "discipline"],
+        tags: ["voice", "council", "discipline"],
         sample_text:
           "Your Majesty, the ledgers do not accuse by accident.",
         reference_asset_ids: ["asset-voice-censor-001"],
@@ -462,7 +462,7 @@ export const demoSourceFiles: SourceFileSummary[] = [
   { path: "story/story_bible.md", kind: "markdown", bytes: 88, editable: true },
   { path: "rules/rules.toml", kind: "toml", bytes: 420, editable: false },
   {
-    path: "scenes/court-crisis-001.scene.json",
+    path: "scenes/opening-scene.scene.json",
     kind: "json",
     bytes: 1024,
     editable: false,
@@ -475,14 +475,14 @@ export const demoSourceContents: Record<string, SourceFileContent> = {
     kind: "toml",
     editable: false,
     content:
-      'id = "dynasty-embers"\ntitle = "Dynasty Embers"\nentry_scene = "court-crisis-001"\n',
+      'id = "starter-project"\ntitle = "Starter Project"\nentry_scene = "opening-scene"\n',
   },
   "world/world.md": {
     path: "world/world.md",
     kind: "markdown",
     editable: true,
     content:
-      "# World Bible\n\nThe dynasty is still standing, but every resource is under pressure.\n",
+      "# World Bible\n\nThe city is still standing, but every resource is under pressure.\n",
   },
   "world/forbidden_facts.json": {
     path: "world/forbidden_facts.json",
@@ -495,7 +495,7 @@ export const demoSourceContents: Record<string, SourceFileContent> = {
     kind: "markdown",
     editable: true,
     content:
-      "# Story Bible\n\nThe throne must trade stability, silver, and legitimacy to survive.\n",
+      "# Story Bible\n\nThe council must trade stability, silver, and legitimacy to survive.\n",
   },
   "rules/rules.toml": {
     path: "rules/rules.toml",
@@ -503,11 +503,11 @@ export const demoSourceContents: Record<string, SourceFileContent> = {
     editable: false,
     content: '[[rules]]\nid = "raise-tax"\naction_type = "raise_tax"\n',
   },
-  "scenes/court-crisis-001.scene.json": {
-    path: "scenes/court-crisis-001.scene.json",
+  "scenes/opening-scene.scene.json": {
+    path: "scenes/opening-scene.scene.json",
     kind: "json",
     editable: false,
-    content: '{\n  "key": "court-crisis-001",\n  "title": "Tax Resistance Memorials"\n}\n',
+    content: '{\n  "key": "opening-scene",\n  "title": "Tax Resistance Memorials"\n}\n',
   },
 };
 
@@ -546,7 +546,7 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
       },
       planner_result: {
         requested_action_type: "raise_tax",
-        scene_key: "court-crisis-001",
+        scene_key: "opening-scene",
         fallback_used: false,
         error: null,
       },
@@ -569,7 +569,7 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
         {
           stage: "plan_scene",
           status: "completed",
-          message: "planner returned scene `court-crisis-001`",
+          message: "planner returned scene `opening-scene`",
         },
         {
           stage: "commit_state",
@@ -591,13 +591,13 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
       },
       story_state_before: demoProjectData.story_state,
       story_state_after: {
-        current_scene_key: "court-crisis-001",
-        current_beat_id: "court-crisis-001-beat-001",
-        completed_scene_keys: ["court-crisis-001"],
+        current_scene_key: "opening-scene",
+        current_beat_id: "opening-scene-beat-001",
+        completed_scene_keys: ["opening-scene"],
         turn: 1,
       },
       narrative_review: {
-        scene_key: "court-crisis-001",
+        scene_key: "opening-scene",
         score: 100,
         hook_score: 100,
         pacing_score: 100,
@@ -611,10 +611,10 @@ export function demoPlayOnceReport(playerInput: string): PlayOnceReport {
         {
           reference: {
             reference_kind: "scene",
-            reference_id: "court-crisis-001",
+            reference_id: "opening-scene",
             slot: "background_asset",
           },
-          project_path: "assets/generated/court-crisis-001.png",
+          project_path: "assets/generated/opening-scene.png",
         },
       ],
       errors: [],

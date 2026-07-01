@@ -1949,7 +1949,7 @@ Write runtime trace.
 
 ```text
 Commands:
-- plotforge new demo
+- plotforge new project
 - plotforge check
 - plotforge play
 - plotforge trace inspect
@@ -1967,4 +1967,3 @@ Commands:
 - Steam Workshop: https://partner.steamgames.com/doc/features/workshop
 - Tauri Documentation: https://tauri.app/
 - Cargo Workspaces: https://doc.rust-lang.org/cargo/reference/workspaces.html
-

@@ -12,7 +12,7 @@ function renderView() {
   const view = render(
     <AgentMeshView
       projectSummary={summarizeProject(demoProjectData)}
-      loadedPath="/tmp/dynasty-embers"
+      loadedPath="/tmp/starter-project"
       runtimeName="HTTP dev bridge"
       sourceFiles={[
         { path: "game.toml", kind: "toml", bytes: 120, editable: false },

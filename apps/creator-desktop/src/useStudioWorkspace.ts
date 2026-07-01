@@ -90,7 +90,7 @@ export function useStudioWorkspace({
   );
   const [editorContent, setEditorContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(initialProjectPath));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -303,9 +303,13 @@ export function useStudioWorkspace({
     }
   }
 
-  // Auto-load on mount
+  // Auto-load only when an explicit path is supplied by tests or deep links.
   useEffect(() => {
-    void loadProject(initialProjectPath);
+    if (initialProjectPath) {
+      void loadProject(initialProjectPath);
+    } else {
+      setLoading(false);
+    }
   }, [initialProjectPath]);
 
   // Return ----------------------------------------------------------------
@@ -355,6 +359,9 @@ function attachBibles(
 }
 
 export function defaultNewProjectPath(projectPath: string) {
+  if (!projectPath.trim()) {
+    return "plotforge-project";
+  }
   return `${trimTrailingSlashes(projectPath)}-new`;
 }
 

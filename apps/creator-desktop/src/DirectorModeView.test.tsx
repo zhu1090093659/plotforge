@@ -21,7 +21,7 @@ describe("DirectorModeView", () => {
     renderView(
       <DirectorModeView
         projectData={demoProjectData}
-        loadedPath="/tmp/dynasty-embers"
+        loadedPath="/tmp/starter-project"
         input="Make the council pressure sharper."
         running={false}
         report={null}
@@ -45,7 +45,7 @@ describe("DirectorModeView", () => {
     expect(screen.getByLabelText("Direction Bar")).toBeTruthy();
     expect(screen.getByLabelText("Decision Queue")).toBeTruthy();
     expect(screen.getByText("Creative Goal")).toBeTruthy();
-    expect(screen.getByText("Tax Resistance Memorials / Forbidden City"))
+    expect(screen.getByText("Tax Resistance Memorials / Civic Hall"))
       .toBeTruthy();
     expect(screen.getByText("Hear one more minister")).toBeTruthy();
     expect(screen.getByText("Raise emergency taxes")).toBeTruthy();
@@ -64,7 +64,7 @@ describe("DirectorModeView", () => {
     renderView(
       <DirectorModeView
         projectData={demoProjectData}
-        loadedPath="/tmp/dynasty-embers"
+        loadedPath="/tmp/starter-project"
         input="Make the council pressure sharper."
         running={false}
         report={null}
@@ -94,7 +94,7 @@ describe("DirectorModeView", () => {
     renderView(
       <DirectorModeView
         projectData={demoProjectData}
-        loadedPath="/tmp/dynasty-embers"
+        loadedPath="/tmp/starter-project"
         input="raise emergency taxes"
         running={false}
         report={report}
@@ -117,13 +117,13 @@ describe("DirectorModeView", () => {
     const report = demoPlayOnceReport("continue");
     report.trace.story_state_after = {
       ...report.trace.story_state_after,
-      current_beat_id: "court-crisis-001-beat-002",
+      current_beat_id: "opening-scene-beat-002",
     };
 
     renderView(
       <DirectorModeView
         projectData={demoProjectData}
-        loadedPath="/tmp/dynasty-embers"
+        loadedPath="/tmp/starter-project"
         input="continue"
         running={false}
         report={report}

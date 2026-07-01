@@ -42,14 +42,20 @@ def main() -> int:
 
     manifest = json.loads(game_json.read_text(encoding="utf-8"))
     ai_usage = json.loads(ai_usage_json.read_text(encoding="utf-8"))
-    assert manifest["game"]["title"] == "Dynasty Embers"
-    assert manifest["entry_scene"] == "court-crisis-001"
+    assert manifest["game"]["title"]
+    assert manifest["entry_scene"]
     assert manifest["profile"]["id"] == "static-web"
     assert manifest["profile"]["requires_network_at_runtime"] is False
     assert manifest["ai_usage_manifest_path"] == "ai-usage.json"
     assert len(manifest["scenes"]) >= 1
-    assert len(manifest["scenes"][0]["beats"][0]["choices"]) >= 3
-    assert ai_usage["project_id"] == "dynasty-embers"
+    entry_scene = next(
+        (scene for scene in manifest["scenes"] if scene["key"] == manifest["entry_scene"]),
+        None,
+    )
+    assert entry_scene is not None
+    assert len(entry_scene["beats"]) >= 1
+    assert len(entry_scene["beats"][0]["choices"]) >= 1
+    assert ai_usage["project_id"] == manifest["game"]["id"]
     assert ai_usage["export_profile"]["id"] == "static-web"
     assert ai_usage["external_model_calls_during_export"] is False
     assert ai_usage["provider_credentials_included"] is False
@@ -80,7 +86,7 @@ def main() -> int:
         assert 'href="./styles.css"' in index
         assert 'data-field="progress"' in index
         assert 'data-field="outcome"' in index
-        assert "Dynasty Embers" in game
+        assert manifest["game"]["title"] in game
         assert "static-web" in ai_usage_text
         assert "bootPlayer" in player
         assert ".pf-player" in styles

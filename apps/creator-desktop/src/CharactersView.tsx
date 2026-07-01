@@ -280,7 +280,7 @@ function ManualCharacterForm({
       <TextInput
         label="Character id"
         ariaLabel="New character id"
-        placeholder="e.g. court-envoy"
+        placeholder="e.g. council-envoy"
         value={draft.id}
         onChange={(value) => onDraftChange({ ...draft, id: value })}
       />
@@ -294,7 +294,7 @@ function ManualCharacterForm({
       <TextInput
         label="Role"
         ariaLabel="New character role"
-        placeholder="e.g. Court Envoy, Antagonist"
+        placeholder="e.g. Council Envoy, Antagonist"
         value={draft.role}
         onChange={(value) => onDraftChange({ ...draft, role: value })}
       />
@@ -369,7 +369,7 @@ function AiCharacterForm({
       <TextInput
         label="Role hint"
         ariaLabel="Character generation role hint"
-        placeholder="e.g. court envoy"
+        placeholder="e.g. council envoy"
         value={roleHint}
         onChange={onRoleHintChange}
         className="min-w-56"

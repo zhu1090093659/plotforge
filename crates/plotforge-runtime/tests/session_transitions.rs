@@ -8,10 +8,10 @@ use plotforge_job::JobClock;
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
 use plotforge_schema::{
     ActionIntentStatus, AgentRole, AssetKind, AssetSourceKind, Beat, BeatNext, Choice, Effect,
-    MediaAssetReference, NarrativeReview, REDACTED_TRACE_SECRET, ReproducibilityMetadata, Rule,
-    RuntimeTraceStage, RuntimeTraceStageStatus, Scene,
+    GameProject, MediaAssetReference, NarrativeReview, ProjectData, REDACTED_TRACE_SECRET,
+    ReproducibilityMetadata, ResourceDefinition, Rule, RuntimeTraceStage, RuntimeTraceStageStatus,
+    Scene, StoryCraftState, StoryState, WorldState,
 };
-use plotforge_storage::dynasty_embers_project;
 
 #[derive(Clone, Debug)]
 struct FakeClock {
@@ -26,22 +26,22 @@ impl JobClock for FakeClock {
 
 #[test]
 fn continue_action_does_not_advance_scene_or_turn() {
-    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), ErrorPlanner);
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), ErrorPlanner);
 
     let step = session.play_once("听一位大臣继续陈情").expect("play");
 
-    assert_eq!(step.scene.key, "court-crisis-001");
+    assert_eq!(step.scene.key, "opening-scene");
     assert_eq!(
         step.scene.background_asset,
-        "assets/generated/court-crisis-001.png"
+        "assets/generated/opening-scene.png"
     );
     assert_eq!(
         step.trace.story_state_before.current_beat_id.as_deref(),
-        Some("court-crisis-001-beat-001")
+        Some("opening-scene-beat-001")
     );
     assert_eq!(
         step.trace.story_state_after.current_beat_id.as_deref(),
-        Some("court-crisis-001-beat-002")
+        Some("opening-scene-beat-002")
     );
     assert_eq!(step.trace.story_state_after.turn, 0);
     assert!(step.trace.story_state_after.completed_scene_keys.is_empty());
@@ -56,7 +56,7 @@ fn continue_action_does_not_advance_scene_or_turn() {
     assert_eq!(step.trace.media_references.len(), 1);
     assert_eq!(
         step.trace.media_references[0].project_path,
-        "assets/generated/court-crisis-001.png"
+        "assets/generated/opening-scene.png"
     );
     assert!(step.trace.diagnostics.iter().any(|diagnostic| {
         diagnostic.stage == RuntimeTraceStage::PlanScene
@@ -67,13 +67,13 @@ fn continue_action_does_not_advance_scene_or_turn() {
 
 #[test]
 fn runtime_trace_records_scene_and_current_beat_audio_references() {
-    let mut project = dynasty_embers_project();
+    let mut project = runtime_test_project();
     project.scenes[0].audio_refs.push(MediaAssetReference {
         asset_id: None,
         kind: AssetKind::Audio,
         source: AssetSourceKind::Generated,
-        project_path: "assets/generated/audio/court-crisis-001-scene.wav".into(),
-        export_path: "assets/generated/audio/court-crisis-001-scene.wav".into(),
+        project_path: "assets/generated/audio/opening-scene-scene.wav".into(),
+        export_path: "assets/generated/audio/opening-scene-scene.wav".into(),
         slot: "scene_audio".into(),
     });
     project.scenes[0].beats[0]
@@ -82,8 +82,8 @@ fn runtime_trace_records_scene_and_current_beat_audio_references() {
             asset_id: None,
             kind: AssetKind::Audio,
             source: AssetSourceKind::Generated,
-            project_path: "assets/generated/audio/court-crisis-001-beat-001.wav".into(),
-            export_path: "assets/generated/audio/court-crisis-001-beat-001.wav".into(),
+            project_path: "assets/generated/audio/opening-scene-beat-001.wav".into(),
+            export_path: "assets/generated/audio/opening-scene-beat-001.wav".into(),
             slot: "narration".into(),
         });
     project.scenes[0].beats[1]
@@ -92,8 +92,8 @@ fn runtime_trace_records_scene_and_current_beat_audio_references() {
             asset_id: None,
             kind: AssetKind::Audio,
             source: AssetSourceKind::Generated,
-            project_path: "assets/generated/audio/court-crisis-001-beat-002.wav".into(),
-            export_path: "assets/generated/audio/court-crisis-001-beat-002.wav".into(),
+            project_path: "assets/generated/audio/opening-scene-beat-002.wav".into(),
+            export_path: "assets/generated/audio/opening-scene-beat-002.wav".into(),
             slot: "narration".into(),
         });
     let mut session = RuntimeSession::with_scene_planner(project, ErrorPlanner);
@@ -102,23 +102,23 @@ fn runtime_trace_records_scene_and_current_beat_audio_references() {
 
     assert!(step.trace.media_references.iter().any(|reference| {
         reference.reference.slot == "scene_audio"
-            && reference.project_path == "assets/generated/audio/court-crisis-001-scene.wav"
+            && reference.project_path == "assets/generated/audio/opening-scene-scene.wav"
     }));
     assert!(step.trace.media_references.iter().any(|reference| {
-        reference.reference.slot == "beat_audio:court-crisis-001-beat-002:narration"
-            && reference.project_path == "assets/generated/audio/court-crisis-001-beat-002.wav"
+        reference.reference.slot == "beat_audio:opening-scene-beat-002:narration"
+            && reference.project_path == "assets/generated/audio/opening-scene-beat-002.wav"
     }));
     assert!(!step.trace.media_references.iter().any(|reference| {
-        reference.reference.slot == "beat_audio:court-crisis-001-beat-001:narration"
-            || reference.project_path == "assets/generated/audio/court-crisis-001-beat-001.wav"
+        reference.reference.slot == "beat_audio:opening-scene-beat-001:narration"
+            || reference.project_path == "assets/generated/audio/opening-scene-beat-001.wav"
     }));
 }
 
 #[test]
 fn multiple_turns_accumulate_world_state_and_completed_scenes() {
-    let mut session = RuntimeSession::new(dynasty_embers_project());
+    let mut session = RuntimeSession::new(runtime_test_project());
 
-    let first = session.play_once("朕决定加征辽饷").expect("first turn");
+    let first = session.play_once("决定加征港税").expect("first turn");
     let second = session
         .play_once("先拨内帑稳住边军军饷")
         .expect("second turn");
@@ -131,18 +131,18 @@ fn multiple_turns_accumulate_world_state_and_completed_scenes() {
 
 #[test]
 fn snapshot_restore_continues_deterministic_multi_turn_session() {
-    let project = dynasty_embers_project();
+    let project = runtime_test_project();
     let mut uninterrupted =
         RuntimeSession::with_scene_planner(project.clone(), FakePlanner::success());
-    uninterrupted.play_once("朕决定加征辽饷").expect("first");
+    uninterrupted.play_once("决定加征港税").expect("first");
     let expected_second = uninterrupted
         .play_once("先拨内帑稳住边军军饷")
         .expect("second");
 
     let mut original = RuntimeSession::with_scene_planner(project.clone(), FakePlanner::success());
-    original.play_once("朕决定加征辽饷").expect("first");
+    original.play_once("决定加征港税").expect("first");
     let snapshot = original.snapshot("save-001", 42);
-    assert_eq!(snapshot.project_id, "dynasty-embers");
+    assert_eq!(snapshot.project_id, "runtime-fixture");
     assert_eq!(snapshot.story_state.turn, 1);
     assert!(
         snapshot
@@ -167,12 +167,12 @@ fn snapshot_restore_continues_deterministic_multi_turn_session() {
 
 #[test]
 fn missing_current_scene_is_explicit_error() {
-    let mut project = dynasty_embers_project();
+    let mut project = runtime_test_project();
     project.scenes.clear();
     let mut session = RuntimeSession::new(project);
 
     let error = session
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect_err("missing scene");
 
     assert!(matches!(error, RuntimeEngineError::MissingScene(_)));
@@ -180,14 +180,14 @@ fn missing_current_scene_is_explicit_error() {
 
 #[test]
 fn missing_current_beat_is_explicit_error_without_commit() {
-    let mut project = dynasty_embers_project();
+    let mut project = runtime_test_project();
     project.story_state.current_beat_id = Some("missing-beat".into());
     let mut session = RuntimeSession::new(project);
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
     let error = session
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect_err("missing current beat");
 
     assert!(matches!(
@@ -200,7 +200,7 @@ fn missing_current_beat_is_explicit_error_without_commit() {
 
 #[test]
 fn missing_entry_beat_is_explicit_error_without_first_beat_fallback() {
-    let mut project = dynasty_embers_project();
+    let mut project = runtime_test_project();
     project.story_state.current_beat_id = None;
     project.scenes[0].entry_beat_id = None;
     let mut session = RuntimeSession::new(project);
@@ -208,12 +208,12 @@ fn missing_entry_beat_is_explicit_error_without_first_beat_fallback() {
     let world_before = session.world_state().clone();
 
     let error = session
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect_err("missing entry beat");
 
     assert!(matches!(
         error,
-        RuntimeEngineError::MissingEntryBeat(scene_key) if scene_key == "court-crisis-001"
+        RuntimeEngineError::MissingEntryBeat(scene_key) if scene_key == "opening-scene"
     ));
     assert_eq!(session.story_state(), &story_before);
     assert_eq!(session.world_state(), &world_before);
@@ -221,7 +221,7 @@ fn missing_entry_beat_is_explicit_error_without_first_beat_fallback() {
 
 #[test]
 fn missing_same_scene_beat_transition_is_explicit_error_without_commit() {
-    let mut project = dynasty_embers_project();
+    let mut project = runtime_test_project();
     project.scenes[0].beats[0].next = BeatNext::None;
     let mut session = RuntimeSession::with_scene_planner(project, ErrorPlanner);
     let story_before = session.story_state().clone();
@@ -234,7 +234,7 @@ fn missing_same_scene_beat_transition_is_explicit_error_without_commit() {
     assert!(matches!(
         error,
         RuntimeEngineError::MissingBeatTransition { beat_id, .. }
-            if beat_id == "court-crisis-001-beat-001"
+            if beat_id == "opening-scene-beat-001"
     ));
     assert_eq!(session.story_state(), &story_before);
     assert_eq!(session.world_state(), &world_before);
@@ -242,7 +242,7 @@ fn missing_same_scene_beat_transition_is_explicit_error_without_commit() {
 
 #[test]
 fn unsupported_input_does_not_commit_state() {
-    let mut session = RuntimeSession::new(dynasty_embers_project());
+    let mut session = RuntimeSession::new(runtime_test_project());
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
@@ -257,12 +257,12 @@ fn unsupported_input_does_not_commit_state() {
 
 #[test]
 fn ambiguous_input_does_not_commit_state() {
-    let mut session = RuntimeSession::new(dynasty_embers_project());
+    let mut session = RuntimeSession::new(runtime_test_project());
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
     let error = session
-        .play_once("朕决定加征辽饷，同时严查贪墨官员。")
+        .play_once("决定加征港税，同时严查贪墨官员。")
         .expect_err("ambiguous input");
 
     assert!(matches!(
@@ -276,10 +276,10 @@ fn ambiguous_input_does_not_commit_state() {
 
 #[test]
 fn action_intent_is_explicit_for_known_and_unknown_inputs() {
-    let project = dynasty_embers_project();
+    let project = runtime_test_project();
     let choices = &project.scenes[0].beats[0].choices;
 
-    let tax = interpret_action("朕决定加征辽饷", choices).expect("tax intent");
+    let tax = interpret_action("决定加征港税", choices).expect("tax intent");
     assert_eq!(tax.status, ActionIntentStatus::Supported);
     assert_eq!(tax.choice_id.as_deref(), Some("raise-tax"));
     assert_eq!(tax.action_type(), Some("raise_tax"));
@@ -294,9 +294,9 @@ fn action_intent_is_explicit_for_known_and_unknown_inputs() {
 #[test]
 fn runtime_uses_injected_planner_success_path() {
     let mut session =
-        RuntimeSession::with_scene_planner(dynasty_embers_project(), FakePlanner::success());
+        RuntimeSession::with_scene_planner(runtime_test_project(), FakePlanner::success());
 
-    let step = session.play_once("朕决定加征辽饷").expect("play");
+    let step = session.play_once("决定加征港税").expect("play");
 
     assert_eq!(step.scene.key, "injected-scene-001");
     assert_eq!(
@@ -309,9 +309,9 @@ fn runtime_uses_injected_planner_success_path() {
 #[test]
 fn injected_planner_fallback_is_trace_visible() {
     let mut session =
-        RuntimeSession::with_scene_planner(dynasty_embers_project(), FakePlanner::fallback());
+        RuntimeSession::with_scene_planner(runtime_test_project(), FakePlanner::fallback());
 
-    let step = session.play_once("朕决定加征辽饷").expect("play");
+    let step = session.play_once("决定加征港税").expect("play");
 
     assert!(step.trace.fallback_used);
     assert!(
@@ -334,12 +334,12 @@ fn injected_planner_fallback_is_trace_visible() {
 
 #[test]
 fn injected_planner_error_does_not_commit_state() {
-    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), ErrorPlanner);
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), ErrorPlanner);
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
     let error = session
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect_err("planner error");
 
     assert!(matches!(error, RuntimeEngineError::Planner(_)));
@@ -350,12 +350,12 @@ fn injected_planner_error_does_not_commit_state() {
 #[test]
 fn planner_scene_with_missing_entry_beat_is_explicit_error_without_commit() {
     let mut session =
-        RuntimeSession::with_scene_planner(dynasty_embers_project(), MissingEntryBeatPlanner);
+        RuntimeSession::with_scene_planner(runtime_test_project(), MissingEntryBeatPlanner);
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
     let error = session
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect_err("planner scene missing entry beat");
 
     assert!(matches!(
@@ -369,7 +369,7 @@ fn planner_scene_with_missing_entry_beat_is_explicit_error_without_commit() {
 
 #[test]
 fn failed_rule_after_restore_does_not_corrupt_snapshot_state() {
-    let mut project = dynasty_embers_project();
+    let mut project = runtime_test_project();
     project.rules.push(Rule {
         id: "invalid-unknown-resource".into(),
         action_type: "raise_tax".into(),
@@ -384,7 +384,7 @@ fn failed_rule_after_restore_does_not_corrupt_snapshot_state() {
         RuntimeSession::from_snapshot(project, initial_snapshot.clone()).expect("restore");
 
     let error = restored
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect_err("rule failure");
 
     assert!(matches!(error, RuntimeEngineError::Rule(_)));
@@ -403,9 +403,9 @@ fn failed_rule_after_restore_does_not_corrupt_snapshot_state() {
 #[test]
 fn provider_pipeline_errors_are_trace_visible() {
     let planner = ProviderAgentPipeline::new(FakeTextModelProvider::timeout(AgentRole::BeatWriter));
-    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), planner);
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), planner);
 
-    let step = session.play_once("朕决定加征辽饷").expect("fallback play");
+    let step = session.play_once("决定加征港税").expect("fallback play");
 
     assert!(step.trace.fallback_used);
     assert!(
@@ -434,10 +434,10 @@ fn image_provider_failures_are_trace_visible() {
         FakeImageProvider::timeout(),
         FakeClock { now_ms: 1_000 },
     );
-    let mut session = RuntimeSession::with_scene_planner(dynasty_embers_project(), planner);
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), planner);
 
     let step = session
-        .play_once("朕决定加征辽饷")
+        .play_once("决定加征港税")
         .expect("image fallback play");
 
     assert_eq!(step.scene.key, "provider-scene-001");
@@ -463,8 +463,8 @@ fn image_provider_failures_are_trace_visible() {
 
 #[test]
 fn summarize_delta_keeps_human_readable_lines() {
-    let mut session = RuntimeSession::new(dynasty_embers_project());
-    let step = session.play_once("朕决定加征辽饷").expect("play");
+    let mut session = RuntimeSession::new(runtime_test_project());
+    let step = session.play_once("决定加征港税").expect("play");
 
     let lines = summarize_delta(&step.trace.world_state_delta);
 
@@ -474,9 +474,9 @@ fn summarize_delta_keeps_human_readable_lines() {
 
 #[test]
 fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
-    let mut session = RuntimeSession::new(dynasty_embers_project());
+    let mut session = RuntimeSession::new(runtime_test_project());
 
-    let step = session.play_once("朕决定加征辽饷").expect("play");
+    let step = session.play_once("决定加征港税").expect("play");
 
     let intent = step.trace.action_intent.as_ref().expect("action intent");
     assert_eq!(intent.status, ActionIntentStatus::Supported);
@@ -492,18 +492,18 @@ fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
     assert_eq!(planner_result.requested_action_type, "raise_tax");
     assert_eq!(
         planner_result.scene_key.as_deref(),
-        Some("court-crisis-001")
+        Some("civic-crisis-001")
     );
     assert!(!planner_result.fallback_used);
     assert!(planner_result.error.is_none());
 
     assert_eq!(step.trace.media_references.len(), 1);
     let media_reference = &step.trace.media_references[0];
-    assert_eq!(media_reference.reference.reference_id, "court-crisis-001");
+    assert_eq!(media_reference.reference.reference_id, "civic-crisis-001");
     assert_eq!(media_reference.reference.slot, "background_asset");
     assert_eq!(
         media_reference.project_path,
-        "assets/generated/court-crisis-001.png"
+        "assets/generated/civic-crisis-001.png"
     );
 
     assert!(step.trace.diagnostics.iter().any(|diagnostic| {
@@ -522,10 +522,10 @@ fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
 
 #[test]
 fn runtime_trace_json_redacts_secret_markers() {
-    let mut session = RuntimeSession::new(dynasty_embers_project());
+    let mut session = RuntimeSession::new(runtime_test_project());
 
     let step = session
-        .play_once("朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value")
+        .play_once("决定加征港税 OPENAI_API_KEY=sk-test-secret-marker bearer token=value")
         .expect("play");
     let json = serde_json::to_string(&step.trace).expect("serialize trace");
 
@@ -684,10 +684,170 @@ impl ScenePlanner for FakePlanner {
     }
 }
 
+fn runtime_test_project() -> ProjectData {
+    let resources = vec![
+        ResourceDefinition {
+            key: "treasury".into(),
+            label: "Treasury".into(),
+            initial: 40,
+            min: 0,
+            max: 100,
+        },
+        ResourceDefinition {
+            key: "army_morale".into(),
+            label: "Army morale".into(),
+            initial: 45,
+            min: 0,
+            max: 100,
+        },
+    ];
+    let world_state = WorldState {
+        resources: resources
+            .iter()
+            .map(|resource| (resource.key.clone(), resource.initial))
+            .collect(),
+        flags: BTreeMap::new(),
+        triggered_events: Vec::new(),
+    };
+    let scene = runtime_test_scene("opening-scene");
+
+    ProjectData {
+        game: GameProject {
+            id: "runtime-fixture".into(),
+            title: "Runtime Fixture".into(),
+            version: "0.1.0".into(),
+            description: "Runtime transition fixture.".into(),
+            entry_scene: scene.key.clone(),
+            run_seed: 7,
+        },
+        resources,
+        world_state,
+        story_state: StoryState {
+            current_scene_key: scene.key.clone(),
+            current_beat_id: Some("opening-scene-beat-001".into()),
+            completed_scene_keys: Vec::new(),
+            turn: 0,
+        },
+        story_craft: StoryCraftState::default(),
+        characters: Vec::new(),
+        rules: runtime_test_rules(),
+        scenes: vec![scene],
+        visual_bible: plotforge_schema::VisualBible::default(),
+        audio_bible: plotforge_schema::AudioBible::default(),
+        asset_records: Vec::new(),
+        ai_safety_policy: plotforge_schema::AiSafetyPolicy::default(),
+    }
+}
+
+fn runtime_test_rules() -> Vec<Rule> {
+    vec![
+        Rule {
+            id: "raise-tax".into(),
+            action_type: "raise_tax".into(),
+            conditions: Vec::new(),
+            effects: vec![
+                Effect::AddResource {
+                    key: "treasury".into(),
+                    amount: 12,
+                },
+                Effect::TriggerEvent {
+                    event: "local_tax_resistance".into(),
+                },
+            ],
+        },
+        Rule {
+            id: "pay-army".into(),
+            action_type: "pay_army".into(),
+            conditions: Vec::new(),
+            effects: vec![Effect::AddResource {
+                key: "army_morale".into(),
+                amount: 12,
+            }],
+        },
+    ]
+}
+
+fn runtime_test_scene(scene_key: &str) -> Scene {
+    let first_beat_id = format!("{scene_key}-beat-001");
+    let second_beat_id = format!("{scene_key}-beat-002");
+    Scene {
+        key: scene_key.into(),
+        title: "Runtime Test Scene".into(),
+        location: "Test Court".into(),
+        dramatic_purpose: "Exercise runtime state transitions.".into(),
+        hook: "A runtime fixture presents a state-changing choice.".into(),
+        background_asset: format!("assets/generated/{scene_key}.png"),
+        audio_refs: Vec::new(),
+        character_ids: Vec::new(),
+        plot_thread_updates: BTreeMap::new(),
+        entry_beat_id: Some(first_beat_id.clone()),
+        beats: vec![
+            Beat {
+                id: first_beat_id,
+                text: "The test council waits for a deterministic order.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
+                choices: runtime_test_choices(true),
+                next: BeatNext::Beat(second_beat_id.clone()),
+            },
+            Beat {
+                id: second_beat_id,
+                text: "The second beat keeps the same-scene transition explicit.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
+                choices: runtime_test_choices(false),
+                next: BeatNext::Scene,
+            },
+        ],
+    }
+}
+
+fn runtime_test_choices(include_continue: bool) -> Vec<Choice> {
+    let mut choices = vec![
+        Choice {
+            id: "raise-tax".into(),
+            label: "Raise taxes".into(),
+            action_type: "raise_tax".into(),
+            input_terms: choice_input_terms("raise_tax"),
+            dramatic_purpose: "Trade order for revenue in the test fixture.".into(),
+            change_scene: true,
+        },
+        Choice {
+            id: "inspect-corruption".into(),
+            label: "Inspect corruption".into(),
+            action_type: "inspect_corruption".into(),
+            input_terms: choice_input_terms("inspect_corruption"),
+            dramatic_purpose: "Investigate the test fixture.".into(),
+            change_scene: true,
+        },
+        Choice {
+            id: "pay-army".into(),
+            label: "Pay the army".into(),
+            action_type: "pay_army".into(),
+            input_terms: choice_input_terms("pay_army"),
+            dramatic_purpose: "Improve morale in the test fixture.".into(),
+            change_scene: true,
+        },
+    ];
+    if include_continue {
+        choices.push(Choice {
+            id: "continue-council".into(),
+            label: "Continue".into(),
+            action_type: "continue".into(),
+            input_terms: choice_input_terms("continue"),
+            dramatic_purpose: "Stay in the test scene.".into(),
+            change_scene: false,
+        });
+    }
+    choices
+}
+
 fn choice_input_terms(action_type: &str) -> Vec<String> {
     let terms: &[&str] = match action_type {
         "continue" => &["continue", "hear", "minister", "听", "继续", "陈情"],
-        "raise_tax" => &["raise", "tax", "levy", "加征", "辽饷"],
+        "raise_tax" => &["raise", "tax", "levy", "加征", "港税"],
         "inspect_corruption" => &["inspect", "corruption", "严查", "贪墨", "查"],
         "pay_army" => &["pay", "army", "军饷", "拨", "内帑", "边军"],
         _ => &[],

@@ -722,7 +722,8 @@ impl<T> ZipContext<T> for zip::result::ZipResult<T> {
 
 #[cfg(test)]
 mod tests {
-    use plotforge_storage::create_demo_project;
+    use plotforge_schema::{ProjectCreationRequest, ProjectTemplateId};
+    use plotforge_storage::create_project_from_request;
 
     use super::{ExportError, export_static_web, export_static_web_zip};
 
@@ -731,7 +732,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let project_path = temp.path().join("project");
         let output_dir = temp.path().join("export");
-        create_demo_project(&project_path, false).expect("create demo");
+        create_starter_project(&project_path);
 
         let report = export_static_web(&project_path, &output_dir).expect("export");
 
@@ -742,11 +743,7 @@ mod tests {
                 .join(plotforge_schema::AI_USAGE_MANIFEST_FILE)
                 .exists()
         );
-        assert!(
-            output_dir
-                .join("assets/generated/court-crisis-001.png")
-                .exists()
-        );
+        assert!(output_dir.join("assets/generated/placeholder.png").exists());
         assert!(report.files_written.len() >= 3);
         assert_eq!(report.audit.allowed_files, report.audit.files_found);
     }
@@ -757,7 +754,7 @@ mod tests {
         let project_path = temp.path().join("project");
         let output_dir = temp.path().join("export");
         let archive_path = temp.path().join("static.zip");
-        create_demo_project(&project_path, false).expect("create demo");
+        create_starter_project(&project_path);
 
         let report =
             export_static_web_zip(&project_path, &output_dir, &archive_path).expect("export zip");
@@ -776,12 +773,27 @@ mod tests {
         let project_path = temp.path().join("project");
         let output_dir = temp.path().join("export");
         let archive_path = output_dir.join("static.zip");
-        create_demo_project(&project_path, false).expect("create demo");
+        create_starter_project(&project_path);
 
         let error = export_static_web_zip(&project_path, &output_dir, &archive_path)
             .expect_err("archive inside output dir");
 
         assert!(matches!(error, ExportError::ArchiveInsideOutputDir { .. }));
         assert!(!archive_path.exists());
+    }
+
+    fn create_starter_project(project_path: &std::path::Path) {
+        create_project_from_request(
+            project_path,
+            ProjectCreationRequest {
+                template: ProjectTemplateId::HistoricalCrisis,
+                concept: "A local starter project for export tests.".into(),
+                visual_style: "clear readable test style".into(),
+                voice_enabled: false,
+                initial_scene_request: "A creator opens a fresh PlotForge project.".into(),
+            },
+            false,
+        )
+        .expect("create starter project");
     }
 }

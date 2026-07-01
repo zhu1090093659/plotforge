@@ -18,13 +18,13 @@ npm run creator-desktop:qa
 npm run player-web:qa
 cargo clippy --workspace --all-targets -- -D warnings
 
-PROJECT="$TMP/dynasty-embers"
+PROJECT="$TMP/starter-project"
 EXPORT="$TMP/export"
 DESKTOP_EXPORT="$TMP/desktop-export"
-EXPORT_ZIP="$TMP/dynasty-embers-static.zip"
+EXPORT_ZIP="$TMP/starter-project-static.zip"
 UNPACKED_EXPORT="$TMP/unpacked-export"
 
-cargo run -p plotforge-cli -- new demo --path "$PROJECT" --force
+cargo run -p plotforge-cli -- new project --path "$PROJECT" --force --concept "A local starter project for QA." --visual-style "clear readable test style" --initial-scene "A creator opens a fresh PlotForge project."
 cargo run -p plotforge-cli -- check "$PROJECT"
 cargo run -p plotforge-cli -- export profiles
 cargo run -p plotforge-cli -- play "$PROJECT" --once

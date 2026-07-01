@@ -1,9 +1,0 @@
-id = "provincial-governor"
-name = "Provincial Governor"
-role = "Local implementation"
-traits = [
-    "strained",
-    "risk-averse",
-]
-visual_card = "Provincial Governor, restrained historical portrait"
-voice_card = "Provincial Governor, concise court speech"

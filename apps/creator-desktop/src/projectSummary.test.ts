@@ -5,21 +5,21 @@ describe("summarizeProject", () => {
   it("derives Studio metrics from generated PlotForge contracts", () => {
     const project: CreatorProjectInput = {
       game: {
-        id: "dynasty-embers",
-        title: "Dynasty Embers",
+        id: "starter-project",
+        title: "Starter Project",
         version: "0.1.0",
-        description: "A court crisis demo.",
-        entry_scene: "court-crisis-001",
+        description: "A council crisis demo.",
+        entry_scene: "opening-scene",
         run_seed: 7,
       },
       scenes: [
         {
-          key: "court-crisis-001",
+          key: "opening-scene",
           title: "Memorials at Dawn",
-          location: "Forbidden City",
+          location: "Civic Hall",
           dramatic_purpose: "Expose the first crisis.",
           hook: "The treasury report contradicts the war ledger.",
-          background_asset: "assets/generated/court-crisis-001.png",
+          background_asset: "assets/generated/opening-scene.png",
           audio_refs: [],
           character_ids: ["censor"],
           plot_thread_updates: {},
@@ -29,8 +29,8 @@ describe("summarizeProject", () => {
       characters: [
         {
           id: "censor",
-          name: "Censor Liu",
-          role: "Court watchdog",
+          name: "Auditor Liu",
+          role: "Civic watchdog",
           traits: ["unyielding"],
           visual_card: "ink portrait",
           voice_card: "precise",
@@ -50,13 +50,13 @@ describe("summarizeProject", () => {
             id: "missing-silver",
             text: "The missing silver will return as political leverage.",
             status: "active",
-            introduced_at: "court-crisis-001",
+            introduced_at: "opening-scene",
           },
           {
             id: "old-favor",
             text: "An old favor has already been paid off.",
             status: "paid_off",
-            introduced_at: "court-crisis-001",
+            introduced_at: "opening-scene",
           },
         ],
         plot_threads: [
@@ -66,10 +66,10 @@ describe("summarizeProject", () => {
             promise: "The report hides a factional bargain.",
             thread_type: "political",
             status: "escalating",
-            introduced_at: "court-crisis-001",
+            introduced_at: "opening-scene",
             related_characters: ["censor"],
             related_world_flags: [],
-            last_update: "court-crisis-001",
+            last_update: "opening-scene",
           },
           {
             id: "border-payoff",
@@ -77,23 +77,23 @@ describe("summarizeProject", () => {
             promise: "The border threat receives a payoff.",
             thread_type: "survival",
             status: "resolved",
-            introduced_at: "court-crisis-001",
+            introduced_at: "opening-scene",
             related_characters: [],
             related_world_flags: [],
-            last_update: "court-crisis-001",
+            last_update: "opening-scene",
           },
         ],
         review_notes: [
           {
             id: "weak-choice",
-            scene_key: "court-crisis-001",
+            scene_key: "opening-scene",
             severity: "warning",
             message: "The first choice needs clearer stakes.",
             resolved: false,
           },
           {
             id: "hook-fixed",
-            scene_key: "court-crisis-001",
+            scene_key: "opening-scene",
             severity: "info",
             message: "Opening hook tightened.",
             resolved: true,
@@ -103,8 +103,8 @@ describe("summarizeProject", () => {
     };
 
     expect(summarizeProject(project)).toEqual({
-      title: "Dynasty Embers",
-      entryScene: "court-crisis-001",
+      title: "Starter Project",
+      entryScene: "opening-scene",
       sceneCount: 1,
       characterCount: 1,
       ruleCount: 1,

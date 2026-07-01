@@ -339,9 +339,9 @@ mod tests {
 
     use plotforge_schema::{
         AssetKind, AssetProviderMetadata, AssetRecord, AssetReference, AssetReferenceKind,
-        AssetSourceKind, MediaAssetReference,
+        AssetSourceKind, MediaAssetReference, ProjectCreationRequest, ProjectTemplateId,
     };
-    use plotforge_storage::{create_demo_project, load_project};
+    use plotforge_storage::{create_project_from_request, load_project};
 
     use super::{ASSET_HASH_ALGORITHM, AssetRecordInput, AssetRegistry, MediaError};
 
@@ -418,7 +418,7 @@ mod tests {
     fn builds_scene_background_registry_with_reachable_export_paths() {
         let temp = tempfile::tempdir().expect("tempdir");
         let project_path = temp.path().join("project");
-        create_demo_project(&project_path, false).expect("create demo");
+        create_starter_project(&project_path);
         let project = load_project(&project_path).expect("load project");
         let mut registry = AssetRegistry::new();
 
@@ -429,15 +429,15 @@ mod tests {
         assert_eq!(registry.len(), 1);
         assert_eq!(
             registry.exportable_paths(),
-            vec!["assets/generated/court-crisis-001.png"]
+            vec!["assets/generated/placeholder.png"]
         );
         let scene_records =
-            registry.records_referenced_by(AssetReferenceKind::Scene, "court-crisis-001");
+            registry.records_referenced_by(AssetReferenceKind::Scene, "opening-scene");
         assert_eq!(scene_records.len(), 1);
         let record = scene_records[0];
         assert_eq!(record.kind, AssetKind::Image);
         assert_eq!(record.source, AssetSourceKind::Generated);
-        assert_eq!(record.references, vec![scene_reference("court-crisis-001")]);
+        assert_eq!(record.references, vec![scene_reference("opening-scene")]);
         assert_eq!(record.content_hash.len(), 64);
     }
 
@@ -445,16 +445,16 @@ mod tests {
     fn registers_project_audio_references_with_scene_and_beat_slots() {
         let temp = tempfile::tempdir().expect("tempdir");
         let project_path = temp.path().join("project");
-        create_demo_project(&project_path, false).expect("create demo");
+        create_starter_project(&project_path);
         let mut project = load_project(&project_path).expect("load project");
-        let audio_path = project_path.join("assets/generated/court-crisis-001-beat-001.wav");
+        let audio_path = project_path.join("assets/generated/opening-scene-beat-001.wav");
         fs::write(&audio_path, b"fake wav bytes").expect("write audio");
         let audio_reference = MediaAssetReference {
             asset_id: None,
             kind: AssetKind::Audio,
             source: AssetSourceKind::Generated,
-            project_path: "assets/generated/court-crisis-001-beat-001.wav".into(),
-            export_path: "assets/generated/court-crisis-001-beat-001.wav".into(),
+            project_path: "assets/generated/opening-scene-beat-001.wav".into(),
+            export_path: "assets/generated/opening-scene-beat-001.wav".into(),
             slot: "narration".into(),
         };
         project.scenes[0].beats[0].audio_refs.push(audio_reference);
@@ -465,7 +465,7 @@ mod tests {
             .expect("register project assets");
 
         let scene_records =
-            registry.records_referenced_by(AssetReferenceKind::Scene, "court-crisis-001");
+            registry.records_referenced_by(AssetReferenceKind::Scene, "opening-scene");
         assert!(
             scene_records
                 .iter()
@@ -477,13 +477,29 @@ mod tests {
             .expect("audio record");
         assert_eq!(
             audio.export_path,
-            "assets/generated/court-crisis-001-beat-001.wav"
+            "assets/generated/opening-scene-beat-001.wav"
         );
         assert!(
-            audio.references
+            audio
+                .references
                 .iter()
-                .any(|reference| reference.slot == "beat_audio:court-crisis-001-beat-001:narration")
+                .any(|reference| reference.slot == "beat_audio:opening-scene-beat-001:narration")
         );
+    }
+
+    fn create_starter_project(project_path: &std::path::Path) {
+        create_project_from_request(
+            project_path,
+            ProjectCreationRequest {
+                template: ProjectTemplateId::HistoricalCrisis,
+                concept: "A local starter project for media tests.".into(),
+                visual_style: "clear readable test style".into(),
+                voice_enabled: false,
+                initial_scene_request: "A creator opens a fresh PlotForge project.".into(),
+            },
+            false,
+        )
+        .expect("create starter project");
     }
 
     #[test]

@@ -5,7 +5,7 @@ export const PLOTFORGE_CONTRACT_SCHEMA_VERSION = 15 as const;
 export type ResourceMap = { [key: string]: number };
 export type FlagMap = { [key: string]: boolean };
 export type ContractEnvelope<T> = { contract_version: typeof PLOTFORGE_CONTRACT_VERSION; schema_version: typeof PLOTFORGE_CONTRACT_SCHEMA_VERSION; payload: T };
-export type ProjectTemplateId = "historical_crisis" | "dynasty_embers";
+export type ProjectTemplateId = "historical_crisis";
 export interface ProjectCreationRequest { template: ProjectTemplateId; concept: string; visual_style: string; voice_enabled: boolean; initial_scene_request: string; }
 export interface ProjectCreationReport { project_path: string; template: ProjectTemplateId; concept: string; visual_style: string; voice_enabled: boolean; initial_scene_request: string; files_created: string[]; project: ProjectData; }
 export interface WorldEditDocument { world_bible_markdown: string; canon_markdown: string; forbidden_facts: string[]; }

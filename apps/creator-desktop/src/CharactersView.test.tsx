@@ -11,11 +11,11 @@ function sampleDocument(): CharacterEditDocument {
   return {
     characters: [
       {
-        id: "court-envoy",
-        name: "Court Envoy",
+        id: "council-envoy",
+        name: "Council Envoy",
         role: "Diplomatic liaison",
         traits: ["observant", "cautious"],
-        visual_card: "ink portrait with court robes",
+        visual_card: "ink portrait with council robes",
         voice_card: "measured formal speech",
         portrait_request: null,
       },
@@ -58,7 +58,7 @@ function renderView(overrides: Partial<CharactersViewProps> = {}) {
     formStatus: null,
     characterGenerationConcept: "Design a pressure-bearing character.",
     onCharacterGenerationConceptChange: vi.fn(),
-    characterGenerationRoleHint: "Court Envoy",
+    characterGenerationRoleHint: "Council Envoy",
     onCharacterGenerationRoleHintChange: vi.fn(),
     characterDraft: emptyDraft(),
     onCharacterDraftChange: vi.fn(),
@@ -85,8 +85,8 @@ describe("CharactersView", () => {
   it("renders collapsed character cards with name as label", () => {
     renderView();
     // Use getAllByRole to handle potential multiple matches and verify count.
-    const courtEnvoyBtns = screen.getAllByRole("button", { name: /Court Envoy/ });
-    expect(courtEnvoyBtns.length).toBeGreaterThanOrEqual(1);
+    const councilEnvoyBtns = screen.getAllByRole("button", { name: /Council Envoy/ });
+    expect(councilEnvoyBtns.length).toBeGreaterThanOrEqual(1);
     const borderGuardBtns = screen.getAllByRole("button", { name: /Border Guard/ });
     expect(borderGuardBtns.length).toBeGreaterThanOrEqual(1);
   });
@@ -99,7 +99,7 @@ describe("CharactersView", () => {
 
   it("expanding a character card reveals detail fields", () => {
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: /Court Envoy/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Council Envoy/ }));
     expect(screen.getByLabelText("Character id 1")).toBeTruthy();
     expect(screen.getByLabelText("Character name 1")).toBeTruthy();
     expect(screen.getByLabelText("Character role 1")).toBeTruthy();
@@ -110,7 +110,7 @@ describe("CharactersView", () => {
 
   it("expanded card shows visual/voice card placeholders", () => {
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: /Court Envoy/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Council Envoy/ }));
     const visualCard = screen.getByLabelText("Visual card 1") as HTMLTextAreaElement;
     expect(visualCard.placeholder).toContain("appearance");
     const voiceCard = screen.getByLabelText("Voice card 1") as HTMLTextAreaElement;
@@ -127,7 +127,7 @@ describe("CharactersView", () => {
   it("calls onUpdateCharacter when a field value changes", () => {
     const onUpdateCharacter = vi.fn();
     renderView({ onUpdateCharacter });
-    fireEvent.click(screen.getByRole("button", { name: /Court Envoy/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Council Envoy/ }));
     fireEvent.change(screen.getByLabelText("Character name 1"), {
       target: { value: "Senior Envoy" },
     });

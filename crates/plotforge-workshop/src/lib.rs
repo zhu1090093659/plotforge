@@ -1879,6 +1879,12 @@ mod tests {
         write_steam_submission_kit, write_workshop_publish_draft,
     };
 
+    const SAMPLE_PACKAGE_ID: &str = "starter-workshop-draft";
+    const SAMPLE_PROJECT_ID: &str = "starter-project";
+    const SAMPLE_TITLE: &str = "Starter Workshop Sample";
+    const SAMPLE_REMIX_ID: &str = "starter-workshop-remix";
+    const SAMPLE_REMIX_TITLE: &str = "Starter Workshop Sample Remix";
+
     #[test]
     fn validates_local_workshop_package_without_upload_integration() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -1886,7 +1892,7 @@ mod tests {
 
         let report = validate_workshop_package(temp.path()).expect("valid package");
 
-        assert_eq!(report.manifest.package_id, "dynasty-embers-workshop-draft");
+        assert_eq!(report.manifest.package_id, SAMPLE_PACKAGE_ID);
         assert_eq!(
             report.manifest.export_profile,
             ExportProfile::steam_workshop()
@@ -1918,8 +1924,8 @@ mod tests {
             format!(
                 r#"{{
   "manifest_version": "2026-06-08",
-  "package_id": "dynasty-embers-workshop-draft",
-  "title": "Dynasty Embers",
+  "package_id": "starter-workshop-draft",
+  "title": "Starter Workshop Sample",
   "description": "Offline Workshop package draft for local validation.",
   "visibility": "private_draft",
   "preview_image": "preview.png",
@@ -1951,7 +1957,7 @@ mod tests {
       "path": "content/game.json",
       "content_hash": "{}",
       "hash_algorithm": "sha256",
-      "byte_length": 27
+      "byte_length": 36
     }},
     {{
       "path": "preview.png",
@@ -2079,11 +2085,11 @@ mod tests {
 This draft supports creator review only. It does not upload content, complete Steamworks forms, pay fees, submit review, determine compliance, or determine Valve approval.
 
 ## Product
-- Product name: Dynasty Embers
-- Store short description draft: A branching court drama built with PlotForge.
-- Workshop package: dynasty-embers-workshop-draft
+- Product name: Starter Workshop Sample
+- Store short description draft: A branching civic drama built with PlotForge.
+- Workshop package: starter-workshop-draft
 - Source manifest: workshop-item.json
-- Package files validated locally: 2 files / 40 bytes
+- Package files validated locally: 2 files / 49 bytes
 
 ## Checklist
 - [ ] Confirm Steamworks partner access, app access, and current Steam Direct requirements.
@@ -2198,7 +2204,7 @@ Draft support material only. The creator must review the shipped build, screensh
         let store_copy =
             fs::read_to_string(output.path().join(STEAM_STORE_COPY_DRAFT_FILE)).expect("copy");
         assert!(store_copy.contains("Store Copy Draft"));
-        assert!(store_copy.contains("A branching court drama built with PlotForge."));
+        assert!(store_copy.contains("A branching civic drama built with PlotForge."));
         let steam_direct =
             fs::read_to_string(output.path().join(STEAM_DIRECT_CHECKLIST_FILE)).expect("direct");
         assert!(steam_direct.contains("Steam Direct Checklist Draft"));
@@ -2211,10 +2217,7 @@ Draft support material only. The creator must review the shipped build, screensh
         assert!(packaging_notes.contains("No Steamworks SDK, upload client"));
         assert!(!packaging_notes.contains("one-click"));
         assert!(!packaging_notes.contains("guaranteed approval"));
-        assert_eq!(
-            report.draft.workshop_package_id,
-            "dynasty-embers-workshop-draft"
-        );
+        assert_eq!(report.draft.workshop_package_id, SAMPLE_PACKAGE_ID);
     }
 
     #[test]
@@ -2262,8 +2265,8 @@ Draft support material only. The creator must review the shipped build, screensh
         let draft = generate_workshop_publish_draft(&report).expect("publish draft");
 
         assert_eq!(draft.manifest_version, "2026-06-09");
-        assert_eq!(draft.package_id, "dynasty-embers-workshop-draft");
-        assert_eq!(draft.title, "Dynasty Embers");
+        assert_eq!(draft.package_id, SAMPLE_PACKAGE_ID);
+        assert_eq!(draft.title, SAMPLE_TITLE);
         assert_eq!(draft.visibility, WorkshopDraftVisibility::PrivateDraft);
         assert!(!draft.upload_enabled);
         assert!(draft.requires_explicit_steamworks_credentials);
@@ -2420,7 +2423,7 @@ Draft support material only. The creator must review the shipped build, screensh
             .expect("fake local upload");
 
         assert_eq!(adapter.calls.get(), 1);
-        assert_eq!(report.package_id, "dynasty-embers-workshop-draft");
+        assert_eq!(report.package_id, SAMPLE_PACKAGE_ID);
         assert_eq!(report.adapter_name, "local-fake-workshop-upload-port");
         assert!(report.upload_attempted);
         assert!(!report.steamworks_api_called);
@@ -2436,7 +2439,7 @@ Draft support material only. The creator must review the shipped build, screensh
 
         let import = import_workshop_library_package(library.path(), package.path())
             .expect("import package");
-        assert_eq!(import.item.local_id, "dynasty-embers-workshop-draft");
+        assert_eq!(import.item.local_id, SAMPLE_PACKAGE_ID);
         assert!(
             import
                 .item
@@ -2447,45 +2450,42 @@ Draft support material only. The creator must review the shipped build, screensh
 
         let listed = list_workshop_library(library.path()).expect("list library");
         assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].title, "Dynasty Embers");
+        assert_eq!(listed[0].title, SAMPLE_TITLE);
 
-        let loaded = load_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+        let loaded = load_workshop_library_item(library.path(), SAMPLE_PACKAGE_ID)
             .expect("load imported item");
         assert_eq!(loaded.validation_report.files.len(), 2);
 
         let remix = remix_workshop_library_item(
             library.path(),
-            "dynasty-embers-workshop-draft",
-            "dynasty-embers-remix",
-            "Dynasty Embers Remix",
+            SAMPLE_PACKAGE_ID,
+            SAMPLE_REMIX_ID,
+            SAMPLE_REMIX_TITLE,
         )
         .expect("remix item");
-        assert_eq!(remix.source_local_id, "dynasty-embers-workshop-draft");
-        assert_eq!(remix.item.local_id, "dynasty-embers-remix");
-        assert_eq!(
-            remix.validation_report.manifest.title,
-            "Dynasty Embers Remix"
-        );
+        assert_eq!(remix.source_local_id, SAMPLE_PACKAGE_ID);
+        assert_eq!(remix.item.local_id, SAMPLE_REMIX_ID);
+        assert_eq!(remix.validation_report.manifest.title, SAMPLE_REMIX_TITLE);
         assert_eq!(
             remix.validation_report.manifest.visibility,
             WorkshopDraftVisibility::PrivateDraft
         );
         assert!(remix.item.package_dir.join("content/game.json").is_file());
 
-        let deleted = delete_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+        let deleted = delete_workshop_library_item(library.path(), SAMPLE_PACKAGE_ID)
             .expect("delete original");
-        assert_eq!(deleted.local_id, "dynasty-embers-workshop-draft");
+        assert_eq!(deleted.local_id, SAMPLE_PACKAGE_ID);
         assert!(!deleted.package_dir.exists());
 
         let remaining = list_workshop_library(library.path()).expect("list after delete");
         assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].local_id, "dynasty-embers-remix");
-        let missing = load_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
+        assert_eq!(remaining[0].local_id, SAMPLE_REMIX_ID);
+        let missing = load_workshop_library_item(library.path(), SAMPLE_PACKAGE_ID)
             .expect_err("deleted item is not loadable");
         assert!(matches!(
             missing,
             WorkshopPackageError::LibraryItemNotFound(local_id)
-                if local_id == "dynasty-embers-workshop-draft"
+                if local_id == SAMPLE_PACKAGE_ID
         ));
     }
 
@@ -2530,7 +2530,7 @@ Draft support material only. The creator must review the shipped build, screensh
 
         let reported = report_workshop_library_item(
             library.path(),
-            "dynasty-embers-workshop-draft",
+            SAMPLE_PACKAGE_ID,
             "Contains player-reported mature theme metadata.",
         )
         .expect("report item");
@@ -2542,7 +2542,7 @@ Draft support material only. The creator must review the shipped build, screensh
 
         let blocked = block_workshop_library_item(
             library.path(),
-            "dynasty-embers-workshop-draft",
+            SAMPLE_PACKAGE_ID,
             "Local moderation block pending creator review.",
         )
         .expect("block item");
@@ -2571,24 +2571,23 @@ Draft support material only. The creator must review the shipped build, screensh
         import_workshop_library_package(library.path(), package.path()).expect("import package");
         block_workshop_library_item(
             library.path(),
-            "dynasty-embers-workshop-draft",
+            SAMPLE_PACKAGE_ID,
             "Blocked by local moderation metadata.",
         )
         .expect("block item");
 
-        let load_error =
-            load_workshop_library_item(library.path(), "dynasty-embers-workshop-draft")
-                .expect_err("blocked load");
+        let load_error = load_workshop_library_item(library.path(), SAMPLE_PACKAGE_ID)
+            .expect_err("blocked load");
         assert!(matches!(
             load_error,
             WorkshopPackageError::LibraryItemBlocked { local_id, reason }
-                if local_id == "dynasty-embers-workshop-draft"
+                if local_id == SAMPLE_PACKAGE_ID
                     && reason == "Blocked by local moderation metadata."
         ));
 
         let remix_error = remix_workshop_library_item(
             library.path(),
-            "dynasty-embers-workshop-draft",
+            SAMPLE_PACKAGE_ID,
             "blocked-remix",
             "Blocked Remix",
         )
@@ -2596,7 +2595,7 @@ Draft support material only. The creator must review the shipped build, screensh
         assert!(matches!(
             remix_error,
             WorkshopPackageError::LibraryItemBlocked { local_id, .. }
-                if local_id == "dynasty-embers-workshop-draft"
+                if local_id == SAMPLE_PACKAGE_ID
         ));
 
         let import_error = import_workshop_library_package(library.path(), package.path())
@@ -2604,7 +2603,7 @@ Draft support material only. The creator must review the shipped build, screensh
         assert!(matches!(
             import_error,
             WorkshopPackageError::LibraryItemBlocked { local_id, .. }
-                if local_id == "dynasty-embers-workshop-draft"
+                if local_id == SAMPLE_PACKAGE_ID
         ));
     }
 
@@ -2690,8 +2689,8 @@ Draft support material only. The creator must review the shipped build, screensh
     fn sample_package(game: &[u8], preview: &[u8]) -> WorkshopItemPackage {
         WorkshopItemPackage {
             manifest_version: "2026-06-08".into(),
-            package_id: "dynasty-embers-workshop-draft".into(),
-            title: "Dynasty Embers".into(),
+            package_id: SAMPLE_PACKAGE_ID.into(),
+            title: SAMPLE_TITLE.into(),
             description: "Offline Workshop package draft for local validation.".into(),
             visibility: WorkshopDraftVisibility::PrivateDraft,
             preview_image: "preview.png".into(),
@@ -2713,7 +2712,7 @@ Draft support material only. The creator must review the shipped build, screensh
     fn sample_ai_usage() -> AiUsageManifest {
         AiUsageManifest {
             manifest_version: "2026-06-08".into(),
-            project_id: "dynasty-embers".into(),
+            project_id: SAMPLE_PROJECT_ID.into(),
             project_version: "0.1.0".into(),
             export_profile: ExportProfile::steam_workshop(),
             generated_by: "plotforge-workshop-test".into(),
@@ -2751,10 +2750,10 @@ Draft support material only. The creator must review the shipped build, screensh
 
     fn sample_submission_kit_request() -> SteamSubmissionKitRequest {
         SteamSubmissionKitRequest {
-            product_name: "Dynasty Embers".into(),
-            desktop_build_path: Some("builds/dynasty-embers-desktop.zip".into()),
-            store_short_description: "A branching court drama built with PlotForge.".into(),
-            screenshot_paths: vec!["media/screenshots/court-crisis.png".into()],
+            product_name: SAMPLE_TITLE.into(),
+            desktop_build_path: Some("builds/starter-project-desktop.zip".into()),
+            store_short_description: "A branching civic drama built with PlotForge.".into(),
+            screenshot_paths: vec!["media/screenshots/civic-crisis.png".into()],
             capsule_asset_paths: vec!["media/capsules/header.png".into()],
             content_warnings: vec!["Political conflict".into(), "Textual violence".into()],
             safety_guardrails: vec![
@@ -2785,7 +2784,7 @@ Draft support material only. The creator must review the shipped build, screensh
     }
 
     fn game_json() -> &'static [u8] {
-        b"{\"title\":\"Dynasty Embers\"}\n"
+        b"{\"title\":\"Starter Workshop Sample\"}\n"
     }
 
     fn preview_png() -> &'static [u8] {

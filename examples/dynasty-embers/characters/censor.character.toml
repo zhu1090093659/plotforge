@@ -1,9 +1,0 @@
-id = "censor"
-name = "Court Censor"
-role = "Moral and legal critic"
-traits = [
-    "severe",
-    "public-minded",
-]
-visual_card = "Court Censor, restrained historical portrait"
-voice_card = "Court Censor, concise court speech"

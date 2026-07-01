@@ -19,8 +19,8 @@ afterEach(() => {
 // Minimal props builder so tests don't need to repeat everything
 function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {}) {
   const checkReport: ProjectCheckReport = {
-    title: "Dynasty Embers",
-    entry_scene: "court-crisis-001",
+    title: "Starter Project",
+    entry_scene: "opening-scene",
     scene_count: 2,
     rule_count: 3,
     character_count: 4,
@@ -29,7 +29,7 @@ function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {})
   return {
     projectSummary: summarizeProject(demoProjectData),
     projectData: demoProjectData,
-    loadedPath: "/tmp/dynasty-embers",
+    loadedPath: "/tmp/starter-project",
     checkReport,
     metrics: [],
     sourceFiles: [
@@ -130,7 +130,7 @@ describe("LaunchpadView", () => {
     renderLaunchpad({
       onCreateProject,
       createProjectPath: "/tmp/my-game",
-      createConcept: "A frozen court crisis.",
+      createConcept: "A frozen council crisis.",
       createVisualStyle: "ink wash",
       createInitialSceneRequest: "Open with a sealed edict.",
     });
@@ -144,7 +144,7 @@ describe("LaunchpadView", () => {
       expect(onCreateProject).toHaveBeenCalledWith(
         "/tmp/my-game",
         expect.objectContaining({
-          concept: "A frozen court crisis.",
+          concept: "A frozen council crisis.",
           visual_style: "ink wash",
           initial_scene_request: "Open with a sealed edict.",
         }),
@@ -178,7 +178,7 @@ describe("LaunchpadView", () => {
     // Should display real data from checkReport (not hardcoded strings)
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
     expect(screen.getByText("My Project")).toBeTruthy();
-    expect(screen.getByText("opening-scene")).toBeTruthy();
+    expect(screen.getAllByText("opening-scene").length).toBeGreaterThan(0);
     expect(screen.getByText("3")).toBeTruthy(); // scene_count
     expect(screen.getByText("5")).toBeTruthy(); // rule_count
   });

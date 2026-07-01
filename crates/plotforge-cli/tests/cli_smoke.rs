@@ -16,8 +16,7 @@ fn bin() -> &'static str {
 ///
 /// The CLI resolves its output language from `PLOTFORGE_LANGUAGE`/`LANG` when
 /// `--language` is not passed. Without pinning this, test assertions on English
-/// output text become flaky across locales (e.g. `LANG=zh_CN.UTF-8` renders
-/// "已创建 Dynasty Embers" instead of "created Dynasty Embers").
+/// output text become flaky across locales.
 fn cli() -> Command {
     let mut cmd = Command::new(bin());
     cmd.env("PLOTFORGE_LANGUAGE", "en");
@@ -27,21 +26,14 @@ fn cli() -> Command {
 #[test]
 fn cli_runs_full_demo_flow_in_tempdir() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
+    let project = temp.path().join("starter-project");
     let export = temp.path().join("export");
     let desktop_export = temp.path().join("desktop-export");
-    let export_zip = temp.path().join("dynasty-embers-static.zip");
+    let export_zip = temp.path().join("starter-project-static.zip");
     let unpacked_export = temp.path().join("unpacked-export");
 
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
-    run(["check", project.to_str().unwrap()]).assert_success_contains("ok: Dynasty Embers");
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
+    run(["check", project.to_str().unwrap()]).assert_success_contains("ok: Starter Project");
     run(["export", "profiles"])
         .assert_success_contains("static-web target=static_web")
         .assert_contains("byo-key-web target=dynamic_web requires_network_at_runtime=true")
@@ -52,9 +44,7 @@ fn cli_runs_full_demo_flow_in_tempdir() {
         .assert_contains("includes_provider_config=false")
         .assert_contains("includes_private_traces=false")
         .assert_contains("platform_submission_ready=false");
-    run(["play", project.to_str().unwrap(), "--once"])
-        .assert_success_contains("choice: raise-tax")
-        .assert_contains("treasury: +12");
+    run(["play", project.to_str().unwrap(), "--once"]).assert_success_contains("choice: continue");
     run([
         "trace",
         "inspect",
@@ -65,27 +55,25 @@ fn cli_runs_full_demo_flow_in_tempdir() {
     .assert_contains("prompt version: plotforge-local-mock-prompt-v1")
     .assert_contains("model version: plotforge-local-mock-model-v1")
     .assert_contains("provider config hash: sha256:plotforge-local-mock-provider-config-v1")
-    .assert_contains("trace evidence id: trace-001")
+    .assert_contains("trace evidence id: trace-000")
     .assert_contains("snapshot evidence id: none")
-    .assert_contains("intent: raise_tax")
-    .assert_contains("intent choice: raise-tax")
-    .assert_contains("intent action: raise_tax")
-    .assert_contains("intent matched terms: 加征")
-    .assert_contains("rule: raise_tax")
+    .assert_contains("intent: continue")
+    .assert_contains("intent choice: continue")
+    .assert_contains("intent action: continue")
+    .assert_contains("intent matched terms: continue")
+    .assert_contains("rule: continue")
     .assert_contains("rule committed: true")
-    .assert_contains("planner: court-crisis-001")
-    .assert_contains("planner requested: raise_tax")
+    .assert_contains("planner: none")
+    .assert_contains("planner requested: continue")
     .assert_contains("planner fallback: false")
-    .assert_contains("story before: scene=court-crisis-001 beat=court-crisis-001-beat-001 turn=0")
-    .assert_contains("story after: scene=court-crisis-001 beat=court-crisis-001-beat-001 turn=1")
+    .assert_contains("story before: scene=opening-scene beat=opening-scene-beat-001 turn=0")
+    .assert_contains("story after: scene=opening-scene beat=opening-scene-beat-002 turn=0")
     .assert_contains("diagnostics: 5")
     .assert_contains("diagnostic: InterpretAction Completed")
     .assert_contains("media references: 1")
     .assert_contains(
-        "media: Scene court-crisis-001 background_asset -> assets/generated/court-crisis-001.png",
-    )
-    .assert_contains("review scene: court-crisis-001")
-    .assert_contains("review issues: 0");
+        "media: Scene opening-scene background_asset -> assets/generated/placeholder.png",
+    );
     run([
         "export",
         "static",
@@ -100,18 +88,14 @@ fn cli_runs_full_demo_flow_in_tempdir() {
 
     assert!(export.join("index.html").is_file());
     assert!(export.join("game.json").is_file());
-    assert!(
-        export
-            .join("assets/generated/court-crisis-001.png")
-            .is_file()
-    );
+    assert!(export.join("assets/generated/placeholder.png").is_file());
     assert!(export_zip.is_file());
     extract_zip(&export_zip, &unpacked_export);
     assert!(unpacked_export.join("index.html").is_file());
     assert!(unpacked_export.join("game.json").is_file());
     assert!(
         unpacked_export
-            .join("assets/generated/court-crisis-001.png")
+            .join("assets/generated/placeholder.png")
             .is_file()
     );
     assert_export_tree_excludes_private_paths(&unpacked_export);
@@ -134,7 +118,7 @@ fn cli_runs_full_demo_flow_in_tempdir() {
     assert!(desktop_export.join("desktop-build-notes.md").is_file());
     assert!(
         desktop_export
-            .join("assets/generated/court-crisis-001.png")
+            .join("assets/generated/placeholder.png")
             .is_file()
     );
     assert_export_tree_excludes_private_paths(&desktop_export);
@@ -150,7 +134,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
     write_valid_workshop_package(&package);
 
     run(["workshop", "validate", package.to_str().unwrap()])
-        .assert_success_contains("workshop package ok: dynasty-embers-workshop-draft")
+        .assert_success_contains("workshop package ok: starter-workshop-draft")
         .assert_contains("files=2");
 
     run([
@@ -159,36 +143,34 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         library.to_str().unwrap(),
         package.to_str().unwrap(),
     ])
-    .assert_success_contains("imported workshop item dynasty-embers-workshop-draft")
+    .assert_success_contains("imported workshop item starter-workshop-draft")
     .assert_contains("validated imported package");
 
     run(["workshop", "list", library.to_str().unwrap()])
         .assert_success_contains("workshop library items: 1")
-        .assert_contains(
-            "dynasty-embers-workshop-draft title=Dynasty Embers blocked=false reports=0",
-        );
+        .assert_contains("starter-workshop-draft title=Starter Project blocked=false reports=0");
 
     run([
         "workshop",
         "load",
         library.to_str().unwrap(),
-        "dynasty-embers-workshop-draft",
+        "starter-workshop-draft",
     ])
-    .assert_success_contains("loaded workshop item dynasty-embers-workshop-draft")
+    .assert_success_contains("loaded workshop item starter-workshop-draft")
     .assert_contains("validated loaded package");
 
     run([
         "workshop",
         "remix",
         library.to_str().unwrap(),
-        "dynasty-embers-workshop-draft",
+        "starter-workshop-draft",
         "--new-id",
-        "dynasty-embers-remix",
+        "starter-workshop-remix",
         "--title",
-        "Dynasty Embers Remix",
+        "Starter Workshop Sample Remix",
     ])
     .assert_success_contains(
-        "remixed workshop item dynasty-embers-workshop-draft -> dynasty-embers-remix",
+        "remixed workshop item starter-workshop-draft -> starter-workshop-remix",
     )
     .assert_contains("validated remixed package");
 
@@ -196,21 +178,21 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "workshop",
         "report",
         library.to_str().unwrap(),
-        "dynasty-embers-remix",
+        "starter-workshop-remix",
         "--reason",
         "Needs local creator review.",
     ])
-    .assert_success_contains("reported workshop item dynasty-embers-remix reports=1");
+    .assert_success_contains("reported workshop item starter-workshop-remix reports=1");
 
     run([
         "workshop",
         "block",
         library.to_str().unwrap(),
-        "dynasty-embers-remix",
+        "starter-workshop-remix",
         "--reason",
         "Blocked in local library.",
     ])
-    .assert_success_contains("blocked workshop item dynasty-embers-remix")
+    .assert_success_contains("blocked workshop item starter-workshop-remix")
     .assert_contains("reason=Blocked in local library.");
 
     let blocked_load = cli()
@@ -218,7 +200,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
             "workshop",
             "load",
             library.to_str().unwrap(),
-            "dynasty-embers-remix",
+            "starter-workshop-remix",
         ])
         .output()
         .expect("run command");
@@ -230,9 +212,9 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "workshop",
         "delete",
         library.to_str().unwrap(),
-        "dynasty-embers-remix",
+        "starter-workshop-remix",
     ])
-    .assert_success_contains("deleted workshop item dynasty-embers-remix");
+    .assert_success_contains("deleted workshop item starter-workshop-remix");
 
     run([
         "workshop",
@@ -241,7 +223,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "--out",
         publish_out.to_str().unwrap(),
     ])
-    .assert_success_contains("wrote workshop publish draft for dynasty-embers-workshop-draft")
+    .assert_success_contains("wrote workshop publish draft for starter-workshop-draft")
     .assert_contains("upload_enabled=false steamworks_api_called=false");
     let publish_draft = publish_out.join("workshop-publish-draft.json");
     assert!(publish_draft.is_file());
@@ -292,7 +274,7 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "--build-note",
         &request.build_notes[0],
     ])
-    .assert_success_contains("wrote Steam Submission Kit drafts for dynasty-embers-workshop-draft")
+    .assert_success_contains("wrote Steam Submission Kit drafts for starter-workshop-draft")
     .assert_contains("(8 files)");
 
     for file in [
@@ -363,38 +345,31 @@ fn cli_creates_project_from_wizard_fields_and_reopens_it() {
 #[test]
 fn cli_studio_json_invokes_real_studio_commands() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
     let check = run_with_stdin(
         ["studio", "check_project"],
         &serde_json::json!({ "path": project.to_string_lossy() }).to_string(),
     )
-    .assert_success_contains("\"title\":\"Dynasty Embers\"")
+    .assert_success_contains("\"title\":\"Starter Project\"")
     .stdout_json();
-    assert_eq!(check["entry_scene"], "court-crisis-001");
+    assert_eq!(check["entry_scene"], "opening-scene");
     assert_eq!(check["scene_count"], 1);
 
     let play = run_with_stdin(
         ["studio", "play_once_project"],
         &serde_json::json!({
             "path": check_project_path(&temp).to_string_lossy(),
-            "player_input": "朕决定加征辽饷"
+            "player_input": "continue"
         })
         .to_string(),
     )
     .assert_success_contains("\"trace_path\"")
     .stdout_json();
-    assert_eq!(play["scene"]["key"], "court-crisis-001");
-    assert_eq!(play["trace"]["id"], "trace-001");
-    assert_eq!(play["trace"]["selected_choice"], "raise-tax");
+    assert_eq!(play["scene"]["key"], "opening-scene");
+    assert_eq!(play["trace"]["id"], "trace-000");
+    assert_eq!(play["trace"]["selected_choice"], "continue");
     assert!(
         check_project_path(&temp)
             .join("traces/latest.json")
@@ -432,15 +407,8 @@ fn cli_new_project_rejects_secret_markers() {
 #[test]
 fn cli_rejects_interactive_play_for_now() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
     let output = cli()
         .args(["play", project.to_str().unwrap()])
@@ -455,15 +423,8 @@ fn cli_rejects_interactive_play_for_now() {
 #[test]
 fn cli_rejects_unsupported_play_input_without_trace() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
     let output = cli()
         .args([
@@ -485,24 +446,17 @@ fn cli_rejects_unsupported_play_input_without_trace() {
 #[test]
 fn cli_trace_redacts_secret_markers_from_play_input() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
     run([
         "play",
         project.to_str().unwrap(),
         "--once",
         "--input",
-        "朕决定加征辽饷 OPENAI_API_KEY=sk-test-secret-marker bearer token=value",
+        "continue OPENAI_API_KEY=sk-test-secret-marker bearer token=value",
     ])
-    .assert_success_contains("choice: raise-tax");
+    .assert_success_contains("choice: continue");
 
     let trace_path = project.join("traces/latest.json");
     let trace_json = fs::read_to_string(&trace_path).expect("read trace");
@@ -512,30 +466,23 @@ fn cli_trace_redacts_secret_markers_from_play_input() {
     assert!(!trace_json.contains("token=value"));
 
     run(["trace", "inspect", trace_path.to_str().unwrap()])
-        .assert_success_contains("intent: raise_tax")
-        .assert_contains("rule: raise_tax")
-        .assert_contains("planner: court-crisis-001");
+        .assert_success_contains("intent: continue")
+        .assert_contains("rule: continue")
+        .assert_contains("planner: none");
 }
 
 #[test]
 fn cli_play_can_save_and_restore_runtime_snapshot() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
     run([
         "play",
         project.to_str().unwrap(),
         "--once",
         "--input",
-        "朕决定加征辽饷",
+        "continue",
         "--save-id",
         "save-001",
     ])
@@ -555,17 +502,16 @@ fn cli_play_can_save_and_restore_runtime_snapshot() {
         "--restore-id",
         "save-001",
         "--input",
-        "先拨内帑稳住边军军饷",
+        "continue",
         "--save-id",
         "save-002",
     ])
-    .assert_success_contains("choice: pay-army")
-    .assert_contains("army_morale: +12")
+    .assert_success_contains("choice: continue")
     .assert_contains("snapshot:");
 
     let restored_trace =
         fs::read_to_string(project.join("traces/latest.json")).expect("latest trace");
-    assert!(restored_trace.contains("\"turn\": 2"));
+    assert!(restored_trace.contains("\"current_beat_id\": \"opening-scene-beat-003\""));
     assert!(
         project
             .join("saves/save-002.runtime_snapshot.json")
@@ -576,15 +522,8 @@ fn cli_play_can_save_and_restore_runtime_snapshot() {
 #[test]
 fn cli_play_rejects_corrupted_runtime_snapshot_explicitly() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
     fs::write(
         project.join("saves/corrupt.runtime_snapshot.json"),
         "{not-json\n",
@@ -612,15 +551,8 @@ fn cli_play_rejects_corrupted_runtime_snapshot_explicitly() {
 #[test]
 fn cli_play_rejects_invalid_save_id_before_trace_write() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("dynasty-embers");
-    run([
-        "new",
-        "demo",
-        "--path",
-        project.to_str().unwrap(),
-        "--force",
-    ])
-    .assert_success_contains("created Dynasty Embers");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
     let output = cli()
         .args([
@@ -641,28 +573,14 @@ fn cli_play_rejects_invalid_save_id_before_trace_write() {
 }
 
 #[test]
-fn committed_example_fixture_is_cli_valid() {
-    let root = repo_root();
-    let fixture = root.join("examples/dynasty-embers");
-
-    run(["check", fixture.to_str().unwrap()]).assert_success_contains("ok: Dynasty Embers");
-}
-
-#[test]
 fn cli_check_supports_chinese_output() {
-    let root = repo_root();
-    let fixture = root.join("examples/dynasty-embers");
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
 
-    run(["--language", "zh", "check", fixture.to_str().unwrap()])
-        .assert_success_contains("通过：Dynasty Embers")
+    run(["--language", "zh", "check", project.to_str().unwrap()])
+        .assert_success_contains("通过：Starter Project")
         .assert_contains("1 个场景");
-}
-
-fn repo_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("repo root")
 }
 
 fn run<I, S>(args: I) -> CommandOutput
@@ -697,7 +615,23 @@ where
 }
 
 fn check_project_path(temp: &tempfile::TempDir) -> std::path::PathBuf {
-    temp.path().join("dynasty-embers")
+    temp.path().join("starter-project")
+}
+
+fn create_starter_project(project: &std::path::Path) -> CommandOutput {
+    run([
+        "new",
+        "project",
+        "--path",
+        project.to_str().unwrap(),
+        "--force",
+        "--concept",
+        "A local starter project for tests.",
+        "--visual-style",
+        "clear readable test style",
+        "--initial-scene",
+        "A creator opens a fresh PlotForge project.",
+    ])
 }
 
 fn extract_zip(archive_path: &std::path::Path, output_dir: &std::path::Path) {
@@ -748,7 +682,7 @@ fn collect_export_tree_paths(
 }
 
 fn write_valid_workshop_package(package_dir: &std::path::Path) {
-    let game = br#"{"title":"Dynasty Embers"}"#;
+    let game = br#"{"title":"Starter Project"}"#;
     let preview = b"preview-image\n";
 
     fs::create_dir_all(package_dir.join("content")).expect("content dir");
@@ -771,8 +705,8 @@ fn write_valid_workshop_package(package_dir: &std::path::Path) {
 fn sample_workshop_package(game: &[u8], preview: &[u8]) -> WorkshopItemPackage {
     WorkshopItemPackage {
         manifest_version: "2026-06-09".into(),
-        package_id: "dynasty-embers-workshop-draft".into(),
-        title: "Dynasty Embers".into(),
+        package_id: "starter-workshop-draft".into(),
+        title: "Starter Project".into(),
         description: "Offline Workshop package draft for local validation.".into(),
         visibility: WorkshopDraftVisibility::PrivateDraft,
         preview_image: "preview.png".into(),
@@ -794,7 +728,7 @@ fn sample_workshop_package(game: &[u8], preview: &[u8]) -> WorkshopItemPackage {
 fn sample_ai_usage_manifest() -> AiUsageManifest {
     AiUsageManifest {
         manifest_version: "2026-06-09".into(),
-        project_id: "dynasty-embers".into(),
+        project_id: "starter-project".into(),
         project_version: "0.1.0".into(),
         export_profile: ExportProfile::steam_workshop(),
         generated_by: "plotforge-cli-smoke-test".into(),
@@ -824,10 +758,10 @@ fn sample_ai_usage_manifest() -> AiUsageManifest {
 
 fn sample_submission_kit_request() -> SteamSubmissionKitRequest {
     SteamSubmissionKitRequest {
-        product_name: "Dynasty Embers".into(),
-        desktop_build_path: Some("builds/dynasty-embers-desktop.zip".into()),
-        store_short_description: "A branching court drama built with PlotForge.".into(),
-        screenshot_paths: vec!["media/screenshots/court-crisis.png".into()],
+        product_name: "Starter Project".into(),
+        desktop_build_path: Some("builds/starter-project-desktop.zip".into()),
+        store_short_description: "A branching civic drama built with PlotForge.".into(),
+        screenshot_paths: vec!["media/screenshots/civic-crisis.png".into()],
         capsule_asset_paths: vec!["media/capsules/header.png".into()],
         content_warnings: vec!["Political conflict".into()],
         safety_guardrails: vec![
@@ -891,20 +825,4 @@ impl CommandOutput {
         );
         serde_json::from_slice(&self.output.stdout).expect("stdout json")
     }
-}
-
-#[test]
-fn fixture_trace_directory_stays_generated_only() {
-    let root = repo_root();
-    let traces = root.join("examples/dynasty-embers/traces");
-    let committed_trace_count = if traces.is_dir() {
-        fs::read_dir(traces)
-            .expect("traces directory")
-            .filter_map(Result::ok)
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-            .count()
-    } else {
-        0
-    };
-    assert_eq!(committed_trace_count, 0);
 }

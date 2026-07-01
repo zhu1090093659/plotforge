@@ -20,8 +20,8 @@ describe("useStudioWorkspace", () => {
     const dataSource = workspaceTestDataSource({
       async checkProject() {
         return {
-          title: "Dynasty Embers",
-          entry_scene: "court-crisis-001",
+          title: "Starter Project",
+          entry_scene: "opening-scene",
           scene_count: sceneCount,
           rule_count: 1,
           character_count: 2,
@@ -31,8 +31,8 @@ describe("useStudioWorkspace", () => {
 
     render(<WorkspaceProbe dataSource={dataSource} />);
 
-    expect(await screen.findByText("title:Dynasty Embers")).toBeTruthy();
-    expect(screen.getByText("loaded:/tmp/dynasty-embers")).toBeTruthy();
+    expect(await screen.findByText("title:Starter Project")).toBeTruthy();
+    expect(screen.getByText("loaded:/tmp/starter-project")).toBeTruthy();
     expect(screen.getByText("selected:world/world.md")).toBeTruthy();
     expect(screen.getByText("metric-scenes:1")).toBeTruthy();
 
@@ -131,14 +131,14 @@ describe("useStudioWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Select static export" }));
     fireEvent.click(screen.getByRole("button", { name: "Run export" }));
-    await screen.findByText("export:/tmp/dynasty-embers/exports/static.zip");
+    await screen.findByText("export:/tmp/starter-project/exports/static.zip");
   });
 });
 
 function WorkspaceProbe({ dataSource }: { dataSource: StudioDataSource }) {
   const workspace = useStudioWorkspace({
     dataSource,
-    initialProjectPath: "/tmp/dynasty-embers",
+    initialProjectPath: "/tmp/starter-project",
   });
   const sceneMetric = workspace.metrics.find((metric) => metric.label === "Scenes");
   const wp = workspace.loadedPath;
@@ -217,13 +217,13 @@ function workspaceTestDataSource(
       path: "world/world.md",
       kind: "markdown",
       editable: true,
-      content: "# World Bible\n\nThe dynasty is under pressure.\n",
+      content: "# World Bible\n\nThe city is under pressure.\n",
     },
     "game.toml": {
       path: "game.toml",
       kind: "toml",
       editable: false,
-      content: 'title = "Dynasty Embers"\n',
+      content: 'title = "Starter Project"\n',
     },
   };
 
@@ -246,8 +246,8 @@ function workspaceTestDataSource(
     },
     async checkProject() {
       return {
-        title: "Dynasty Embers",
-        entry_scene: "court-crisis-001",
+        title: "Starter Project",
+        entry_scene: "opening-scene",
         scene_count: 1,
         rule_count: 1,
         character_count: 2,

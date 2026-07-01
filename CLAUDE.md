@@ -56,18 +56,18 @@ scripts/qa/full_local.sh               # must pass before merging broad changes
 
 ```bash
 tmp="$(mktemp -d)"
-cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
-cargo run -p plotforge-cli -- check "$tmp/dynasty-embers"
-cargo run -p plotforge-cli -- play "$tmp/dynasty-embers" --once
-cargo run -p plotforge-cli -- trace inspect "$tmp/dynasty-embers/traces/latest.json"
-cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+cargo run -p plotforge-cli -- new project --path "$tmp/starter-project" --force --concept "A local starter project." --visual-style "clear readable test style" --initial-scene "A creator opens a fresh PlotForge project."
+cargo run -p plotforge-cli -- check "$tmp/starter-project"
+cargo run -p plotforge-cli -- play "$tmp/starter-project" --once
+cargo run -p plotforge-cli -- trace inspect "$tmp/starter-project/traces/latest.json"
+cargo run -p plotforge-cli -- export static "$tmp/starter-project" --out "$tmp/export"
 python3 scripts/qa/static_export_http_smoke.py --export-dir "$tmp/export"  # player-module whitelist + no network URLs
 ```
 
 ### Fixture Validation
 
 ```bash
-cargo run -p plotforge-cli -- check examples/dynasty-embers
+No committed default project fixture is expected.
 ```
 
 ## Architecture
@@ -121,7 +121,7 @@ See `AGENTS.md` for the complete set of architecture boundaries, testing policy,
 - **npm workspaces**: `apps/creator-desktop`, `apps/player-web`
 - **Tauri app**: `apps/creator-desktop/src-tauri` (excluded from Cargo workspace)
 - **Generated contracts**: `contracts/plotforge.d.ts`, `contracts/plotforge.schema.json`
-- **Demo fixture**: `examples/dynasty-embers` (read-only in tests)
+- **Project fixtures**: no default project fixture is committed; use tempdir starter projects for smoke flows
 - **UI design reference**: `docs/design/ui-mockups/agent-native-v1/`
 
 ## Testing Patterns

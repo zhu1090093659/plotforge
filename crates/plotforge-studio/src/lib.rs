@@ -968,7 +968,6 @@ fn is_editable_source_file(path: &Path, kind: &SourceFileKind) -> bool {
 mod tests {
     use std::{fs, path::Path};
 
-    use plotforge_storage::create_demo_project;
     use tempfile::tempdir;
 
     use super::{
@@ -1230,8 +1229,8 @@ mod tests {
     #[test]
     fn structured_edit_commands_delegate_to_storage_and_reopen() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let mut world = read_world_edit_document(&project_path).expect("read world edit");
         world
@@ -1299,8 +1298,8 @@ mod tests {
     #[test]
     fn structured_edit_commands_return_explicit_error_code() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let mut world = read_world_edit_document(&project_path).expect("read world edit");
         world.world_bible_markdown = "OPENAI_API_KEY=sk-test-secret-marker".into();
@@ -1318,8 +1317,8 @@ mod tests {
     #[test]
     fn generation_commands_delegate_to_agent_and_persist_project_source() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let world = generate_world_expansion(&project_path, "Expand canon and forbidden facts.")
             .expect("generate world");
@@ -1366,8 +1365,8 @@ mod tests {
     #[test]
     fn ai_safety_policy_commands_roundtrip_and_reject_secret_markers() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let mut policy = read_ai_safety_policy(&project_path).expect("read policy");
         assert!(policy.human_review_required);
@@ -1405,76 +1404,71 @@ mod tests {
     #[test]
     fn open_project_returns_contract_project_data() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let project = open_project(&project_path).expect("open project");
 
-        assert_eq!(project.game.title, "Dynasty Embers");
-        assert_eq!(project.game.entry_scene, "court-crisis-001");
+        assert_eq!(project.game.title, "Starter Project");
+        assert_eq!(project.game.entry_scene, "opening-scene");
         assert_eq!(project.scenes.len(), 1);
     }
 
     #[test]
     fn list_asset_records_returns_rebuilt_media_registry_records() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let records = list_asset_records(&project_path).expect("asset records");
 
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].kind, plotforge_schema::AssetKind::Image);
-        assert_eq!(records[0].references[0].reference_id, "court-crisis-001");
+        assert_eq!(records[0].references[0].reference_id, "opening-scene");
         assert_eq!(records[0].references[0].slot, "background_asset");
     }
 
     #[test]
     fn check_project_returns_counts_from_storage_validation() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let report = check_project(&project_path).expect("check project");
 
-        assert_eq!(report.title, "Dynasty Embers");
-        assert_eq!(report.entry_scene, "court-crisis-001");
+        assert_eq!(report.title, "Starter Project");
+        assert_eq!(report.entry_scene, "opening-scene");
         assert_eq!(report.scene_count, 1);
-        assert_eq!(report.rule_count, 3);
-        assert_eq!(report.character_count, 6);
+        assert_eq!(report.rule_count, 0);
+        assert_eq!(report.character_count, 0);
     }
 
     #[test]
     fn play_once_project_runs_runtime_and_writes_trace() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
-        let report = play_once_project(&project_path, "朕决定加征辽饷").expect("play once");
+        let report = play_once_project(&project_path, "continue").expect("play once");
 
-        assert_eq!(report.scene.key, "court-crisis-001");
-        assert!(report.trace_path.ends_with("traces/trace-001.json"));
+        assert_eq!(report.scene.key, "opening-scene");
+        assert!(report.trace_path.ends_with("traces/trace-000.json"));
         assert!(
             fs::metadata(&report.trace_path)
                 .expect("trace file")
                 .is_file()
         );
-        assert_eq!(report.trace.selected_choice.as_deref(), Some("raise-tax"));
-        assert!(
-            report
-                .delta_summary
-                .iter()
-                .any(|line| line == "treasury: +12")
-        );
+        assert_eq!(report.trace.selected_choice.as_deref(), Some("continue"));
+        assert!(report.delta_summary.is_empty());
     }
 
     #[test]
     fn play_once_project_saves_and_restores_runtime_snapshot() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
-        let first = play_once_project_with_save(&project_path, "朕决定加征辽饷", Some("save-001"))
+        let first = play_once_project_with_save(&project_path, "continue", Some("save-001"))
             .expect("first play");
         let save_path = first.snapshot_path.as_ref().expect("snapshot path");
 
@@ -1488,15 +1482,15 @@ mod tests {
 
         let second = play_once_project_from_snapshot(
             &project_path,
-            "先拨内帑稳住边军军饷",
+            "continue",
             "save-001",
             Some("save-002"),
         )
         .expect("restored play");
 
-        assert_eq!(second.trace.selected_choice.as_deref(), Some("pay-army"));
-        assert_eq!(second.trace.story_state_before.turn, 1);
-        assert_eq!(second.trace.story_state_after.turn, 2);
+        assert_eq!(second.trace.selected_choice.as_deref(), Some("continue"));
+        assert_eq!(second.trace.story_state_before.turn, 0);
+        assert_eq!(second.trace.story_state_after.turn, 0);
         assert_eq!(second.snapshot.as_ref().expect("snapshot").id, "save-002");
         assert!(
             project_path
@@ -1504,30 +1498,26 @@ mod tests {
                 .is_file()
         );
 
-        let latest = play_once_project_from_latest_snapshot(
-            &project_path,
-            "朕决定加征辽饷",
-            Some("save-003"),
-        )
-        .expect("latest restored play");
-        assert_eq!(latest.trace.story_state_before.turn, 2);
+        let latest =
+            play_once_project_from_latest_snapshot(&project_path, "continue", Some("save-003"))
+                .expect("latest restored play");
+        assert_eq!(latest.trace.story_state_before.turn, 0);
         assert_eq!(latest.snapshot.as_ref().expect("snapshot").id, "save-003");
     }
 
     #[test]
     fn play_once_project_rejects_corrupted_runtime_snapshot_explicitly() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
         fs::write(
             project_path.join("saves/corrupt.runtime_snapshot.json"),
             "{not-json\n",
         )
         .expect("corrupt snapshot");
 
-        let error =
-            play_once_project_from_snapshot(&project_path, "朕决定加征辽饷", "corrupt", None)
-                .expect_err("corrupt snapshot");
+        let error = play_once_project_from_snapshot(&project_path, "continue", "corrupt", None)
+            .expect_err("corrupt snapshot");
 
         assert_eq!(error.code, "play_once_restore_snapshot");
         assert!(error.message.contains("json error"));
@@ -1537,10 +1527,10 @@ mod tests {
     #[test]
     fn play_once_project_rejects_invalid_save_id_before_trace_write() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
-        let error = play_once_project_with_save(&project_path, "朕决定加征辽饷", Some("../escape"))
+        let error = play_once_project_with_save(&project_path, "continue", Some("../escape"))
             .expect_err("invalid save id");
 
         assert_eq!(error.code, "play_once_snapshot");
@@ -1556,9 +1546,9 @@ mod tests {
     #[test]
     fn export_static_project_delegates_to_export_crate() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
+        let project_path = temp.path().join("starter-project");
         let export_path = temp.path().join("export");
-        create_demo_project(&project_path, true).expect("demo");
+        create_starter_project(&project_path);
 
         let report = export_static_project(&project_path, &export_path).expect("export static");
 
@@ -1577,10 +1567,10 @@ mod tests {
     #[test]
     fn export_static_project_zip_reports_archive_path() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
+        let project_path = temp.path().join("starter-project");
         let export_path = temp.path().join("export");
-        let archive_path = temp.path().join("dynasty-embers-static.zip");
-        create_demo_project(&project_path, true).expect("demo");
+        let archive_path = temp.path().join("starter-project-static.zip");
+        create_starter_project(&project_path);
 
         let report = export_static_project_zip(&project_path, &export_path, &archive_path)
             .expect("export static zip");
@@ -1627,7 +1617,7 @@ mod tests {
         assert_eq!(check.title, "Winter Regency");
 
         let play = play_once_project(&project_path, "continue").expect("play once");
-        assert_eq!(play.scene.key, "court-crisis-001");
+        assert_eq!(play.scene.key, "opening-scene");
         assert!(project_path.join("traces/latest.json").is_file());
 
         let export = export_static_project_zip(&project_path, &export_path, &archive_path)
@@ -1674,8 +1664,8 @@ mod tests {
     #[test]
     fn list_source_files_marks_safe_text_surfaces_editable() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let files = list_source_files(&project_path).expect("source files");
 
@@ -1692,15 +1682,15 @@ mod tests {
         assert!(
             files
                 .iter()
-                .any(|file| file.path == "scenes/court-crisis-001.scene.json" && !file.editable)
+                .any(|file| file.path == "scenes/opening-scene.scene.json" && !file.editable)
         );
     }
 
     #[test]
     fn read_source_file_returns_content_and_metadata() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let file = read_source_file(&project_path, "world/world.md").expect("read source");
 
@@ -1712,8 +1702,8 @@ mod tests {
     #[test]
     fn read_source_file_rejects_supported_but_unlisted_files() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
         fs::write(project_path.join("provider_config.json"), "{}\n").expect("provider config");
 
         let error = read_source_file(&project_path, "provider_config.json")
@@ -1726,8 +1716,8 @@ mod tests {
     #[test]
     fn write_source_file_updates_editable_markdown_only() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let updated = write_source_file(
             &project_path,
@@ -1748,8 +1738,8 @@ mod tests {
     #[test]
     fn write_source_file_rejects_traversal_and_readonly_files() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let traversal = write_source_file(&project_path, "../outside.md", "bad")
             .expect_err("traversal should fail");
@@ -1769,6 +1759,10 @@ mod tests {
             voice_enabled: true,
             initial_scene_request: "Open on an empty granary ledger.".into(),
         }
+    }
+
+    fn create_starter_project(project_path: &Path) {
+        create_project(project_path, sample_creation_request(), false).expect("create project");
     }
 
     fn sample_character(id: &str) -> Character {
@@ -1936,8 +1930,8 @@ mod tests {
     #[test]
     fn create_character_from_draft_trims_fields_and_splits_traits() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        plotforge_storage::create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let draft = CharacterDraft {
             id: "  envoy  ".into(),
@@ -1969,8 +1963,8 @@ mod tests {
     #[test]
     fn create_character_from_draft_empty_traits_produces_empty_vec() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        plotforge_storage::create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
         let draft = CharacterDraft {
             id: "silent-envoy".into(),
@@ -1996,14 +1990,13 @@ mod tests {
     #[test]
     fn create_character_from_draft_rejects_duplicate_id() {
         let temp = tempdir().expect("tempdir");
-        let project_path = temp.path().join("dynasty-embers");
-        plotforge_storage::create_demo_project(&project_path, true).expect("demo");
+        let project_path = temp.path().join("starter-project");
+        create_starter_project(&project_path);
 
-        // dynasty-embers fixture has a "censor" character — try to create a
-        // draft with the same id (trimmed) to trigger the duplicate error.
+        create_character(&project_path, sample_character("envoy")).expect("seed character");
         let draft = CharacterDraft {
-            id: "  censor  ".into(),
-            name: "Another Censor".into(),
+            id: "  envoy  ".into(),
+            name: "Another Envoy".into(),
             role: "Duplicate".into(),
             traits_text: "".into(),
             visual_card: "ink portrait".into(),
@@ -2023,12 +2016,12 @@ mod tests {
     fn create_rule_from_draft_assembles_add_resource_effect() {
         let dir = tempdir().unwrap();
         let project_path = dir.path().join("project");
-        create_demo_project(&project_path, true).unwrap();
+        create_starter_project(&project_path);
 
         let draft = RuleDraft {
-            id: "  harvest-treasury  ".into(),
+            id: "  harvest-momentum  ".into(),
             action_type: "  harvest  ".into(),
-            resource_key: "treasury".into(),
+            resource_key: "momentum".into(),
             amount: 10,
         };
 
@@ -2038,7 +2031,7 @@ mod tests {
         let rule = document
             .rules
             .iter()
-            .find(|r| r.id == "harvest-treasury")
+            .find(|r| r.id == "harvest-momentum")
             .expect("rule with trimmed id must be present");
 
         assert_eq!(rule.action_type, "harvest");
@@ -2046,7 +2039,7 @@ mod tests {
         assert_eq!(rule.effects.len(), 1);
         match &rule.effects[0] {
             Effect::AddResource { key, amount } => {
-                assert_eq!(key, "treasury");
+                assert_eq!(key, "momentum");
                 assert_eq!(*amount, 10);
             }
             other => panic!("expected AddResource effect, got {:?}", other),
@@ -2057,7 +2050,7 @@ mod tests {
     fn create_rule_from_draft_empty_resource_key_produces_no_effects_and_storage_rejects() {
         let dir = tempdir().unwrap();
         let project_path = dir.path().join("project");
-        create_demo_project(&project_path, true).unwrap();
+        create_starter_project(&project_path);
 
         // RuleDraft.into_rule() produces an empty effects vec when resource_key is blank.
         // plotforge-storage validates that rules must have at least one effect, so this
@@ -2079,12 +2072,12 @@ mod tests {
     fn create_rule_from_draft_rejects_duplicate_id() {
         let dir = tempdir().unwrap();
         let project_path = dir.path().join("project");
-        create_demo_project(&project_path, true).unwrap();
+        create_starter_project(&project_path);
 
         let draft = RuleDraft {
             id: "unique-rule".into(),
             action_type: "first".into(),
-            resource_key: "treasury".into(),
+            resource_key: "momentum".into(),
             amount: 5,
         };
         create_rule_from_draft(&project_path, draft).expect("first create succeeds");
@@ -2092,7 +2085,7 @@ mod tests {
         let duplicate = RuleDraft {
             id: "unique-rule".into(),
             action_type: "second".into(),
-            resource_key: "treasury".into(),
+            resource_key: "momentum".into(),
             amount: 5,
         };
         let error = create_rule_from_draft(&project_path, duplicate)

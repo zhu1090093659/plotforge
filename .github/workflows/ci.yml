@@ -72,11 +72,11 @@ jobs:
       - name: Run CLI smoke in tempdir
         run: |
           tmp="$(mktemp -d)"
-          cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
-          cargo run -p plotforge-cli -- check "$tmp/dynasty-embers"
-          cargo run -p plotforge-cli -- play "$tmp/dynasty-embers" --once
-          cargo run -p plotforge-cli -- trace inspect "$tmp/dynasty-embers/traces/latest.json"
-          cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+          cargo run -p plotforge-cli -- new project --path "$tmp/starter-project" --force --concept "A local starter project for CI." --visual-style "clear readable test style" --initial-scene "A creator opens a fresh PlotForge project."
+          cargo run -p plotforge-cli -- check "$tmp/starter-project"
+          cargo run -p plotforge-cli -- play "$tmp/starter-project" --once
+          cargo run -p plotforge-cli -- trace inspect "$tmp/starter-project/traces/latest.json"
+          cargo run -p plotforge-cli -- export static "$tmp/starter-project" --out "$tmp/export"
 
   export-smoke:
     runs-on: ubuntu-latest
@@ -86,6 +86,6 @@ jobs:
       - name: Build static export
         run: |
           tmp="$(mktemp -d)"
-          cargo run -p plotforge-cli -- new demo --path "$tmp/dynasty-embers" --force
-          cargo run -p plotforge-cli -- export static "$tmp/dynasty-embers" --out "$tmp/export"
+          cargo run -p plotforge-cli -- new project --path "$tmp/starter-project" --force --concept "A local starter project for CI." --visual-style "clear readable test style" --initial-scene "A creator opens a fresh PlotForge project."
+          cargo run -p plotforge-cli -- export static "$tmp/starter-project" --out "$tmp/export"
           python3 scripts/qa/static_export_http_smoke.py --export-dir "$tmp/export"

@@ -2189,8 +2189,7 @@
     },
     "ProjectTemplateId": {
       "enum": [
-        "historical_crisis",
-        "dynasty_embers"
+        "historical_crisis"
       ],
       "type": "string"
     },

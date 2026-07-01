@@ -36,11 +36,11 @@ describe("creator desktop i18n", () => {
     expect(translate("0 voice cards", "zh")).toBe("0 张语音卡");
     expect(
       translate(
-        "examples/dynasty-embers: io error at examples/dynasty-embers/game.toml: No such file or directory (os error 2)",
+        "/tmp/starter-project: io error at /tmp/starter-project/game.toml: No such file or directory (os error 2)",
         "zh",
       ),
     ).toBe(
-      "examples/dynasty-embers: 在 examples/dynasty-embers/game.toml 发生 IO 错误：没有这个文件或目录（os error 2）",
+      "/tmp/starter-project: 在 /tmp/starter-project/game.toml 发生 IO 错误：没有这个文件或目录（os error 2）",
     );
   });
 });

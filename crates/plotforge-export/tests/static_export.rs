@@ -12,10 +12,10 @@ use plotforge_media::MediaError;
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiSafetyPolicy, AiUsageContentKind, AiUsageManifest, AssetKind,
     AssetSourceKind, DESKTOP_RUNTIME_DRAFT_FILE, DesktopRuntimeDraft, ExportManifest,
-    MediaAssetReference, contains_secret_marker_text,
+    MediaAssetReference, ProjectCreationRequest, ProjectTemplateId, contains_secret_marker_text,
 };
 use plotforge_storage::{
-    attach_beat_audio_reference, create_demo_project, load_project, update_ai_safety_policy,
+    attach_beat_audio_reference, create_project_from_request, load_project, update_ai_safety_policy,
 };
 
 #[test]
@@ -23,7 +23,7 @@ fn export_manifest_contains_entry_scene_and_assets() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
 
     let report = export_static_web(&project_path, &output_dir).expect("export");
 
@@ -31,8 +31,8 @@ fn export_manifest_contains_entry_scene_and_assets() {
         &fs::read_to_string(output_dir.join("game.json")).expect("read manifest"),
     )
     .expect("parse manifest");
-    assert_eq!(manifest.game.title, "Dynasty Embers");
-    assert_eq!(manifest.entry_scene, "court-crisis-001");
+    assert_eq!(manifest.game.title, "Project");
+    assert_eq!(manifest.entry_scene, "opening-scene");
     assert_eq!(manifest.profile.id, "static-web");
     assert!(!manifest.profile.requires_network_at_runtime);
     assert!(!manifest.profile.includes_provider_config);
@@ -42,7 +42,7 @@ fn export_manifest_contains_entry_scene_and_assets() {
     assert!(
         manifest
             .assets
-            .contains(&"assets/generated/court-crisis-001.png".into())
+            .contains(&"assets/generated/placeholder.png".into())
     );
     for asset in manifest.assets {
         assert!(output_dir.join(asset).is_file());
@@ -57,7 +57,7 @@ fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     let policy = update_ai_safety_policy(
         &project_path,
         AiSafetyPolicy {
@@ -81,7 +81,7 @@ fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
     assert_eq!(report.audit.files_found, expected_export_files());
     let usage_text = fs::read_to_string(output_dir.join(AI_USAGE_MANIFEST_FILE)).expect("usage");
     let usage: AiUsageManifest = serde_json::from_str(&usage_text).expect("parse usage");
-    assert_eq!(usage.project_id, "dynasty-embers");
+    assert_eq!(usage.project_id, "project");
     assert_eq!(usage.export_profile.id, "static-web");
     assert!(!usage.external_model_calls_during_export);
     assert!(!usage.provider_credentials_included);
@@ -91,7 +91,7 @@ fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
     assert!(usage.disclosures.iter().any(|disclosure| {
         disclosure
             .asset_paths
-            .contains(&"assets/generated/court-crisis-001.png".into())
+            .contains(&"assets/generated/placeholder.png".into())
     }));
     assert_secret_free(&usage_text);
     assert!(!usage_text.contains("raw_response"));
@@ -104,7 +104,7 @@ fn export_package_includes_player_web_surface_without_network_urls() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
 
     let report = export_static_web(&project_path, &output_dir).expect("export");
 
@@ -153,11 +153,11 @@ fn export_rejects_secret_markers_in_manifest_data() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     let game_path = project_path.join("game.toml");
     let mut game = fs::read_to_string(&game_path).expect("read game");
     game = game.replace(
-        "Historical crisis simulation about a collapsing dynasty.",
+        "A local starter project for export tests.",
         "Authorization: bearer token=value",
     );
     fs::write(&game_path, game).expect("write game");
@@ -172,7 +172,7 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     fs::create_dir_all(project_path.join("traces")).expect("traces dir");
     fs::create_dir_all(project_path.join("providers")).expect("providers dir");
     fs::create_dir_all(project_path.join("agents/raw_responses")).expect("raw dir");
@@ -225,19 +225,19 @@ fn export_copies_only_referenced_media_registry_assets() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     fs::write(
         project_path.join("assets/generated/unused-generated.png"),
         b"unused generated image bytes",
     )
     .expect("write unused asset");
     let source_bytes =
-        fs::read(project_path.join("assets/generated/court-crisis-001.png")).expect("source png");
+        fs::read(project_path.join("assets/generated/placeholder.png")).expect("source png");
 
     let report = export_static_web(&project_path, &output_dir).expect("export");
 
     assert_eq!(
-        fs::read(output_dir.join("assets/generated/court-crisis-001.png")).expect("exported png"),
+        fs::read(output_dir.join("assets/generated/placeholder.png")).expect("exported png"),
         source_bytes
     );
     assert!(
@@ -258,13 +258,13 @@ fn export_copies_referenced_audio_assets_and_records_them_in_manifest() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
-    let audio_path = "assets/generated/court-crisis-001-beat-001.wav";
+    create_starter_project(&project_path);
+    let audio_path = "assets/generated/opening-scene-beat-001.wav";
     fs::write(project_path.join(audio_path), b"fake wav bytes").expect("write audio");
     attach_beat_audio_reference(
         &project_path,
-        "court-crisis-001",
-        "court-crisis-001-beat-001",
+        "opening-scene",
+        "opening-scene-beat-001",
         MediaAssetReference {
             asset_id: None,
             kind: AssetKind::Audio,
@@ -299,13 +299,13 @@ fn export_copies_referenced_audio_assets_and_records_them_in_manifest() {
     .expect("manifest");
     assert!(
         output_dir
-            .join("assets/generated/court-crisis-001-beat-001.wav")
+            .join("assets/generated/opening-scene-beat-001.wav")
             .is_file()
     );
     assert!(
         manifest
             .assets
-            .contains(&"assets/generated/court-crisis-001-beat-001.wav".into())
+            .contains(&"assets/generated/opening-scene-beat-001.wav".into())
     );
     let audio_record = manifest
         .asset_records
@@ -314,12 +314,12 @@ fn export_copies_referenced_audio_assets_and_records_them_in_manifest() {
         .expect("audio asset record");
     assert_eq!(
         audio_record.export_path,
-        "assets/generated/court-crisis-001-beat-001.wav"
+        "assets/generated/opening-scene-beat-001.wav"
     );
     assert!(audio_record.references.iter().any(|reference| {
         reference.reference_kind == plotforge_schema::AssetReferenceKind::Scene
-            && reference.reference_id == "court-crisis-001"
-            && reference.slot == "beat_audio:court-crisis-001-beat-001:narration"
+            && reference.reference_id == "opening-scene"
+            && reference.slot == "beat_audio:opening-scene-beat-001:narration"
     }));
     assert_eq!(
         load_project(&project_path)
@@ -337,8 +337,8 @@ fn export_static_zip_contains_only_audited_package_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    let archive_path = temp.path().join("dynasty-embers-static.zip");
-    create_demo_project(&project_path, false).expect("create");
+    let archive_path = temp.path().join("starter-project-static.zip");
+    create_starter_project(&project_path);
     fs::create_dir_all(project_path.join("traces")).expect("traces dir");
     fs::write(project_path.join("traces/latest.json"), "{}").expect("private trace");
 
@@ -372,7 +372,7 @@ fn export_desktop_runtime_draft_writes_local_package_evidence_without_private_fi
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("desktop-export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     fs::create_dir_all(project_path.join("traces")).expect("traces dir");
     fs::create_dir_all(project_path.join("providers")).expect("providers dir");
     fs::create_dir_all(project_path.join("agents/raw_responses")).expect("raw dir");
@@ -392,7 +392,7 @@ fn export_desktop_runtime_draft_writes_local_package_evidence_without_private_fi
     assert!(output_dir.join("desktop-build-notes.md").is_file());
     assert!(
         output_dir
-            .join("assets/generated/court-crisis-001.png")
+            .join("assets/generated/placeholder.png")
             .is_file()
     );
     assert!(!output_dir.join("traces/latest.json").exists());
@@ -418,7 +418,7 @@ fn export_desktop_runtime_draft_writes_local_package_evidence_without_private_fi
     let draft_text =
         fs::read_to_string(output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE)).expect("draft");
     let draft: DesktopRuntimeDraft = serde_json::from_str(&draft_text).expect("draft json");
-    assert_eq!(draft.project_id, "dynasty-embers");
+    assert_eq!(draft.project_id, "project");
     assert_eq!(draft.export_profile.id, "desktop-runtime");
     assert_eq!(draft.static_manifest_path, "game.json");
     assert_eq!(draft.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
@@ -462,7 +462,7 @@ fn export_desktop_runtime_draft_rejects_stale_private_output_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("desktop-export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     fs::create_dir_all(output_dir.join("providers")).expect("output providers");
     fs::write(output_dir.join("providers/config.json"), "{}").expect("stale config");
 
@@ -481,8 +481,8 @@ fn export_static_zip_refuses_to_include_stale_output_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    let archive_path = temp.path().join("dynasty-embers-static.zip");
-    create_demo_project(&project_path, false).expect("create");
+    let archive_path = temp.path().join("starter-project-static.zip");
+    create_starter_project(&project_path);
     fs::create_dir_all(output_dir.join("providers")).expect("output providers");
     fs::write(output_dir.join("providers/config.json"), "{}").expect("stale config");
 
@@ -502,7 +502,7 @@ fn export_rejects_stale_disallowed_files_in_output_package() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
+    create_starter_project(&project_path);
     fs::create_dir_all(output_dir.join("traces")).expect("output traces");
     fs::write(output_dir.join("traces/latest.json"), "{}").expect("stale trace");
 
@@ -520,14 +520,11 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
-    create_demo_project(&project_path, false).expect("create");
-    let scene_path = project_path.join("scenes/court-crisis-001.scene.json");
+    create_starter_project(&project_path);
+    let scene_path = project_path.join("scenes/opening-scene.scene.json");
     let scene = fs::read_to_string(&scene_path)
         .expect("read scene")
-        .replace(
-            "assets/generated/court-crisis-001.png",
-            "../traces/latest.json",
-        );
+        .replace("assets/generated/placeholder.png", "../traces/latest.json");
     fs::write(&scene_path, scene).expect("write scene");
 
     let error = export_static_web(&project_path, &output_dir).expect_err("unsafe asset");
@@ -542,7 +539,7 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
 fn expected_export_files() -> Vec<PathBuf> {
     vec![
         PathBuf::from(AI_USAGE_MANIFEST_FILE),
-        PathBuf::from("assets/generated/court-crisis-001.png"),
+        PathBuf::from("assets/generated/placeholder.png"),
         PathBuf::from("game.json"),
         PathBuf::from("index.html"),
         PathBuf::from("player-audio.js"),
@@ -553,6 +550,21 @@ fn expected_export_files() -> Vec<PathBuf> {
         PathBuf::from("player.js"),
         PathBuf::from("styles.css"),
     ]
+}
+
+fn create_starter_project(project_path: &Path) {
+    create_project_from_request(
+        project_path,
+        ProjectCreationRequest {
+            template: ProjectTemplateId::HistoricalCrisis,
+            concept: "A local starter project for export tests.".into(),
+            visual_style: "clear readable test style".into(),
+            voice_enabled: false,
+            initial_scene_request: "A creator opens a fresh PlotForge project.".into(),
+        },
+        false,
+    )
+    .expect("create starter project");
 }
 
 fn expected_export_files_with_build_notes() -> Vec<PathBuf> {

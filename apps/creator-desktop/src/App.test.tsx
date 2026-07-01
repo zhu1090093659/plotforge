@@ -44,13 +44,13 @@ describe("App", () => {
         path: "game.toml",
         kind: "toml",
         editable: false,
-        content: 'title = "Dynasty Embers"\n',
+        content: 'title = "Starter Project"\n',
       },
       "world/world.md": {
         path: "world/world.md",
         kind: "markdown",
         editable: true,
-        content: "# World Bible\n\nThe dynasty is under pressure.\n",
+        content: "# World Bible\n\nThe city is under pressure.\n",
       },
     };
     const dataSource = appTestDataSource({
@@ -77,15 +77,15 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
-    expect(screen.getByDisplayValue(/The dynasty is under pressure/)).toBeTruthy();
+    expect(screen.getByDisplayValue(/The city is under pressure/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Source editor"), {
-      target: { value: "# World Bible\n\nThe court has changed.\n" },
+      target: { value: "# World Bible\n\nThe council has changed.\n" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -93,7 +93,7 @@ describe("App", () => {
       expect(writes).toEqual([
         {
           relativePath: "world/world.md",
-          content: "# World Bible\n\nThe court has changed.\n",
+          content: "# World Bible\n\nThe council has changed.\n",
         },
       ]);
     });
@@ -103,10 +103,10 @@ describe("App", () => {
     const dataSource = appTestDataSource();
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     expect(getWorkflowButton("Command Center")).toBeTruthy();
     expect(getWorkflowButton("Director Mode")).toBeTruthy();
     expect(getWorkflowButton("Agent Mesh")).toBeTruthy();
@@ -165,10 +165,10 @@ describe("App", () => {
     const dataSource = appTestDataSource();
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     expect(screen.getByText("Backend Boundary")).toBeTruthy();
     expect(screen.getByText("Real Studio command surface")).toBeTruthy();
     expect(screen.getAllByText("External agents").length).toBeGreaterThan(0);
@@ -189,10 +189,10 @@ describe("App", () => {
     const dataSource = appTestDataSource();
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     expect(screen.getAllByText("Project Launchpad").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Language"), {
@@ -251,14 +251,14 @@ describe("App", () => {
     const dataSource = appTestDataSource();
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
-    expect(screen.getAllByText("asset-image-court-crisis-001").length)
+    expect(screen.getAllByText("asset-image-opening-scene").length)
       .toBeGreaterThan(0);
     expect(screen.getByText("image / generated")).toBeTruthy();
     expect(
@@ -267,19 +267,19 @@ describe("App", () => {
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("sha256").length).toBeGreaterThan(0);
     expect(screen.getByText("plotforge-local-mock / plotforge-local-mock-image-v1")).toBeTruthy();
-    expect(screen.getByText("mock-image-court-crisis-001")).toBeTruthy();
-    expect(screen.getByText("sha256:demo-court-crisis-prompt")).toBeTruthy();
+    expect(screen.getByText("mock-image-opening-scene")).toBeTruthy();
+    expect(screen.getByText("sha256:demo-opening-scene-prompt")).toBeTruthy();
     expect(
-      screen.getByText("scene:court-crisis-001:background_asset"),
+      screen.getByText("scene:opening-scene:background_asset"),
     ).toBeTruthy();
     expect(screen.getAllByText("asset-voice-censor-001").length)
       .toBeGreaterThan(0);
     expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
     expect(screen.getByText("Visual Bible")).toBeTruthy();
-    expect(screen.getByText("Winter court ink wash")).toBeTruthy();
+    expect(screen.getByText("Winter council ink wash")).toBeTruthy();
     expect(screen.getByText("Official portrait restraint")).toBeTruthy();
     expect(screen.getByText("Audio Bible")).toBeTruthy();
-    expect(screen.getByText("Court Censor")).toBeTruthy();
+    expect(screen.getByText("Civic Auditor")).toBeTruthy();
     expect(screen.getByText("Minister of War")).toBeTruthy();
     expect(screen.queryByText("Scene background fallback")).toBeNull();
   });
@@ -298,15 +298,15 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
     expect(screen.getByText("Scene background fallback")).toBeTruthy();
-    expect(screen.getAllByText("assets/generated/court-crisis-001.png").length)
+    expect(screen.getAllByText("assets/generated/opening-scene.png").length)
       .toBeGreaterThan(0);
   });
 
@@ -330,40 +330,40 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
-    fireEvent.click(screen.getByRole("button", { name: /Winter court ink wash/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Winter council ink wash/ }));
 
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
-      target: { value: "Ink court with harsher winter lanterns." },
+      target: { value: "Ink council with harsher winter lanterns." },
     });
     fireEvent.change(screen.getByLabelText("Visual style palette 1"), {
       target: { value: "bone white\nseal red" },
     });
     fireEvent.change(screen.getByLabelText("Visual style tags 1"), {
-      target: { value: "court\nwinter" },
+      target: { value: "council\nwinter" },
     });
     fireEvent.change(screen.getByLabelText("Visual style reference asset ids 1"), {
-      target: { value: "asset-image-court-crisis-001\nasset-style-ref-002" },
+      target: { value: "asset-image-opening-scene\nasset-style-ref-002" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Visual Bible" }));
 
     await waitFor(() => {
       expect(updates).toHaveLength(1);
     });
-    fireEvent.click(screen.getByRole("button", { name: /Court Censor/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
 
     fireEvent.change(screen.getByLabelText("Audio voice 1"), {
-      target: { value: "dry formal court voice" },
+      target: { value: "dry formal council voice" },
     });
     fireEvent.change(screen.getByLabelText("Audio delivery 1"), {
       target: { value: "quiet but cutting" },
     });
     fireEvent.change(screen.getByLabelText("Audio tags 1"), {
-      target: { value: "court\nformal" },
+      target: { value: "council\nformal" },
     });
     fireEvent.change(screen.getByLabelText("Audio sample text 1"), {
       target: { value: "The ledgers do not accuse by accident." },
@@ -375,8 +375,8 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(updates).toEqual([
-        "visual:Ink court with harsher winter lanterns.:bone white|seal red:court|winter:asset-image-court-crisis-001|asset-style-ref-002",
-        "audio:dry formal court voice:quiet but cutting:court|formal:The ledgers do not accuse by accident.:asset-voice-censor-001|asset-voice-ref-002",
+        "visual:Ink council with harsher winter lanterns.:bone white|seal red:council|winter:asset-image-opening-scene|asset-style-ref-002",
+        "audio:dry formal council voice:quiet but cutting:council|formal:The ledgers do not accuse by accident.:asset-voice-censor-001|asset-voice-ref-002",
       ]);
     });
   });
@@ -390,10 +390,10 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
@@ -433,7 +433,7 @@ describe("App", () => {
     expect(screen.getAllByText("continue-council").length).toBeGreaterThan(0);
     expect(screen.getAllByText("continue").length).toBeGreaterThan(0);
     expect(screen.getByText("background_asset")).toBeTruthy();
-    expect(screen.getAllByText("assets/generated/court-crisis-001.png").length)
+    expect(screen.getAllByText("assets/generated/opening-scene.png").length)
       .toBeGreaterThan(0);
     expect(
       screen.getByText("planner returned fallback scene `[REDACTED_SECRET]`"),
@@ -468,7 +468,7 @@ describe("App", () => {
         return playOnceReportWithSnapshot(
           playerInput,
           saveId ?? snapshotId,
-          `/tmp/dynasty-embers/saves/${saveId ?? snapshotId}.runtime_snapshot.json`,
+          `/tmp/starter-project/saves/${saveId ?? snapshotId}.runtime_snapshot.json`,
         );
       },
       async playOnceProjectFromLatestSnapshot(path, playerInput, saveId = null) {
@@ -476,16 +476,16 @@ describe("App", () => {
         return playOnceReportWithSnapshot(
           playerInput,
           saveId ?? "latest",
-          `/tmp/dynasty-embers/saves/${saveId ?? "latest"}.runtime_snapshot.json`,
+          `/tmp/starter-project/saves/${saveId ?? "latest"}.runtime_snapshot.json`,
         );
       },
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
@@ -500,7 +500,7 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Run turn" }));
 
-    await screen.findByText("/tmp/dynasty-embers/saves/save-after-army.runtime_snapshot.json");
+    await screen.findByText("/tmp/starter-project/saves/save-after-army.runtime_snapshot.json");
 
     fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
     fireEvent.change(screen.getByLabelText("Playtest input"), {
@@ -513,18 +513,18 @@ describe("App", () => {
     fireEvent.click(screen.getByLabelText("Restore latest save"));
     fireEvent.click(screen.getByRole("button", { name: "Run turn" }));
 
-    await screen.findByText("/tmp/dynasty-embers/saves/save-after-tax.runtime_snapshot.json");
+    await screen.findByText("/tmp/starter-project/saves/save-after-tax.runtime_snapshot.json");
     expect(calls).toEqual([
       {
         method: "snapshot",
-        path: "/tmp/dynasty-embers",
+        path: "/tmp/starter-project",
         playerInput: "pay the army",
         snapshotId: "save-before-army",
         saveId: "save-after-army",
       },
       {
         method: "latest",
-        path: "/tmp/dynasty-embers",
+        path: "/tmp/starter-project",
         playerInput: "raise emergency taxes",
         saveId: "save-after-tax",
       },
@@ -552,10 +552,10 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(getWorkflowButton("Export Package"));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(screen.getByText("byo-key-web")).toBeTruthy();
@@ -571,21 +571,21 @@ describe("App", () => {
       target: { value: "/tmp/static-export" },
     });
     fireEvent.change(screen.getByLabelText("Static export zip archive"), {
-      target: { value: "/tmp/dynasty-embers.zip" },
+      target: { value: "/tmp/starter-project.zip" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Export zip" }));
 
     await waitFor(() => {
       expect(exports).toEqual([
         {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           outputDir: "/tmp/static-export",
-          archivePath: "/tmp/dynasty-embers.zip",
+          archivePath: "/tmp/starter-project.zip",
         },
       ]);
     });
     expect(
-      screen.getAllByText("/tmp/dynasty-embers.zip").length,
+      screen.getAllByText("/tmp/starter-project.zip").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("matched")).toBeTruthy();
     expect(screen.getByText("pending explicit package hash")).toBeTruthy();
@@ -601,10 +601,10 @@ describe("App", () => {
     const dataSource = appTestDataSource();
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     const launchpad = screen.getByRole("region", { name: "Project Launchpad" });
     fireEvent.click(within(launchpad).getByRole("button", { name: "Export Package" }));
 
@@ -627,10 +627,10 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     fireEvent.click(getWorkflowButton("Export Package"));
     fireEvent.click(
       screen.getByRole("button", {
@@ -660,7 +660,7 @@ describe("App", () => {
       game: {
         ...demoProjectData.game,
         title: "Winter Regency",
-        description: "A frozen court succession crisis.",
+        description: "A frozen council succession crisis.",
       },
     };
     let currentProject = demoProjectData;
@@ -705,10 +705,10 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
 
     // Expand the New Project collapsible section
     fireEvent.click(screen.getByRole("button", { name: "New Project" }));
@@ -717,10 +717,10 @@ describe("App", () => {
       target: { value: "/tmp/winter-regency" },
     });
     fireEvent.change(screen.getByLabelText("Visual style"), {
-      target: { value: "ink wash winter court" },
+      target: { value: "ink wash winter council" },
     });
     fireEvent.change(screen.getByLabelText("Concept"), {
-      target: { value: "A frozen court succession crisis." },
+      target: { value: "A frozen council succession crisis." },
     });
     fireEvent.change(screen.getByLabelText("Initial scene request"), {
       target: { value: "Open with a sealed imperial edict." },
@@ -735,8 +735,8 @@ describe("App", () => {
           path: "/tmp/winter-regency",
           request: {
             template: "historical_crisis",
-            concept: "A frozen court succession crisis.",
-            visual_style: "ink wash winter court",
+            concept: "A frozen council succession crisis.",
+            visual_style: "ink wash winter council",
             voice_enabled: true,
             initial_scene_request: "Open with a sealed imperial edict.",
           },
@@ -823,10 +823,10 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     for (const label of [
       "Command Center",
       "Director Mode",
@@ -871,7 +871,7 @@ describe("App", () => {
       target: { value: "ink portrait" },
     });
     fireEvent.change(screen.getByLabelText("New voice card"), {
-      target: { value: "measured court speech" },
+      target: { value: "measured council speech" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Character" }));
 
@@ -980,7 +980,7 @@ describe("App", () => {
             voice_card: `generated voice from ${concept}`,
             portrait_request: {
               prompt_summary: "Generated portrait request",
-              style: "court portrait",
+              style: "council portrait",
               target_asset_slot: "portrait",
               prompt_hash: "sha256:test-generated-character",
               provider_config_hash:
@@ -1007,10 +1007,10 @@ describe("App", () => {
     });
 
     render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/dynasty-embers" />,
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Dynasty Embers")).toBeTruthy();
+    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /World Bible/ }));
     // AI expansion goal is in the "Advanced" collapsible — expand it first.
@@ -1025,7 +1025,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Story Craft/ }));
     fireEvent.change(screen.getByLabelText("Story generation concept"), {
-      target: { value: "Generate three linked court pressures." },
+      target: { value: "Generate three linked council pressures." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Generate StoryCraft" }));
     await screen.findByText("Generated Pressure");
@@ -1062,7 +1062,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(calls).toEqual([
         "world-generation:Expand northern border canon.",
-        "story-generation:Generate three linked court pressures.",
+        "story-generation:Generate three linked council pressures.",
         "character-generation:Design a grain envoy.:Grain Envoy",
         "ai-policy:true:true:Creator reviews all live output before export.",
       ]);
@@ -1094,13 +1094,13 @@ function appTestDataSource(
       path: "game.toml",
       kind: "toml",
       editable: false,
-      content: 'title = "Dynasty Embers"\n',
+      content: 'title = "Starter Project"\n',
     },
     "world/world.md": {
       path: "world/world.md",
       kind: "markdown",
       editable: true,
-      content: "# World Bible\n\nThe dynasty is under pressure.\n",
+      content: "# World Bible\n\nThe city is under pressure.\n",
     },
   };
 
@@ -1123,8 +1123,8 @@ function appTestDataSource(
     },
     async checkProject() {
       return {
-        title: "Dynasty Embers",
-        entry_scene: "court-crisis-001",
+        title: "Starter Project",
+        entry_scene: "opening-scene",
         scene_count: 1,
         rule_count: 1,
         character_count: 2,
@@ -1295,7 +1295,7 @@ function appTestDataSource(
           voice_card: `generated voice from ${concept}`,
           portrait_request: {
             prompt_summary: "Generated portrait request",
-            style: "court portrait",
+            style: "council portrait",
             target_asset_slot: "portrait",
             prompt_hash: "sha256:test-generated-character",
             provider_config_hash:
@@ -1351,17 +1351,17 @@ function appTestDataSource(
           world_state: report.trace.world_state_after,
           scenes: demoProjectData.scenes,
         },
-        snapshot_path: `/tmp/dynasty-embers/saves/${saveId}.runtime_snapshot.json`,
+        snapshot_path: `/tmp/starter-project/saves/${saveId}.runtime_snapshot.json`,
       };
     },
     async playOnceProjectFromSnapshot(_path, playerInput, _snapshotId, saveId = null) {
       return saveId
-        ? this.playOnceProjectWithSave("/tmp/dynasty-embers", playerInput, saveId)
+        ? this.playOnceProjectWithSave("/tmp/starter-project", playerInput, saveId)
         : demoPlayOnceReport(playerInput);
     },
     async playOnceProjectFromLatestSnapshot(_path, playerInput, saveId = null) {
       return saveId
-        ? this.playOnceProjectWithSave("/tmp/dynasty-embers", playerInput, saveId)
+        ? this.playOnceProjectWithSave("/tmp/starter-project", playerInput, saveId)
         : demoPlayOnceReport(playerInput);
     },
     async exportStaticProjectZip(_path, outputDir, archivePath) {
@@ -1413,7 +1413,7 @@ function fallbackPlayOnceReport(): PlayOnceReport {
       title: "Fallback Council",
       hook: "A fallback council forms because the requested scene was missing.",
     },
-    trace_path: "/tmp/dynasty-embers/traces/trace-fallback.json",
+    trace_path: "/tmp/starter-project/traces/trace-fallback.json",
     delta_summary: [],
     trace: {
       ...report.trace,

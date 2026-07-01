@@ -158,7 +158,7 @@ export function createDefaultStudioDataSource(): StudioDataSource {
 }
 
 export function defaultProjectPath() {
-  return "examples/dynasty-embers";
+  return "";
 }
 
 function isTauriRuntime() {

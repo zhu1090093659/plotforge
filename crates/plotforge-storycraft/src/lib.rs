@@ -7,13 +7,12 @@ use plotforge_schema::{
     StoryCraftBible, StoryCraftState, StoryPromise, StoryPromiseStatus,
 };
 
-pub fn dynasty_embers_story_craft() -> StoryCraftState {
+pub fn sample_story_craft_state() -> StoryCraftState {
     StoryCraftState {
         bible: StoryCraftBible {
-            genre_promise: "Historical crisis simulation with court intrigue".into(),
-            central_question:
-                "Can the player extend a collapsing dynasty under internal and external pressure?"
-                    .into(),
+            genre_promise: "Civic crisis simulation with council intrigue".into(),
+            central_question: "Can the player stabilize a city under internal and external pressure?"
+                .into(),
             target_emotions: vec![
                 "pressure".into(),
                 "lonely authority".into(),
@@ -50,44 +49,44 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
             }),
             prose_style_guide: Some("Tense, concrete, political, and consequence-driven.".into()),
             banned_cliches: vec![
-                "empty imperial grandeur".into(),
+                "empty civic grandeur".into(),
                 "prophecy without systems consequence".into(),
             ],
             reference_modules: vec![ReferenceModule {
-                id: "court-crisis-escalation".into(),
-                title: "Court crisis escalation".into(),
+                id: "civic-crisis-escalation".into(),
+                title: "Civic crisis escalation".into(),
                 summary: "Use resources, factions, and visible tradeoffs to escalate pressure without copying source text.".into(),
             }],
         },
         active_promises: vec![
             StoryPromise {
-                id: "dynasty-survival".into(),
-                text: "The player can extend the dynasty only by accepting visible costs.".into(),
+                id: "city-stability".into(),
+                text: "The player can stabilize the city only by accepting visible costs.".into(),
                 status: StoryPromiseStatus::Active,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "civic-crisis-001".into(),
                 payoff_hint: Some("A later scene should force a choice between legitimacy and survival.".into()),
             },
             StoryPromise {
                 id: "sealed-decisions-leak".into(),
                 text: "Sealed court decisions may be leaking before orders are issued.".into(),
                 status: StoryPromiseStatus::Active,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "civic-crisis-001".into(),
                 payoff_hint: Some("Expose or exploit the insider channel.".into()),
             },
         ],
         emotional_arc: vec![
             EmotionalArcPoint {
-                scene_key: "court-crisis-001".into(),
+                scene_key: "civic-crisis-001".into(),
                 target_emotion: "pressure".into(),
                 intensity: 70,
             },
             EmotionalArcPoint {
-                scene_key: "court-crisis-002".into(),
+                scene_key: "civic-crisis-002".into(),
                 target_emotion: "uncertainty".into(),
                 intensity: 78,
             },
             EmotionalArcPoint {
-                scene_key: "court-crisis-003".into(),
+                scene_key: "civic-crisis-003".into(),
                 target_emotion: "consequence".into(),
                 intensity: 86,
             },
@@ -99,22 +98,22 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
                 promise: "The border army is loyal only while pay keeps flowing.".into(),
                 thread_type: PlotThreadType::Survival,
                 status: PlotThreadStatus::Open,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "civic-crisis-001".into(),
                 expected_payoff: Some("The army either gets paid, defects, or becomes a coup risk.".into()),
                 related_characters: vec!["war-minister".into(), "border-general".into()],
                 related_world_flags: vec!["border_army_paid".into()],
                 last_update: "Rumors mention unpaid soldiers outside the pass.".into(),
             },
             PlotThread {
-                id: "court-insider".into(),
-                title: "Court insider betrayal".into(),
-                promise: "A trusted court channel is leaking decisions before they are issued."
+                id: "council-insider".into(),
+                title: "Council insider betrayal".into(),
+                promise: "A trusted council channel is leaking decisions before they are issued."
                     .into(),
                 thread_type: PlotThreadType::Mystery,
                 status: PlotThreadStatus::Open,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "civic-crisis-001".into(),
                 expected_payoff: Some("A future review should identify who benefits from the leak.".into()),
-                related_characters: vec!["eunuch-director".into(), "grand-secretary".into()],
+                related_characters: vec!["guild-liaison".into(), "city-treasurer".into()],
                 related_world_flags: vec!["corruption_investigation".into()],
                 last_update: "Memorials arrive too quickly after sealed conversations.".into(),
             },
@@ -125,7 +124,7 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
                     .into(),
                 thread_type: PlotThreadType::Political,
                 status: PlotThreadStatus::Open,
-                introduced_at: "court-crisis-001".into(),
+                introduced_at: "civic-crisis-001".into(),
                 expected_payoff: Some("The provinces either comply, revolt, or bargain for autonomy.".into()),
                 related_characters: vec!["provincial-governor".into(), "censor".into()],
                 related_world_flags: vec!["local_tax_resistance".into()],
@@ -134,19 +133,19 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
         ],
         character_arcs: vec![
             CharacterArc {
-                id: "grand-secretary-loyalty".into(),
-                character_id: "grand-secretary".into(),
-                desire: "Keep the dynasty functioning without becoming the scapegoat.".into(),
+                id: "city-treasurer-loyalty".into(),
+                character_id: "city-treasurer".into(),
+                desire: "Keep the city functioning without becoming the scapegoat.".into(),
                 pressure: "Every treasury order creates a factional enemy.".into(),
                 current_state: "Cautious administrator".into(),
                 target_state: "Openly chooses stability or self-preservation.".into(),
                 status: CharacterArcStatus::Setup,
             },
             CharacterArc {
-                id: "eunuch-director-leverage".into(),
-                character_id: "eunuch-director".into(),
-                desire: "Preserve palace leverage over official channels.".into(),
-                pressure: "A corruption inquiry may expose palace brokers.".into(),
+                id: "guild-liaison-leverage".into(),
+                character_id: "guild-liaison".into(),
+                desire: "Preserve guild leverage over official channels.".into(),
+                pressure: "A corruption inquiry may expose broker networks.".into(),
                 current_state: "Ambiguous information broker".into(),
                 target_state: "Reveals whether loyalty is personal or institutional.".into(),
                 status: CharacterArcStatus::Setup,
@@ -157,7 +156,7 @@ pub fn dynasty_embers_story_craft() -> StoryCraftState {
         ai_slop_risk: Some(12),
         review_notes: vec![NarrativeReviewNote {
             id: "opening-pressure-clear".into(),
-            scene_key: Some("court-crisis-001".into()),
+            scene_key: Some("civic-crisis-001".into()),
             severity: Severity::Info,
             message: "Opening scene has a clear pressure hook and three systemic tradeoffs.".into(),
             resolved: true,
@@ -278,11 +277,11 @@ mod tests {
 
     use plotforge_schema::{Beat, BeatNext, Character, Choice, Scene};
 
-    use super::{dynasty_embers_story_craft, review_scene};
+    use super::{review_scene, sample_story_craft_state};
 
     #[test]
     fn story_craft_has_required_plot_threads() {
-        let state = dynasty_embers_story_craft();
+        let state = sample_story_craft_state();
         assert!(state.active_promises.len() >= 2);
         assert!(state.emotional_arc.len() >= 3);
         assert!(state.plot_threads.len() >= 3);
@@ -335,7 +334,7 @@ mod tests {
                 next: BeatNext::None,
             }],
         };
-        let review = review_scene(&scene, &dynasty_embers_story_craft(), &[]);
+        let review = review_scene(&scene, &sample_story_craft_state(), &[]);
 
         assert!(
             review
@@ -360,15 +359,15 @@ mod tests {
     #[test]
     fn review_accepts_valid_scene() {
         let scene = Scene {
-            key: "court-crisis-001".into(),
-            title: "Court Crisis".into(),
-            location: "Qianqing Palace".into(),
+            key: "civic-crisis-001".into(),
+            title: "Civic Crisis".into(),
+            location: "Council Chamber".into(),
             dramatic_purpose: "Force the emperor to choose between revenue and public order."
                 .into(),
             hook: "The border payroll ledger arrives with a fresh red deficit mark.".into(),
-            background_asset: "assets/generated/court-crisis-001.png".into(),
+            background_asset: "assets/generated/civic-crisis-001.png".into(),
             audio_refs: Vec::new(),
-            character_ids: vec!["grand-secretary".into()],
+            character_ids: vec!["city-treasurer".into()],
             plot_thread_updates: BTreeMap::from([(
                 "border-payroll".into(),
                 "The army pay gap becomes visible.".into(),
@@ -381,8 +380,8 @@ mod tests {
                 line_delivery: None,
                 audio_refs: Vec::new(),
                 choices: vec![Choice {
-                    id: "raise-tax".into(),
-                    label: "Raise the Liao levy".into(),
+                    id: "raise-levy".into(),
+                    label: "Raise the harbor levy".into(),
                     action_type: "raise_tax".into(),
                     input_terms: vec!["raise".into(), "levy".into()],
                     dramatic_purpose: "Trade public order for treasury relief.".into(),
@@ -392,16 +391,16 @@ mod tests {
             }],
         };
         let characters = vec![Character {
-            id: "grand-secretary".into(),
-            name: "Grand Secretary".into(),
-            role: "Court administrator".into(),
+            id: "city-treasurer".into(),
+            name: "City Treasurer".into(),
+            role: "Civic administrator".into(),
             traits: vec!["cautious".into()],
             visual_card: "elder official".into(),
             voice_card: "restrained".into(),
             portrait_request: None,
         }];
 
-        let review = review_scene(&scene, &dynasty_embers_story_craft(), &characters);
+        let review = review_scene(&scene, &sample_story_craft_state(), &characters);
         assert!(review.passes());
         assert_eq!(review.hook_score, 100);
         assert_eq!(review.pacing_score, 100);
@@ -452,7 +451,7 @@ mod tests {
             }],
         };
 
-        let review = review_scene(&scene, &dynasty_embers_story_craft(), &[]);
+        let review = review_scene(&scene, &sample_story_craft_state(), &[]);
         let kinds = review
             .issues
             .iter()

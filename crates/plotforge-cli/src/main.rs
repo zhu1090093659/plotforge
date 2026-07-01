@@ -17,9 +17,8 @@ use plotforge_schema::{
     SteamSubmissionKitRequest, WorkshopPublishDraft, supported_export_profiles,
 };
 use plotforge_storage::{
-    create_demo_project, create_project_from_request, load_project, read_latest_runtime_snapshot,
-    read_runtime_snapshot, validate_project, validate_runtime_snapshot_id, write_runtime_snapshot,
-    write_trace,
+    create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
+    validate_project, validate_runtime_snapshot_id, write_runtime_snapshot, write_trace,
 };
 use plotforge_workshop::{
     LocalOnlySteamworksUploadPort, SteamworksUploadConfig, block_workshop_library_item,
@@ -66,29 +65,18 @@ struct NewCommand {
 
 #[derive(Debug, Subcommand)]
 enum NewSubcommand {
-    Demo(NewDemoArgs),
     Project(NewProjectArgs),
-}
-
-#[derive(Debug, Args)]
-struct NewDemoArgs {
-    #[arg(long, default_value = "dynasty-embers")]
-    path: PathBuf,
-    #[arg(long)]
-    force: bool,
 }
 
 #[derive(Clone, Debug, ValueEnum)]
 enum ProjectTemplateArg {
     HistoricalCrisis,
-    DynastyEmbers,
 }
 
 impl From<ProjectTemplateArg> for ProjectTemplateId {
     fn from(value: ProjectTemplateArg) -> Self {
         match value {
             ProjectTemplateArg::HistoricalCrisis => ProjectTemplateId::HistoricalCrisis,
-            ProjectTemplateArg::DynastyEmbers => ProjectTemplateId::DynastyEmbers,
         }
     }
 }
@@ -117,7 +105,7 @@ struct PlayArgs {
     path: PathBuf,
     #[arg(long)]
     once: bool,
-    #[arg(long, default_value = "朕决定加征辽饷")]
+    #[arg(long, default_value = "continue")]
     input: String,
     #[arg(long)]
     save_id: Option<String>,
@@ -530,18 +518,6 @@ fn studio_result<T>(result: plotforge_studio::StudioCommandResult<T>) -> Result<
 
 fn handle_new(command: NewCommand, language: OutputLanguage) -> Result<()> {
     match command.command {
-        NewSubcommand::Demo(args) => {
-            let project = create_demo_project(&args.path, args.force)
-                .with_context(|| format!("create demo project at {}", args.path.display()))?;
-            match language {
-                OutputLanguage::En => {
-                    println!("created {} at {}", project.game.title, args.path.display())
-                }
-                OutputLanguage::Zh => {
-                    println!("已创建 {} 于 {}", project.game.title, args.path.display())
-                }
-            }
-        }
         NewSubcommand::Project(args) => {
             let request = ProjectCreationRequest {
                 template: args.template.into(),

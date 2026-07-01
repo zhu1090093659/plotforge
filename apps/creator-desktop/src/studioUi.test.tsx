@@ -29,7 +29,7 @@ describe("studioUi", () => {
 
     render(
       <StudioShell
-        projectPath="/tmp/dynasty-embers"
+        projectPath="/tmp/starter-project"
         projectLoading={false}
         onOpenProject={openProject}
         workflowItems={[
@@ -57,7 +57,7 @@ describe("studioUi", () => {
         header={{
           eyebrow: "Command Center / Test runtime",
           title: "Project Launchpad",
-          subtitle: "Dynasty Embers - Director intent",
+          subtitle: "Starter Project - Director intent",
           badges: [{ id: "command-center", label: "Command Center" }],
         }}
         topActions={<StudioButton>Refresh</StudioButton>}

@@ -36,8 +36,8 @@ describe("createStudioBridge", () => {
         const result = {
           project_path: "/tmp/winter-regency",
           template: "historical_crisis",
-          concept: "A frozen court succession crisis.",
-          visual_style: "ink wash winter court",
+          concept: "A frozen council succession crisis.",
+          visual_style: "ink wash winter council",
           voice_enabled: true,
           initial_scene_request: "Open with a sealed imperial edict.",
           files_created: ["game.toml"],
@@ -47,8 +47,8 @@ describe("createStudioBridge", () => {
       }
       if (command === studioCommandNames.checkProject) {
         const result = {
-          title: "Dynasty Embers",
-          entry_scene: "court-crisis-001",
+          title: "Starter Project",
+          entry_scene: "opening-scene",
           scene_count: 1,
           rule_count: 3,
           character_count: 6,
@@ -112,7 +112,7 @@ describe("createStudioBridge", () => {
     const character: Character = {
       id: "regent",
       name: "Regent",
-      role: "Temporary court authority",
+      role: "Temporary council authority",
       traits: ["cautious"],
       visual_card: "ink portrait",
       voice_card: "measured",
@@ -152,7 +152,7 @@ describe("createStudioBridge", () => {
         ...demoReproducibilityMetadata,
         snapshot_id: "save-001",
       },
-      project_id: "dynasty-embers",
+      project_id: "starter-project",
       project_version: "0.1.0",
       story_state: demoProjectData.story_state,
       world_state: demoProjectData.world_state,
@@ -166,7 +166,7 @@ describe("createStudioBridge", () => {
       style_cards: [
         {
           ...demoProjectData.visual_bible.style_cards[0],
-          prompt: "Sharper winter court ink prompt.",
+          prompt: "Sharper winter council ink prompt.",
         },
       ],
     };
@@ -174,7 +174,7 @@ describe("createStudioBridge", () => {
       voice_cards: [
         {
           ...demoProjectData.audio_bible.voice_cards[0],
-          voice: "dry formal court voice",
+          voice: "dry formal council voice",
         },
       ],
     };
@@ -183,83 +183,83 @@ describe("createStudioBridge", () => {
       "/tmp/winter-regency",
       {
         template: "historical_crisis",
-        concept: "A frozen court succession crisis.",
-        visual_style: "ink wash winter court",
+        concept: "A frozen council succession crisis.",
+        visual_style: "ink wash winter council",
         voice_enabled: true,
         initial_scene_request: "Open with a sealed imperial edict.",
       },
       true,
     );
-    await bridge.checkProject("/tmp/dynasty-embers");
+    await bridge.checkProject("/tmp/starter-project");
     await bridge.listExportProfiles();
-    await bridge.readWorldEditDocument("/tmp/dynasty-embers");
-    await bridge.updateWorldEditDocument("/tmp/dynasty-embers", worldDocument);
-    await bridge.readStoryCraftEditDocument("/tmp/dynasty-embers");
+    await bridge.readWorldEditDocument("/tmp/starter-project");
+    await bridge.updateWorldEditDocument("/tmp/starter-project", worldDocument);
+    await bridge.readStoryCraftEditDocument("/tmp/starter-project");
     await bridge.updateStoryCraftEditDocument(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       storyCraftDocument,
     );
-    await bridge.readCharacterEditDocument("/tmp/dynasty-embers");
+    await bridge.readCharacterEditDocument("/tmp/starter-project");
     await bridge.updateCharacterEditDocument(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       characterDocument,
     );
-    await bridge.createCharacter("/tmp/dynasty-embers", character);
-    await bridge.readStateVariablesEditDocument("/tmp/dynasty-embers");
+    await bridge.createCharacter("/tmp/starter-project", character);
+    await bridge.readStateVariablesEditDocument("/tmp/starter-project");
     await bridge.updateStateVariablesEditDocument(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       stateVariablesDocument,
     );
-    await bridge.createResource("/tmp/dynasty-embers", resource);
-    await bridge.readRulesEditDocument("/tmp/dynasty-embers");
-    await bridge.updateRulesEditDocument("/tmp/dynasty-embers", rulesDocument);
-    await bridge.createRule("/tmp/dynasty-embers", rule);
+    await bridge.createResource("/tmp/starter-project", resource);
+    await bridge.readRulesEditDocument("/tmp/starter-project");
+    await bridge.updateRulesEditDocument("/tmp/starter-project", rulesDocument);
+    await bridge.createRule("/tmp/starter-project", rule);
     await bridge.generateWorldExpansion(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "Expand canon and forbidden facts.",
     );
     await bridge.generateStoryCraft(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "Generate the first pressure arc.",
     );
     await bridge.generateCharacter(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "Design a grain envoy.",
-      "court envoy",
+      "council envoy",
     );
-    await bridge.readAiSafetyPolicy("/tmp/dynasty-embers");
-    await bridge.updateAiSafetyPolicy("/tmp/dynasty-embers", safetyPolicy);
-    await bridge.readVisualBible("/tmp/dynasty-embers");
-    await bridge.updateVisualBible("/tmp/dynasty-embers", visualBible);
-    await bridge.readAudioBible("/tmp/dynasty-embers");
-    await bridge.updateAudioBible("/tmp/dynasty-embers", audioBible);
-    await bridge.playOnceProject("/tmp/dynasty-embers", "continue");
+    await bridge.readAiSafetyPolicy("/tmp/starter-project");
+    await bridge.updateAiSafetyPolicy("/tmp/starter-project", safetyPolicy);
+    await bridge.readVisualBible("/tmp/starter-project");
+    await bridge.updateVisualBible("/tmp/starter-project", visualBible);
+    await bridge.readAudioBible("/tmp/starter-project");
+    await bridge.updateAudioBible("/tmp/starter-project", audioBible);
+    await bridge.playOnceProject("/tmp/starter-project", "continue");
     await bridge.playOnceProjectWithSave(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "continue",
       runtimeSnapshot.id,
     );
     await bridge.playOnceProjectFromSnapshot(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "continue",
       runtimeSnapshot.id,
       "save-002",
     );
     await bridge.playOnceProjectFromLatestSnapshot(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "continue",
       "save-003",
     );
-    await bridge.exportStaticProject("/tmp/dynasty-embers", "/tmp/export");
+    await bridge.exportStaticProject("/tmp/starter-project", "/tmp/export");
     await bridge.exportStaticProjectZip(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "/tmp/export",
       "/tmp/export.zip",
     );
-    await bridge.listAssetRecords("/tmp/dynasty-embers");
-    await bridge.readSourceFile("/tmp/dynasty-embers", "world/world.md");
+    await bridge.listAssetRecords("/tmp/starter-project");
+    await bridge.readSourceFile("/tmp/starter-project", "world/world.md");
     await bridge.writeSourceFile(
-      "/tmp/dynasty-embers",
+      "/tmp/starter-project",
       "world/world.md",
       "# World Bible\n",
     );
@@ -271,8 +271,8 @@ describe("createStudioBridge", () => {
           path: "/tmp/winter-regency",
           request: {
             template: "historical_crisis",
-            concept: "A frozen court succession crisis.",
-            visual_style: "ink wash winter court",
+            concept: "A frozen council succession crisis.",
+            visual_style: "ink wash winter council",
             voice_enabled: true,
             initial_scene_request: "Open with a sealed imperial edict.",
           },
@@ -281,7 +281,7 @@ describe("createStudioBridge", () => {
       },
       {
         command: "check_project",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "list_export_profiles",
@@ -289,113 +289,113 @@ describe("createStudioBridge", () => {
       },
       {
         command: "read_world_edit_document",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_world_edit_document",
-        args: { path: "/tmp/dynasty-embers", document: worldDocument },
+        args: { path: "/tmp/starter-project", document: worldDocument },
       },
       {
         command: "read_story_craft_edit_document",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_story_craft_edit_document",
-        args: { path: "/tmp/dynasty-embers", document: storyCraftDocument },
+        args: { path: "/tmp/starter-project", document: storyCraftDocument },
       },
       {
         command: "read_character_edit_document",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_character_edit_document",
-        args: { path: "/tmp/dynasty-embers", document: characterDocument },
+        args: { path: "/tmp/starter-project", document: characterDocument },
       },
       {
         command: "create_character",
-        args: { path: "/tmp/dynasty-embers", character },
+        args: { path: "/tmp/starter-project", character },
       },
       {
         command: "read_state_variables_edit_document",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_state_variables_edit_document",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           document: stateVariablesDocument,
         },
       },
       {
         command: "create_resource",
-        args: { path: "/tmp/dynasty-embers", resource },
+        args: { path: "/tmp/starter-project", resource },
       },
       {
         command: "read_rules_edit_document",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_rules_edit_document",
-        args: { path: "/tmp/dynasty-embers", document: rulesDocument },
+        args: { path: "/tmp/starter-project", document: rulesDocument },
       },
       {
         command: "create_rule",
-        args: { path: "/tmp/dynasty-embers", rule },
+        args: { path: "/tmp/starter-project", rule },
       },
       {
         command: "generate_world_expansion",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           expansion_goal: "Expand canon and forbidden facts.",
         },
       },
       {
         command: "generate_story_craft",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           concept: "Generate the first pressure arc.",
         },
       },
       {
         command: "generate_character",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           concept: "Design a grain envoy.",
-          role_hint: "court envoy",
+          role_hint: "council envoy",
         },
       },
       {
         command: "read_ai_safety_policy",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_ai_safety_policy",
-        args: { path: "/tmp/dynasty-embers", policy: safetyPolicy },
+        args: { path: "/tmp/starter-project", policy: safetyPolicy },
       },
       {
         command: "read_visual_bible",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_visual_bible",
-        args: { path: "/tmp/dynasty-embers", visual_bible: visualBible },
+        args: { path: "/tmp/starter-project", visual_bible: visualBible },
       },
       {
         command: "read_audio_bible",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "update_audio_bible",
-        args: { path: "/tmp/dynasty-embers", audio_bible: audioBible },
+        args: { path: "/tmp/starter-project", audio_bible: audioBible },
       },
       {
         command: "play_once_project",
-        args: { path: "/tmp/dynasty-embers", player_input: "continue" },
+        args: { path: "/tmp/starter-project", player_input: "continue" },
       },
       {
         command: "play_once_project_with_save",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           player_input: "continue",
           save_id: "save-001",
         },
@@ -403,7 +403,7 @@ describe("createStudioBridge", () => {
       {
         command: "play_once_project_from_snapshot",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           player_input: "continue",
           snapshot_id: "save-001",
           save_id: "save-002",
@@ -412,38 +412,38 @@ describe("createStudioBridge", () => {
       {
         command: "play_once_project_from_latest_snapshot",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           player_input: "continue",
           save_id: "save-003",
         },
       },
       {
         command: "export_static_project",
-        args: { path: "/tmp/dynasty-embers", output_dir: "/tmp/export" },
+        args: { path: "/tmp/starter-project", output_dir: "/tmp/export" },
       },
       {
         command: "export_static_project_zip",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           output_dir: "/tmp/export",
           archive_path: "/tmp/export.zip",
         },
       },
       {
         command: "list_asset_records",
-        args: { path: "/tmp/dynasty-embers" },
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "read_source_file",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           relative_path: "world/world.md",
         },
       },
       {
         command: "write_source_file",
         args: {
-          path: "/tmp/dynasty-embers",
+          path: "/tmp/starter-project",
           relative_path: "world/world.md",
           content: "# World Bible\n",
         },

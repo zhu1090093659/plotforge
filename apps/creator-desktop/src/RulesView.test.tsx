@@ -44,7 +44,7 @@ const demoDocument: RulesEditDocument = {
       id: "trigger-crisis",
       action_type: "crisis",
       conditions: [{ kind: "flag_equals", key: "crisis_active", value: false }],
-      effects: [{ kind: "trigger_event", event: "dynasty_crisis" }],
+      effects: [{ kind: "trigger_event", event: "city_crisis" }],
     },
     {
       id: "set-order",
@@ -116,7 +116,7 @@ describe("RulesView", () => {
     screen.getAllByRole("button", { name: /trigger-crisis/ }).forEach((b) =>
       fireEvent.click(b),
     );
-    expect(screen.getByText("dynasty_crisis")).toBeTruthy();
+    expect(screen.getByText("city_crisis")).toBeTruthy();
   });
 
   it("shows set_resource effect label with value", () => {
