@@ -481,7 +481,7 @@ export function App({
         <StudioPanel>
           <div className="flex flex-wrap gap-2">
             <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
-            <StudioStatusChip tone="acp">{dataSource.runtimeName}</StudioStatusChip>
+            <StudioStatusChip tone="accent">{dataSource.runtimeName}</StudioStatusChip>
             <StudioStatusChip tone="agent">
               {activeSectionMeta.status}
             </StudioStatusChip>
@@ -536,7 +536,7 @@ export function App({
             {[
               "Browser mode uses the HTTP dev bridge backed by plotforge-studio.",
               "Tauri mode uses the same command names through IPC.",
-              "ACP workers, approval queues, provider calls, and publishing automation are not implemented.",
+              "pi-Agent runtime is local and schema-backed; external agent execution, hidden network calls, and publishing automation remain not implemented.",
             ].map((boundary) => (
               <p
                 key={boundary}

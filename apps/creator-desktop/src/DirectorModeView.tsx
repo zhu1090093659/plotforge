@@ -428,7 +428,7 @@ function directionQueue(report: PlayOnceReport | null): Array<{
   impact: string;
   filesChanged: string;
   evidence: string;
-  tone: "action" | "health" | "acp" | "agent";
+  tone: "action" | "health" | "accent" | "agent";
 }> {
   if (!report) {
     return [];

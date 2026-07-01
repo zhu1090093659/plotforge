@@ -124,7 +124,7 @@ export function CharactersView({
                 className={[
                   "h-8 rounded-md border px-3 text-xs font-semibold transition",
                   addMode === "manual"
-                    ? "border-acp-400/35 bg-acp-500/15 text-ink"
+                    ? "border-accent-400/35 bg-accent-500/15 text-ink"
                     : "border-graphite-700/20 bg-canvas-50 text-ink/60 hover:border-graphite-700/45",
                 ].join(" ")}
               >
@@ -137,7 +137,7 @@ export function CharactersView({
                 className={[
                   "h-8 rounded-md border px-3 text-xs font-semibold transition",
                   addMode === "ai"
-                    ? "border-acp-400/35 bg-acp-500/15 text-ink"
+                    ? "border-accent-400/35 bg-accent-500/15 text-ink"
                     : "border-graphite-700/20 bg-canvas-50 text-ink/60 hover:border-graphite-700/45",
                 ].join(" ")}
               >

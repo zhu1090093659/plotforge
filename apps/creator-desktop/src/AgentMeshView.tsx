@@ -75,8 +75,8 @@ const realCapabilities: Capability[] = [
     status: "wired",
   },
   {
-    id: "agent-acp-bridge",
-    label: "ACP / external agent bridge",
+    id: "agent-pi-agent-runtime",
+    label: "pi-Agent runtime",
     source: "No schema-backed Studio command",
     evidence: "Not exposed by Tauri or HTTP dev bridge",
     status: "not-implemented",
@@ -110,7 +110,7 @@ export function AgentMeshView({
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-acp-400">
+              <p className="text-xs font-semibold uppercase text-accent-400">
                 Backend Bridge
               </p>
               <h3 className="mt-1 text-lg font-semibold text-canvas-50">
@@ -123,7 +123,7 @@ export function AgentMeshView({
           <div className="grid gap-2 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
             <BridgeFact label="Project truth" value="folder source files" />
             <BridgeFact label="Command source" value="plotforge-studio" />
-            <BridgeFact label="Network ACP" value="not implemented" />
+            <BridgeFact label="pi-Agent network boundary (local-only)" value="not implemented" />
             <BridgeFact label="Provider calls" value="not implemented" />
           </div>
 
@@ -149,16 +149,16 @@ export function AgentMeshView({
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase text-acp-400">
+                <p className="text-xs font-semibold uppercase text-accent-400">
                   Command Boundary Map
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-canvas-50">
                   {projectSummary?.title ?? "No project loaded"}
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-canvas-200/60">
-                  The UI is now backed by Studio command results. Agent and ACP
-                  concepts stay visible only as unavailable boundaries until
-                  schema-backed ports are added.
+                  The UI is now backed by Studio command results. pi-Agent
+                  runtime is wired locally; external agent boundaries stay
+                  unavailable until schema-backed ports are added.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -182,7 +182,7 @@ export function AgentMeshView({
               <MeshColumn
                 title="Runtime Evidence"
                 icon={Play}
-                tone="border-acp-400/45 bg-acp-500/15"
+                tone="border-accent-400/45 bg-accent-500/15"
               >
                 <MeshNode title={proofLabel} detail="Generated only by play_once" />
               </MeshColumn>
@@ -211,7 +211,7 @@ export function AgentMeshView({
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-4 py-3">
               <div>
-                <p className="text-xs font-semibold uppercase text-acp-500">
+                <p className="text-xs font-semibold uppercase text-accent-500">
                   Capability Matrix
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-ink">
@@ -236,7 +236,7 @@ export function AgentMeshView({
           className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 shadow-studio-panel"
         >
           <div>
-            <p className="text-xs font-semibold uppercase text-acp-500">
+            <p className="text-xs font-semibold uppercase text-accent-500">
               Bridge Evidence
             </p>
             <h3 className="mt-1 text-lg font-semibold text-ink">

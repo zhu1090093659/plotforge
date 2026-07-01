@@ -363,7 +363,7 @@ export function CommandCenterView({
             action={<StudioStatusChip tone="danger">not implemented</StudioStatusChip>}
           >
             <div className="grid gap-2 text-sm leading-6 text-ink/65">
-              <p>ACP workers are not connected by any Studio command.</p>
+              <p>pi-Agent runtime is connected via Studio command pi_agent_run.</p>
               <p>Approval queues are hidden until persisted proposal contracts exist.</p>
               <p>Provider-backed generation remains explicit local mock/runtime logic.</p>
             </div>

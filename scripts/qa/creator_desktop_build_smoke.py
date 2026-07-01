@@ -11,7 +11,7 @@ REQUIRED_UI_MARKERS = [
     "Project Launchpad",
     "Command Dock",
     "Agent Mesh",
-    "ACP Bridge Setup",
+    "pi-Agent Bridge Setup",
     "Playable Proof",
     "Trace Debug",
     "Export Package",
@@ -33,7 +33,7 @@ BLOCKED_MARKERS = [
     "legal guarantee",
     "one-click Steam launch",
     "Steam upload automation",
-    "real ACP execution",
+    "real pi-Agent execution",
 ]
 
 
