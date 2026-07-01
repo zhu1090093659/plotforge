@@ -33,6 +33,8 @@ BLOCKED_MARKERS = [
     "legal guarantee",
     "one-click Steam launch",
     "Steam upload automation",
+    "real pi-Agent execution",
+    "real external agent execution",
 ]
 
 

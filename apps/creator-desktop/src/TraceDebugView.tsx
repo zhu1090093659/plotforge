@@ -575,7 +575,7 @@ function CausalityGraph({
       id: "intent",
       label: "Director Intent",
       detail: trace.action_intent?.action_type ?? "unsupported",
-      tone: "border-accent-500/35 bg-accent-500/10 text-accent-600",
+      tone: "border-accent-500/35 bg-accent-500/10 text-accent-400",
     },
     {
       id: "rule",
@@ -583,13 +583,13 @@ function CausalityGraph({
       detail: trace.rule_result?.state_committed
         ? "committed"
         : "not committed",
-      tone: "border-health-500/35 bg-health-500/10 text-health-600",
+      tone: "border-health-500/35 bg-health-500/10 text-health-400",
     },
     {
       id: "planner",
       label: "Runtime.playtest",
       detail: trace.planner_result?.scene_key ?? "none",
-      tone: "border-agent-500/35 bg-agent-500/10 text-agent-600",
+      tone: "border-agent-500/35 bg-agent-500/10 text-agent-400",
     },
     {
       id: "diagnostics",

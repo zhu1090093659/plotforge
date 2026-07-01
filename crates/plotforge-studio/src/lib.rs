@@ -1137,11 +1137,21 @@ mod tests {
     fn pi_agent_capabilities_lists_wired_capability() {
         let capabilities = pi_agent_capabilities().expect("capabilities list");
         assert!(!capabilities.is_empty());
-        assert!(
-            capabilities
-                .iter()
-                .any(|capability| capability.status == "wired"),
-            "at least one capability should be wired"
+        // Pin the exact wired capability so an accidental over-claim (e.g.
+        // flipping image-generation or steam-upload to wired) fails this test
+        // instead of passing under the previous `>= 1` bound.
+        let wired: Vec<_> = capabilities
+            .iter()
+            .filter(|capability| capability.status == "wired")
+            .collect();
+        assert_eq!(
+            wired.len(),
+            1,
+            "exactly one capability should be wired; got {wired:?}"
+        );
+        assert_eq!(
+            wired[0].id, "pi-agent.text-generation",
+            "only text-generation should be wired"
         );
         for capability in &capabilities {
             assert!(!contains_secret_marker_text(&capability.evidence));

@@ -145,7 +145,7 @@ describe("App", () => {
     expect(screen.getAllByText("Export Package").length).toBeGreaterThan(0);
     expect(screen.getAllByText("steam-submission-kit").length).toBeGreaterThan(0);
     expect(document.body.textContent ?? "").not.toMatch(
-      /one-click Steam launch|automatic publishing|approval guarantee|legal guarantee/i,
+      /one-click Steam launch|automatic publishing|approval guarantee|legal guarantee|real pi-Agent execution|real external agent execution/i,
     );
 
     fireEvent.click(

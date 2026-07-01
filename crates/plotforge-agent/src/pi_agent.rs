@@ -29,6 +29,12 @@ use crate::{TextModelProvider, complete_text_agent_output, contains_secret_marke
 /// markers, or credentials.
 #[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PiAgentError {
+    /// The request `agent_id` must match the id this facade was constructed
+    /// with (`PiAgent::new`). A mismatch is an explicit error rather than a
+    /// silent divergence, because the facade's identity (`descriptor.agent_id`
+    /// and the deterministic trace-evidence id) is anchored to `self.agent_id`.
+    #[error("pi-agent request agent_id `{request}` did not match facade agent_id `{facade}`")]
+    AgentIdMismatch { facade: String, request: String },
     /// The request prompt summary contained a secret marker.
     #[error("pi-agent request prompt summary contained a secret marker")]
     PromptSecretMarker,
@@ -64,6 +70,16 @@ impl PiAgent {
     /// carrying reproducibility metadata and a redacted evidence summary.
     /// No raw provider response is ever stored in the result.
     pub fn run(&self, request: PiAgentRunRequest) -> Result<PiAgentRunResult, PiAgentError> {
+        // The facade's identity is anchored to `self.agent_id`; the request's
+        // `agent_id` must agree with it. A mismatch is an explicit error so the
+        // caller never silently observes identity rooted at the facade id while
+        // believing it was rooted at the request id.
+        if request.agent_id != self.agent_id {
+            return Err(PiAgentError::AgentIdMismatch {
+                facade: self.agent_id.clone(),
+                request: request.agent_id.clone(),
+            });
+        }
         if request.prompt_hash.trim().is_empty() {
             return Err(PiAgentError::EmptyPromptHash);
         }
@@ -93,10 +109,15 @@ impl PiAgent {
         })?;
 
         let mut reproducibility = envelope.reproducibility.clone();
-        // Derive a deterministic trace evidence id from the run seed so the
-        // pi-Agent result carries stable, reproducible trace identity without
-        // relying on the provider to set one. The id is redaction-safe (a
-        // hex digest) and never contains raw provider responses or secrets.
+        // The pi-Agent facade owns the trace-evidence identity for its results:
+        // it derives a deterministic, redaction-safe id from `agent_id:run_seed`
+        // and unconditionally overwrites any provider-supplied `trace_id`. This
+        // is intentional (not a silent fallback): providers may carry their own
+        // trace ids through `ensure_matching_reproducibility` (which deliberately
+        // excludes `trace_id` from comparison), but the pi-Agent surface is the
+        // authoritative trace identity for downstream consumers, and a provider
+        // id would otherwise leak into `result.reproducibility.trace_id` and
+        // `result.trace_id` without the facade's deterministic contract.
         let trace_evidence_id = format!(
             "pi-agent-evidence-{}",
             crate::shared::stable_sha256_hash(&format!("{}:{}", self.agent_id, request.run_seed))
@@ -174,11 +195,12 @@ pub fn pi_agent_capabilities() -> Vec<PiAgentCapability> {
 #[cfg(test)]
 mod tests {
     use plotforge_schema::{
-        CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, contains_secret_marker_text,
+        CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, PiAgentCapability, ReproducibilityMetadata,
+        contains_secret_marker_text,
     };
 
     use super::*;
-    use crate::FakeTextModelProvider;
+    use crate::{FakeTextModelProvider, TextModelProvider};
 
     #[test]
     fn pi_agent_runs_local_mock_provider() {
@@ -314,11 +336,22 @@ mod tests {
     #[test]
     fn pi_agent_capabilities_describe_wired_and_deferred() {
         let capabilities = pi_agent_capabilities();
-        let wired = capabilities
+        // Pin the exact wired capability so an accidental over-claim (e.g.
+        // flipping image-generation or steam-upload to wired) fails this test
+        // instead of passing under the previous `>= 1` bound.
+        let wired: Vec<&PiAgentCapability> = capabilities
             .iter()
             .filter(|capability| capability.status == "wired")
-            .count();
-        assert!(wired >= 1, "at least one capability should be wired");
+            .collect();
+        assert_eq!(
+            wired.len(),
+            1,
+            "exactly one capability should be wired; got {wired:?}"
+        );
+        assert_eq!(
+            wired[0].id, "pi-agent.text-generation",
+            "only text-generation should be wired"
+        );
         for capability in &capabilities {
             assert!(!contains_secret_marker_text(&capability.evidence));
             assert!(!capability.evidence.contains("sk-"));
@@ -352,5 +385,150 @@ mod tests {
         // Schema version is a compile-time constant; confirm the field is
         // present and non-default rather than re-asserting a constant.
         let _ = CONTRACT_SCHEMA_VERSION;
+    }
+
+    /// A `TextModelProvider` whose `complete()` returns a valid envelope (via
+    /// `FakeTextModelProvider::local_pi()`) but injects a provider-supplied
+    /// `trace_id` into the envelope reproducibility. Used to verify the
+    /// pi-Agent facade overwrites any provider-supplied trace id with its own
+    /// deterministic `pi-agent-evidence-...` id.
+    struct ProviderWithTraceId {
+        inner: FakeTextModelProvider,
+        provider_trace_id: &'static str,
+    }
+
+    impl TextModelProvider for ProviderWithTraceId {
+        fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+            self.inner.reproducibility_metadata(run_seed)
+        }
+
+        fn complete(
+            &self,
+            request: &crate::TextModelRequest,
+        ) -> Result<crate::TextModelResponse, crate::TextModelProviderError> {
+            let response = self.inner.complete(request)?;
+            // Patch the serialized envelope so its reproducibility.trace_id is
+            // the provider-supplied value. This mimics a real provider that
+            // returns its own trace id through the envelope.
+            let mut value: serde_json::Value =
+                serde_json::from_str(&response.raw_json).expect("fake response is valid JSON");
+            value["reproducibility"]["trace_id"] = serde_json::json!(self.provider_trace_id);
+            Ok(crate::TextModelResponse::json(value.to_string()))
+        }
+    }
+
+    /// The deterministic trace-evidence id must change when either `agent_id`
+    /// or `run_seed` changes. This guards against regressions that drop either
+    /// input from the hash, which would otherwise still pass the existing
+    /// "same inputs -> same id" tests.
+    #[test]
+    fn pi_agent_trace_id_changes_with_agent_id_and_run_seed() {
+        let make = |agent_id: &str, seed: u64| {
+            let agent = PiAgent::new(Box::new(FakeTextModelProvider::local_pi()), agent_id);
+            let request = PiAgentRunRequest {
+                agent_id: agent_id.into(),
+                run_seed: seed,
+                prompt_summary: "Generate a validated scene plan proposal.".into(),
+                prompt_hash: "sha256:abc".into(),
+            };
+            agent.run(request).expect("pi-agent run succeeds").trace_id
+        };
+
+        // Same agent_id, different run_seed -> different trace id.
+        let id_seed_7 = make("pi-agent-local", 7).expect("trace id present");
+        let id_seed_8 = make("pi-agent-local", 8).expect("trace id present");
+        assert_ne!(
+            id_seed_7, id_seed_8,
+            "trace id must change when run_seed changes"
+        );
+
+        // Same run_seed, different agent_id -> different trace id.
+        let id_agent_a = make("pi-agent-a", 7).expect("trace id present");
+        let id_agent_b = make("pi-agent-b", 7).expect("trace id present");
+        assert_ne!(
+            id_agent_a, id_agent_b,
+            "trace id must change when agent_id changes"
+        );
+
+        // Same inputs again -> identical id (stability, not just distinctness).
+        let id_repeat = make("pi-agent-local", 7).expect("trace id present");
+        assert_eq!(
+            id_repeat, id_seed_7,
+            "trace id must be deterministic for the same inputs"
+        );
+    }
+
+    /// A provider that returns its own `trace_id` in the envelope must have
+    /// that value overwritten by the pi-Agent facade's deterministic id, on
+    /// both `result.reproducibility.trace_id` and the top-level `result.trace_id`.
+    /// This is intentional (the facade owns trace identity), not a silent fallback.
+    #[test]
+    fn pi_agent_overwrites_provider_supplied_trace_id() {
+        let provider = ProviderWithTraceId {
+            inner: FakeTextModelProvider::local_pi(),
+            provider_trace_id: "provider-supplied-trace-xyz",
+        };
+        let agent = PiAgent::new(Box::new(provider), "pi-agent-local");
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 99,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:abc".into(),
+        };
+
+        let result = agent.run(request).expect("pi-agent run succeeds");
+
+        let expected = format!(
+            "pi-agent-evidence-{}",
+            crate::shared::stable_sha256_hash("pi-agent-local:99")
+        );
+        assert_eq!(
+            result.reproducibility.trace_id.as_deref(),
+            Some(expected.as_str()),
+            "facade must overwrite the provider-supplied trace_id with its deterministic id"
+        );
+        let top = result
+            .trace_id
+            .as_ref()
+            .expect("top-level trace id present");
+        assert_eq!(
+            top, &expected,
+            "top-level trace_id must match the deterministic facade id, not the provider's"
+        );
+        assert_ne!(
+            top, "provider-supplied-trace-xyz",
+            "provider trace id must not leak through"
+        );
+    }
+
+    /// A request whose `agent_id` does not match the facade's `self.agent_id`
+    /// must surface an explicit error rather than silently rooting identity at
+    /// the facade id while the caller believes it was rooted at the request id.
+    #[test]
+    fn pi_agent_rejects_mismatched_request_agent_id() {
+        let agent = PiAgent::new(
+            Box::new(FakeTextModelProvider::local_pi()),
+            "pi-agent-local",
+        );
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-other".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:abc".into(),
+        };
+
+        let error = agent
+            .run(request)
+            .expect_err("mismatched agent_id rejected");
+        assert!(
+            matches!(
+                error,
+                PiAgentError::AgentIdMismatch {
+                    ref facade,
+                    ref request,
+                } if facade == "pi-agent-local" && request == "pi-agent-other"
+            ),
+            "expected AgentIdMismatch, got {error:?}"
+        );
     }
 }

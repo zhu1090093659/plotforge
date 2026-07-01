@@ -14,12 +14,12 @@ import {
 
 describe("studioUi", () => {
   it("exposes the agent-native token layer used by the shell", () => {
-    expect(agentNativeDesignTokens.shell.graphite).toBe("#111419");
-    expect(agentNativeDesignTokens.shell.warmCanvas).toBe("#f7f0df");
+    expect(agentNativeDesignTokens.shell.graphite).toBe("#1f1a14");
+    expect(agentNativeDesignTokens.shell.warmCanvas).toBe("#f4ead4");
     expect(agentNativeDesignTokens.accent.amberAction).toBe("#c98b2f");
     expect(agentNativeDesignTokens.accent.healthGreen).toBe("#34815f");
-    expect(agentNativeDesignTokens.accent.accentCyan).toBe("#2e8ca0");
-    expect(agentNativeDesignTokens.accent.agentPurple).toBe("#7559a8");
+    expect(agentNativeDesignTokens.accent.accentCopper).toBe("#a85c34");
+    expect(agentNativeDesignTokens.accent.agentBrass).toBe("#2d6258");
   });
 
   it("renders shell landmarks, responsive grid classes, right panel, and command dock", () => {

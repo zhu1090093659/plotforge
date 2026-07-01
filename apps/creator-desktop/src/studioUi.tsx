@@ -9,30 +9,30 @@ import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
 
 export const agentNativeDesignTokens = {
   shell: {
-    graphite: "#111419",
-    graphitePanel: "#171b21",
-    warmCanvas: "#f7f0df",
+    graphite: "#1f1a14",
+    graphitePanel: "#271f18",
+    warmCanvas: "#f4ead4",
   },
   accent: {
     amberAction: "#c98b2f",
     healthGreen: "#34815f",
-    accentCyan: "#2e8ca0",
-    agentPurple: "#7559a8",
+    accentCopper: "#a85c34",
+    agentBrass: "#2d6258",
   },
 } as const;
 
 export const studioUiClassNames = {
   panel:
-    "rounded-lg border border-ink/10 bg-canvas-50 p-5 text-ink shadow-studio-panel",
-  insetPanel: "rounded-lg border border-ink/10 bg-canvas-100 px-3 py-3 text-ink",
+    "rounded-lg border border-canvas-200/60 bg-canvas-50 p-5 text-ink shadow-studio-panel",
+  insetPanel: "rounded-lg border border-canvas-200/55 bg-canvas-100 px-3 py-3 text-ink",
   input:
-    "h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400",
+    "h-10 min-w-0 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   textarea:
-    "w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400",
+    "w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   primaryButton:
     "inline-flex h-10 items-center gap-2 rounded-md bg-amber-500 px-4 text-sm font-semibold text-graphite-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/35 disabled:text-graphite-950/45",
   secondaryButton:
-    "inline-flex h-9 items-center gap-2 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm font-semibold text-ink transition hover:border-graphite-700/45 disabled:cursor-not-allowed disabled:text-ink/30",
+    "inline-flex h-9 items-center gap-2 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm font-semibold text-ink transition hover:border-canvas-200 disabled:cursor-not-allowed disabled:text-ink/30",
   iconButton:
     "grid h-10 w-10 place-items-center rounded-md border border-canvas-200/20 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70 hover:bg-canvas-50/15",
   chip:
@@ -93,25 +93,25 @@ export function StudioShell({
       >
         <aside
           aria-label="Studio navigation"
-          className="border-r border-canvas-200/10 bg-graphite-900 px-4 py-5 max-lg:border-b max-lg:border-r-0"
+          className="border-r border-canvas-200/12 bg-graphite-900 px-4 py-5 shadow-shell-inset max-lg:border-b max-lg:border-r-0"
         >
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md border border-amber-400/45 bg-amber-500 text-sm font-black text-graphite-950">
+            <div className="grid h-10 w-10 place-items-center rounded-md border border-amber-400/55 bg-amber-500 font-display text-base font-black tracking-display text-graphite-950">
               PF
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-amber-400">
+              <p className="text-xs font-semibold uppercase tracking-tightish text-amber-400">
                 PlotForge Studio
               </p>
-              <h1 className="truncate text-xl font-semibold text-canvas-50">
+              <h1 className="font-display truncate text-xl font-semibold tracking-display text-canvas-50">
                 Creator Desktop
               </h1>
             </div>
           </div>
 
-          <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200/10 bg-graphite-850 px-3 py-2">
+          <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-2">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase text-canvas-200/60">
+              <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/60">
                 Open Project
               </p>
               <p className="max-w-44 truncate text-sm font-semibold text-canvas-50">
@@ -122,7 +122,7 @@ export function StudioShell({
               type="button"
               title="Open project"
               onClick={onOpenProject}
-              className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200/15 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70"
+              className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200/18 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70"
             >
               {projectLoading ? (
                 <Loader2 aria-hidden size={18} className="animate-spin" />
@@ -146,16 +146,16 @@ export function StudioShell({
           />
         </aside>
 
-        <main className="min-w-0 bg-canvas-100 text-ink">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-graphite-700/10 px-6 py-5 lg:px-8">
+        <main className="paper-grain min-w-0 text-ink">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-canvas-200/55 px-6 py-5 lg:px-8">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-graphite-700/55">
+              <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
                 {header.eyebrow}
               </p>
-              <h2 className="mt-1 text-2xl font-semibold text-ink">
+              <h2 className="font-display mt-1 text-2xl font-semibold tracking-display text-ink">
                 {header.title}
               </h2>
-              <p className="mt-1 max-w-3xl text-sm text-graphite-700/70">
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-700/75">
                 {header.subtitle}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -176,13 +176,13 @@ export function StudioShell({
 
         <aside
           aria-label="Evidence panel"
-          className="border-l border-canvas-200/10 bg-graphite-900 px-4 py-5 text-canvas-50 max-xl:col-span-2 max-xl:border-l-0 max-xl:border-t max-lg:col-span-1"
+          className="border-l border-canvas-200/12 bg-graphite-900 px-4 py-5 text-canvas-50 shadow-shell-inset max-xl:col-span-2 max-xl:border-l-0 max-xl:border-t max-lg:col-span-1"
         >
           {rightPanel}
         </aside>
 
         {commandDock ? (
-          <div className="col-span-3 border-t border-canvas-200/10 bg-graphite-950 px-4 py-3 shadow-studio-dock max-xl:col-span-2 max-lg:col-span-1">
+          <div className="col-span-3 border-t border-canvas-200/12 bg-graphite-950 px-4 py-3 shadow-studio-dock max-xl:col-span-2 max-lg:col-span-1">
             <div
               aria-label="Command dock"
               className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3"
@@ -199,7 +199,7 @@ export function StudioShell({
 
 export function EmptyPanel({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-ink/15 bg-ink/[0.02] p-6 text-center text-sm text-ink/50">
+    <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-ink/20 bg-ink/[0.025] p-6 text-center text-sm text-ink/55">
       {label}
     </div>
   );
@@ -250,12 +250,12 @@ export function StudioStatusChip({
   children: ReactNode;
 }) {
   const toneClass = {
-    neutral: "border-graphite-700/15 bg-canvas-50 text-graphite-700/70",
-    action: "border-amber-500/30 bg-amber-500/15 text-amber-600",
-    health: "border-health-500/30 bg-health-500/15 text-health-500",
-    accent: "border-accent-500/30 bg-accent-500/15 text-accent-500",
-    agent: "border-agent-500/30 bg-agent-500/15 text-agent-500",
-    danger: "border-signal/30 bg-signal/10 text-signal",
+    neutral: "border-canvas-200/40 bg-canvas-100/60 text-graphite-700/80",
+    action: "border-amber-500/35 bg-amber-500/15 text-amber-600",
+    health: "border-health-500/35 bg-health-500/15 text-health-500",
+    accent: "border-accent-500/35 bg-accent-500/15 text-accent-500",
+    agent: "border-agent-500/35 bg-agent-500/15 text-agent-400",
+    danger: "border-signal/35 bg-signal/12 text-signal",
   }[tone];
   return (
     <span title={title} className={`${studioUiClassNames.chip} ${toneClass}`}>
@@ -298,8 +298,8 @@ function StudioNavButton({
   const Icon = item.icon;
   const selectedClass =
     selectedTone === "workflow"
-      ? "border-amber-400/45 bg-amber-500 text-graphite-950"
-      : "border-accent-400/35 bg-accent-500/20 text-canvas-50";
+      ? "border-amber-400/55 bg-amber-500 text-graphite-950"
+      : "border-accent-400/45 bg-accent-500/20 text-canvas-50";
   return (
     <button
       type="button"
@@ -342,9 +342,9 @@ export function ScenePreviewPlaceholder({
   assetPath: string | null;
 }) {
   return (
-    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(229,181,95,0.20),_rgba(17,20,25,0.92)_55%)] px-4">
+    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(214,160,80,0.18),_rgba(31,26,20,0.92)_55%)] px-4">
       <div className="max-w-md rounded-md border border-canvas-200/15 bg-graphite-950/70 px-4 py-3 text-center">
-        <p className="text-sm font-semibold text-canvas-50">
+        <p className="font-display text-sm font-semibold text-canvas-50">
           Scene preview asset unavailable
         </p>
         <p className="mt-1 break-words text-xs leading-5 text-canvas-200/55">
@@ -406,13 +406,13 @@ export function Collapsible({
         className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm font-semibold text-ink transition hover:bg-canvas-100"
       >
         {open ? (
-          <ChevronDown aria-hidden size={15} className="shrink-0 text-graphite-700/55" />
+          <ChevronDown aria-hidden size={15} className="shrink-0 text-graphite-700/60" />
         ) : (
-          <ChevronRight aria-hidden size={15} className="shrink-0 text-graphite-700/55" />
+          <ChevronRight aria-hidden size={15} className="shrink-0 text-graphite-700/60" />
         )}
         <span className="flex-1">{label}</span>
         {badge !== undefined ? (
-          <span className="rounded-sm border border-graphite-700/15 bg-canvas-100 px-1.5 py-0.5 text-xs font-semibold text-graphite-700/70">
+          <span className="rounded-sm border border-canvas-200/55 bg-canvas-100 px-1.5 py-0.5 text-xs font-semibold text-graphite-700/75">
             {badge}
           </span>
         ) : null}

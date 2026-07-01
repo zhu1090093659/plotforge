@@ -54,7 +54,7 @@ describe("ArtifactReviewView", () => {
     expect(screen.queryByText("Council Crisis Pressure Bundle")).toBeNull();
     expect(screen.queryByText("Approve Bundle")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
-      /automatic publishing|approval guarantee|legal guarantee|Steam upload automation/i,
+      /automatic publishing|approval guarantee|legal guarantee|Steam upload automation|real pi-Agent execution|real external agent execution/i,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Run proof" }));

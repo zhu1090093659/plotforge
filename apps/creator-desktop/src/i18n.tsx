@@ -708,7 +708,7 @@ export function useStudioI18n() {
 export function LanguageToggle() {
   const { locale, setLocale, t } = useStudioI18n();
   return (
-    <label className="inline-flex h-10 items-center gap-2 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm font-semibold text-ink">
+    <label className="inline-flex h-10 items-center gap-2 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm font-semibold text-ink">
       <span>{t("Language")}</span>
       <select
         aria-label={t("Language")}

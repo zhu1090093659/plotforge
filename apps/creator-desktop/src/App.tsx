@@ -467,10 +467,10 @@ export function App({
     return (
       <div className="grid gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-amber-400">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-amber-400">
             Evidence Panel
           </p>
-          <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+          <h3 className="font-display mt-1 text-lg font-semibold tracking-display text-canvas-50">
             {activeWorkflowMeta.label}
           </h3>
           <p className="mt-1 text-sm leading-6 text-canvas-200/65">
@@ -500,13 +500,13 @@ export function App({
           </div>
         </StudioPanel>
 
-        <div className="rounded-lg border border-canvas-200/10 bg-graphite-850 px-3 py-3">
+        <div className="rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-canvas-200/55">
+              <p className="text-xs font-semibold uppercase tracking-tightish text-canvas-200/55">
                 Backend Boundary
               </p>
-              <h4 className="mt-1 text-sm font-semibold text-canvas-50">
+              <h4 className="font-display mt-1 text-sm font-semibold tracking-display text-canvas-50">
                 Real Studio command surface
               </h4>
             </div>
@@ -540,7 +540,7 @@ export function App({
             ].map((boundary) => (
               <p
                 key={boundary}
-                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-xs leading-5 text-canvas-200/65"
+                className="rounded-md border border-canvas-200/12 bg-canvas-50/5 px-3 py-2 text-xs leading-5 text-canvas-200/65"
               >
                 {boundary}
               </p>
@@ -548,8 +548,8 @@ export function App({
           </div>
         </div>
 
-        <div className="rounded-lg border border-canvas-200/10 bg-graphite-850 px-3 py-3">
-          <p className="text-xs font-semibold uppercase text-canvas-200/55">
+        <div className="rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-3">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-canvas-200/55">
             Reference Screens
           </p>
           <div className="mt-3 grid gap-2">
@@ -557,9 +557,9 @@ export function App({
               <div
                 key={reference.id}
                 title={reference.title}
-                className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2"
+                className="rounded-md border border-canvas-200/12 bg-canvas-50/5 px-3 py-2"
               >
-                <p className="truncate text-sm font-semibold text-canvas-50">
+                <p className="font-display truncate text-sm font-semibold tracking-tightish text-canvas-50">
                   {reference.fileName}
                 </p>
                 <p className="mt-1 truncate text-xs text-canvas-200/45">
@@ -577,10 +577,10 @@ export function App({
     return (
       <>
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase text-canvas-200/50">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-canvas-200/50">
             Command Dock
           </p>
-          <p className="truncate text-sm font-semibold text-canvas-50">
+          <p className="font-display truncate text-sm font-semibold tracking-tightish text-canvas-50">
             {projectSummary?.title ?? "No project loaded"} /{" "}
             {activeSectionMeta.label}
           </p>
@@ -679,8 +679,8 @@ function EvidenceLine({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-medium uppercase text-ink/45">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
+      <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/55">{label}</p>
+      <p className="font-display mt-1 truncate text-sm font-semibold tracking-tightish text-canvas-50">{value}</p>
     </div>
   );
 }
@@ -694,10 +694,10 @@ function PreviewEvidenceLine({
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
-      <p className="text-xs font-medium uppercase text-canvas-200/45">
+      <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/45">
         {label}
       </p>
-      <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
+      <p className="font-display truncate text-xs font-semibold tracking-tightish text-canvas-50">{value}</p>
     </div>
   );
 }

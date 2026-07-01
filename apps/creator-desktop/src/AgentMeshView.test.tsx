@@ -46,7 +46,7 @@ describe("AgentMeshView", () => {
     expect(screen.queryByText("Codex Worker")).toBeNull();
     expect(screen.queryByText("Claude Code Worker")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(
-      /automatic publishing|approval guarantee|legal guarantee|official approval|Steam upload automation/i,
+      /automatic publishing|approval guarantee|legal guarantee|official approval|Steam upload automation|real pi-Agent execution|real external agent execution/i,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Review trace" }));

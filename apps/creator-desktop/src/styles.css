@@ -1,23 +1,42 @@
+/* Fonts ----------------------------------------------------------------
+ * Fraunces — display serif (headings). We pull the latin weights we actually
+ * use: 400 (book), 600 (semibold), 700 (bold), 900 (black), + 400 italic.
+ * Atkinson Hyperlegible — body/UI sans. 400 + 700, + 400 italic.
+ * Self-hosted via @fontsource so the desktop app stays network-free.
+ * NB: @import rules must precede all other statements per the CSS spec, so
+ * they live above the @tailwind directives.
+ * ------------------------------------------------------------------- */
+@import "@fontsource/fraunces/400.css";
+@import "@fontsource/fraunces/400-italic.css";
+@import "@fontsource/fraunces/600.css";
+@import "@fontsource/fraunces/700.css";
+@import "@fontsource/fraunces/900.css";
+@import "@fontsource/atkinson-hyperlegible/400.css";
+@import "@fontsource/atkinson-hyperlegible/400-italic.css";
+@import "@fontsource/atkinson-hyperlegible/700.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
+  /* Body / UI uses the humanist sans. Display headings opt-in via .font-display. */
   font-family:
-    Aptos, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
-  color: #17202a;
-  background: #111419;
+    "Atkinson Hyperlegible", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #2a2218;
+  background: #1f1a14;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern", "liga", "calt";
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background: #111419;
+  background: #1f1a14;
 }
 
 button,
@@ -31,12 +50,73 @@ select {
   min-height: 100vh;
 }
 
-::selection {
-  background: #e5b55f;
-  color: #111419;
+/* Fraunces display heading rhythm. Lives in the components layer so Tailwind
+ * utilities (tracking-tightish / tracking-display / leading-*) can override the
+ * per-property defaults below. An unlayered .font-display rule would otherwise
+ * beat @layer utilities by source order and silently deaden tracking-* on
+ * elements that combine font-display with them. */
+@layer components {
+  .font-display {
+    font-optical-sizing: auto;
+    font-variation-settings: "SOFT" 30, "WONK" 0;
+    letter-spacing: -0.028em;
+    line-height: 1.08;
+  }
 }
 
+/* Selection — forge-amber on warm ink. Never the browser-default cold blue. */
+::selection {
+  background: #d6a050;
+  color: #1f1a14;
+}
+
+/* Focus ring — forge copper, warm and intentional. */
 :focus-visible {
-  outline: 2px solid #65c6d3;
+  outline: 2px solid #c07440;
   outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Custom scrollbar — warm graphite track, brass thumb. Fits the workshop. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4e4238 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #4e4238;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #6a5a4c;
+  background-clip: content-box;
+}
+
+/* Subtle paper-grain texture for the canvas content surface, applied as a
+ * faint radial wash so panels feel like laid paper, not flat #fff. */
+.paper-grain {
+  background-image:
+    radial-gradient(
+      circle at 18% 12%,
+      rgba(214, 160, 80, 0.045),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 86% 8%,
+      rgba(176, 58, 72, 0.025),
+      transparent 38%
+    );
+  background-color: #f4ead4;
 }

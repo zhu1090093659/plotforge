@@ -330,7 +330,7 @@ function NewProjectForm({
               onChange={(event) =>
                 setCreateTemplate(event.target.value as ProjectTemplateId)
               }
-              className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400"
+              className="h-10 min-w-0 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
             >
               <option value="historical_crisis">{t("Custom Story Project")}</option>
             </select>
@@ -378,8 +378,8 @@ function NewProjectForm({
       </form>
 
       {/* Creation Report */}
-      <section className="rounded-md border border-ink/10 bg-canvas-50 p-4 shadow-sm">
-        <h4 className="text-sm font-semibold uppercase text-ink/55">
+      <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-4 shadow-studio-panel">
+        <h4 className="text-xs font-semibold uppercase tracking-tightish text-ink/55">
           {t("Creation Report")}
         </h4>
         {createReport ? (
@@ -426,10 +426,10 @@ function SourceFileList({
   const { t } = useStudioI18n();
 
   return (
-    <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
+    <section className="rounded-md border border-canvas-200/55 bg-white p-5 shadow-studio-panel">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold">{t("Source Artifacts")}</h3>
+          <h3 className="font-display text-lg font-semibold tracking-display">{t("Source Artifacts")}</h3>
           <p className="mt-1 text-sm text-ink/55">
             {sourceFiles.length} {t("files")}
           </p>
@@ -534,8 +534,8 @@ function BoundaryChecks({
   const checks = buildBoundaryChecks(checkReport, loadedPath);
 
   return (
-    <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-      <h3 className="text-lg font-semibold">{t("Boundary Checks")}</h3>
+    <section className="rounded-md border border-canvas-200/55 bg-white p-5 shadow-studio-panel">
+      <h3 className="font-display text-lg font-semibold tracking-display">{t("Boundary Checks")}</h3>
       <div className="mt-4 grid gap-3">
         {checks.map((check) => (
           <div key={check.label} className="flex items-start gap-3">
@@ -620,7 +620,7 @@ function SourceEditor({
           readOnly={!selectedFile.editable}
           onChange={(event) => setEditorContent(event.target.value)}
           spellCheck={false}
-          className="min-h-72 w-full resize-y rounded-md border border-ink/15 bg-parchment px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-ink/45 read-only:bg-ink/5"
+          className="min-h-72 w-full resize-y rounded-md border border-canvas-200/70 bg-parchment px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 read-only:bg-ink/5"
         />
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-ink/55">
           <span>{selectedFile.kind}</span>
@@ -657,7 +657,7 @@ function LaunchpadTextInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400"
+        className="h-10 min-w-0 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
       />
     </label>
   );
@@ -683,7 +683,7 @@ function LaunchpadTextareaInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-20 w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400"
+        className="min-h-20 w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
       />
     </label>
   );
@@ -704,7 +704,7 @@ function LaunchpadCheckbox({
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 rounded border border-graphite-700/20"
+        className="h-4 w-4 rounded border border-canvas-200/70 accent-amber-500"
       />
       {label}
     </label>

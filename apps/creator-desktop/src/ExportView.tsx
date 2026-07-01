@@ -243,7 +243,7 @@ function TextInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-0 rounded-md border border-graphite-700/20 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400"
+        className="h-10 min-w-0 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
       />
     </label>
   );
@@ -271,7 +271,7 @@ function TextareaInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`w-full resize-y rounded-md border border-graphite-700/20 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 ${minHeight}`}
+        className={`w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 ${minHeight}`}
       />
     </label>
   );
