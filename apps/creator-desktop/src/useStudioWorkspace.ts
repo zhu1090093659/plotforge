@@ -108,14 +108,14 @@ export function useStudioWorkspace({
         value: String(
           checkReport?.scene_count ?? projectSummary?.sceneCount ?? 0,
         ),
-        tone: "border-jade/50 text-jade",
+        tone: "border-sage/50 text-sage",
       },
       {
         label: "Characters",
         value: String(
           checkReport?.character_count ?? projectSummary?.characterCount ?? 0,
         ),
-        tone: "border-brass/50 text-brass",
+        tone: "border-plum/50 text-plum",
       },
       {
         label: "Rules",

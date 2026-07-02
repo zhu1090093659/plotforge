@@ -59,7 +59,7 @@ export function WorldView({
           disabled={saving}
           onClick={onSave}
           aria-label="Save World Bible"
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
         >
           {saving ? (
             <Loader2 aria-hidden size={16} className="animate-spin" />
@@ -140,7 +140,7 @@ export function WorldView({
 
 function EmptyWorld() {
   return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-4 py-6 text-center text-sm text-ink/55">
+    <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
       World edit document not loaded.
     </div>
   );
@@ -158,7 +158,7 @@ function SectionStatusMessage({
   }
   const toneClass =
     formStatus.tone === "success"
-      ? "border-jade/30 bg-jade/10 text-jade"
+      ? "border-sage/30 bg-sage/10 text-sage"
       : "border-signal/30 bg-signal/10 text-signal";
   return (
     <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass}`}>

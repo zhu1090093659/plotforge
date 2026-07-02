@@ -101,7 +101,7 @@ export function DirectorModeView({
         <div className="grid content-start gap-4">
           <aside
             aria-label="Activity Stream"
-            className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel"
+            className="rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel"
           >
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">Activity Stream</h3>
@@ -111,14 +111,14 @@ export function DirectorModeView({
               {activityItems.map((item) => (
                 <article
                   key={item.id}
-                  className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3"
+                  className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-canvas-50">
+                      <p className="truncate text-sm font-semibold text-ink">
                         {item.label}
                       </p>
-                      <p className="mt-1 text-xs text-canvas-200/45">real data</p>
+                      <p className="mt-1 text-xs text-graphite-700/55">real data</p>
                     </div>
                     <CheckCircle2
                       aria-hidden
@@ -126,10 +126,10 @@ export function DirectorModeView({
                       className="mt-0.5 shrink-0 text-health-400"
                     />
                   </div>
-                  <p className="mt-2 truncate text-sm font-semibold text-canvas-50">
+                  <p className="mt-2 truncate text-sm font-semibold text-ink">
                     {item.title}
                   </p>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-canvas-200/60">
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-graphite-700/65">
                     {item.body}
                   </p>
                   <p className="mt-2 truncate text-xs text-health-400">
@@ -142,9 +142,9 @@ export function DirectorModeView({
 
           <div
             aria-label="Playable Scene Preview"
-            className="overflow-hidden rounded-lg border border-graphite-700/15 bg-graphite-950 text-canvas-50 shadow-studio-panel"
+            className="overflow-hidden rounded-lg border border-canvas-200 bg-graphite-950 text-ink shadow-studio-panel"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200/10 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200 px-4 py-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-health-400" />
                 <p className="truncate text-sm font-semibold">Playable Scene</p>
@@ -173,11 +173,11 @@ export function DirectorModeView({
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/25 to-graphite-950/5" />
               <div className="relative flex min-h-[320px] flex-col justify-end p-4">
-                <div className="mx-auto w-full max-w-3xl rounded-lg border border-amber-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
-                  <p className="text-xs font-semibold uppercase text-amber-400">
+                <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
+                  <p className="text-xs font-semibold uppercase text-violet-600">
                     {scene ? `${scene.title} / ${scene.location}` : loadedPath}
                   </p>
-                  <p className="mt-2 text-base leading-7 text-canvas-50">
+                  <p className="mt-2 text-base leading-7 text-ink">
                     {beat?.text ??
                       "Open a project to preview the player-facing scene."}
                   </p>
@@ -185,9 +185,9 @@ export function DirectorModeView({
                     {(beat?.choices ?? []).slice(0, 4).map((choice, index) => (
                       <div
                         key={choice.id}
-                        className="flex min-h-11 items-center gap-3 rounded-md border border-amber-500/35 bg-canvas-50/5 px-3 text-canvas-50"
+                        className="flex min-h-11 items-center gap-3 rounded-md border border-violet-500/35 bg-ink/5 px-3 text-ink"
                       >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-amber-400/60 text-xs text-amber-400">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-violet-400/60 text-xs text-violet-600">
                           {index + 1}
                         </span>
                         <span className="min-w-0 truncate text-sm">
@@ -200,7 +200,7 @@ export function DirectorModeView({
               </div>
             </div>
 
-            <div className="grid gap-3 border-t border-canvas-200/10 px-4 py-3 text-sm sm:grid-cols-3">
+            <div className="grid gap-3 border-t border-canvas-200 px-4 py-3 text-sm sm:grid-cols-3">
               <CanvasFact label="Scene" value={scene?.key ?? "none"} />
               <CanvasFact
                 label="Tension"
@@ -215,17 +215,17 @@ export function DirectorModeView({
         </div>
 
         <aside className="grid content-start gap-4">
-          <div className="rounded-lg border border-amber-500/35 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
+          <div className="rounded-lg border border-violet-500/35 bg-graphite-950 p-4 text-ink shadow-studio-panel">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-start gap-3">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-amber-400/50 bg-amber-500/15 text-amber-400">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-violet-400/50 bg-violet-500/15 text-violet-600">
                   <Target aria-hidden size={22} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase text-amber-400">
+                  <p className="text-xs font-semibold uppercase text-violet-600">
                     Creative Goal
                   </p>
-                  <h3 className="mt-1 text-xl font-semibold text-canvas-50">
+                  <h3 className="mt-1 text-xl font-semibold text-ink">
                     {input.trim() || "Frame the next playable change."}
                   </h3>
                 </div>
@@ -239,11 +239,11 @@ export function DirectorModeView({
 
           <div
             aria-label="Direction Bar"
-            className="rounded-lg border border-amber-500/30 bg-canvas-50 p-3 shadow-studio-panel"
+            className="rounded-lg border border-violet-500/30 bg-canvas-50 p-3 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase text-amber-600">
+                <p className="text-xs font-semibold uppercase text-violet-600">
                   Direction Bar
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-ink">
@@ -260,7 +260,7 @@ export function DirectorModeView({
               aria-label="Playtest input"
               value={input}
               onChange={(event) => onInputChange(event.target.value)}
-              className={`${studioUiClassNames.textarea} mt-3 min-h-20 border-amber-500/45 bg-canvas-100 text-sm leading-6`}
+              className={`${studioUiClassNames.textarea} mt-3 min-h-20 border-violet-500/45 bg-canvas-100 text-sm leading-6`}
             />
 
             <Collapsible
@@ -316,7 +316,7 @@ export function DirectorModeView({
                         type="button"
                         key={direction}
                         onClick={() => onInputChange(direction)}
-                        className="inline-flex min-h-9 items-center rounded-md border border-graphite-700/20 bg-canvas-100 px-3 text-sm font-semibold text-ink transition hover:border-amber-500/45"
+                        className="inline-flex min-h-9 items-center rounded-md border border-canvas-200 bg-canvas-100 px-3 text-sm font-semibold text-ink transition hover:border-violet-500/45"
                       >
                         {direction}
                       </button>
@@ -347,11 +347,11 @@ export function DirectorModeView({
           </div>
           <div
             aria-label="Decision Queue"
-            className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-canvas-50 p-3 shadow-studio-panel"
+            className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-canvas-50 p-3 shadow-studio-panel"
           >
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase text-amber-600">
+              <p className="text-xs font-semibold uppercase text-violet-600">
                 Runtime
               </p>
               <h3 className="text-base font-semibold text-ink">Decision Queue</h3>
@@ -363,7 +363,7 @@ export function DirectorModeView({
             queueItems.map((item) => (
               <article
                 key={item.id}
-                className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
+                className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -395,7 +395,7 @@ export function DirectorModeView({
               </article>
             ))
           ) : (
-            <div className="rounded-md border border-ink/10 bg-parchment px-3 py-3 text-sm leading-6 text-ink/55">
+            <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3 text-sm leading-6 text-ink/55">
               No decision queue is available. Run a turn to create runtime
               evidence; agent approval queues are not implemented.
             </div>
@@ -459,10 +459,10 @@ function directionQueue(report: PlayOnceReport | null): Array<{
 function CanvasFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-semibold uppercase text-canvas-200/45">
+      <p className="text-xs font-semibold uppercase text-graphite-700/55">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-canvas-50">
+      <p className="mt-1 truncate text-sm font-semibold text-ink">
         {value}
       </p>
     </div>

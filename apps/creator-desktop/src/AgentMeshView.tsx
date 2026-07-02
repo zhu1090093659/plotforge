@@ -106,21 +106,21 @@ export function AgentMeshView({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <aside
           aria-label="Studio Backend Bridge"
-          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-1"
+          className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-accent-400">
                 Backend Bridge
               </p>
-              <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+              <h3 className="mt-1 text-lg font-semibold text-ink">
                 Real Studio commands
               </h3>
             </div>
             <StudioStatusChip tone="health">{runtimeName}</StudioStatusChip>
           </div>
 
-          <div className="grid gap-2 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+          <div className="grid gap-2 rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
             <BridgeFact label="Project truth" value="folder source files" />
             <BridgeFact label="Command source" value="plotforge-studio" />
             <BridgeFact label="pi-Agent runtime" value="wired (local)" />
@@ -128,7 +128,7 @@ export function AgentMeshView({
           </div>
 
           <DarkCollapsible label="Removed Fake Surfaces" badge="disabled">
-            <ul className="grid gap-2 text-xs leading-5 text-canvas-200/70">
+            <ul className="grid gap-2 text-xs leading-5 text-graphite-700/70">
               <BoundaryLine icon={Lock}>
                 No mock external workers or mock connected state.
               </BoundaryLine>
@@ -145,17 +145,17 @@ export function AgentMeshView({
         <div className="grid content-start gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <div
             aria-label="Command Boundary Map"
-            className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
+            className="rounded-lg border border-canvas-200 bg-graphite-950 p-4 text-ink shadow-studio-panel"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-accent-400">
                   Command Boundary Map
                 </p>
-                <h3 className="mt-1 text-xl font-semibold text-canvas-50">
+                <h3 className="mt-1 text-xl font-semibold text-ink">
                   {projectSummary?.title ?? "No project loaded"}
                 </h3>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-canvas-200/60">
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-700/65">
                   The UI is now backed by Studio command results. pi-Agent
                   runtime is wired locally; external agent boundaries stay
                   unavailable until schema-backed ports are added.
@@ -189,7 +189,7 @@ export function AgentMeshView({
               <MeshColumn
                 title="Export Evidence"
                 icon={PackageCheck}
-                tone="border-amber-400/45 bg-amber-500/15"
+                tone="border-violet-400/45 bg-violet-500/15"
               >
                 <MeshNode
                   title={`${exportProfileCount} profiles`}
@@ -207,7 +207,7 @@ export function AgentMeshView({
 
           <div
             aria-label="Capability Matrix"
-            className="rounded-lg border border-graphite-700/15 bg-canvas-50 shadow-studio-panel"
+            className="rounded-lg border border-canvas-200 bg-canvas-50 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-4 py-3">
               <div>
@@ -233,7 +233,7 @@ export function AgentMeshView({
 
         <aside
           aria-label="Bridge Evidence"
-          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-canvas-50 p-3 shadow-studio-panel lg:col-start-2 lg:row-start-2"
+          className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-canvas-50 p-3 shadow-studio-panel lg:col-start-2 lg:row-start-2"
         >
           <div>
             <p className="text-xs font-semibold uppercase text-accent-500">
@@ -244,7 +244,7 @@ export function AgentMeshView({
             </h3>
           </div>
 
-          <div className="grid gap-2 rounded-md border border-ink/10 bg-parchment px-3 py-3">
+          <div className="grid gap-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
             <EvidenceLine label="Runtime" value={runtimeName} />
             <EvidenceLine label="Loaded path" value={loadedPath} />
             <EvidenceLine label="Playable proof" value={proofLabel} />
@@ -254,7 +254,7 @@ export function AgentMeshView({
             />
           </div>
 
-          <div className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
+          <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-ink">Safety Boundary</h3>
               <StudioStatusChip tone="health">explicit</StudioStatusChip>
@@ -266,7 +266,7 @@ export function AgentMeshView({
             </div>
           </div>
 
-          <div className="rounded-md border border-ink/10 bg-graphite-950 px-3 py-3 text-canvas-50">
+          <div className="rounded-md border border-ink/10 bg-graphite-950 px-3 py-3 text-ink">
             <h3 className="text-sm font-semibold">Actions</h3>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <StudioButton onClick={onOpenTrace}>
@@ -319,7 +319,7 @@ function DarkCollapsible({
   const headingId = `dark-collapsible-heading-${slug}`;
   const regionId = `dark-collapsible-region-${slug}`;
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+    <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
       <button
         type="button"
         id={headingId}
@@ -328,11 +328,11 @@ function DarkCollapsible({
         onClick={() => setOpen((prev) => !prev)}
         className="flex w-full items-center justify-between gap-3 text-left"
       >
-        <span className="flex items-center gap-2 text-sm font-semibold text-canvas-50">
+        <span className="flex items-center gap-2 text-sm font-semibold text-ink">
           {open ? (
-            <ChevronDown aria-hidden size={15} className="shrink-0 text-canvas-200/55" />
+            <ChevronDown aria-hidden size={15} className="shrink-0 text-graphite-700/60" />
           ) : (
-            <ChevronRight aria-hidden size={15} className="shrink-0 text-canvas-200/55" />
+            <ChevronRight aria-hidden size={15} className="shrink-0 text-graphite-700/60" />
           )}
           {label}
         </span>
@@ -361,7 +361,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
   const wired = capability.status === "wired";
   const StatusIcon = wired ? CheckCircle2 : XCircle;
   return (
-    <article className="flex h-full flex-col gap-2 rounded-md border border-ink/10 bg-parchment px-3 py-3">
+    <article className="flex h-full flex-col gap-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
       <div className="flex items-start justify-between gap-2">
         <h4 className="text-sm font-semibold text-ink">{capability.label}</h4>
         <StatusIcon
@@ -402,7 +402,7 @@ function MeshColumn({
     <div className={`rounded-lg border p-3 ${tone}`}>
       <div className="flex items-center gap-2">
         <Icon aria-hidden size={18} />
-        <h4 className="text-sm font-semibold text-canvas-50">{title}</h4>
+        <h4 className="text-sm font-semibold text-ink">{title}</h4>
       </div>
       <div className="mt-3 grid gap-2">{children}</div>
     </div>
@@ -411,9 +411,9 @@ function MeshColumn({
 
 function MeshNode({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-graphite-850 px-3 py-3">
-      <p className="truncate text-sm font-semibold text-canvas-50">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-canvas-200/60">{detail}</p>
+    <div className="rounded-md border border-canvas-200 bg-graphite-850 px-3 py-3">
+      <p className="truncate text-sm font-semibold text-ink">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-graphite-700/65">{detail}</p>
     </div>
   );
 }
@@ -428,10 +428,10 @@ function ArtifactNode({
   detail: string;
 }) {
   return (
-    <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-3">
-      <Icon aria-hidden size={18} className="text-amber-400" />
-      <p className="mt-2 text-sm font-semibold text-canvas-50">{title}</p>
-      <p className="mt-1 truncate text-xs text-canvas-200/60">{detail}</p>
+    <div className="rounded-md border border-violet-500/35 bg-violet-500/10 px-3 py-3">
+      <Icon aria-hidden size={18} className="text-violet-600" />
+      <p className="mt-2 text-sm font-semibold text-ink">{title}</p>
+      <p className="mt-1 truncate text-xs text-graphite-700/65">{detail}</p>
     </div>
   );
 }

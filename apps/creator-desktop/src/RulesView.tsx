@@ -70,7 +70,7 @@ export function RulesView({
           type="button"
           disabled={saving}
           onClick={onSave}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
         >
           {saving ? (
             <span
@@ -103,7 +103,7 @@ export function RulesView({
           <Collapsible
             label="Add Rule"
             defaultOpen={false}
-            className="rounded-md border border-ink/10 bg-white p-4"
+            className="rounded-md border border-ink/10 bg-canvas-50 p-4"
           >
             <ManualRuleForm
               draft={ruleDraft}
@@ -135,7 +135,7 @@ function RuleCard({
   onUpdate(patch: Partial<Rule>): void;
 }) {
   return (
-    <article className="rounded-md border border-ink/10 bg-parchment p-4">
+    <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
       <Collapsible
         label={rule.id || `Rule ${index + 1}`}
         id={`rule-${rule.id}`}
@@ -167,7 +167,7 @@ function RuleCard({
               {rule.conditions.map((cond, i) => (
                 <li
                   key={i}
-                  className="rounded-md bg-white px-3 py-1.5 text-sm text-ink/70"
+                  className="rounded-md bg-canvas-50 px-3 py-1.5 text-sm text-ink/70"
                 >
                   <ConditionLabel condition={cond} />
                 </li>
@@ -186,7 +186,7 @@ function RuleCard({
               {rule.effects.map((effect, i) => (
                 <li
                   key={i}
-                  className="rounded-md bg-white px-3 py-1.5 text-sm text-ink/70"
+                  className="rounded-md bg-canvas-50 px-3 py-1.5 text-sm text-ink/70"
                 >
                   <EffectLabel effect={effect} />
                 </li>
@@ -370,7 +370,7 @@ function ManualRuleForm({
 
 function EmptyRules() {
   return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-4 py-6 text-center text-sm text-ink/55">
+    <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
       Rule edit document not loaded.
     </div>
   );
@@ -388,7 +388,7 @@ function SectionStatusMessage({
   }
   const toneClass =
     formStatus.tone === "success"
-      ? "border-jade/30 bg-jade/10 text-jade"
+      ? "border-sage/30 bg-sage/10 text-sage"
       : "border-signal/30 bg-signal/10 text-signal";
   return (
     <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass}`}>

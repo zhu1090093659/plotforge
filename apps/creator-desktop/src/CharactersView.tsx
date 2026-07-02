@@ -81,7 +81,7 @@ export function CharactersView({
           type="button"
           disabled={saving}
           onClick={onSave}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
         >
           {saving ? (
             <Loader2 aria-hidden size={16} className="animate-spin" />
@@ -113,7 +113,7 @@ export function CharactersView({
           <Collapsible
             label="Add Character"
             defaultOpen={false}
-            className="rounded-md border border-ink/10 bg-white p-4"
+            className="rounded-md border border-ink/10 bg-canvas-50 p-4"
           >
             {/* Mode selector */}
             <div className="mt-3 flex gap-2">
@@ -185,7 +185,7 @@ function CharacterCard({
   onUpdate(patch: Partial<Character>): void;
 }) {
   return (
-    <article className="rounded-md border border-ink/10 bg-parchment p-4">
+    <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
       <Collapsible
         label={character.name || character.id}
         id={`character-${character.id}`}
@@ -242,7 +242,7 @@ function CharacterCard({
             minHeight="min-h-24"
           />
           {character.portrait_request ? (
-            <div className="sm:col-span-2 rounded-md border border-ink/10 bg-white px-3 py-2 text-sm">
+            <div className="sm:col-span-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm">
               <p className="text-xs font-medium uppercase text-ink/55">
                 Portrait request
               </p>
@@ -392,7 +392,7 @@ function AiCharacterForm({
 
 function EmptyCharacters() {
   return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-4 py-6 text-center text-sm text-ink/55">
+    <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
       Character edit document not loaded.
     </div>
   );
@@ -410,7 +410,7 @@ function SectionStatusMessage({
   }
   const toneClass =
     formStatus.tone === "success"
-      ? "border-jade/30 bg-jade/10 text-jade"
+      ? "border-sage/30 bg-sage/10 text-sage"
       : "border-signal/30 bg-signal/10 text-signal";
   return (
     <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass}`}>

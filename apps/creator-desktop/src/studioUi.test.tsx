@@ -20,12 +20,12 @@ afterEach(() => {
 
 describe("studioUi", () => {
   it("exposes the agent-native token layer used by the shell", () => {
-    expect(agentNativeDesignTokens.shell.graphite).toBe("#1f1a14");
-    expect(agentNativeDesignTokens.shell.warmCanvas).toBe("#f4ead4");
-    expect(agentNativeDesignTokens.accent.amberAction).toBe("#c98b2f");
-    expect(agentNativeDesignTokens.accent.healthGreen).toBe("#34815f");
-    expect(agentNativeDesignTokens.accent.accentCopper).toBe("#a85c34");
-    expect(agentNativeDesignTokens.accent.agentBrass).toBe("#2d6258");
+    expect(agentNativeDesignTokens.shell.graphite).toBe("#faf8ff");
+    expect(agentNativeDesignTokens.shell.warmCanvas).toBe("#fdfbff");
+    expect(agentNativeDesignTokens.accent.violetAction).toBe("#6f54a3");
+    expect(agentNativeDesignTokens.accent.healthGreen).toBe("#5a8a7a");
+    expect(agentNativeDesignTokens.accent.accentCopper).toBe("#7a5a95");
+    expect(agentNativeDesignTokens.accent.agentSage).toBe("#4d3e7a");
   });
 
   function treeNavItems(overrides?: {
@@ -271,6 +271,19 @@ describe("ScenePreviewPlaceholder", () => {
   it("renders the provided assetPath when given", () => {
     render(<ScenePreviewPlaceholder assetPath="assets/bg/ruins.webp" />);
     expect(screen.getByText("assets/bg/ruins.webp")).toBeTruthy();
+  });
+
+  it("uses the current violet/lavender palette, not the prior forge amber/cream", () => {
+    const { container } = render(
+      <ScenePreviewPlaceholder assetPath={null} />,
+    );
+    const className = container.firstChild
+      ? String((container.firstChild as HTMLElement).className)
+      : "";
+    expect(className).not.toContain("rgba(214,160,80");
+    expect(className).not.toContain("rgba(245,238,224");
+    expect(className).toContain("rgba(138,111,184");
+    expect(className).toContain("rgba(253,251,255");
   });
 });
 

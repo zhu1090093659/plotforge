@@ -508,13 +508,13 @@ export function App({
     return (
       <div className="grid gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-tightish text-amber-400">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-violet-600">
             Evidence Panel
           </p>
-          <h3 className="font-display mt-1 text-lg font-semibold tracking-display text-canvas-50">
+          <h3 className="font-display mt-1 text-lg font-semibold tracking-display text-ink">
             {activeWorkflowMeta.label}
           </h3>
-          <p className="mt-1 text-sm leading-6 text-canvas-200/65">
+          <p className="mt-1 text-sm leading-6 text-graphite-700/70">
             {activeWorkflowMeta.description}
           </p>
         </div>
@@ -541,13 +541,13 @@ export function App({
           </div>
         </StudioPanel>
 
-        <div className="rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-3">
+        <div className="rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-tightish text-canvas-200/55">
+              <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
                 Backend Boundary
               </p>
-              <h4 className="font-display mt-1 text-sm font-semibold tracking-display text-canvas-50">
+              <h4 className="font-display mt-1 text-sm font-semibold tracking-display text-ink">
                 Real Studio command surface
               </h4>
             </div>
@@ -581,7 +581,7 @@ export function App({
             ].map((boundary) => (
               <p
                 key={boundary}
-                className="rounded-md border border-canvas-200/12 bg-canvas-50/5 px-3 py-2 text-xs leading-5 text-canvas-200/65"
+                className="rounded-md border border-canvas-200 bg-canvas-100 px-3 py-2 text-xs leading-5 text-graphite-700/75"
               >
                 {boundary}
               </p>
@@ -589,8 +589,8 @@ export function App({
           </div>
         </div>
 
-        <div className="rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-3">
-          <p className="text-xs font-semibold uppercase tracking-tightish text-canvas-200/55">
+        <div className="rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-3">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
             Reference Screens
           </p>
           <div className="mt-3 grid gap-2">
@@ -598,12 +598,12 @@ export function App({
               <div
                 key={reference.id}
                 title={reference.title}
-                className="rounded-md border border-canvas-200/12 bg-canvas-50/5 px-3 py-2"
+                className="rounded-md border border-canvas-200 bg-canvas-100 px-3 py-2"
               >
-                <p className="font-display truncate text-sm font-semibold tracking-tightish text-canvas-50">
+                <p className="font-display truncate text-sm font-semibold tracking-tightish text-ink">
                   {reference.fileName}
                 </p>
-                <p className="mt-1 truncate text-xs text-canvas-200/45">
+                <p className="mt-1 truncate text-xs text-graphite-700/60">
                   {reference.id}
                 </p>
               </div>
@@ -618,10 +618,10 @@ export function App({
     return (
       <>
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-tightish text-canvas-200/50">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
             Command Dock
           </p>
-          <p className="font-display truncate text-sm font-semibold tracking-tightish text-canvas-50">
+          <p className="font-display truncate text-sm font-semibold tracking-tightish text-ink">
             {projectSummary?.title ?? "No project loaded"} /{" "}
             {activeSectionMeta.label}
           </p>
@@ -736,8 +736,8 @@ function EvidenceLine({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/55">{label}</p>
-      <p className="font-display mt-1 truncate text-sm font-semibold tracking-tightish text-canvas-50">{value}</p>
+      <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/65">{label}</p>
+      <p className="font-display mt-1 truncate text-sm font-semibold tracking-tightish text-ink">{value}</p>
     </div>
   );
 }
@@ -751,10 +751,10 @@ function PreviewEvidenceLine({
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
-      <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/45">
+      <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/60">
         {label}
       </p>
-      <p className="font-display truncate text-xs font-semibold tracking-tightish text-canvas-50">{value}</p>
+      <p className="font-display truncate text-xs font-semibold tracking-tightish text-ink">{value}</p>
     </div>
   );
 }

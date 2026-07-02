@@ -82,17 +82,17 @@ export function TraceDebugView({
           {/* --------------------------------------------------------------- */}
           <section
             aria-label="Playable Proof"
-            className="overflow-hidden rounded-lg border border-graphite-700/15 bg-graphite-950 text-canvas-50 shadow-studio-panel"
+            className="overflow-hidden rounded-lg border border-canvas-200 bg-graphite-950 text-ink shadow-studio-panel"
           >
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-canvas-200/10 px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-canvas-200 px-4 py-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-health-400">
                   Playable Proof
                 </p>
-                <h3 className="mt-1 text-xl font-semibold text-canvas-50">
+                <h3 className="mt-1 text-xl font-semibold text-ink">
                   {report?.scene.title ?? "Run a playtest turn to create proof"}
                 </h3>
-                <p className="mt-1 text-sm leading-6 text-canvas-200/60">
+                <p className="mt-1 text-sm leading-6 text-graphite-700/65">
                   {trace
                     ? "Playable result, state deltas, run evidence, artifact diff, and package readiness are shown from the current local run."
                     : "Trace output appears after a playtest turn."}
@@ -123,13 +123,13 @@ export function TraceDebugView({
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/35 to-graphite-950/10" />
               <div className="relative flex min-h-[260px] flex-col justify-end p-4">
-                <div className="mx-auto w-full max-w-3xl rounded-lg border border-amber-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
-                  <p className="text-xs font-semibold uppercase text-amber-400">
+                <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
+                  <p className="text-xs font-semibold uppercase text-violet-600">
                     {report
                       ? `${report.scene.key} / ${report.scene.location}`
                       : "No playable result"}
                   </p>
-                  <p className="mt-2 text-base leading-7 text-canvas-50">
+                  <p className="mt-2 text-base leading-7 text-ink">
                     {beat?.text ??
                       "Run a proof turn to inspect the player-facing result."}
                   </p>
@@ -137,9 +137,9 @@ export function TraceDebugView({
                     {(beat?.choices ?? []).slice(0, 4).map((choice, index) => (
                       <div
                         key={choice.id}
-                        className="flex min-h-11 items-center gap-3 rounded-md border border-amber-500/35 bg-canvas-50/5 px-3 text-canvas-50"
+                        className="flex min-h-11 items-center gap-3 rounded-md border border-violet-500/35 bg-ink/5 px-3 text-ink"
                       >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-amber-400/60 text-xs text-amber-400">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-violet-400/60 text-xs text-violet-600">
                           {index + 1}
                         </span>
                         <span className="min-w-0 truncate text-sm">
@@ -152,7 +152,7 @@ export function TraceDebugView({
               </div>
             </div>
 
-            <div className="grid gap-3 border-t border-canvas-200/10 px-4 py-3 md:grid-cols-4">
+            <div className="grid gap-3 border-t border-canvas-200 px-4 py-3 md:grid-cols-4">
               <ProofFact label="Trace ID" value={trace?.id ?? "none"} />
               <ProofFact
                 label="Run seed"
@@ -185,7 +185,7 @@ export function TraceDebugView({
             badge={report?.delta_summary.length}
           >
             <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_0.9fr]">
-              <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+              <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-base font-semibold">State Delta</h3>
                   <Badge tone="neutral">
@@ -195,7 +195,7 @@ export function TraceDebugView({
                 <DeltaList lines={report?.delta_summary ?? []} />
               </section>
 
-              <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+              <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-base font-semibold">Run Evidence</h3>
                   <Bug aria-hidden className="text-signal" size={20} />
@@ -290,22 +290,22 @@ export function TraceDebugView({
         {/* --------------------------------------------------------------- */}
         <aside
           aria-label="Proof Evidence Panel"
-          className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
+          className="grid content-start gap-4 rounded-lg border border-canvas-200 bg-graphite-950 p-4 text-ink shadow-studio-panel"
         >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase text-health-400">
                 Agent Evidence
               </p>
-              <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+              <h3 className="mt-1 text-lg font-semibold text-ink">
                 Proof Package
               </h3>
             </div>
             <ShieldCheck aria-hidden className="text-health-400" size={22} />
           </div>
 
-          <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
-            <p className="text-sm font-semibold text-canvas-50">
+          <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
+            <p className="text-sm font-semibold text-ink">
               Package Evidence Summary
             </p>
             <div className="mt-3 grid gap-2">
@@ -320,14 +320,14 @@ export function TraceDebugView({
                 ].map(([label, value]) => (
                   <div
                     key={label}
-                    className="flex items-center justify-between gap-3 border-t border-canvas-200/10 pt-2 text-sm first:border-t-0 first:pt-0"
+                    className="flex items-center justify-between gap-3 border-t border-canvas-200 pt-2 text-sm first:border-t-0 first:pt-0"
                   >
-                    <span className="truncate text-canvas-50">{label}</span>
+                    <span className="truncate text-ink">{label}</span>
                     <span className="shrink-0 text-health-400">{value}</span>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-canvas-200/55">
+                <p className="text-sm text-graphite-700/60">
                   No export report captured.
                 </p>
               )}
@@ -351,13 +351,13 @@ export function TraceDebugView({
             }
           />
 
-          <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+          <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-canvas-50">
+                <p className="text-sm font-semibold text-ink">
                   Local Static Web Package
                 </p>
-                <p className="mt-1 text-xs text-canvas-200/55">
+                <p className="mt-1 text-xs text-graphite-700/60">
                   {selectedExportProfile?.id ?? "No profile selected"}
                 </p>
               </div>
@@ -519,11 +519,11 @@ function ProofFact({
   value: string | number;
 }) {
   return (
-    <div className="min-w-0 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
-      <p className="text-xs font-semibold uppercase text-canvas-200/45">
+    <div className="min-w-0 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2">
+      <p className="text-xs font-semibold uppercase text-graphite-700/55">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-canvas-50">
+      <p className="mt-1 truncate text-sm font-semibold text-ink">
         {value}
       </p>
     </div>
@@ -539,10 +539,10 @@ function ProofSideFact({
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
-      <p className="text-xs font-medium uppercase text-canvas-200/45">
+      <p className="text-xs font-medium uppercase text-graphite-700/55">
         {label}
       </p>
-      <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
+      <p className="truncate text-xs font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -555,12 +555,12 @@ function DisclosureDraft({
   body: string;
 }) {
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+    <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold text-canvas-50">{title}</p>
+        <p className="text-sm font-semibold text-ink">{title}</p>
         <Badge tone="fallback">Local draft only</Badge>
       </div>
-      <p className="mt-3 text-sm leading-6 text-canvas-200/65">{body}</p>
+      <p className="mt-3 text-sm leading-6 text-graphite-700/70">{body}</p>
     </div>
   );
 }
@@ -595,7 +595,7 @@ function CausalityGraph({
       id: "diagnostics",
       label: "Diagnostics",
       detail: `${trace.diagnostics.length} steps`,
-      tone: "border-amber-500/35 bg-amber-500/10 text-amber-600",
+      tone: "border-violet-500/35 bg-violet-500/10 text-violet-600",
     },
   ];
 
@@ -799,7 +799,7 @@ function ErrorList({
 }) {
   if (errors.length === 0) {
     return (
-      <div className="flex items-center gap-2 border-t border-ink/10 pt-3 text-sm text-jade">
+      <div className="flex items-center gap-2 border-t border-ink/10 pt-3 text-sm text-sage">
         <CheckCircle2 aria-hidden size={16} />
         No runtime errors
       </div>
@@ -889,8 +889,8 @@ function Badge({
   children: string | number;
 }) {
   const classes = {
-    completed: "border-jade/30 bg-jade/10 text-jade",
-    fallback: "border-brass/30 bg-brass/10 text-brass",
+    completed: "border-sage/30 bg-sage/10 text-sage",
+    fallback: "border-plum/30 bg-plum/10 text-plum",
     error: "border-signal/30 bg-signal/10 text-signal",
     neutral: "border-ink/15 bg-ink/5 text-ink/60",
   }[tone];

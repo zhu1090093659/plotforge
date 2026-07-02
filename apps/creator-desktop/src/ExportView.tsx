@@ -75,7 +75,7 @@ function evidenceStatusClassName(status: EvidenceStatus) {
     case "review":
       return "text-signal";
     case "pending":
-      return "text-amber-400";
+      return "text-violet-600";
   }
 }
 
@@ -117,9 +117,9 @@ function ExportEvidenceCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+    <section className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold text-canvas-50">{title}</h4>
+        <h4 className="text-sm font-semibold text-ink">{title}</h4>
         <span className="rounded-sm border border-health-400/30 bg-health-500/15 px-2 py-1 text-xs font-semibold text-health-400">
           {badge}
         </span>
@@ -141,7 +141,7 @@ function PackageReadinessRow({
 }) {
   const ready = item.status === "Ready" || item.status === "Passed";
   return (
-    <div className="grid gap-3 rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_120px_minmax(160px,0.7fr)_80px]">
+    <div className="grid gap-3 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_120px_minmax(160px,0.7fr)_80px]">
       <div className="min-w-0">
         <p className="truncate font-semibold text-ink">{item.label}</p>
         <p className="mt-1 truncate text-xs text-ink/50">{item.detail}</p>
@@ -150,8 +150,8 @@ function PackageReadinessRow({
         className={[
           "w-fit rounded-sm border px-2 py-1 text-xs font-semibold",
           ready
-            ? "border-jade/30 bg-jade/10 text-jade"
-            : "border-brass/30 bg-brass/10 text-brass",
+            ? "border-sage/30 bg-sage/10 text-sage"
+            : "border-plum/30 bg-plum/10 text-plum",
         ].join(" ")}
       >
         {item.status}
@@ -160,7 +160,7 @@ function PackageReadinessRow({
         <div
           className={[
             "h-2 rounded-full",
-            ready ? "bg-jade" : "bg-brass",
+            ready ? "bg-sage" : "bg-plum",
           ].join(" ")}
           style={{ width: ready ? "100%" : "45%" }}
         />
@@ -182,12 +182,12 @@ function ProfileFlag({
   safe: boolean;
 }) {
   return (
-    <div className="rounded-md border border-ink/10 bg-white px-3 py-2">
+    <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2">
       <p className="text-xs font-medium uppercase text-ink/45">{label}</p>
       <p
         className={[
           "mt-1 text-sm font-semibold",
-          safe ? "text-jade" : "text-signal",
+          safe ? "text-sage" : "text-signal",
         ].join(" ")}
       >
         {value}
@@ -199,8 +199,8 @@ function ProfileFlag({
 function ProofLikeLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
-      <p className="text-xs font-medium uppercase text-canvas-200/45">{label}</p>
-      <p className="truncate text-xs font-semibold text-canvas-50">{value}</p>
+      <p className="text-xs font-medium uppercase text-graphite-700/55">{label}</p>
+      <p className="truncate text-xs font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -216,7 +216,7 @@ function ExportInfo({ label, value }: { label: string; value: string }) {
 
 function MetricBox({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md border border-ink/10 bg-parchment px-3 py-2">
+    <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2">
       <p className="text-xs font-medium uppercase text-ink/55">{label}</p>
       <p className="mt-1 truncate font-semibold">{value}</p>
     </div>
@@ -301,7 +301,7 @@ function CheckboxInput({
 
 function EmptyPanel({ label }: { label: string }) {
   return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-parchment px-3 py-3 text-sm text-ink/55">
+    <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-3 py-3 text-sm text-ink/55">
       {label}
     </div>
   );
@@ -464,7 +464,7 @@ export function ExportView({
           aria-label="Export zip"
           onClick={() => void runStaticZipExport()}
           disabled={exportDisabled}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
         >
           {exporting ? (
             <Loader2 aria-hidden size={16} className="animate-spin" />
@@ -480,7 +480,7 @@ export function ExportView({
         <div
           className={`mt-4 rounded-md border px-3 py-2 text-sm ${
             formStatus.tone === "success"
-              ? "border-jade/30 bg-jade/10 text-jade"
+              ? "border-sage/30 bg-sage/10 text-sage"
               : "border-signal/30 bg-signal/10 text-signal"
           }`}
         >
@@ -500,13 +500,13 @@ export function ExportView({
             children: (
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
                 {/* Build Profile + Evidence & Boundaries (left) */}
-                <aside className="grid max-h-[620px] content-start gap-3 overflow-y-auto rounded-lg border border-ink/10 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-1">
+                <aside className="grid max-h-[620px] content-start gap-3 overflow-y-auto rounded-lg border border-ink/10 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase text-amber-400">
+                      <p className="text-xs font-semibold uppercase text-violet-600">
                         Build Profile
                       </p>
-                      <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+                      <h3 className="mt-1 text-lg font-semibold text-ink">
                         {selectedExportProfile?.id ?? "No profile selected"}
                       </h3>
                     </div>
@@ -514,7 +514,7 @@ export function ExportView({
                       {staticExportSelected ? "Executable" : "Draft"}
                     </StudioStatusChip>
                   </div>
-                  <p className="text-sm leading-6 text-canvas-200/65">
+                  <p className="text-sm leading-6 text-graphite-700/70">
                     {selectedExportProfile?.intent ??
                       "Select a local package profile to inspect export readiness."}
                   </p>
@@ -523,7 +523,7 @@ export function ExportView({
                     title="AI Usage Manifest"
                     badge={aiSafetyPolicy ? "Included" : "Pending"}
                   >
-                    <p className="text-sm leading-6 text-canvas-200/65">
+                    <p className="text-sm leading-6 text-graphite-700/70">
                       {aiSafetyPolicy?.moderation_policy ??
                         "AI usage evidence appears after policy load."}
                     </p>
@@ -537,17 +537,17 @@ export function ExportView({
                       {(aiSafetyPolicy?.content_kinds ?? ["text"]).map((kind) => (
                         <div
                           key={kind}
-                          className="flex items-center justify-between gap-3 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-sm"
+                          className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
                         >
-                          <span className="capitalize text-canvas-50">{kind}</span>
-                          <span className="text-canvas-200/55">creator review</span>
+                          <span className="capitalize text-ink">{kind}</span>
+                          <span className="text-graphite-700/60">creator review</span>
                         </div>
                       ))}
                     </div>
                   </ExportEvidenceCard>
 
                   <ExportEvidenceCard title="Redaction Rules" badge="On">
-                    <div className="grid gap-2 text-sm text-canvas-200/70">
+                    <div className="grid gap-2 text-sm text-graphite-700/70">
                       {[
                         "Strip provider configuration",
                         "Remove private traces",
@@ -563,7 +563,7 @@ export function ExportView({
                   </ExportEvidenceCard>
 
                   <ExportEvidenceCard title="Asset Whitelist" badge="Local">
-                    <p className="text-sm leading-6 text-canvas-200/65">
+                    <p className="text-sm leading-6 text-graphite-700/70">
                       Allow only referenced assets under project asset paths.
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -571,7 +571,7 @@ export function ExportView({
                         (extension) => (
                           <span
                             key={extension}
-                            className="rounded-sm border border-canvas-200/10 bg-canvas-50/5 px-2 py-1 text-xs font-semibold text-canvas-200/70"
+                            className="rounded-sm border border-canvas-200 bg-ink/5 px-2 py-1 text-xs font-semibold text-graphite-700/70"
                           >
                             {extension}
                           </span>
@@ -585,7 +585,7 @@ export function ExportView({
                     <p className="text-xs font-semibold uppercase text-health-400">
                       Evidence &amp; Boundaries
                     </p>
-                    <p className="mt-1 text-sm text-canvas-200/65">
+                    <p className="mt-1 text-sm text-graphite-700/70">
                       Local export package only
                     </p>
                   </div>
@@ -593,7 +593,7 @@ export function ExportView({
                     {actionableEvidenceChecks.map((check) => (
                       <div
                         key={check.label}
-                        className="flex items-center justify-between gap-3 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-sm"
+                        className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
                       >
                         <span>{check.label}</span>
                         <span
@@ -619,7 +619,7 @@ export function ExportView({
                       {technicalEvidenceChecks.map((check) => (
                         <div
                           key={check.label}
-                          className="flex items-center justify-between gap-3 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2 text-sm"
+                          className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
                         >
                           <span>{check.label}</span>
                           <span
@@ -632,7 +632,7 @@ export function ExportView({
                           </span>
                         </div>
                       ))}
-                      <p className="mt-1 text-xs text-canvas-200/45">
+                      <p className="mt-1 text-xs text-graphite-700/55">
                         These checks remain pending until a separate smoke test is run
                         after export.
                       </p>
@@ -708,7 +708,7 @@ export function ExportView({
 
                   {/* Non-executable profile notice */}
                   {selectedExportProfile && !staticExportSelected ? (
-                    <div className="rounded-md border border-ink/10 bg-parchment px-3 py-2 text-sm text-ink/60">
+                    <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm text-ink/60">
                       This profile is available as contract metadata only; no Studio export
                       command is wired for this target.
                     </div>
@@ -775,7 +775,7 @@ export function ExportView({
                         className={[
                           "rounded-md border px-3 py-3 text-left transition",
                           selected
-                            ? "border-ink/45 bg-parchment"
+                            ? "border-ink/45 bg-canvas-50"
                             : "border-ink/10 hover:border-ink/30",
                         ].join(" ")}
                       >
@@ -792,7 +792,7 @@ export function ExportView({
                             className={[
                               "rounded-sm px-2 py-1 text-xs font-semibold",
                               profile.target === "static_web"
-                                ? "bg-jade/10 text-jade"
+                                ? "bg-sage/10 text-sage"
                                 : "bg-ink/5 text-ink/55",
                             ].join(" ")}
                           >
@@ -808,7 +808,7 @@ export function ExportView({
                 </div>
 
                 {selectedExportProfile ? (
-                  <article className="rounded-md border border-ink/10 bg-parchment p-4">
+                  <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-medium uppercase text-ink/45">
@@ -818,7 +818,7 @@ export function ExportView({
                           {selectedExportProfile.id}
                         </h4>
                       </div>
-                      <span className="rounded-sm border border-ink/10 bg-white px-2 py-1 text-xs font-semibold text-ink/60">
+                      <span className="rounded-sm border border-ink/10 bg-canvas-50 px-2 py-1 text-xs font-semibold text-ink/60">
                         {selectedExportProfile.target}
                       </span>
                     </div>
@@ -870,7 +870,7 @@ export function ExportView({
                         {selectedExportProfile.capabilities.map((capability) => (
                           <span
                             key={capability}
-                            className="rounded-sm border border-ink/10 bg-white px-2 py-1 text-xs font-semibold text-ink/65"
+                            className="rounded-sm border border-ink/10 bg-canvas-50 px-2 py-1 text-xs font-semibold text-ink/65"
                           >
                             {capability}
                           </span>
@@ -882,7 +882,7 @@ export function ExportView({
                       {selectedExportProfile.notes.map((note) => (
                         <p
                           key={note}
-                          className="rounded-md border border-ink/10 bg-white px-3 py-2 text-sm text-ink/65"
+                          className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm text-ink/65"
                         >
                           {note}
                         </p>
@@ -900,7 +900,7 @@ export function ExportView({
             label: "Policy",
             badge: aiSafetyPolicy ? undefined : "pending",
             children: aiSafetyPolicy ? (
-              <div className="rounded-md border border-ink/10 bg-parchment p-4">
+              <div className="rounded-md border border-ink/10 bg-canvas-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-semibold uppercase text-ink/55">
@@ -915,7 +915,7 @@ export function ExportView({
                     aria-label="Save AI Safety Policy"
                     disabled={formSaving === "export-kit"}
                     onClick={() => void saveAiSafetyPolicy()}
-                    className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+                    className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
                   >
                     {formSaving === "export-kit" ? (
                       <Loader2 aria-hidden size={16} className="animate-spin" />

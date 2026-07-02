@@ -94,16 +94,16 @@ export function CommandCenterView({
         className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]"
       >
         <div className="grid content-start gap-3">
-          <div className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel">
+          <div className="rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase text-amber-400">
+                <p className="text-xs font-semibold uppercase text-violet-600">
                   Project Launchpad
                 </p>
-                <h3 className="mt-1 text-xl font-semibold text-canvas-50">
+                <h3 className="mt-1 text-xl font-semibold text-ink">
                   {projectTitle}
                 </h3>
-                <p className="mt-1 max-w-2xl text-sm leading-5 text-canvas-200/65">
+                <p className="mt-1 max-w-2xl text-sm leading-5 text-graphite-700/70">
                   {entryScene
                     ? `${entryScene.title} / ${entryScene.location}`
                     : loadedPath}
@@ -131,16 +131,16 @@ export function CommandCenterView({
             </div>
 
             <div className="mt-3 grid gap-2 lg:grid-cols-2">
-              <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
-                <p className="text-xs font-semibold uppercase text-canvas-200/50">
+              <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-2">
+                <p className="text-xs font-semibold uppercase text-graphite-700/55">
                   Playable Proof Status
                 </p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-canvas-50">
+                    <p className="text-base font-semibold text-ink">
                       {proofReady ? "Playable proof captured" : "Ready to run proof"}
                     </p>
-                    <p className="mt-0.5 text-xs text-canvas-200/60">
+                    <p className="mt-0.5 text-xs text-graphite-700/65">
                       {playtestReport
                         ? `${playtestReport.trace.id} / ${playtestReport.delta_summary.length} deltas`
                         : "No turn has been run in this session."}
@@ -161,16 +161,16 @@ export function CommandCenterView({
                 </div>
               </div>
 
-              <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
-                <p className="text-xs font-semibold uppercase text-canvas-200/50">
+              <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-2">
+                <p className="text-xs font-semibold uppercase text-graphite-700/55">
                   Export Readiness
                 </p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-canvas-50">
+                    <p className="text-base font-semibold text-ink">
                       {exportReady ? "Static package available" : "No static package profile"}
                     </p>
-                    <p className="mt-0.5 text-xs text-canvas-200/60">
+                    <p className="mt-0.5 text-xs text-graphite-700/65">
                       {exportProfile?.id ?? "Export profile not loaded"}
                     </p>
                   </div>
@@ -189,9 +189,9 @@ export function CommandCenterView({
 
           <div
             aria-label="Live Game Canvas"
-            className="overflow-hidden rounded-lg border border-graphite-700/15 bg-graphite-950 text-canvas-50 shadow-studio-panel"
+            className="overflow-hidden rounded-lg border border-canvas-200 bg-graphite-950 text-ink shadow-studio-panel"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200/10 px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200 px-4 py-2.5">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-health-400" />
                 <p className="truncate text-sm font-semibold">Live Game Canvas</p>
@@ -222,7 +222,7 @@ export function CommandCenterView({
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/30 to-graphite-950/10" />
               <div className="relative flex min-h-[220px] flex-col justify-end p-3">
-                <div className="max-w-3xl rounded-lg border border-canvas-200/25 bg-canvas-100 px-3 py-3 text-ink shadow-studio-panel">
+                <div className="max-w-3xl rounded-lg border border-canvas-200 bg-canvas-100 px-3 py-3 text-ink shadow-studio-panel">
                   <p className="text-xs font-semibold uppercase text-graphite-700/55">
                     {entryScene?.title ?? "Scene preview"}
                   </p>
@@ -234,9 +234,9 @@ export function CommandCenterView({
                     {(entryBeat?.choices ?? []).slice(0, 3).map((choice, index) => (
                       <div
                         key={choice.id}
-                        className="flex min-h-9 items-center gap-3 rounded-md border border-graphite-700/20 bg-graphite-950 px-3 text-canvas-50"
+                        className="flex min-h-9 items-center gap-3 rounded-md border border-canvas-200 bg-graphite-950 px-3 text-ink"
                       >
-                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-amber-400/60 text-xs text-amber-400">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-violet-400/60 text-xs text-violet-600">
                           {index + 1}
                         </span>
                         <span className="min-w-0 truncate text-sm">
@@ -255,11 +255,11 @@ export function CommandCenterView({
         <aside className="grid content-start gap-3">
           <div
             aria-label="Director Command Input"
-            className="rounded-lg border border-amber-500/30 bg-canvas-50 p-3 shadow-studio-panel"
+            className="rounded-lg border border-violet-500/30 bg-canvas-50 p-3 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase text-amber-600">
+                <p className="text-xs font-semibold uppercase text-violet-600">
                   Command Center
                 </p>
                 <h3 className="mt-1 text-base font-semibold text-ink">
@@ -276,7 +276,7 @@ export function CommandCenterView({
               aria-label="Director intent"
               value={playtestInput}
               onChange={(event) => onIntentChange(event.target.value)}
-              className={`${studioUiClassNames.textarea} mt-3 min-h-24 border-amber-500/45 bg-canvas-100 text-sm leading-6`}
+              className={`${studioUiClassNames.textarea} mt-3 min-h-24 border-violet-500/45 bg-canvas-100 text-sm leading-6`}
             />
             <div className="mt-3 grid gap-3">
               <p className="text-sm leading-5 text-graphite-700/65">
@@ -328,11 +328,11 @@ export function CommandCenterView({
                         {recentRuns.map((run) => (
                           <div
                             key={run.id}
-                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-ink/10 bg-white px-3 py-2"
+                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2"
                           >
                             <CheckCircle2
                               aria-hidden
-                              className={run.tone === "success" ? "text-jade" : "text-brass"}
+                              className={run.tone === "success" ? "text-sage" : "text-plum"}
                               size={16}
                             />
                             <div className="min-w-0">
@@ -384,7 +384,7 @@ export function CommandCenterView({
                         ].map((item) => (
                           <article
                             key={item.id}
-                            className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
+                            className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-2">
                               <div className="min-w-0">
@@ -514,12 +514,12 @@ function StatusTile({
   detail: string;
 }) {
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
-      <p className="text-xs font-semibold uppercase text-canvas-200/50">
+    <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-2">
+      <p className="text-xs font-semibold uppercase text-graphite-700/55">
         {label}
       </p>
-      <p className="mt-1 text-xl font-semibold text-canvas-50">{value}</p>
-      <p className="mt-1 truncate text-xs text-canvas-200/55">{detail}</p>
+      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
+      <p className="mt-1 truncate text-xs text-graphite-700/60">{detail}</p>
     </div>
   );
 }
@@ -534,7 +534,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-3 shadow-studio-panel">
+    <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-3 shadow-studio-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-ink">{title}</h3>
         {action}
@@ -546,7 +546,7 @@ function Panel({
 
 function MiniFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-md border border-ink/10 bg-parchment px-3 py-2">
+    <div className="min-w-0 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2">
       <p className="text-xs font-semibold uppercase text-ink/45">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
     </div>
@@ -563,7 +563,7 @@ function EvidenceCard({
   value: string;
 }) {
   return (
-    <div className="rounded-md border border-ink/10 bg-parchment px-3 py-3">
+    <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
       <Icon aria-hidden size={18} className="text-ink/55" />
       <p className="mt-2 text-xs font-semibold uppercase text-ink/45">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>

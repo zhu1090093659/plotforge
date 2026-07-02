@@ -4,54 +4,82 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Warm ink — primary text on the parchment canvas. Tinted toward amber,
-        // never the cool blue-black of generic AI dark themes.
-        ink: "#2a2218",
-        // Aged parchment — the warm cream of the writing-desk content surface.
-        parchment: "#f1e8d4",
-        // Forge signal red — danger / error accent. Warm, slightly desaturated.
-        signal: "#b23a48",
-        // Antique brass — a secondary warm metallic, used sparingly.
-        brass: "#b98527",
-        // Jade — health / success green, the workshop's patina accent.
-        jade: "#2f7d69",
-        // Graphite — the workshop shell chrome. Warm coal, tinted toward umber,
-        // never the cold blue-gray of default dark UIs.
-        graphite: {
-          950: "#1f1a14",
-          900: "#271f18",
-          850: "#2e251e",
-          800: "#382e25",
-          700: "#4e4238",
+        // Ink — primary text on the lavender-white canvas. Deep aubergine,
+        // tinted toward violet (never the cold blue-black of generic dark
+        // themes nor the warm umber of the prior forge palette).
+        ink: "#3a3149",
+        // Lavender white — the default canvas. A whisper of violet, never
+        // cold blue-white nor the prior warm cream.
+        parchment: "#faf8ff",
+        // Signal — danger / error accent. A muted berry-red that lives in the
+        // violet family, not a fire-engine red.
+        signal: "#a8426b",
+        // Plum — secondary accent for status / success chips. A desaturated
+        // grape, warmer than violet but still in-family. Replaces prior brass.
+        plum: "#7a5a8a",
+        // Sage — success / proof-valid green. A muted, cool sage that
+        // complements violet without fighting it. Replaces prior jade.
+        sage: "#5a8a7a",
+        // Paper — the lavender-white chrome surfaces (sidebar, evidence panel,
+        // command dock). Tinted toward lilac, never cold blue-gray.
+        paper: {
+          50: "#fdfbff",
+          100: "#faf8ff",
+          200: "#f3f0fb",
+          300: "#ebe6f5",
+          400: "#ded7ee",
+          500: "#cdc3e2",
         },
-        // Canvas — the warm paper / content area. Tinted cream, not pure white.
+        // Canvas — the lavender-white content area.
         canvas: {
-          50: "#f9f2e0",
-          100: "#f4ead4",
-          200: "#e6d9ba",
+          50: "#fdfbff",
+          100: "#f5f2fc",
+          200: "#ded7ee",
         },
-        // Amber — the primary action accent. Workshop gold / lacquer.
-        amber: {
-          400: "#d6a050",
-          500: "#c98b2f",
-          600: "#9f6822",
+        // Violet — the primary action accent. An editorial, slightly muted
+        // violet (not the saturated AI-slop neon purple). Pairs restraint with
+        // a literary, manuscript-by-candlelight feel. Replaces prior amber.
+        violet: {
+          400: "#8a6fb8",
+          500: "#6f54a3",
+          600: "#594085",
         },
-        // Health — success / proof-valid green.
+        // Health — success / proof-valid green (kept as a token name for the
+        // chip tone system; mirrors sage).
         health: {
-          400: "#5fa882",
-          500: "#34815f",
+          400: "#6a9a8a",
+          500: "#5a8a7a",
         },
-        // Accent — secondary highlight (surface nav, focus rings). Forge copper,
-        // warm and distinct from amber gold. Replaces the prior cool cyan.
+        // Accent — secondary highlight (surface nav, focus rings). A softer
+        // lilac-copper, warm-cool bridged so focus rings feel intentional
+        // against the violet palette.
         accent: {
-          400: "#c07440",
-          500: "#a85c34",
+          400: "#9a7ab5",
+          500: "#7a5a95",
         },
-        // Agent — agent-mesh accent. Aged brass patina: a warm-tinted green
-        // counterpoint, not the AI-slop cool purple it replaces.
+        // Agent — agent-mesh accent. A deep iris that reads as a violet-family
+        // counterpoint, not the AI-slop cool purple-to-blue gradient.
         agent: {
-          400: "#4a8a78",
-          500: "#2d6258",
+          400: "#6a5a9a",
+          500: "#4d3e7a",
+        },
+        // Muted — for secondary/muted text on light surfaces. Tinted toward
+        // violet-gray, never warm brown.
+        muted: {
+          700: "#6b6378",
+          800: "#4a4458",
+        },
+        // Graphite — legacy scale retained as a light-theme alias so existing
+        // chrome surfaces (bg-graphite-*) render as lavender paper and muted
+        // text (text-graphite-700) reads as violet-gray. New code should
+        // prefer the `paper` / `muted` scales; this alias avoids a brittle
+        // same-PR rename of every chrome token across the views.
+        graphite: {
+          950: "#faf8ff",
+          900: "#f3f0fb",
+          850: "#ebe6f5",
+          800: "#ded7ee",
+          700: "#6b6378",
         },
       },
       fontFamily: {
@@ -86,10 +114,11 @@ export default {
         ],
       },
       boxShadow: {
-        // Warm-tinted shadows — never neutral gray. Echoes a desk lamp, not fog.
-        "studio-panel": "0 18px 48px rgba(31, 26, 20, 0.16)",
-        "studio-dock": "0 -14px 36px rgba(31, 26, 20, 0.20)",
-        "shell-inset": "inset 0 1px 0 rgba(214, 160, 80, 0.06)",
+        // Violet-tinted shadows — a soft lilac haze, never neutral gray nor
+        // the prior warm-umber desk-lamp shadow.
+        "studio-panel": "0 18px 48px rgba(90, 70, 130, 0.10)",
+        "studio-dock": "0 -10px 28px rgba(90, 70, 130, 0.10)",
+        "shell-inset": "inset 0 1px 0 rgba(138, 111, 184, 0.20)",
       },
       letterSpacing: {
         tightish: "-0.018em",

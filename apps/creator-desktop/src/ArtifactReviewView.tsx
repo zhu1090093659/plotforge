@@ -57,17 +57,17 @@ export function ArtifactReviewView({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <aside
           aria-label="Live Build Room"
-          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-1"
+          className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-accent-400">
                 Live Build Room
               </p>
-              <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+              <h3 className="mt-1 text-lg font-semibold text-ink">
                 No build run interface
               </h3>
-              <p className="mt-1 text-sm leading-6 text-canvas-200/65">
+              <p className="mt-1 text-sm leading-6 text-graphite-700/70">
                 Real Studio commands expose source files, assets, runtime proof,
                 and export reports. They do not expose an agent build queue yet.
               </p>
@@ -93,16 +93,16 @@ export function ArtifactReviewView({
         </aside>
 
         <div className="grid content-start gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
-          <div className="rounded-lg border border-amber-500/35 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
+          <div className="rounded-lg border border-violet-500/35 bg-graphite-950 p-4 text-ink shadow-studio-panel">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase text-amber-400">
+                <p className="text-xs font-semibold uppercase text-violet-600">
                   Artifact Review
                 </p>
-                <h3 className="mt-1 text-xl font-semibold text-canvas-50">
+                <h3 className="mt-1 text-xl font-semibold text-ink">
                   {projectSummary?.title ?? loadedPath}
                 </h3>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-canvas-200/65">
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-graphite-700/70">
                   This view now reviews artifacts returned by real Studio
                   commands. Agent-generated patch bundles are hidden until a
                   real persisted artifact interface exists.
@@ -121,14 +121,14 @@ export function ArtifactReviewView({
               <BundleFact label="Trace" value={traceId} />
             </div>
 
-            <div className="mt-4 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-3">
+            <div className="mt-4 rounded-md border border-violet-500/25 bg-violet-500/10 px-3 py-3">
               <div className="flex gap-2">
                 <ShieldCheck
                   aria-hidden
                   size={18}
-                  className="mt-0.5 shrink-0 text-amber-400"
+                  className="mt-0.5 shrink-0 text-violet-600"
                 />
-                <p className="text-sm leading-6 text-canvas-50">
+                <p className="text-sm leading-6 text-ink">
                   No approval action is available because there is no real
                   approval queue or persisted proposal bundle contract.
                 </p>
@@ -147,7 +147,7 @@ export function ArtifactReviewView({
               {sourceFiles.slice(0, 8).map((file) => (
                 <article
                   key={file.path}
-                  className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel"
+                  className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -180,7 +180,7 @@ export function ArtifactReviewView({
                 label: "Runtime Impact",
                 badge: playtestReport?.delta_summary.length,
                 children: (
-                  <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+                  <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <h3 className="text-base font-semibold">Runtime Impact</h3>
                       <StudioStatusChip tone={playtestReport ? "health" : "neutral"}>
@@ -213,7 +213,7 @@ export function ArtifactReviewView({
                 label: "Export Evidence",
                 badge: exportReport ? exportReport.files_written.length : undefined,
                 children: (
-                  <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+                  <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <h3 className="text-base font-semibold">Export Evidence</h3>
                       <StudioStatusChip tone={exportReport ? "health" : "neutral"}>
@@ -243,14 +243,14 @@ export function ArtifactReviewView({
 
         <aside
           aria-label="Validation Evidence"
-          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-2"
+          className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-2"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-health-400">
                 Validation Evidence
               </p>
-              <h3 className="mt-1 text-lg font-semibold text-canvas-50">
+              <h3 className="mt-1 text-lg font-semibold text-ink">
                 Real command outputs
               </h3>
             </div>
@@ -282,8 +282,8 @@ export function ArtifactReviewView({
             }
           />
 
-          <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
-            <p className="text-sm font-semibold text-canvas-50">
+          <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
+            <p className="text-sm font-semibold text-ink">
               Available Actions
             </p>
             <div className="mt-3 grid gap-2">
@@ -315,23 +315,23 @@ function EvidenceCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+    <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-canvas-50">{title}</p>
+        <p className="text-sm font-semibold text-ink">{title}</p>
         <StudioStatusChip tone="neutral">{value}</StudioStatusChip>
       </div>
-      <p className="mt-2 text-xs leading-5 text-canvas-200/60">{children}</p>
+      <p className="mt-2 text-xs leading-5 text-graphite-700/65">{children}</p>
     </div>
   );
 }
 
 function BundleFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
-      <p className="text-xs font-semibold uppercase text-canvas-200/45">
+    <div className="min-w-0 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2">
+      <p className="text-xs font-semibold uppercase text-graphite-700/55">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-canvas-50">
+      <p className="mt-1 truncate text-sm font-semibold text-ink">
         {value}
       </p>
     </div>
@@ -366,12 +366,12 @@ function ValidationLine({
   detail: string;
 }) {
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+    <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
       <div className="flex items-start gap-2">
         <Icon aria-hidden size={16} className="mt-0.5 shrink-0 text-health-400" />
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-canvas-50">{label}</p>
-          <p className="mt-1 text-xs leading-5 text-canvas-200/60">{detail}</p>
+          <p className="text-sm font-semibold text-ink">{label}</p>
+          <p className="mt-1 text-xs leading-5 text-graphite-700/65">{detail}</p>
         </div>
       </div>
     </div>

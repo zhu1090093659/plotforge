@@ -310,7 +310,7 @@ function NewProjectForm({
           <button
             type="submit"
             disabled={creating}
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
           >
             {creating ? (
               <Loader2 aria-hidden size={16} className="animate-spin" />
@@ -435,7 +435,7 @@ function SourceFileList({
   const { t } = useStudioI18n();
 
   return (
-    <section className="rounded-md border border-canvas-200/55 bg-white p-5 shadow-studio-panel">
+    <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="font-display text-lg font-semibold tracking-display">{t("Source Artifacts")}</h3>
@@ -455,7 +455,7 @@ function SourceFileList({
             className={[
               "flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition",
               selectedFile?.path === file.path
-                ? "border-ink/45 bg-parchment"
+                ? "border-ink/45 bg-canvas-50"
                 : "border-ink/10 hover:border-ink/30",
             ].join(" ")}
           >
@@ -464,7 +464,7 @@ function SourceFileList({
               className={[
                 "shrink-0 rounded-sm px-2 py-1 text-xs font-medium",
                 file.editable
-                  ? "bg-jade/10 text-jade"
+                  ? "bg-sage/10 text-sage"
                   : "bg-ink/5 text-ink/55",
               ].join(" ")}
             >
@@ -543,7 +543,7 @@ function BoundaryChecks({
   const checks = buildBoundaryChecks(checkReport, loadedPath);
 
   return (
-    <section className="rounded-md border border-canvas-200/55 bg-white p-5 shadow-studio-panel">
+    <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
       <h3 className="font-display text-lg font-semibold tracking-display">{t("Boundary Checks")}</h3>
       <div className="mt-4 grid gap-3">
         {checks.map((check) => (
@@ -551,7 +551,7 @@ function BoundaryChecks({
             {check.ok ? (
               <CheckCircle2
                 aria-hidden
-                className="mt-0.5 shrink-0 text-jade"
+                className="mt-0.5 shrink-0 text-sage"
                 size={18}
               />
             ) : (
@@ -605,7 +605,7 @@ function SourceEditor({
           type="button"
           disabled={!dirty || saving}
           onClick={onSave}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-ink/30"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
         >
           {saving ? (
             <Loader2 aria-hidden size={16} className="animate-spin" />
@@ -629,12 +629,12 @@ function SourceEditor({
           readOnly={!selectedFile.editable}
           onChange={(event) => setEditorContent(event.target.value)}
           spellCheck={false}
-          className="min-h-72 w-full resize-y rounded-md border border-canvas-200/70 bg-parchment px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 read-only:bg-ink/5"
+          className="min-h-72 w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 read-only:bg-ink/5"
         />
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-ink/55">
           <span>{selectedFile.kind}</span>
           <span>{selectedFile.editable ? t("editable") : t("read only")}</span>
-          {dirty ? <span className="text-brass">{t("modified")}</span> : null}
+          {dirty ? <span className="text-plum">{t("modified")}</span> : null}
         </div>
       </div>
     </div>
@@ -713,7 +713,7 @@ function LaunchpadCheckbox({
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 rounded border border-canvas-200/70 accent-amber-500"
+        className="h-4 w-4 rounded border border-canvas-200/70 accent-violet-500"
       />
       {label}
     </label>

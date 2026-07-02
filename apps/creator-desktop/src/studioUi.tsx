@@ -16,32 +16,33 @@ import {
 
 export const agentNativeDesignTokens = {
   shell: {
-    graphite: "#1f1a14",
-    graphitePanel: "#271f18",
-    warmCanvas: "#f4ead4",
+    // Light lavender-white chrome — the manuscript page, not the dark forge.
+    graphite: "#faf8ff",
+    graphitePanel: "#f3f0fb",
+    warmCanvas: "#fdfbff",
   },
   accent: {
-    amberAction: "#c98b2f",
-    healthGreen: "#34815f",
-    accentCopper: "#a85c34",
-    agentBrass: "#2d6258",
+    violetAction: "#6f54a3",
+    healthGreen: "#5a8a7a",
+    accentCopper: "#7a5a95",
+    agentSage: "#4d3e7a",
   },
 } as const;
 
 export const studioUiClassNames = {
   panel:
-    "rounded-lg border border-canvas-200/60 bg-canvas-50 p-5 text-ink shadow-studio-panel",
-  insetPanel: "rounded-lg border border-canvas-200/55 bg-canvas-100 px-3 py-3 text-ink",
+    "rounded-lg border border-canvas-200/70 bg-canvas-50 p-5 text-ink shadow-studio-panel",
+  insetPanel: "rounded-lg border border-canvas-200/70 bg-canvas-100 px-3 py-3 text-ink",
   input:
-    "h-10 min-w-0 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
+    "h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   textarea:
-    "w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
+    "w-full resize-y rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   primaryButton:
-    "inline-flex h-10 items-center gap-2 rounded-md bg-amber-500 px-4 text-sm font-semibold text-graphite-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/35 disabled:text-graphite-950/45",
+    "inline-flex h-10 items-center gap-2 rounded-md bg-violet-500 px-4 text-sm font-semibold text-canvas-50 transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-violet-500/35 disabled:text-canvas-50/45",
   secondaryButton:
-    "inline-flex h-9 items-center gap-2 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm font-semibold text-ink transition hover:border-canvas-200 disabled:cursor-not-allowed disabled:text-ink/30",
+    "inline-flex h-9 items-center gap-2 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm font-semibold text-ink transition hover:border-canvas-400 disabled:cursor-not-allowed disabled:text-ink/30",
   iconButton:
-    "grid h-10 w-10 place-items-center rounded-md border border-canvas-200/20 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70 hover:bg-canvas-50/15",
+    "grid h-10 w-10 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400 hover:bg-canvas-100",
   chip:
     "rounded-sm border px-2 py-1 text-xs font-semibold",
 } as const;
@@ -105,25 +106,25 @@ export function StudioShell({
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-md border border-amber-400/55 bg-amber-500 font-display text-base font-black tracking-display text-graphite-950">
+        <div className="grid h-10 w-10 place-items-center rounded-md border border-violet-400/55 bg-violet-500 font-display text-base font-black tracking-display text-canvas-50">
           PF
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-tightish text-amber-400">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-violet-600">
             PlotForge Studio
           </p>
-          <h1 className="font-display truncate text-xl font-semibold tracking-display text-canvas-50">
+          <h1 className="font-display truncate text-xl font-semibold tracking-display text-ink">
             Creator Desktop
           </h1>
         </div>
       </div>
 
-      <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-2">
+      <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/60">
+          <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/70">
             Open Project
           </p>
-          <p className="max-w-44 truncate text-sm font-semibold text-canvas-50">
+          <p className="max-w-44 truncate text-sm font-semibold text-ink">
             {projectPath}
           </p>
         </div>
@@ -131,7 +132,7 @@ export function StudioShell({
           type="button"
           title="Open project"
           onClick={onOpenProject}
-          className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200/18 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70"
+          className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400"
         >
           {projectLoading ? (
             <Loader2 aria-hidden size={18} className="animate-spin" />
@@ -151,27 +152,27 @@ export function StudioShell({
   );
 
   return (
-    <div className="min-h-screen bg-graphite-950 text-canvas-50 lg:h-screen lg:overflow-hidden">
+    <div className="min-h-screen bg-graphite-950 text-ink lg:h-screen lg:overflow-hidden">
       <div
         data-testid="studio-shell-grid"
         className="grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto] xl:grid-cols-[260px_minmax(0,1fr)_280px] 2xl:grid-cols-[280px_minmax(0,1fr)_320px]"
       >
         <aside
           aria-label="Studio navigation"
-          className="hidden min-h-0 overflow-y-auto border-r border-canvas-200/12 bg-graphite-900 px-3 py-4 shadow-shell-inset lg:block"
+          className="hidden min-h-0 overflow-y-auto border-r border-canvas-200 bg-graphite-900 px-3 py-4 shadow-shell-inset lg:block"
         >
           {sidebarContent}
         </aside>
 
         <main className="paper-grain min-w-0 text-ink lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
-          <header className="grid gap-3 border-b border-canvas-200/55 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(420px,auto)] lg:items-end lg:px-6 lg:py-3 xl:px-8">
+          <header className="grid gap-3 border-b border-canvas-200 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(420px,auto)] lg:items-end lg:px-6 lg:py-3 xl:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 aria-label="Open navigation"
                 title="Open navigation"
                 onClick={onToggleDrawer}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200/70 bg-canvas-50 text-ink transition hover:border-accent-400 lg:hidden"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-accent-400 lg:hidden"
               >
                 <Menu aria-hidden size={18} />
               </button>
@@ -208,13 +209,13 @@ export function StudioShell({
 
         <aside
           aria-label="Evidence panel"
-          className="min-h-0 overflow-y-auto border-l border-canvas-200/12 bg-graphite-900 px-3 py-4 text-canvas-50 shadow-shell-inset lg:col-span-2 lg:max-h-56 lg:border-l-0 lg:border-t xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0"
+          className="min-h-0 overflow-y-auto border-l border-canvas-200 bg-graphite-900 px-3 py-4 text-ink shadow-shell-inset lg:col-span-2 lg:max-h-56 lg:border-l-0 lg:border-t xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0"
         >
           {rightPanel}
         </aside>
 
         {commandDock ? (
-          <div className="border-t border-canvas-200/12 bg-graphite-950 px-4 py-3 shadow-studio-dock lg:col-span-2 xl:col-span-3">
+          <div className="border-t border-canvas-200 bg-graphite-950 px-4 py-3 shadow-studio-dock lg:col-span-2 xl:col-span-3">
             <div
               aria-label="Command dock"
               className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3"
@@ -231,11 +232,11 @@ export function StudioShell({
             aria-hidden
             data-testid="drawer-overlay"
             onClick={onCloseDrawer}
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-ink/30"
           />
           <aside
             aria-label="Studio navigation"
-            className="absolute left-0 top-0 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-canvas-200/12 bg-graphite-900 px-4 py-5 text-canvas-50 shadow-shell-inset"
+            className="absolute left-0 top-0 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-canvas-200 bg-graphite-900 px-4 py-5 text-ink shadow-shell-inset"
           >
             {sidebarContent}
           </aside>
@@ -300,7 +301,7 @@ export function StudioStatusChip({
 }) {
   const toneClass = {
     neutral: "border-canvas-200/40 bg-canvas-100/60 text-graphite-700/80",
-    action: "border-amber-500/35 bg-amber-500/15 text-amber-600",
+    action: "border-violet-500/35 bg-violet-500/15 text-violet-600",
     health: "border-health-500/35 bg-health-500/15 text-health-500",
     accent: "border-accent-500/35 bg-accent-500/15 text-accent-500",
     agent: "border-agent-500/35 bg-agent-500/15 text-agent-400",
@@ -349,13 +350,13 @@ function StudioNavTreeNode({
 }) {
   const Icon = item.icon;
   const hasChildren = (item.children?.length ?? 0) > 0;
-  const selectedClass = "border-amber-400/55 bg-amber-500 text-graphite-950";
+  const selectedClass = "border-violet-400/55 bg-violet-500 text-canvas-50";
   return (
     <div className="relative">
       {item.selected ? (
         <span
           aria-hidden
-          className="absolute -left-4 top-1 bottom-1 w-1 rounded-full bg-amber-400"
+          className="absolute -left-4 top-1 bottom-1 w-1 rounded-full bg-violet-500"
         />
       ) : null}
       <button
@@ -376,7 +377,7 @@ function StudioNavTreeNode({
           "flex min-h-12 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
           item.selected
             ? selectedClass
-            : "border-transparent text-canvas-50/75 hover:border-canvas-200/15 hover:bg-canvas-50/10 hover:text-canvas-50",
+            : "border-transparent text-ink/75 hover:border-canvas-200 hover:bg-canvas-100 hover:text-ink",
         ].join(" ")}
       >
         <Icon aria-hidden size={18} className="shrink-0" />
@@ -385,7 +386,7 @@ function StudioNavTreeNode({
           <span
             className={[
               "block truncate text-xs",
-              item.selected ? "opacity-70" : "text-canvas-200/45",
+              item.selected ? "opacity-70" : "text-graphite-700/55",
             ].join(" ")}
           >
             {item.sublabel}
@@ -418,7 +419,7 @@ function StudioNavTreeNode({
 function StudioNavSurfaceButton({ item }: { item: StudioNavItem }) {
   const Icon = item.icon;
   const selectedClass =
-    "border-accent-400/45 bg-accent-500/20 text-canvas-50";
+    "border-accent-400/45 bg-accent-500/15 text-ink";
   return (
     <button
       type="button"
@@ -430,7 +431,7 @@ function StudioNavSurfaceButton({ item }: { item: StudioNavItem }) {
         "flex min-h-9 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
         item.selected
           ? selectedClass
-          : "border-transparent text-canvas-50/75 hover:border-canvas-200/15 hover:bg-canvas-50/10 hover:text-canvas-50",
+          : "border-transparent text-ink/75 hover:border-canvas-200 hover:bg-canvas-100 hover:text-ink",
       ].join(" ")}
     >
       <Icon aria-hidden size={16} className="shrink-0" />
@@ -439,7 +440,7 @@ function StudioNavSurfaceButton({ item }: { item: StudioNavItem }) {
         <span
           className={[
             "block truncate text-xs",
-            item.selected ? "opacity-70" : "text-canvas-200/45",
+            item.selected ? "opacity-70" : "text-graphite-700/55",
           ].join(" ")}
         >
           {item.sublabel}
@@ -460,12 +461,12 @@ export function ScenePreviewPlaceholder({
   assetPath: string | null;
 }) {
   return (
-    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(214,160,80,0.18),_rgba(31,26,20,0.92)_55%)] px-4">
-      <div className="max-w-md rounded-md border border-canvas-200/15 bg-graphite-950/70 px-4 py-3 text-center">
-        <p className="font-display text-sm font-semibold text-canvas-50">
+    <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(138,111,184,0.12),_rgba(253,251,255,0.96)_55%)] px-4">
+      <div className="max-w-md rounded-md border border-canvas-200 bg-canvas-50 px-4 py-3 text-center">
+        <p className="font-display text-sm font-semibold text-ink">
           Scene preview asset unavailable
         </p>
-        <p className="mt-1 break-words text-xs leading-5 text-canvas-200/55">
+        <p className="mt-1 break-words text-xs leading-5 text-graphite-700/65">
           {assetPath ?? "No background asset is declared for this scene."}
         </p>
       </div>
@@ -708,7 +709,7 @@ export function StudioTabs({
               className={[
                 "inline-flex h-9 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition",
                 selected
-                  ? "border-amber-500 text-ink"
+                  ? "border-violet-500 text-ink"
                   : "border-transparent text-graphite-700/60 hover:border-canvas-200 hover:text-ink",
               ].join(" ")}
             >
@@ -718,7 +719,7 @@ export function StudioTabs({
                   className={[
                     "rounded-sm border px-1.5 py-0.5 text-xs font-semibold",
                     selected
-                      ? "border-amber-500/35 bg-amber-500/15 text-amber-600"
+                      ? "border-violet-500/35 bg-violet-500/15 text-violet-600"
                       : "border-canvas-200/55 bg-canvas-100 text-graphite-700/70",
                   ].join(" ")}
                 >
