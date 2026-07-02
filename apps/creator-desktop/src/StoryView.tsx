@@ -111,7 +111,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryCraftDocument({ story_bible_markdown: value })
               }
-              minHeight="min-h-52"
+              minHeight="min-h-40"
             />
             <TextareaInput
               label="Style Guide"
@@ -120,7 +120,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryCraftDocument({ style_guide_markdown: value })
               }
-              minHeight="min-h-52"
+              minHeight="min-h-40"
             />
           </div>
 
@@ -146,7 +146,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryBible({ target_emotions: linesToList(value) })
               }
-              minHeight="min-h-32"
+              minHeight="min-h-24"
             />
             <TextareaInput
               label="Core foreshadowing"
@@ -155,7 +155,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryBible({ core_foreshadowing: linesToList(value) })
               }
-              minHeight="min-h-32"
+              minHeight="min-h-24"
             />
           </div>
 

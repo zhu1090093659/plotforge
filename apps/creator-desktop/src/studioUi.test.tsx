@@ -10,6 +10,7 @@ import {
   StudioPanel,
   StudioShell,
   StudioStatusChip,
+  StudioTabs,
   type StudioNavItem,
 } from "./studioUi";
 
@@ -378,6 +379,130 @@ describe("CollapsibleSection", () => {
         .getByRole("button", { name: /hidden section/i })
         .getAttribute("aria-expanded"),
     ).toBe("false");
+  });
+});
+
+describe("StudioTabs", () => {
+  it("renders a tablist with the first tab selected by default and only its panel mounted", () => {
+    render(
+      <StudioTabs
+        ariaLabel="Test workspace"
+        items={[
+          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+          { id: "b", label: "Beta", children: <p>Beta panel</p> },
+        ]}
+      />,
+    );
+
+    const tablist = screen.getByRole("tablist", { name: "Test workspace" });
+    expect(tablist).toBeTruthy();
+    const alphaTab = screen.getByRole("tab", { name: /Alpha/i });
+    const betaTab = screen.getByRole("tab", { name: /Beta/i });
+    expect(alphaTab.getAttribute("aria-selected")).toBe("true");
+    expect(betaTab.getAttribute("aria-selected")).toBe("false");
+    // Alpha panel is mounted; Beta panel is not.
+    expect(screen.getByText("Alpha panel")).toBeTruthy();
+    expect(screen.queryByText("Beta panel")).toBeNull();
+    // aria-controls points from tab to panel; aria-labelledby points back.
+    const alphaPanelId = alphaTab.getAttribute("aria-controls");
+    expect(alphaPanelId).toBeTruthy();
+    const alphaPanel = document.getElementById(alphaPanelId!);
+    expect(alphaPanel?.getAttribute("role")).toBe("tabpanel");
+    expect(alphaPanel?.getAttribute("aria-labelledby")).toBe(alphaTab.id);
+  });
+
+  it("switches the active panel when a tab is clicked", () => {
+    render(
+      <StudioTabs
+        ariaLabel="Test workspace"
+        items={[
+          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+          { id: "b", label: "Beta", children: <p>Beta panel</p> },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText("Beta panel")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /Beta/i }));
+    expect(screen.getByRole("tab", { name: /Beta/i }).getAttribute("aria-selected"))
+      .toBe("true");
+    expect(screen.getByRole("tab", { name: /Alpha/i }).getAttribute("aria-selected"))
+      .toBe("false");
+    expect(screen.getByText("Beta panel")).toBeTruthy();
+    expect(screen.queryByText("Alpha panel")).toBeNull();
+  });
+
+  it("renders a badge count next to the tab label when provided", () => {
+    render(
+      <StudioTabs
+        ariaLabel="Test workspace"
+        items={[
+          { id: "a", label: "Alpha", badge: 3, children: <p /> },
+        ]}
+      />,
+    );
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
+  it("falls back to the first tab when the active tab is removed from items", () => {
+    const { rerender } = render(
+      <StudioTabs
+        ariaLabel="Test workspace"
+        items={[
+          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+          { id: "b", label: "Beta", children: <p>Beta panel</p> },
+        ]}
+      />,
+    );
+    // Select Beta so it is the active tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Beta/i }));
+    expect(screen.getByText("Beta panel")).toBeTruthy();
+
+    // Re-render with only Alpha (Beta removed). The stale activeId must be
+    // reconciled to the first item so a panel is still rendered.
+    rerender(
+      <StudioTabs
+        ariaLabel="Test workspace"
+        items={[
+          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: /Alpha/i }).getAttribute("aria-selected"))
+      .toBe("true");
+    expect(screen.getByText("Alpha panel")).toBeTruthy();
+    expect(screen.queryByText("Beta panel")).toBeNull();
+  });
+
+  it("supports keyboard navigation via Arrow Right / Home / End", () => {
+    render(
+      <StudioTabs
+        ariaLabel="Test workspace"
+        items={[
+          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+          { id: "b", label: "Beta", children: <p>Beta panel</p> },
+          { id: "c", label: "Gamma", children: <p>Gamma panel</p> },
+        ]}
+      />,
+    );
+
+    // Focus the first tab, then Arrow Right should select Beta.
+    const alphaTab = screen.getByRole("tab", { name: /Alpha/i });
+    alphaTab.focus();
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: /Beta/i }).getAttribute("aria-selected"))
+      .toBe("true");
+    expect(screen.getByText("Beta panel")).toBeTruthy();
+
+    // End should jump to the last tab (Gamma).
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "End" });
+    expect(screen.getByRole("tab", { name: /Gamma/i }).getAttribute("aria-selected"))
+      .toBe("true");
+
+    // Home should jump back to the first tab (Alpha).
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
+    expect(screen.getByRole("tab", { name: /Alpha/i }).getAttribute("aria-selected"))
+      .toBe("true");
   });
 });
 

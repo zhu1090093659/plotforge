@@ -43,12 +43,14 @@ describe("ArtifactReviewView", () => {
     expect(screen.getByText("No build run interface")).toBeTruthy();
     expect(screen.getByText("Current Source Artifacts")).toBeTruthy();
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
-    expect(screen.getByText("Runtime Impact")).toBeTruthy();
-    expect(screen.getByText("Export Evidence")).toBeTruthy();
+    // Runtime Impact is the default evidence tab.
+    expect(screen.getByRole("tab", { name: /Runtime Impact/i })).toBeTruthy();
     expect(screen.getByLabelText("Validation Evidence")).toBeTruthy();
     expect(screen.getByText("Project source")).toBeTruthy();
     expect(screen.getByText("Asset registry")).toBeTruthy();
     expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
+    // Export Evidence is behind its tab; switch to it to confirm the archive path.
+    fireEvent.click(screen.getByRole("tab", { name: /Export Evidence/i }));
     expect(screen.getByText("/tmp/export.zip")).toBeTruthy();
     // AssetMaintenanceView is now rendered directly (ReactNode injection removed); slot text no longer applies.
     expect(screen.queryByText("Council Crisis Pressure Bundle")).toBeNull();

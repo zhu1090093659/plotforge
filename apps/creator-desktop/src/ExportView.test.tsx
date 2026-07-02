@@ -87,6 +87,8 @@ describe("ExportView", () => {
 
   it("lists all export profiles for selection", () => {
     renderView();
+    // Profile selectors live on the Profile tab; switch to it.
+    fireEvent.click(screen.getByRole("tab", { name: /Profile/ }));
     for (const profile of demoExportProfiles) {
       expect(
         screen.getByRole("button", { name: `Select export profile ${profile.id}` }),
@@ -97,6 +99,7 @@ describe("ExportView", () => {
   it("fires selectExportProfile when a profile button is clicked", () => {
     const selectExportProfile = vi.fn();
     renderView({ selectExportProfile });
+    fireEvent.click(screen.getByRole("tab", { name: /Profile/ }));
     fireEvent.click(
       screen.getByRole("button", { name: "Select export profile static-web" }),
     );
@@ -110,6 +113,8 @@ describe("ExportView", () => {
       selectedExportProfile: profile,
       staticExportSelected: false,
     });
+    // The selected-profile detail lives on the Profile tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Profile/ }));
     expect(screen.getAllByText("steam-submission-kit").length).toBeGreaterThan(0);
     expect(
       screen.getByText("This profile does not call Steamworks APIs or promise approval."),
@@ -215,6 +220,8 @@ describe("ExportView", () => {
       notices: [],
     };
     renderView({ aiSafetyPolicy });
+    // The Safety Policy editor lives on the Policy tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Policy/ }));
     expect(screen.getByText("AI Safety Policy")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Save AI Safety Policy" }),
@@ -235,5 +242,34 @@ describe("ExportView", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Export zip" }));
     expect(runStaticZipExport).toHaveBeenCalledOnce();
+  });
+
+  it("does not render removed fake-evidence sections (Dependency Map / Size Breakdown / Playable Preview)", () => {
+    renderView();
+    // These hardcoded placeholder sections were intentionally removed;
+    // assert their absence so re-introduction is flagged.
+    expect(screen.queryByText("Dependency Map")).toBeNull();
+    expect(screen.queryByText("Size Breakdown")).toBeNull();
+    expect(screen.queryByText("Playable Preview")).toBeNull();
+  });
+
+  it("renders Content Warnings evidence card on the Package tab", () => {
+    const aiSafetyPolicy = {
+      policy_source_path: "ai-usage.toml",
+      live_generated_content_enabled: true,
+      human_review_required: false,
+      moderation_queue_enabled: false,
+      content_kinds: ["text" as const, "image" as const],
+      user_reporting_path: "/report",
+      moderation_policy: "Content is reviewed locally.",
+      safety_guardrails: ["no violent content"],
+      evidence_ids: [],
+      notices: [],
+    };
+    renderView({ aiSafetyPolicy });
+    // Content Warnings card lives on the default Package tab.
+    expect(screen.getByText("Content Warnings")).toBeTruthy();
+    // The content kinds should be listed with "creator review" annotations.
+    expect(screen.getAllByText("creator review").length).toBeGreaterThan(0);
   });
 });

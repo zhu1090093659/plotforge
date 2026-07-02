@@ -609,6 +609,18 @@ const zhText: Record<string, string> = {
   "(none)": "（无）",
   // director.* namespace
   "Advanced snapshot controls": "高级快照控制",
+  // tab labels + tablist aria-labels (StudioTabs surfaces)
+  Package: "包",
+  Profile: "配置",
+  Policy: "策略",
+  Director: "导演",
+  "Asset Catalog": "资产目录",
+  "Export workspace": "导出工作区",
+  "Command center side panels": "命令中心侧边面板",
+  "Asset maintenance surfaces": "资产维护界面",
+  "Runtime and export evidence": "运行时与导出证据",
+  "Launchpad secondary surfaces": "启动台次级界面",
+  "Content Warnings": "内容警告",
 };
 
 const zhPatterns: Array<[RegExp, (...matches: string[]) => string]> = [

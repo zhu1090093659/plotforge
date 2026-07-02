@@ -24,6 +24,7 @@ import {
   ScenePreviewPlaceholder,
   StudioButton,
   StudioStatusChip,
+  StudioTabs,
   studioUiClassNames,
 } from "./studioUi";
 
@@ -205,7 +206,7 @@ export function CommandCenterView({
               </div>
             </div>
 
-              <div className="relative min-h-[360px] overflow-hidden bg-graphite-900">
+              <div className="relative min-h-[280px] overflow-hidden bg-graphite-900">
               {sceneImage ? (
                 <img
                   src={sceneImage}
@@ -218,7 +219,7 @@ export function CommandCenterView({
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/30 to-graphite-950/10" />
-              <div className="relative flex min-h-[360px] flex-col justify-end p-4">
+              <div className="relative flex min-h-[280px] flex-col justify-end p-4">
                 <div className="max-w-3xl rounded-lg border border-canvas-200/25 bg-canvas-100 px-4 py-4 text-ink shadow-studio-panel">
                   <p className="text-xs font-semibold uppercase text-graphite-700/55">
                     {entryScene?.title ?? "Scene preview"}
@@ -270,7 +271,7 @@ export function CommandCenterView({
               aria-label="Director intent"
               value={playtestInput}
               onChange={(event) => onIntentChange(event.target.value)}
-              className={`${studioUiClassNames.textarea} mt-3 min-h-28 border-amber-500/45 bg-canvas-100 text-base leading-7`}
+              className={`${studioUiClassNames.textarea} mt-3 min-h-20 border-amber-500/45 bg-canvas-100 text-base leading-7`}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-graphite-700/65">
@@ -298,125 +299,151 @@ export function CommandCenterView({
           </div>
         </div>
 
-        <aside className="grid content-start gap-4">
-          <Panel title="Director Brief">
-            <p className="text-sm leading-6 text-ink/70">
-              {projectData?.game.description ??
-                "Load a folder project to direct the next playable change."}
-            </p>
-            <div className="mt-3 grid gap-2">
-              <MiniFact label="Loaded path" value={loadedPath} />
-              <MiniFact label="Source artifact" value={selectedFile?.path ?? sourceSummary} />
-              <MiniFact label="Entry scene" value={projectSummary?.entryScene ?? "none"} />
-            </div>
-          </Panel>
+        <aside className="grid content-start gap-3">
+          <StudioTabs
+            ariaLabel="Command center side panels"
+            items={[
+              {
+                id: "director",
+                label: "Director",
+                children: (
+                  <div className="grid gap-3">
+                    <Panel title="Director Brief">
+                      <p className="text-sm leading-6 text-ink/70">
+                        {projectData?.game.description ??
+                          "Load a folder project to direct the next playable change."}
+                      </p>
+                      <div className="mt-3 grid gap-2">
+                        <MiniFact label="Loaded path" value={loadedPath} />
+                        <MiniFact label="Source artifact" value={selectedFile?.path ?? sourceSummary} />
+                        <MiniFact label="Entry scene" value={projectSummary?.entryScene ?? "none"} />
+                      </div>
+                    </Panel>
 
-          <Panel
-            title="Backend Commands"
-            action={
-              <StudioStatusChip tone="health">wired</StudioStatusChip>
-            }
-          >
-            <div className="grid gap-3">
-              {[
-                {
-                  id: "project",
-                  label: "Project source",
-                  role: "open_project, check_project, source file read/write",
-                  state: "folder files",
-                },
-                {
-                  id: "runtime",
-                  label: "Runtime proof",
-                  role: "play_once_project writes redaction-safe trace evidence",
-                  state: proofReady ? "captured" : "ready",
-                },
-                {
-                  id: "export",
-                  label: "Static export",
-                  role: "export_static_project_zip writes a whitelisted package",
-                  state: exportReady ? "profile loaded" : "not loaded",
-                },
-              ].map((item) => (
-                <article
-                  key={item.id}
-                  className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">
-                        {item.label}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-ink/55">
-                        {item.role}
-                      </p>
+                    <Panel title="Recent Runs">
+                      <div className="grid gap-2">
+                        {recentRuns.map((run) => (
+                          <div
+                            key={run.id}
+                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-ink/10 bg-white px-3 py-2"
+                          >
+                            <CheckCircle2
+                              aria-hidden
+                              className={run.tone === "success" ? "text-jade" : "text-brass"}
+                              size={16}
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{run.id}</p>
+                              <p className="truncate text-xs text-ink/50">{run.detail}</p>
+                            </div>
+                            <span className="text-xs font-semibold text-ink/45">
+                              {run.when}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+                  </div>
+                ),
+              },
+              {
+                id: "backend",
+                label: "Backend",
+                badge: "wired",
+                children: (
+                  <div className="grid gap-3">
+                    <Panel
+                      title="Backend Commands"
+                      action={
+                        <StudioStatusChip tone="health">wired</StudioStatusChip>
+                      }
+                    >
+                      <div className="grid gap-3">
+                        {[
+                          {
+                            id: "project",
+                            label: "Project source",
+                            role: "open_project, check_project, source file read/write",
+                            state: "folder files",
+                          },
+                          {
+                            id: "runtime",
+                            label: "Runtime proof",
+                            role: "play_once_project writes redaction-safe trace evidence",
+                            state: proofReady ? "captured" : "ready",
+                          },
+                          {
+                            id: "export",
+                            label: "Static export",
+                            role: "export_static_project_zip writes a whitelisted package",
+                            state: exportReady ? "profile loaded" : "not loaded",
+                          },
+                        ].map((item) => (
+                          <article
+                            key={item.id}
+                            className="rounded-md border border-ink/10 bg-parchment px-3 py-3"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold">
+                                  {item.label}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-ink/55">
+                                  {item.role}
+                                </p>
+                              </div>
+                              <StudioStatusChip tone="health">{item.state}</StudioStatusChip>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </Panel>
+
+                    <Panel
+                      title="Unavailable Agent Interfaces"
+                      action={<StudioStatusChip tone="danger">not implemented</StudioStatusChip>}
+                    >
+                      <div className="grid gap-2 text-sm leading-6 text-ink/65">
+                        <p>pi-Agent runtime is connected via Studio command pi_agent_run.</p>
+                        <p>Approval queues are hidden until persisted proposal contracts exist.</p>
+                        <p>Provider-backed generation remains explicit local mock/runtime logic.</p>
+                      </div>
+                    </Panel>
+                  </div>
+                ),
+              },
+              {
+                id: "evidence",
+                label: "Evidence",
+                children: (
+                  <Panel title="Evidence Snapshot">
+                    <div className="grid grid-cols-2 gap-2">
+                      <EvidenceCard
+                        icon={Network}
+                        label="Backend"
+                        value="Studio"
+                      />
+                      <EvidenceCard
+                        icon={ShieldCheck}
+                        label="Project truth"
+                        value="folder files"
+                      />
+                      <EvidenceCard
+                        icon={CheckCircle2}
+                        label="Proof"
+                        value={proofReady ? "captured" : "not run"}
+                      />
+                      <EvidenceCard
+                        icon={Boxes}
+                        label="Artifacts"
+                        value={sourceSummary}
+                      />
                     </div>
-                    <StudioStatusChip tone="health">{item.state}</StudioStatusChip>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel
-            title="Unavailable Agent Interfaces"
-            action={<StudioStatusChip tone="danger">not implemented</StudioStatusChip>}
-          >
-            <div className="grid gap-2 text-sm leading-6 text-ink/65">
-              <p>pi-Agent runtime is connected via Studio command pi_agent_run.</p>
-              <p>Approval queues are hidden until persisted proposal contracts exist.</p>
-              <p>Provider-backed generation remains explicit local mock/runtime logic.</p>
-            </div>
-          </Panel>
-
-          <Panel title="Evidence Snapshot">
-            <div className="grid grid-cols-2 gap-2">
-              <EvidenceCard
-                icon={Network}
-                label="Backend"
-                value="Studio"
-              />
-              <EvidenceCard
-                icon={ShieldCheck}
-                label="Project truth"
-                value="folder files"
-              />
-              <EvidenceCard
-                icon={CheckCircle2}
-                label="Proof"
-                value={proofReady ? "captured" : "not run"}
-              />
-              <EvidenceCard
-                icon={Boxes}
-                label="Artifacts"
-                value={sourceSummary}
-              />
-            </div>
-          </Panel>
-
-          <Panel title="Recent Runs">
-            <div className="grid gap-2">
-              {recentRuns.map((run) => (
-                <div
-                  key={run.id}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-ink/10 bg-white px-3 py-2"
-                >
-                  <CheckCircle2
-                    aria-hidden
-                    className={run.tone === "success" ? "text-jade" : "text-brass"}
-                    size={16}
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{run.id}</p>
-                    <p className="truncate text-xs text-ink/50">{run.detail}</p>
-                  </div>
-                  <span className="text-xs font-semibold text-ink/45">
-                    {run.when}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Panel>
+                  </Panel>
+                ),
+              },
+            ]}
+          />
         </aside>
       </section>
     </div>

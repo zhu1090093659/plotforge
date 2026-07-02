@@ -96,33 +96,24 @@ describe("LaunchpadView", () => {
     expect(screen.getByRole("button", { name: "Run proof" })).toBeTruthy();
   });
 
-  it("does not show the New Project form fields by default (collapsed)", () => {
+  it("shows the New Project form fields by default (first tab)", () => {
     renderLaunchpad();
 
-    // The New Project section should be collapsed
-    expect(screen.queryByLabelText("New project path")).toBeNull();
-    expect(screen.queryByLabelText("Visual style")).toBeNull();
-    expect(screen.queryByLabelText("Concept")).toBeNull();
-    expect(screen.queryByLabelText("Initial scene request")).toBeNull();
-    // The toggle button should exist though
-    expect(screen.getByRole("button", { name: "New Project" })).toBeTruthy();
-  });
-
-  it("expands the New Project form when the toggle button is clicked", () => {
-    renderLaunchpad();
-
-    // Initially hidden
-    expect(screen.queryByLabelText("New project path")).toBeNull();
-
-    // Click to expand
-    fireEvent.click(screen.getByRole("button", { name: "New Project" }));
-
-    // Form fields are now visible
+    // The New Project tab is selected by default, so the form fields are visible.
     expect(screen.getByLabelText("New project path")).toBeTruthy();
     expect(screen.getByLabelText("Visual style")).toBeTruthy();
     expect(screen.getByLabelText("Concept")).toBeTruthy();
     expect(screen.getByLabelText("Initial scene request")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Create project" })).toBeTruthy();
+    // The tab button should exist too.
+    expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
+  });
+
+  it("exposes the Source Artifacts and Editor tabs alongside the New Project tab", () => {
+    renderLaunchpad();
+
+    expect(screen.getByRole("tab", { name: /Source Artifacts/i })).toBeTruthy();
+    // Editor tab is only present when a file is selected; absent here.
+    expect(screen.queryByRole("tab", { name: /Artifact Text Editor/i })).toBeNull();
   });
 
   it("calls onCreateProject when the create form is submitted", async () => {
@@ -135,9 +126,7 @@ describe("LaunchpadView", () => {
       createInitialSceneRequest: "Open with a sealed edict.",
     });
 
-    // Expand the form
-    fireEvent.click(screen.getByRole("button", { name: "New Project" }));
-    // Submit
+    // New Project tab is active by default; submit directly.
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
     await waitFor(() => {
@@ -171,9 +160,8 @@ describe("LaunchpadView", () => {
     };
     renderLaunchpad({ checkReport });
 
-    // Expand the Source Artifacts collapsible to see boundary checks
-    const sourceArtifactsToggle = screen.getByRole("button", { name: /Source Artifacts/ });
-    fireEvent.click(sourceArtifactsToggle);
+    // Switch to the Source Artifacts tab to see the boundary checks.
+    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
 
     // Should display real data from checkReport (not hardcoded strings)
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
@@ -186,8 +174,8 @@ describe("LaunchpadView", () => {
   it("shows fallback hardcoded checks when no checkReport is available", () => {
     renderLaunchpad({ checkReport: null });
 
-    // Expand the Source Artifacts section
-    fireEvent.click(screen.getByRole("button", { name: /Source Artifacts/ }));
+    // Switch to the Source Artifacts tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
 
     // Should show the hardcoded fallback checks
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
@@ -196,7 +184,7 @@ describe("LaunchpadView", () => {
     expect(screen.getByText("Tauri bridge")).toBeTruthy();
   });
 
-  it("shows source file list when Source Artifacts is expanded", () => {
+  it("shows source file list when Source Artifacts tab is selected", () => {
     renderLaunchpad({
       sourceFiles: [
         { path: "game.toml", kind: "toml" as const, bytes: 120, editable: false },
@@ -204,11 +192,11 @@ describe("LaunchpadView", () => {
       ],
     });
 
-    // Initially not visible
+    // Initially not visible (New Project tab is active).
     expect(screen.queryByText("game.toml")).toBeNull();
 
-    // Expand
-    fireEvent.click(screen.getByRole("button", { name: /Source Artifacts/ }));
+    // Select the Source Artifacts tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
 
     expect(screen.getByText("game.toml")).toBeTruthy();
     expect(screen.getByText("world/world.md")).toBeTruthy();
@@ -218,7 +206,7 @@ describe("LaunchpadView", () => {
     const onSelectSourceFile = vi.fn();
     renderLaunchpad({ onSelectSourceFile });
 
-    fireEvent.click(screen.getByRole("button", { name: /Source Artifacts/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
     fireEvent.click(screen.getByRole("button", { name: /game\.toml/ }));
 
     expect(onSelectSourceFile).toHaveBeenCalledWith(
@@ -226,7 +214,7 @@ describe("LaunchpadView", () => {
     );
   });
 
-  it("shows the source editor when a file is selected", () => {
+  it("shows the source editor on the Editor tab when a file is selected", () => {
     renderLaunchpad({
       selectedFile: {
         path: "world/world.md",
@@ -237,7 +225,8 @@ describe("LaunchpadView", () => {
       editorContent: "# World Bible content",
     });
 
-    // Source editor section should be visible (defaultOpen=true when file selected)
+    // Selecting a file adds an Editor tab; switch to it to see the editor.
+    fireEvent.click(screen.getByRole("tab", { name: /Artifact Text Editor/i }));
     const editor = screen.getByLabelText("Source editor");
     expect(editor).toBeTruthy();
     expect((editor as HTMLTextAreaElement).value).toBe("# World Bible content");
@@ -257,6 +246,7 @@ describe("LaunchpadView", () => {
       dirty: true,
     });
 
+    fireEvent.click(screen.getByRole("tab", { name: /Artifact Text Editor/i }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onSaveSelectedFile).toHaveBeenCalledTimes(1);
   });

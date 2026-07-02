@@ -91,11 +91,13 @@ describe("AssetMaintenanceView", () => {
     };
     renderView({ assetCatalog });
     expect(screen.getByText("2 scene background fallbacks")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getAllByText("Scene background fallback").length).toBeGreaterThan(0);
   });
 
   it("renders metrics: source files, visual cards, audio cards", () => {
     renderView();
+    fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getByText("Source files")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
     expect(screen.getByText("Visual cards")).toBeTruthy();
@@ -104,6 +106,7 @@ describe("AssetMaintenanceView", () => {
 
   it("renders empty panel when no assets", () => {
     renderView({ assetCatalog: emptyAssetCatalog });
+    fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(
       screen.getByText("No asset records or scene background paths found."),
     ).toBeTruthy();
@@ -111,13 +114,23 @@ describe("AssetMaintenanceView", () => {
 
   it("renders Visual Bible section with style card title as collapsible label", () => {
     renderView();
-    expect(screen.getByText("Visual Bible")).toBeTruthy();
+    // Visual Bible is the default active tab; the style-card collapsible is present.
+    expect(screen.getByRole("tab", { name: /Visual Bible/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Winter council ink wash/ })).toBeTruthy();
+  });
+
+  it("hides catalog metrics on the Visual Bible (default) tab", () => {
+    renderView();
+    // Metrics live only on the Asset Catalog tab; they must not be visible on
+    // the default Visual Bible tab so a regression hoisting them is caught.
+    expect(screen.queryByText("Source files")).toBeNull();
+    expect(screen.queryByText("Visual cards")).toBeNull();
   });
 
   it("renders Audio Bible section with voice card title as collapsible label", () => {
     renderView();
-    expect(screen.getByText("Audio Bible")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
+    expect(screen.getByRole("tab", { name: /Audio Bible/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Civic Auditor/ })).toBeTruthy();
   });
 
@@ -132,6 +145,7 @@ describe("AssetMaintenanceView", () => {
 
   it("expands Audio Bible card and shows editable voice field", () => {
     renderView();
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
     expect(screen.getByLabelText("Audio voice 1")).toBeTruthy();
     expect(
@@ -152,6 +166,7 @@ describe("AssetMaintenanceView", () => {
   it("calls onUpdateAudioVoiceCard when voice field changes", () => {
     const onUpdate = vi.fn();
     renderView({ onUpdateAudioVoiceCard: onUpdate });
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
     fireEvent.change(screen.getByLabelText("Audio voice 1"), {
       target: { value: "deeper resonant voice" },
@@ -171,6 +186,7 @@ describe("AssetMaintenanceView", () => {
   it("calls onSaveAudioBible when Save Audio Bible is clicked", async () => {
     const onSave = vi.fn();
     renderView({ onSaveAudioBible: onSave });
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save Audio Bible" }));
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledTimes(1);
@@ -186,6 +202,7 @@ describe("AssetMaintenanceView", () => {
 
   it("shows empty message when Audio Bible has no voice cards", () => {
     renderView({ audioBible: { voice_cards: [] } });
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     expect(
       screen.getByText("No Audio Bible voice cards in project data."),
     ).toBeTruthy();
@@ -196,6 +213,7 @@ describe("AssetMaintenanceView", () => {
     expect(
       screen.getByRole("button", { name: "Save Visual Bible" }).hasAttribute("disabled"),
     ).toBe(true);
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     expect(
       screen.getByRole("button", { name: "Save Audio Bible" }).hasAttribute("disabled"),
     ).toBe(true);
@@ -251,6 +269,7 @@ describe("AssetMaintenanceView", () => {
       ],
     };
     renderView({ assetCatalog });
+    fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getByText("asset-voice-censor-001")).toBeTruthy();
     expect(screen.getByText("Fallback")).toBeTruthy();
     expect(screen.getByText("mock / mock-v1")).toBeTruthy();

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { CreatorProjectSummary } from "./projectSummary";
-import { StudioButton, StudioStatusChip } from "./studioUi";
+import { StudioButton, StudioStatusChip, StudioTabs } from "./studioUi";
 import type { AssetCatalog } from "./assetCatalog";
 import type {
   PlayOnceReport,
@@ -170,57 +170,73 @@ export function ArtifactReviewView({
             </div>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
-            <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-base font-semibold">Runtime Impact</h3>
-                <StudioStatusChip tone={playtestReport ? "health" : "neutral"}>
-                  {traceId}
-                </StudioStatusChip>
-              </div>
-              <div className="mt-3 grid gap-2">
-                {(playtestReport?.delta_summary ?? []).map((line) => (
-                  <p
-                    key={line}
-                    className="rounded-md border border-ink/10 bg-canvas-100 px-3 py-2 text-sm leading-6 text-ink/70"
-                  >
-                    {line}
-                  </p>
-                ))}
-                {!playtestReport ? (
-                  <p className="rounded-md border border-ink/10 bg-canvas-100 px-3 py-2 text-sm leading-6 text-ink/55">
-                    No runtime proof has been run for this session.
-                  </p>
-                ) : null}
-                {playtestError ? (
-                  <p className="text-sm text-signal">{playtestError}</p>
-                ) : null}
-              </div>
-            </section>
-
-            <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-base font-semibold">Export Evidence</h3>
-                <StudioStatusChip tone={exportReport ? "health" : "neutral"}>
-                  {exportReport ? "available" : "not run"}
-                </StudioStatusChip>
-              </div>
-              <div className="mt-3 grid gap-2">
-                <ExportFact
-                  label="Output"
-                  value={exportReport?.output_dir ?? "not exported"}
-                />
-                <ExportFact
-                  label="Archive"
-                  value={exportReport?.archive_path ?? "not archived"}
-                />
-                <ExportFact
-                  label="Files"
-                  value={String(exportReport?.files_written.length ?? 0)}
-                />
-              </div>
-            </section>
-          </div>
+          <StudioTabs
+            ariaLabel="Runtime and export evidence"
+            items={[
+              {
+                id: "runtime-impact",
+                label: "Runtime Impact",
+                badge: playtestReport?.delta_summary.length,
+                children: (
+                  <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="text-base font-semibold">Runtime Impact</h3>
+                      <StudioStatusChip tone={playtestReport ? "health" : "neutral"}>
+                        {traceId}
+                      </StudioStatusChip>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {(playtestReport?.delta_summary ?? []).map((line) => (
+                        <p
+                          key={line}
+                          className="rounded-md border border-ink/10 bg-canvas-100 px-3 py-2 text-sm leading-6 text-ink/70"
+                        >
+                          {line}
+                        </p>
+                      ))}
+                      {!playtestReport ? (
+                        <p className="rounded-md border border-ink/10 bg-canvas-100 px-3 py-2 text-sm leading-6 text-ink/55">
+                          No runtime proof has been run for this session.
+                        </p>
+                      ) : null}
+                      {playtestError ? (
+                        <p className="text-sm text-signal">{playtestError}</p>
+                      ) : null}
+                    </div>
+                  </section>
+                ),
+              },
+              {
+                id: "export-evidence",
+                label: "Export Evidence",
+                badge: exportReport ? exportReport.files_written.length : undefined,
+                children: (
+                  <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="text-base font-semibold">Export Evidence</h3>
+                      <StudioStatusChip tone={exportReport ? "health" : "neutral"}>
+                        {exportReport ? "available" : "not run"}
+                      </StudioStatusChip>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      <ExportFact
+                        label="Output"
+                        value={exportReport?.output_dir ?? "not exported"}
+                      />
+                      <ExportFact
+                        label="Archive"
+                        value={exportReport?.archive_path ?? "not archived"}
+                      />
+                      <ExportFact
+                        label="Files"
+                        value={String(exportReport?.files_written.length ?? 0)}
+                      />
+                    </div>
+                  </section>
+                ),
+              },
+            ]}
+          />
         </div>
 
         <aside

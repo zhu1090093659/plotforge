@@ -31,7 +31,8 @@ import type {
 } from "./tauriBridge";
 import type { AssetCatalog } from "./assetCatalog";
 import {
-  CollapsibleSection,
+  StudioTabs,
+  type StudioTabItem,
 } from "./studioUi";
 
 // ---------------------------------------------------------------------------
@@ -167,66 +168,74 @@ export function LaunchpadView({
         onOpenExportProfile={onOpenExportProfile}
       />
 
-      {/* New Project — folded by default; only shown after user expands */}
-      <CollapsibleSection
-        title={t("New Project")}
-        defaultOpen={false}
-      >
-        <NewProjectForm
-          createProjectPath={createProjectPath}
-          setCreateProjectPath={setCreateProjectPath}
-          createTemplate={createTemplate}
-          setCreateTemplate={setCreateTemplate}
-          createConcept={createConcept}
-          setCreateConcept={setCreateConcept}
-          createVisualStyle={createVisualStyle}
-          setCreateVisualStyle={setCreateVisualStyle}
-          createVoiceEnabled={createVoiceEnabled}
-          setCreateVoiceEnabled={setCreateVoiceEnabled}
-          createInitialSceneRequest={createInitialSceneRequest}
-          setCreateInitialSceneRequest={setCreateInitialSceneRequest}
-          createForce={createForce}
-          setCreateForce={setCreateForce}
-          createReport={createReport}
-          creating={creating}
-          createError={createError}
-          onCreateProject={onCreateProject}
-        />
-      </CollapsibleSection>
-
-      {/* Source Artifacts + Boundary Checks — secondary, folded by default */}
-      <CollapsibleSection
-        title={t("Source Artifacts")}
-        defaultOpen={false}
-        badge={sourceFiles.length}
-      >
-        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <SourceFileList
-            sourceFiles={sourceFiles}
-            selectedFile={selectedFile}
-            onSelectSourceFile={onSelectSourceFile}
-          />
-          <BoundaryChecks checkReport={checkReport} loadedPath={loadedPath} />
-        </div>
-      </CollapsibleSection>
-
-      {/* Source Editor — secondary, folded by default */}
-      {selectedFile ? (
-        <CollapsibleSection
-          title={t("Artifact Text Editor")}
-          defaultOpen={true}
-        >
-          <SourceEditor
-            selectedFile={selectedFile}
-            editorContent={editorContent}
-            setEditorContent={setEditorContent}
-            dirty={dirty}
-            saving={saving}
-            error={error}
-            onSave={onSaveSelectedFile}
-          />
-        </CollapsibleSection>
-      ) : null}
+      {/* Secondary surfaces share one tab strip so they never stack past the
+          fold. The Editor tab appears when a file is selected; the user clicks
+          it to edit (StudioTabs reconciles if the active tab disappears). */}
+      <StudioTabs
+        ariaLabel={t("Launchpad secondary surfaces")}
+        className="mt-1"
+        items={[
+          {
+            id: "new-project",
+            label: t("New Project"),
+            children: (
+              <NewProjectForm
+                createProjectPath={createProjectPath}
+                setCreateProjectPath={setCreateProjectPath}
+                createTemplate={createTemplate}
+                setCreateTemplate={setCreateTemplate}
+                createConcept={createConcept}
+                setCreateConcept={setCreateConcept}
+                createVisualStyle={createVisualStyle}
+                setCreateVisualStyle={setCreateVisualStyle}
+                createVoiceEnabled={createVoiceEnabled}
+                setCreateVoiceEnabled={setCreateVoiceEnabled}
+                createInitialSceneRequest={createInitialSceneRequest}
+                setCreateInitialSceneRequest={setCreateInitialSceneRequest}
+                createForce={createForce}
+                setCreateForce={setCreateForce}
+                createReport={createReport}
+                creating={creating}
+                createError={createError}
+                onCreateProject={onCreateProject}
+              />
+            ),
+          },
+          {
+            id: "source-artifacts",
+            label: t("Source Artifacts"),
+            badge: sourceFiles.length,
+            children: (
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <SourceFileList
+                  sourceFiles={sourceFiles}
+                  selectedFile={selectedFile}
+                  onSelectSourceFile={onSelectSourceFile}
+                />
+                <BoundaryChecks checkReport={checkReport} loadedPath={loadedPath} />
+              </div>
+            ),
+          },
+          selectedFile
+            ? {
+                id: "editor",
+                label: t("Artifact Text Editor"),
+                badge: dirty ? t("modified") : undefined,
+                children: (
+                  <SourceEditor
+                    selectedFile={selectedFile}
+                    editorContent={editorContent}
+                    setEditorContent={setEditorContent}
+                    dirty={dirty}
+                    saving={saving}
+                    error={error}
+                    onSave={onSaveSelectedFile}
+                  />
+                ),
+              }
+            : null,
+        ].filter(Boolean) as StudioTabItem[]}
+      />
     </div>
   );
 }

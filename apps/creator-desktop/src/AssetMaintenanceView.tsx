@@ -3,7 +3,7 @@ import type { AssetRecord, AudioVoiceCard, VisualStyleCard } from "../../../cont
 import type { StudioSectionId } from "./studioModel";
 import type { AssetCatalogItem, AssetCatalog } from "./assetCatalog";
 import type { SourceFileSummary } from "./tauriBridge";
-import { Collapsible, studioUiClassNames } from "./studioUi";
+import { Collapsible, StudioTabs, studioUiClassNames } from "./studioUi";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,45 +86,69 @@ export function AssetMaintenanceView({
 
       <SectionStatusMessage section="assets" formStatus={formStatus} />
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-          <MetricBox label="Source files" value={sourceFiles.length} />
-          <MetricBox label="Asset records" value={recordCount} />
-          <MetricBox label="References" value={referenceCount} />
-          <MetricBox
-            label="Visual cards"
-            value={visualBible?.style_cards.length ?? 0}
-          />
-          <MetricBox
-            label="Audio cards"
-            value={audioBible?.voice_cards.length ?? 0}
-          />
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {assetCatalog.items.length > 0 ? (
-            assetCatalog.items.map((item) => (
-              <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />
-            ))
-          ) : (
-            <EmptyPanel label="No asset records or scene background paths found." />
-          )}
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <VisualBibleEditor
-          visualBible={visualBible}
-          saving={saving}
-          onUpdateCard={onUpdateVisualStyleCard}
-          onSave={onSaveVisualBible}
-        />
-        <AudioBibleEditor
-          audioBible={audioBible}
-          saving={saving}
-          onUpdateCard={onUpdateAudioVoiceCard}
-          onSave={onSaveAudioBible}
-        />
-      </div>
+      <StudioTabs
+        ariaLabel="Asset maintenance surfaces"
+        className="mt-4"
+        items={[
+          {
+            id: "visual",
+            label: "Visual Bible",
+            badge: visualBible?.style_cards.length,
+            children: (
+              <VisualBibleEditor
+                visualBible={visualBible}
+                saving={saving}
+                onUpdateCard={onUpdateVisualStyleCard}
+                onSave={onSaveVisualBible}
+              />
+            ),
+          },
+          {
+            id: "audio",
+            label: "Audio Bible",
+            badge: audioBible?.voice_cards.length,
+            children: (
+              <AudioBibleEditor
+                audioBible={audioBible}
+                saving={saving}
+                onUpdateCard={onUpdateAudioVoiceCard}
+                onSave={onSaveAudioBible}
+              />
+            ),
+          },
+          {
+            id: "catalog",
+            label: "Asset Catalog",
+            badge: recordCount,
+            children: (
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                  <MetricBox label="Source files" value={sourceFiles.length} />
+                  <MetricBox label="Asset records" value={recordCount} />
+                  <MetricBox label="References" value={referenceCount} />
+                  <MetricBox
+                    label="Visual cards"
+                    value={visualBible?.style_cards.length ?? 0}
+                  />
+                  <MetricBox
+                    label="Audio cards"
+                    value={audioBible?.voice_cards.length ?? 0}
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {assetCatalog.items.length > 0 ? (
+                    assetCatalog.items.map((item) => (
+                      <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />
+                    ))
+                  ) : (
+                    <EmptyPanel label="No asset records or scene background paths found." />
+                  )}
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
     </section>
   );
 }

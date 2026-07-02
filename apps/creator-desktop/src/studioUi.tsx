@@ -6,7 +6,13 @@ import {
   Menu,
   type LucideIcon,
 } from "lucide-react";
-import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
+import {
+  type ButtonHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+  useId,
+  useState,
+} from "react";
 
 export const agentNativeDesignTokens = {
   shell: {
@@ -566,5 +572,176 @@ export function CollapsibleSection({
         <div className="mt-3">{children}</div>
       </Collapsible>
     </StudioPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StudioTabs — in-view tab strip for dense surfaces
+// ---------------------------------------------------------------------------
+
+export interface StudioTabItem {
+  id: string;
+  label: string;
+  badge?: number | string;
+  children: ReactNode;
+}
+
+export interface StudioTabsProps {
+  /** Stable aria-label for the tablist. */
+  ariaLabel: string;
+  /** Tab items; the first item is selected by default. */
+  items: StudioTabItem[];
+  /** Optional initial selected tab id (uncontrolled; defaults to first). */
+  defaultId?: string;
+  /**
+   * Optional controlled active tab id. When provided, the component becomes
+   * controlled and `onActiveChange` is required to update it. Use this when
+   * the parent needs to programmatically switch tabs (e.g. auto-reveal an
+   * editor tab after a file is selected).
+   */
+  activeId?: string;
+  /** Callback invoked when the user requests a tab change (click or keyboard). */
+  onActiveChange?(id: string): void;
+  /** Optional className on the wrapper. */
+  className?: string;
+}
+
+/**
+ * Accessible in-view tab strip. Uses ARIA tablist / tab / tabpanel roles so
+ * screen readers announce the tab relationship. Supports the WAI-ARIA tabs
+ * keyboard pattern: Arrow Left/Right move between tabs, Home/End jump to
+ * first/last. Only the active panel is mounted; inactive panels unmount to
+ * keep the DOM focused and avoid hidden form-label collisions across dense
+ * surfaces (e.g. ExportView).
+ *
+ * If the currently-active tab disappears from `items` (e.g. a conditionally-
+ * included tab is removed), the effective active id falls back to the first
+ * item so the workspace never renders an empty panel.
+ */
+export function StudioTabs({
+  ariaLabel,
+  items,
+  defaultId,
+  activeId: controlledId,
+  onActiveChange,
+  className = "",
+}: StudioTabsProps) {
+  const baseId = useId();
+  const [internalId, setInternalId] = useState(
+    defaultId ?? items[0]?.id ?? "",
+  );
+  const isControlled = controlledId !== undefined;
+  const requestedId = isControlled ? controlledId : internalId;
+  // Reconcile: if the requested id is no longer in items, fall back to first.
+  const effectiveId = items.some((item) => item.id === requestedId)
+    ? requestedId
+    : (items[0]?.id ?? "");
+
+  function selectTab(id: string) {
+    if (!isControlled) {
+      setInternalId(id);
+    }
+    onActiveChange?.(id);
+  }
+
+  function handleKeyDown(event: KeyboardEvent) {
+    const count = items.length;
+    if (count === 0) return;
+    const currentIndex = items.findIndex((item) => item.id === effectiveId);
+    let nextIndex = currentIndex;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        nextIndex = (currentIndex + 1) % count;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        nextIndex = (currentIndex - 1 + count) % count;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = count - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const nextId = items[nextIndex]?.id;
+    if (nextId && nextId !== effectiveId) {
+      selectTab(nextId);
+      // Move focus to the newly-selected tab button.
+      const tabId = `${baseId}-tab-${nextId}`;
+      document.getElementById(tabId)?.focus();
+    }
+  }
+
+  const listId = `${baseId}-tablist`;
+  return (
+    <div className={className}>
+      <div
+        role="tablist"
+        aria-label={ariaLabel}
+        id={listId}
+        onKeyDown={handleKeyDown}
+        className="flex flex-wrap gap-1 border-b border-canvas-200/55"
+      >
+        {items.map((item) => {
+          const selected = item.id === effectiveId;
+          const tabId = `${baseId}-tab-${item.id}`;
+          const panelId = `${baseId}-panel-${item.id}`;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              id={tabId}
+              aria-selected={selected}
+              aria-controls={panelId}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => selectTab(item.id)}
+              className={[
+                "inline-flex h-9 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition",
+                selected
+                  ? "border-amber-500 text-ink"
+                  : "border-transparent text-graphite-700/60 hover:border-canvas-200 hover:text-ink",
+              ].join(" ")}
+            >
+              <span>{item.label}</span>
+              {item.badge !== undefined ? (
+                <span
+                  className={[
+                    "rounded-sm border px-1.5 py-0.5 text-xs font-semibold",
+                    selected
+                      ? "border-amber-500/35 bg-amber-500/15 text-amber-600"
+                      : "border-canvas-200/55 bg-canvas-100 text-graphite-700/70",
+                  ].join(" ")}
+                >
+                  {item.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      {items.map((item) => {
+        const selected = item.id === effectiveId;
+        if (!selected) return null;
+        const panelId = `${baseId}-panel-${item.id}`;
+        const tabId = `${baseId}-tab-${item.id}`;
+        return (
+          <div
+            key={item.id}
+            role="tabpanel"
+            id={panelId}
+            aria-labelledby={tabId}
+            className="mt-4"
+          >
+            {item.children}
+          </div>
+        );
+      })}
+    </div>
   );
 }

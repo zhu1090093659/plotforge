@@ -87,7 +87,12 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    // Source files live on the Source Artifacts tab in the Launchpad.
+    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
+    // Open the file, then switch to the Editor tab to see the textarea.
+    fireEvent.click(screen.getByRole("button", { name: /world\/world\.md/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Artifact Text Editor/i }));
     expect(screen.getByDisplayValue(/The city is under pressure/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Source editor"), {
@@ -149,6 +154,8 @@ describe("App", () => {
     openWorkflowDefaultSection("Export Package", "Export");
 
     expect(screen.getAllByText("Export Package").length).toBeGreaterThan(0);
+    // Profile selectors live on the Profile tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     expect(screen.getAllByText("steam-submission-kit").length).toBeGreaterThan(0);
     expect(document.body.textContent ?? "").not.toMatch(
       /one-click Steam launch|automatic publishing|approval guarantee|legal guarantee|real pi-Agent execution|real external agent execution/i,
@@ -270,6 +277,8 @@ describe("App", () => {
     openWorkflowDefaultSection("Artifact Review", "Assets");
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
+    // Asset records live on the Asset Catalog tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getAllByText("asset-image-opening-scene").length)
       .toBeGreaterThan(0);
     expect(screen.getByText("image / generated")).toBeTruthy();
@@ -287,10 +296,12 @@ describe("App", () => {
     expect(screen.getAllByText("asset-voice-censor-001").length)
       .toBeGreaterThan(0);
     expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
-    expect(screen.getByText("Visual Bible")).toBeTruthy();
+    // Visual Bible cards live on the Visual Bible tab; switch back to it.
+    fireEvent.click(screen.getByRole("tab", { name: /Visual Bible/i }));
     expect(screen.getByText("Winter council ink wash")).toBeTruthy();
     expect(screen.getByText("Official portrait restraint")).toBeTruthy();
-    expect(screen.getByText("Audio Bible")).toBeTruthy();
+    // Audio Bible cards live on the Audio Bible tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     expect(screen.getByText("Civic Auditor")).toBeTruthy();
     expect(screen.getByText("Minister of War")).toBeTruthy();
     expect(screen.queryByText("Scene background fallback")).toBeNull();
@@ -317,6 +328,8 @@ describe("App", () => {
     openWorkflowDefaultSection("Artifact Review", "Assets");
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
+    // Scene background fallbacks live on the Asset Catalog tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getByText("Scene background fallback")).toBeTruthy();
     expect(screen.getAllByText("assets/generated/opening-scene.png").length)
       .toBeGreaterThan(0);
@@ -366,6 +379,8 @@ describe("App", () => {
     await waitFor(() => {
       expect(updates).toHaveLength(1);
     });
+    // Audio Bible cards live on the Audio Bible tab; switch to it.
+    fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
 
     fireEvent.change(screen.getByLabelText("Audio voice 1"), {
@@ -583,6 +598,8 @@ describe("App", () => {
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     openWorkflowDefaultSection("Export Package", "Export");
+    // Profile selectors + selected-profile detail live on the Profile tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(screen.getByText("byo-key-web")).toBeTruthy();
     expect(screen.getByText("self-host-backend")).toBeTruthy();
@@ -593,6 +610,8 @@ describe("App", () => {
     expect(screen.getByText("Provider config")).toBeTruthy();
     expect(screen.getByText("Submission ready")).toBeTruthy();
 
+    // Output paths + export button live on the Package tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Package/ }));
     fireEvent.change(screen.getByLabelText("Static export output directory"), {
       target: { value: "/tmp/static-export" },
     });
@@ -634,12 +653,17 @@ describe("App", () => {
     const launchpad = screen.getByRole("region", { name: "Project Launchpad" });
     fireEvent.click(within(launchpad).getByRole("button", { name: "Export Package" }));
 
+    // The export CTA switches to the Export section; the static-web profile
+    // selector lives on the Profile tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(
       screen
         .getByRole("button", { name: "Select export profile static-web" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+    // Output directory is on the Package tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Package/ }));
     expect(screen.getByLabelText("Static export output directory")).toBeTruthy();
   });
 
@@ -658,6 +682,8 @@ describe("App", () => {
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
     openWorkflowDefaultSection("Export Package", "Export");
+    // Profile selector + selected-profile detail live on the Profile tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     fireEvent.click(
       screen.getByRole("button", {
         name: "Select export profile steam-workshop",
@@ -669,6 +695,8 @@ describe("App", () => {
     expect(
       screen.getByText("This profile does not upload content or promise platform approval."),
     ).toBeTruthy();
+    // The non-executable notice + Export zip button live on the Package tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Package/ }));
     expect(
       screen.getByText(
         /This profile is available as contract metadata only; no Studio export command is wired/,
@@ -736,9 +764,7 @@ describe("App", () => {
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
 
-    // Expand the New Project collapsible section
-    fireEvent.click(screen.getByRole("button", { name: "New Project" }));
-
+    // The New Project tab is active by default in the Launchpad; the form is visible.
     fireEvent.change(screen.getByLabelText("New project path"), {
       target: { value: "/tmp/winter-regency" },
     });
@@ -1076,6 +1102,8 @@ describe("App", () => {
     expect(screen.getByText("Generated portrait request")).toBeTruthy();
 
     openWorkflowDefaultSection("Export Package", "Export");
+    // The AI Safety Policy editor lives on the Policy tab.
+    fireEvent.click(screen.getByRole("tab", { name: /^Policy$/ }));
     fireEvent.click(screen.getByLabelText("Live generated content enabled"));
     fireEvent.click(screen.getByLabelText("Moderation queue enabled"));
     fireEvent.change(screen.getByLabelText("AI safety moderation policy"), {
@@ -1104,7 +1132,6 @@ function getWorkflowButton(name: string) {
     screen.getByRole("navigation", { name: "Studio navigation tree" }),
   ).getByRole("button", { name });
 }
-
 /**
  * Expand the given workflow by clicking its row, then click its default
  * surface section.  Used by tests that previously relied on a single click on
@@ -1134,7 +1161,6 @@ function openWorkflowDefaultSection(workflowName: string, sectionName: string) {
     within(region).getByRole("button", { name: sectionName }),
   );
 }
-
 function expectExportEvidenceStatus(label: string, status: string) {
   const row = screen.getByText(label).closest("div");
   expect(row).toBeTruthy();
