@@ -24,27 +24,13 @@ fn cli() -> Command {
 }
 
 #[test]
-fn cli_runs_full_demo_flow_in_tempdir() {
+fn cli_trace_inspect_reports_reproducibility_and_intent() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("starter-project");
-    let export = temp.path().join("export");
-    let desktop_export = temp.path().join("desktop-export");
-    let export_zip = temp.path().join("starter-project-static.zip");
-    let unpacked_export = temp.path().join("unpacked-export");
-
+    let project = check_project_path(&temp);
     create_starter_project(&project).assert_success_contains("created project Starter Project");
-    run(["check", project.to_str().unwrap()]).assert_success_contains("ok: Starter Project");
-    run(["export", "profiles"])
-        .assert_success_contains("static-web target=static_web")
-        .assert_contains("byo-key-web target=dynamic_web requires_network_at_runtime=true")
-        .assert_contains("self-host-backend target=dynamic_web requires_network_at_runtime=true")
-        .assert_contains("desktop-runtime target=desktop_bundle")
-        .assert_contains("steam-workshop target=steam_workshop")
-        .assert_contains("steam-submission-kit target=steam_submission_kit")
-        .assert_contains("includes_provider_config=false")
-        .assert_contains("includes_private_traces=false")
-        .assert_contains("platform_submission_ready=false");
+
     run(["play", project.to_str().unwrap(), "--once"]).assert_success_contains("choice: continue");
+
     run([
         "trace",
         "inspect",
@@ -74,6 +60,29 @@ fn cli_runs_full_demo_flow_in_tempdir() {
     .assert_contains(
         "media: Scene opening-scene background_asset -> assets/generated/placeholder.png",
     );
+}
+
+#[test]
+fn cli_export_workflows_produce_audited_packages() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = check_project_path(&temp);
+    let export = temp.path().join("export");
+    let desktop_export = temp.path().join("desktop-export");
+    let export_zip = temp.path().join("starter-project-static.zip");
+    let unpacked_export = temp.path().join("unpacked-export");
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
+
+    run(["export", "profiles"])
+        .assert_success_contains("static-web target=static_web")
+        .assert_contains("byo-key-web target=dynamic_web requires_network_at_runtime=true")
+        .assert_contains("self-host-backend target=dynamic_web requires_network_at_runtime=true")
+        .assert_contains("desktop-runtime target=desktop_bundle")
+        .assert_contains("steam-workshop target=steam_workshop")
+        .assert_contains("steam-submission-kit target=steam_submission_kit")
+        .assert_contains("includes_provider_config=false")
+        .assert_contains("includes_private_traces=false")
+        .assert_contains("platform_submission_ready=false");
+
     run([
         "export",
         "static",
@@ -125,12 +134,10 @@ fn cli_runs_full_demo_flow_in_tempdir() {
 }
 
 #[test]
-fn cli_runs_workshop_local_flow_in_tempdir() {
+fn cli_workshop_validate_and_import() {
     let temp = tempfile::tempdir().expect("tempdir");
     let package = temp.path().join("workshop-package");
     let library = temp.path().join("workshop-library");
-    let publish_out = temp.path().join("publish-draft");
-    let kit_out = temp.path().join("submission-kit");
     write_valid_workshop_package(&package);
 
     run(["workshop", "validate", package.to_str().unwrap()])
@@ -145,6 +152,15 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
     ])
     .assert_success_contains("imported workshop item starter-workshop-draft")
     .assert_contains("validated imported package");
+}
+
+#[test]
+fn cli_workshop_library_list_load_remix() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let package = temp.path().join("workshop-package");
+    let library = temp.path().join("workshop-library");
+    write_valid_workshop_package(&package);
+    import_workshop_package(&library, &package);
 
     run(["workshop", "list", library.to_str().unwrap()])
         .assert_success_contains("workshop library items: 1")
@@ -173,6 +189,16 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "remixed workshop item starter-workshop-draft -> starter-workshop-remix",
     )
     .assert_contains("validated remixed package");
+}
+
+#[test]
+fn cli_workshop_report_block_delete() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let package = temp.path().join("workshop-package");
+    let library = temp.path().join("workshop-library");
+    write_valid_workshop_package(&package);
+    import_workshop_package(&library, &package);
+    remix_workshop_item(&library, "starter-workshop-draft", "starter-workshop-remix");
 
     run([
         "workshop",
@@ -215,6 +241,15 @@ fn cli_runs_workshop_local_flow_in_tempdir() {
         "starter-workshop-remix",
     ])
     .assert_success_contains("deleted workshop item starter-workshop-remix");
+}
+
+#[test]
+fn cli_workshop_publish_draft_and_submission_kit() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let package = temp.path().join("workshop-package");
+    let publish_out = temp.path().join("publish-draft");
+    let kit_out = temp.path().join("submission-kit");
+    write_valid_workshop_package(&package);
 
     run([
         "workshop",
@@ -805,6 +840,30 @@ fn write_valid_workshop_package(package_dir: &std::path::Path) {
             + "\n",
     )
     .expect("workshop manifest");
+}
+
+fn import_workshop_package(library: &std::path::Path, package: &std::path::Path) {
+    run([
+        "workshop",
+        "import",
+        library.to_str().unwrap(),
+        package.to_str().unwrap(),
+    ])
+    .assert_success_contains("imported workshop item starter-workshop-draft");
+}
+
+fn remix_workshop_item(library: &std::path::Path, source_id: &str, new_id: &str) {
+    run([
+        "workshop",
+        "remix",
+        library.to_str().unwrap(),
+        source_id,
+        "--new-id",
+        new_id,
+        "--title",
+        "Starter Workshop Sample Remix",
+    ])
+    .assert_success_contains(&format!("remixed workshop item {source_id} -> {new_id}"));
 }
 
 fn sample_workshop_package(game: &[u8], preview: &[u8]) -> WorkshopItemPackage {

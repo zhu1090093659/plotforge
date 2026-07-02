@@ -83,6 +83,17 @@ The current MVP contains:
 - CLI/export smoke tests must use temp dirs; do not mutate checked-in fixtures in CI.
 - If a meaningful test cannot be added, document the reason in the PR or final response and run the next best validation.
 
+### Test Layer Boundaries
+
+Tests live in four layers with non-overlapping responsibilities. Add a new assertion to the lowest layer that can express it; do not duplicate a business assertion across layers.
+
+- **Rust unit tests** (`#[cfg(test)]` modules in `src/`, e.g. `src/tests.rs`): assert pure crate-internal logic only. No process spawns, no real filesystem writes outside `tempfile`. This is the only layer that asserts the *behavior* of a rule, runtime transition, storage edit, or schema rule (e.g. "continue does not advance turn", "secret marker rejected").
+- **Rust integration tests** (`crates/*/tests/*.rs`): assert cross-crate collaboration through pub APIs. Use `create_project_from_request` and other public storage/runtime APIs to build fixtures. Assert *composition* (e.g. "storage + export produces an audited package tree"), not business results already covered by unit tests.
+- **CLI smoke** (`crates/plotforge-cli/tests/cli_smoke.rs`): black-box tests of the compiled binary via `CARGO_BIN_EXE_plotforge-cli`. Each test covers one command group and asserts "call succeeded + output shape" (exit code, presence of expected substrings, generated file existence). Do not re-assert business results that Rust unit tests cover. One mega-test that serially chains every CLI command is forbidden — split by command group so a failure in one group does not block the rest.
+- **Frontend Vitest** (`apps/creator-desktop/src/*.test.tsx`, `apps/player-web/test/*.test.js`): assert rendering and user-perceived interaction (DOM, accessibility roles, visible text, click → state change). `StudioDataSource` mocks must return contract-typed values (`PlayOnceReport`, `RuntimeSnapshot`, etc.) so `npm run typecheck` catches structural drift; never re-implement Rust business logic (trim/split rules, state-machine transitions, rule evaluation) inside a mock. To control mock *behavior* drift, rely on review discipline plus the Computer Use smoke — there is no low-cost automated guard.
+
+Cross-layer dedup rule: the same business behavior (e.g. "continue keeps turn=0", "export excludes traces") is asserted in exactly one layer — the lowest layer that can express it. Upper layers may assert only that the call passed and that the returned value has the right shape, not that the business result is correct.
+
 ## Required Validation
 
 Use the narrowest relevant checks during development, then run the full gate before merging broad changes.

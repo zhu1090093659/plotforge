@@ -13,6 +13,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check Steam no-launch-promise docs
@@ -25,10 +26,12 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   rust-unit:
+    needs: rust-static
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: cargo test --workspace
 
@@ -37,6 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -65,10 +69,12 @@ jobs:
         run: npm run player-web:qa
 
   cli-smoke:
+    needs: rust-static
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Run CLI smoke in tempdir
         run: |
           tmp="$(mktemp -d)"
@@ -79,10 +85,12 @@ jobs:
           cargo run -p plotforge-cli -- export static "$tmp/starter-project" --out "$tmp/export"
 
   export-smoke:
+    needs: rust-static
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Build static export
         run: |
           tmp="$(mktemp -d)"

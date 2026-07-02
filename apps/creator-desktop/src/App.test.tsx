@@ -15,6 +15,12 @@ import {
   demoReproducibilityMetadata,
 } from "./demoStudioData";
 import type { StudioDataSource } from "./studioDataSource";
+import {
+  mockPlayOnceProjectFromLatestSnapshot,
+  mockPlayOnceProjectFromSnapshot,
+  mockPlayOnceProjectWithSave,
+  playOnceReportWithSnapshot,
+} from "./testHelpers/studioDataSource";
 import type {
   AssetRecord,
   ProjectCreationRequest,
@@ -1387,35 +1393,14 @@ function appTestDataSource(
     async playOnceProject(_path, playerInput) {
       return demoPlayOnceReport(playerInput);
     },
-    async playOnceProjectWithSave(_path, playerInput, saveId) {
-      const report = demoPlayOnceReport(playerInput);
-      return {
-        ...report,
-        snapshot: {
-          id: saveId,
-          timestamp_ms: report.trace.timestamp_ms,
-          reproducibility: {
-            ...demoReproducibilityMetadata,
-            snapshot_id: saveId,
-          },
-          project_id: demoProjectData.game.id,
-          project_version: demoProjectData.game.version,
-          story_state: report.trace.story_state_after,
-          world_state: report.trace.world_state_after,
-          scenes: demoProjectData.scenes,
-        },
-        snapshot_path: `/tmp/starter-project/saves/${saveId}.runtime_snapshot.json`,
-      };
+    async playOnceProjectWithSave(...args: Parameters<typeof mockPlayOnceProjectWithSave>) {
+      return mockPlayOnceProjectWithSave(...args);
     },
-    async playOnceProjectFromSnapshot(_path, playerInput, _snapshotId, saveId = null) {
-      return saveId
-        ? this.playOnceProjectWithSave("/tmp/starter-project", playerInput, saveId)
-        : demoPlayOnceReport(playerInput);
+    async playOnceProjectFromSnapshot(...args: Parameters<typeof mockPlayOnceProjectFromSnapshot>) {
+      return mockPlayOnceProjectFromSnapshot(...args);
     },
-    async playOnceProjectFromLatestSnapshot(_path, playerInput, saveId = null) {
-      return saveId
-        ? this.playOnceProjectWithSave("/tmp/starter-project", playerInput, saveId)
-        : demoPlayOnceReport(playerInput);
+    async playOnceProjectFromLatestSnapshot(...args: Parameters<typeof mockPlayOnceProjectFromLatestSnapshot>) {
+      return mockPlayOnceProjectFromLatestSnapshot(...args);
     },
     async exportStaticProjectZip(_path, outputDir, archivePath) {
       return {
@@ -1537,30 +1522,5 @@ function fallbackPlayOnceReport(): PlayOnceReport {
       ],
       fallback_used: true,
     },
-  };
-}
-
-function playOnceReportWithSnapshot(
-  playerInput: string,
-  snapshotId: string,
-  snapshotPath: string,
-): PlayOnceReport {
-  const report = demoPlayOnceReport(playerInput);
-  return {
-    ...report,
-    snapshot: {
-      id: snapshotId,
-      timestamp_ms: report.trace.timestamp_ms,
-      reproducibility: {
-        ...demoReproducibilityMetadata,
-        snapshot_id: snapshotId,
-      },
-      project_id: demoProjectData.game.id,
-      project_version: demoProjectData.game.version,
-      story_state: report.trace.story_state_after,
-      world_state: report.trace.world_state_after,
-      scenes: demoProjectData.scenes,
-    },
-    snapshot_path: snapshotPath,
   };
 }

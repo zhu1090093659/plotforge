@@ -18,6 +18,8 @@ use plotforge_storage::{
     attach_beat_audio_reference, create_project_from_request, load_project, update_ai_safety_policy,
 };
 
+mod common;
+
 #[test]
 fn export_manifest_contains_entry_scene_and_assets() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -536,22 +538,6 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
     assert!(!temp.path().join("traces/latest.json").exists());
 }
 
-fn expected_export_files() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from(AI_USAGE_MANIFEST_FILE),
-        PathBuf::from("assets/generated/placeholder.png"),
-        PathBuf::from("game.json"),
-        PathBuf::from("index.html"),
-        PathBuf::from("player-audio.js"),
-        PathBuf::from("player-core.js"),
-        PathBuf::from("player-i18n.js"),
-        PathBuf::from("player-save.js"),
-        PathBuf::from("player-types.js"),
-        PathBuf::from("player.js"),
-        PathBuf::from("styles.css"),
-    ]
-}
-
 fn create_starter_project(project_path: &Path) {
     create_project_from_request(
         project_path,
@@ -567,16 +553,16 @@ fn create_starter_project(project_path: &Path) {
     .expect("create starter project");
 }
 
+fn expected_export_files() -> Vec<PathBuf> {
+    common::expected_export_files()
+}
+
 fn expected_export_files_with_build_notes() -> Vec<PathBuf> {
-    let mut files = expected_export_files();
-    files.insert(2, PathBuf::from("desktop-build-notes.md"));
-    files
+    common::expected_export_files_with_build_notes()
 }
 
 fn expected_desktop_export_files() -> Vec<PathBuf> {
-    let mut files = expected_export_files_with_build_notes();
-    files.insert(3, PathBuf::from(DESKTOP_RUNTIME_DRAFT_FILE));
-    files
+    common::expected_desktop_export_files()
 }
 
 fn assert_secret_free(text: &str) {
