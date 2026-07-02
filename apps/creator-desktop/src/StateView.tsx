@@ -98,9 +98,9 @@ export function StateView({
       <SectionStatusMessage section="state" formStatus={formStatus} />
 
       {stateVariablesEditDocument ? (
-        <div className="mt-4 grid gap-4">
+        <div className="mt-3 grid gap-3">
           {/* Existing resource cards (collapsible) */}
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {stateVariablesEditDocument.resources.map((resource, index) => (
               <ResourceCard
                 key={`${resource.key}:${index}`}

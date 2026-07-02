@@ -696,7 +696,7 @@ export function App({
               aria-label="Project path"
               value={projectPath}
               onChange={(event) => setProjectPath(event.target.value)}
-              className={`${studioUiClassNames.input} sm:w-72`}
+              className={`${studioUiClassNames.input} min-w-0 flex-1 sm:w-72 lg:w-80 xl:w-96`}
             />
             <StudioButton
               title="Refresh project files"

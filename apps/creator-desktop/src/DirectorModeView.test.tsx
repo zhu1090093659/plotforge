@@ -37,9 +37,9 @@ describe("DirectorModeView", () => {
       screen.getByRole("region", { name: "Director Mode Workspace" }),
     ).toBeTruthy();
     expect(screen.getByTestId("director-mode-layout").getAttribute("class"))
-      .toContain("2xl:grid-cols");
+      .toContain("lg:grid-cols");
     expect(screen.getByTestId("director-mode-layout").getAttribute("class"))
-      .not.toContain(" xl:grid-cols");
+      .toContain("2xl:grid-cols");
     expect(screen.getByLabelText("Activity Stream")).toBeTruthy();
     expect(screen.getByLabelText("Playable Scene Preview")).toBeTruthy();
     expect(screen.getByLabelText("Direction Bar")).toBeTruthy();

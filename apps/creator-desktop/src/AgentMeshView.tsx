@@ -102,11 +102,11 @@ export function AgentMeshView({
     : "not captured";
 
   return (
-    <section aria-label="Agent Mesh Workspace" className="grid gap-5">
-      <div className="grid gap-4 2xl:grid-cols-[300px_minmax(0,1fr)_320px]">
+    <section aria-label="Agent Mesh Workspace" className="grid gap-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <aside
           aria-label="Studio Backend Bridge"
-          className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
+          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -142,7 +142,7 @@ export function AgentMeshView({
           </DarkCollapsible>
         </aside>
 
-        <div className="grid gap-4">
+        <div className="grid content-start gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <div
             aria-label="Command Boundary Map"
             className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
@@ -171,7 +171,7 @@ export function AgentMeshView({
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-3">
+            <div className="mt-4 grid gap-3 xl:grid-cols-3">
               <MeshColumn
                 title="Project Source"
                 icon={FileText}
@@ -198,7 +198,7 @@ export function AgentMeshView({
               </MeshColumn>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
               <ArtifactNode icon={FileText} title="Source Files" detail={String(sourceFiles.length)} />
               <ArtifactNode icon={Boxes} title="Asset Records" detail={String(assetRecordCount)} />
               <ArtifactNode icon={Network} title="External Agents" detail="not implemented" />
@@ -221,7 +221,7 @@ export function AgentMeshView({
               <StudioStatusChip tone="health">{wiredCount} wired</StudioStatusChip>
             </div>
 
-            <ul className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
               {realCapabilities.map((capability) => (
                 <li key={capability.id}>
                   <CapabilityCard capability={capability} />
@@ -233,7 +233,7 @@ export function AgentMeshView({
 
         <aside
           aria-label="Bridge Evidence"
-          className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 shadow-studio-panel"
+          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-canvas-50 p-3 shadow-studio-panel lg:col-start-2 lg:row-start-2"
         >
           <div>
             <p className="text-xs font-semibold uppercase text-accent-500">

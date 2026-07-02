@@ -74,8 +74,8 @@ export function TraceDebugView({
     );
 
   return (
-    <section aria-label="Proof And Trace Workspace" className="grid gap-5">
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
+    <section aria-label="Proof And Trace Workspace" className="grid gap-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-4">
           {/* --------------------------------------------------------------- */}
           {/* Playable Proof — scene preview card                             */}
@@ -109,7 +109,7 @@ export function TraceDebugView({
               </div>
             </div>
 
-            <div className="relative min-h-[430px] overflow-hidden bg-graphite-900">
+            <div className="relative min-h-[260px] overflow-hidden bg-graphite-900">
               {sceneImage ? (
                 <img
                   src={sceneImage}
@@ -122,7 +122,7 @@ export function TraceDebugView({
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/35 to-graphite-950/10" />
-              <div className="relative flex min-h-[430px] flex-col justify-end p-4">
+              <div className="relative flex min-h-[260px] flex-col justify-end p-4">
                 <div className="mx-auto w-full max-w-3xl rounded-lg border border-amber-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
                   <p className="text-xs font-semibold uppercase text-amber-400">
                     {report
@@ -184,7 +184,7 @@ export function TraceDebugView({
             defaultOpen
             badge={report?.delta_summary.length}
           >
-            <div className="mt-3 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_0.9fr]">
               <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-base font-semibold">State Delta</h3>

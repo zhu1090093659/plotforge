@@ -80,7 +80,7 @@ export function StoryView({
       <SectionStatusMessage section="story" formStatus={formStatus} />
 
       {storyCraftEditDocument && bible ? (
-        <div className="mt-4 grid gap-4">
+        <div className="mt-3 grid gap-3">
           {/* AI story generation — prominent in main area */}
           <div className="rounded-md border border-ink/10 bg-white p-4">
             <div className="flex flex-wrap items-end gap-3">
@@ -103,7 +103,7 @@ export function StoryView({
             </div>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             <TextareaInput
               label="Story Bible"
               ariaLabel="Story bible markdown"
@@ -111,7 +111,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryCraftDocument({ story_bible_markdown: value })
               }
-              minHeight="min-h-40"
+              minHeight="min-h-32"
             />
             <TextareaInput
               label="Style Guide"
@@ -120,11 +120,11 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryCraftDocument({ style_guide_markdown: value })
               }
-              minHeight="min-h-40"
+              minHeight="min-h-32"
             />
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             <TextInput
               label="Genre promise"
               ariaLabel="Genre promise"
@@ -146,7 +146,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryBible({ target_emotions: linesToList(value) })
               }
-              minHeight="min-h-24"
+              minHeight="min-h-20"
             />
             <TextareaInput
               label="Core foreshadowing"
@@ -155,7 +155,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryBible({ core_foreshadowing: linesToList(value) })
               }
-              minHeight="min-h-24"
+              minHeight="min-h-20"
             />
           </div>
 

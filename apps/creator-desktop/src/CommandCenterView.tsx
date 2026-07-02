@@ -20,6 +20,7 @@ import type {
   SourceFileSummary,
 } from "./tauriBridge";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
+import { useStudioI18n } from "./i18n";
 import {
   ScenePreviewPlaceholder,
   StudioButton,
@@ -65,6 +66,7 @@ export function CommandCenterView({
   onOpenSection,
   onOpenExportProfile,
 }: CommandCenterViewProps) {
+  const { t } = useStudioI18n();
   const projectTitle = projectSummary?.title ?? "No project loaded";
   const entryScene = resolveEntryScene(projectData);
   const entryBeat = resolveSceneBeat(
@@ -86,22 +88,22 @@ export function CommandCenterView({
   const sourceSummary = `${sourceFiles.length} files`;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       <section
         aria-label="Project Launchpad"
-        className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]"
+        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]"
       >
-        <div className="grid gap-4">
-          <div className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="grid content-start gap-3">
+          <div className="rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-amber-400">
                   Project Launchpad
                 </p>
-                <h3 className="mt-1 text-2xl font-semibold text-canvas-50">
+                <h3 className="mt-1 text-xl font-semibold text-canvas-50">
                   {projectTitle}
                 </h3>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-canvas-200/65">
+                <p className="mt-1 max-w-2xl text-sm leading-5 text-canvas-200/65">
                   {entryScene
                     ? `${entryScene.title} / ${entryScene.location}`
                     : loadedPath}
@@ -117,7 +119,7 @@ export function CommandCenterView({
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => (
                 <StatusTile
                   key={metric.label}
@@ -128,17 +130,17 @@ export function CommandCenterView({
               ))}
             </div>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 p-3">
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
                 <p className="text-xs font-semibold uppercase text-canvas-200/50">
                   Playable Proof Status
                 </p>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-lg font-semibold text-canvas-50">
+                    <p className="text-base font-semibold text-canvas-50">
                       {proofReady ? "Playable proof captured" : "Ready to run proof"}
                     </p>
-                    <p className="mt-1 text-sm text-canvas-200/60">
+                    <p className="mt-0.5 text-xs text-canvas-200/60">
                       {playtestReport
                         ? `${playtestReport.trace.id} / ${playtestReport.delta_summary.length} deltas`
                         : "No turn has been run in this session."}
@@ -159,16 +161,16 @@ export function CommandCenterView({
                 </div>
               </div>
 
-              <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 p-3">
+              <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
                 <p className="text-xs font-semibold uppercase text-canvas-200/50">
                   Export Readiness
                 </p>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-lg font-semibold text-canvas-50">
+                    <p className="text-base font-semibold text-canvas-50">
                       {exportReady ? "Static package available" : "No static package profile"}
                     </p>
-                    <p className="mt-1 text-sm text-canvas-200/60">
+                    <p className="mt-0.5 text-xs text-canvas-200/60">
                       {exportProfile?.id ?? "Export profile not loaded"}
                     </p>
                   </div>
@@ -189,7 +191,7 @@ export function CommandCenterView({
             aria-label="Live Game Canvas"
             className="overflow-hidden rounded-lg border border-graphite-700/15 bg-graphite-950 text-canvas-50 shadow-studio-panel"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200/10 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200/10 px-4 py-2.5">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-health-400" />
                 <p className="truncate text-sm font-semibold">Live Game Canvas</p>
@@ -206,7 +208,7 @@ export function CommandCenterView({
               </div>
             </div>
 
-              <div className="relative min-h-[280px] overflow-hidden bg-graphite-900">
+            <div className="relative min-h-[220px] overflow-hidden bg-graphite-900">
               {sceneImage ? (
                 <img
                   src={sceneImage}
@@ -219,20 +221,20 @@ export function CommandCenterView({
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/30 to-graphite-950/10" />
-              <div className="relative flex min-h-[280px] flex-col justify-end p-4">
-                <div className="max-w-3xl rounded-lg border border-canvas-200/25 bg-canvas-100 px-4 py-4 text-ink shadow-studio-panel">
+              <div className="relative flex min-h-[220px] flex-col justify-end p-3">
+                <div className="max-w-3xl rounded-lg border border-canvas-200/25 bg-canvas-100 px-3 py-3 text-ink shadow-studio-panel">
                   <p className="text-xs font-semibold uppercase text-graphite-700/55">
                     {entryScene?.title ?? "Scene preview"}
                   </p>
-                  <p className="mt-2 text-base leading-7">
+                  <p className="mt-1 line-clamp-3 text-sm leading-6">
                     {entryBeat?.text ??
                       "Open a project to preview the playable scene and proof loop."}
                   </p>
-                  <div className="mt-3 grid gap-2">
+                  <div className="mt-2 grid gap-2">
                     {(entryBeat?.choices ?? []).slice(0, 3).map((choice, index) => (
                       <div
                         key={choice.id}
-                        className="flex min-h-10 items-center gap-3 rounded-md border border-graphite-700/20 bg-graphite-950 px-3 text-canvas-50"
+                        className="flex min-h-9 items-center gap-3 rounded-md border border-graphite-700/20 bg-graphite-950 px-3 text-canvas-50"
                       >
                         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-amber-400/60 text-xs text-amber-400">
                           {index + 1}
@@ -248,16 +250,19 @@ export function CommandCenterView({
             </div>
           </div>
 
+        </div>
+
+        <aside className="grid content-start gap-3">
           <div
             aria-label="Director Command Input"
-            className="rounded-lg border border-amber-500/30 bg-canvas-50 p-4 shadow-studio-panel"
+            className="rounded-lg border border-amber-500/30 bg-canvas-50 p-3 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase text-amber-600">
                   Command Center
                 </p>
-                <h3 className="mt-1 text-lg font-semibold text-ink">
+                <h3 className="mt-1 text-base font-semibold text-ink">
                   Describe the game change you want
                 </h3>
               </div>
@@ -271,17 +276,17 @@ export function CommandCenterView({
               aria-label="Director intent"
               value={playtestInput}
               onChange={(event) => onIntentChange(event.target.value)}
-              className={`${studioUiClassNames.textarea} mt-3 min-h-20 border-amber-500/45 bg-canvas-100 text-base leading-7`}
+              className={`${studioUiClassNames.textarea} mt-3 min-h-24 border-amber-500/45 bg-canvas-100 text-sm leading-6`}
             />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-graphite-700/65">
-                PlotForge sends this through the real runtime playtest command
-                today; agent proposal workflows are not implemented.
+            <div className="mt-3 grid gap-3">
+              <p className="text-sm leading-5 text-graphite-700/65">
+                {t("Sends this through the local runtime proof command; agent proposal workflows are not implemented.")}
               </p>
               <StudioButton
                 variant="primary"
                 onClick={onRunPlayableProof}
                 disabled={playtesting}
+                className="w-full justify-center"
               >
                 {playtesting ? (
                   <Loader2 aria-hidden size={16} className="animate-spin" />
@@ -297,9 +302,7 @@ export function CommandCenterView({
               </div>
             ) : null}
           </div>
-        </div>
 
-        <aside className="grid content-start gap-3">
           <StudioTabs
             ariaLabel="Command center side panels"
             items={[
@@ -511,11 +514,11 @@ function StatusTile({
   detail: string;
 }) {
   return (
-    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-3">
+    <div className="rounded-md border border-canvas-200/10 bg-canvas-50/5 px-3 py-2">
       <p className="text-xs font-semibold uppercase text-canvas-200/50">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-canvas-50">{value}</p>
+      <p className="mt-1 text-xl font-semibold text-canvas-50">{value}</p>
       <p className="mt-1 truncate text-xs text-canvas-200/55">{detail}</p>
     </div>
   );
@@ -531,12 +534,12 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-4 shadow-studio-panel">
+    <section className="rounded-lg border border-graphite-700/15 bg-canvas-50 p-3 shadow-studio-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-ink">{title}</h3>
         {action}
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="mt-2">{children}</div>
     </section>
   );
 }

@@ -72,7 +72,7 @@ export function AssetMaintenanceView({
   );
 
   return (
-    <section className={studioUiClassNames.panel}>
+    <section className={`${studioUiClassNames.panel} !p-4`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold">Asset Maintenance</h3>
@@ -121,8 +121,8 @@ export function AssetMaintenanceView({
             label: "Asset Catalog",
             badge: recordCount,
             children: (
-              <div className="grid gap-4">
-                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
+              <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+                <div className="grid content-start gap-3 sm:grid-cols-3 lg:grid-cols-1">
                   <MetricBox label="Source files" value={sourceFiles.length} />
                   <MetricBox label="Asset records" value={recordCount} />
                   <MetricBox label="References" value={referenceCount} />
@@ -135,7 +135,7 @@ export function AssetMaintenanceView({
                     value={audioBible?.voice_cards.length ?? 0}
                   />
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid content-start gap-3 md:grid-cols-2">
                   {assetCatalog.items.length > 0 ? (
                     assetCatalog.items.map((item) => (
                       <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />

@@ -101,4 +101,13 @@ describe("CommandCenterView", () => {
     renderView({ playtestReport: report });
     expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
   });
+
+  it("renders the localized runtime-proof disclaimer under the Director Command Input", () => {
+    renderView();
+    expect(
+      screen.getByText(
+        "Sends this through the local runtime proof command; agent proposal workflows are not implemented.",
+      ),
+    ).toBeTruthy();
+  });
 });

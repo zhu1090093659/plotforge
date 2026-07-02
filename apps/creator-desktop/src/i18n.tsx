@@ -297,8 +297,8 @@ const zhText: Record<string, string> = {
   Actions: "操作",
   "Review trace": "审查追踪",
   "Describe the game change you want": "描述你想要的游戏变更",
-  "PlotForge sends this through the real runtime playtest command today; agent proposal workflows are not implemented.":
-    "PlotForge 当前会通过真实运行时试玩命令发送该内容；Agent 提案工作流尚未实现。",
+  "Sends this through the local runtime proof command; agent proposal workflows are not implemented.":
+    "通过本地运行时试玩命令发送该内容；Agent 提案工作流尚未实现。",
   "Director Brief": "导演简报",
   "Load a folder project to direct the next playable change.":
     "加载文件夹项目以导演下一次可玩变更。",
@@ -720,7 +720,7 @@ export function useStudioI18n() {
 export function LanguageToggle() {
   const { locale, setLocale, t } = useStudioI18n();
   return (
-    <label className="inline-flex h-10 items-center gap-2 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm font-semibold text-ink">
+    <label className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm font-semibold text-ink">
       <span>{t("Language")}</span>
       <select
         aria-label={t("Language")}

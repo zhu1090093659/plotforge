@@ -447,7 +447,7 @@ export function ExportView({
   const selectedProfileReady = allEvidenceChecks.every((c) => c.status === "pass");
   const packageHash = exportReport ? "pending explicit package hash" : "pending export";
 
-  const panelClassName = "rounded-lg border border-ink/10 bg-canvas-50 p-5 text-ink shadow-studio-panel";
+  const panelClassName = "rounded-lg border border-ink/10 bg-canvas-50 p-4 text-ink shadow-studio-panel";
 
   return (
     <section className={panelClassName}>
@@ -498,9 +498,9 @@ export function ExportView({
             label: "Package",
             badge: exportReport ? exportReport.files_found.length : undefined,
             children: (
-              <div className="grid gap-4 2xl:grid-cols-[0.85fr_1.35fr]">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
                 {/* Build Profile + Evidence & Boundaries (left) */}
-                <aside className="grid content-start gap-3 rounded-lg border border-ink/10 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
+                <aside className="grid max-h-[620px] content-start gap-3 overflow-y-auto rounded-lg border border-ink/10 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase text-amber-400">
@@ -665,7 +665,7 @@ export function ExportView({
                 </aside>
 
                 {/* Right: Package Readiness + output paths + metrics */}
-                <div className="grid content-start gap-4">
+                <div className="grid content-start gap-4 lg:col-start-1 lg:row-start-1">
                   <section className="rounded-lg border border-ink/10 bg-canvas-50 p-4 shadow-studio-panel">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>

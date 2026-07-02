@@ -86,9 +86,9 @@ export function RulesView({
       <SectionStatusMessage section="rules" formStatus={formStatus} />
 
       {rulesEditDocument ? (
-        <div className="mt-4 grid gap-4">
+        <div className="mt-3 grid gap-3">
           {/* Existing rule cards (collapsible) */}
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {rulesEditDocument.rules.map((rule, index) => (
               <RuleCard
                 key={`${rule.id}:${index}`}

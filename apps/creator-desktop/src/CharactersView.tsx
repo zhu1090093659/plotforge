@@ -96,9 +96,9 @@ export function CharactersView({
       <SectionStatusMessage section="characters" formStatus={formStatus} />
 
       {characterEditDocument ? (
-        <div className="mt-4 grid gap-4">
+        <div className="mt-3 grid gap-3">
           {/* Existing character cards (collapsible) */}
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {characterEditDocument.characters.map((character, index) => (
               <CharacterCard
                 key={`${character.id}:${index}`}

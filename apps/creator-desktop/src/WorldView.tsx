@@ -73,8 +73,8 @@ export function WorldView({
       <SectionStatusMessage section="world" formStatus={formStatus} />
 
       {worldEditDocument ? (
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-4 xl:grid-cols-2">
+        <div className="mt-3 grid gap-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             <TextareaInput
               label="World Bible"
               ariaLabel="World bible markdown"
@@ -82,9 +82,9 @@ export function WorldView({
               onChange={(value) =>
                 onUpdateWorldDocument({ world_bible_markdown: value })
               }
-              minHeight="min-h-56"
+              minHeight="min-h-40"
             />
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               <TextareaInput
                 label="Canon"
                 ariaLabel="Canon markdown"

@@ -151,20 +151,20 @@ export function StudioShell({
   );
 
   return (
-    <div className="min-h-screen bg-graphite-950 text-canvas-50">
+    <div className="min-h-screen bg-graphite-950 text-canvas-50 lg:h-screen lg:overflow-hidden">
       <div
         data-testid="studio-shell-grid"
-        className="grid min-h-screen grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_320px]"
+        className="grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto] xl:grid-cols-[260px_minmax(0,1fr)_280px] 2xl:grid-cols-[280px_minmax(0,1fr)_320px]"
       >
         <aside
           aria-label="Studio navigation"
-          className="hidden border-r border-canvas-200/12 bg-graphite-900 px-4 py-5 shadow-shell-inset lg:block"
+          className="hidden min-h-0 overflow-y-auto border-r border-canvas-200/12 bg-graphite-900 px-3 py-4 shadow-shell-inset lg:block"
         >
           {sidebarContent}
         </aside>
 
-        <main className="paper-grain min-w-0 text-ink">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-canvas-200/55 px-6 py-5 lg:px-8">
+        <main className="paper-grain min-w-0 text-ink lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
+          <header className="grid gap-3 border-b border-canvas-200/55 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(420px,auto)] lg:items-end lg:px-6 lg:py-3 xl:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -176,16 +176,18 @@ export function StudioShell({
                 <Menu aria-hidden size={18} />
               </button>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-                  {header.eyebrow}
-                </p>
-                <h2 className="font-display mt-1 text-2xl font-semibold tracking-display text-ink">
-                  {header.title}
-                </h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-700/75">
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
+                    {header.eyebrow}
+                  </p>
+                  <h2 className="font-display text-xl font-semibold tracking-display text-ink xl:text-2xl">
+                    {header.title}
+                  </h2>
+                </div>
+                <p className="mt-1 max-w-3xl truncate text-sm leading-5 text-graphite-700/75">
                   {header.subtitle}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2 flex max-h-9 flex-wrap gap-2 overflow-hidden">
                   {header.badges.map((badge) => (
                     <StudioStatusChip key={badge.id} title={badge.title}>
                       {badge.label}
@@ -194,17 +196,19 @@ export function StudioShell({
                 </div>
               </div>
             </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap lg:justify-end">
               {topActions}
             </div>
           </header>
 
-          <div className="px-6 py-5 lg:px-8">{children}</div>
+          <div className="px-6 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-6 xl:px-8">
+            {children}
+          </div>
         </main>
 
         <aside
           aria-label="Evidence panel"
-          className="border-l border-canvas-200/12 bg-graphite-900 px-4 py-5 text-canvas-50 shadow-shell-inset lg:col-span-2 lg:border-l-0 lg:border-t xl:col-span-1 xl:border-l xl:border-t-0"
+          className="min-h-0 overflow-y-auto border-l border-canvas-200/12 bg-graphite-900 px-3 py-4 text-canvas-50 shadow-shell-inset lg:col-span-2 lg:max-h-56 lg:border-l-0 lg:border-t xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0"
         >
           {rightPanel}
         </aside>

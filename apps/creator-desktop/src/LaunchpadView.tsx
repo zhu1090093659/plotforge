@@ -206,7 +206,7 @@ export function LaunchpadView({
             label: t("Source Artifacts"),
             badge: sourceFiles.length,
             children: (
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
                 <SourceFileList
                   sourceFiles={sourceFiles}
                   selectedFile={selectedFile}

@@ -53,11 +53,11 @@ export function ArtifactReviewView({
   const exportedFileCount = exportReport?.files_written.length ?? 0;
 
   return (
-    <section aria-label="Artifact Review Workspace" className="grid gap-5">
-      <div className="grid gap-4 2xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+    <section aria-label="Artifact Review Workspace" className="grid gap-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <aside
           aria-label="Live Build Room"
-          className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
+          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -75,22 +75,24 @@ export function ArtifactReviewView({
             <StudioStatusChip tone="danger">not implemented</StudioStatusChip>
           </div>
 
-          <EvidenceCard title="Source Files" value={String(sourceFiles.length)}>
-            {`${editableFiles.length} editable surfaces loaded from the project.`}
-          </EvidenceCard>
-          <EvidenceCard title="Runtime Trace" value={traceId}>
-            {playtestReport
-              ? `${playtestReport.delta_summary.length} state deltas produced.`
-              : "Run a playable proof to generate trace evidence."}
-          </EvidenceCard>
-          <EvidenceCard title="Export Report" value={String(exportedFileCount)}>
-            {exportReport
-              ? `${exportReport.archived_files.length} files archived.`
-              : "Run a static export to inspect package evidence."}
-          </EvidenceCard>
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+            <EvidenceCard title="Source Files" value={String(sourceFiles.length)}>
+              {`${editableFiles.length} editable surfaces loaded from the project.`}
+            </EvidenceCard>
+            <EvidenceCard title="Runtime Trace" value={traceId}>
+              {playtestReport
+                ? `${playtestReport.delta_summary.length} state deltas produced.`
+                : "Run a playable proof to generate trace evidence."}
+            </EvidenceCard>
+            <EvidenceCard title="Export Report" value={String(exportedFileCount)}>
+              {exportReport
+                ? `${exportReport.archived_files.length} files archived.`
+                : "Run a static export to inspect package evidence."}
+            </EvidenceCard>
+          </div>
         </aside>
 
-        <div className="grid gap-4">
+        <div className="grid content-start gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <div className="rounded-lg border border-amber-500/35 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -241,7 +243,7 @@ export function ArtifactReviewView({
 
         <aside
           aria-label="Validation Evidence"
-          className="grid content-start gap-4 rounded-lg border border-graphite-700/15 bg-graphite-950 p-4 text-canvas-50 shadow-studio-panel"
+          className="grid content-start gap-3 rounded-lg border border-graphite-700/15 bg-graphite-950 p-3 text-canvas-50 shadow-studio-panel lg:col-start-2 lg:row-start-2"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
