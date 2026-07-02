@@ -172,12 +172,12 @@ export function LaunchpadView({
           fold. The Editor tab appears when a file is selected; the user clicks
           it to edit (StudioTabs reconciles if the active tab disappears). */}
       <StudioTabs
-        ariaLabel={t("Launchpad secondary surfaces")}
+        ariaLabel={t("launchpad.secondarySurfaces")}
         className="mt-1"
         items={[
           {
             id: "new-project",
-            label: t("New Project"),
+            label: t("launchpad.newProject"),
             children: (
               <NewProjectForm
                 createProjectPath={createProjectPath}
@@ -203,7 +203,7 @@ export function LaunchpadView({
           },
           {
             id: "source-artifacts",
-            label: t("Source Artifacts"),
+            label: t("launchpad.sourceArtifacts"),
             badge: sourceFiles.length,
             children: (
               <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
@@ -219,8 +219,8 @@ export function LaunchpadView({
           selectedFile
             ? {
                 id: "editor",
-                label: t("Artifact Text Editor"),
-                badge: dirty ? t("modified") : undefined,
+                label: t("launchpad.editor"),
+                badge: dirty ? t("common.modified") : undefined,
                 children: (
                   <SourceEditor
                     selectedFile={selectedFile}
@@ -305,7 +305,7 @@ function NewProjectForm({
       <form onSubmit={handleSubmit} className="grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-ink/55">
-            {t("Folder-backed project scaffold")}
+            {t("launchpad.scaffold")}
           </p>
           <button
             type="submit"
@@ -317,49 +317,49 @@ function NewProjectForm({
             ) : (
               <PlusCircle aria-hidden size={16} />
             )}
-            {t("Create project")}
+            {t("launchpad.create")}
           </button>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
           <LaunchpadTextInput
-            label={t("Project path")}
-            ariaLabel="New project path"
+            label={t("launchpad.projectLabel")}
+            ariaLabel={t("launchpad.aria.newProjectPath")}
             value={createProjectPath}
             onChange={setCreateProjectPath}
             className="lg:col-span-2"
           />
           <label className="grid gap-1">
             <span className="text-xs font-semibold uppercase text-ink/55">
-              {t("Template")}
+              {t("launchpad.template")}
             </span>
             <select
-              aria-label={t("Template")}
+              aria-label={t("launchpad.aria.template")}
               value={createTemplate}
               onChange={(event) =>
                 setCreateTemplate(event.target.value as ProjectTemplateId)
               }
               className="h-10 min-w-0 rounded-md border border-canvas-200/70 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
             >
-              <option value="historical_crisis">{t("Custom Story Project")}</option>
+              <option value="historical_crisis">{t("launchpad.customStoryProject")}</option>
             </select>
           </label>
           <LaunchpadTextInput
-            label={t("Visual style")}
-            ariaLabel="Visual style"
+            label={t("launchpad.visualStyle")}
+            ariaLabel={t("launchpad.aria.visualStyle")}
             value={createVisualStyle}
             onChange={setCreateVisualStyle}
           />
           <LaunchpadTextareaInput
-            label={t("Concept")}
-            ariaLabel="Concept"
+            label={t("launchpad.concept")}
+            ariaLabel={t("launchpad.aria.concept")}
             value={createConcept}
             onChange={setCreateConcept}
             className="lg:col-span-2"
           />
           <LaunchpadTextareaInput
-            label={t("Initial scene")}
-            ariaLabel="Initial scene request"
+            label={t("launchpad.initialScene")}
+            ariaLabel={t("launchpad.aria.initialSceneRequest")}
             value={createInitialSceneRequest}
             onChange={setCreateInitialSceneRequest}
             className="lg:col-span-2"
@@ -368,12 +368,12 @@ function NewProjectForm({
 
         <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-ink/70">
           <LaunchpadCheckbox
-            label={t("Voice enabled")}
+            label={t("launchpad.voiceEnabled")}
             checked={createVoiceEnabled}
             onChange={setCreateVoiceEnabled}
           />
           <LaunchpadCheckbox
-            label={t("Overwrite existing path")}
+            label={t("launchpad.overwrite")}
             checked={createForce}
             onChange={setCreateForce}
           />
@@ -389,13 +389,13 @@ function NewProjectForm({
       {/* Creation Report */}
       <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-4 shadow-studio-panel">
         <h4 className="text-xs font-semibold uppercase tracking-tightish text-ink/55">
-          {t("Creation Report")}
+          {t("launchpad.creationReport")}
         </h4>
         {createReport ? (
           <div className="mt-3 grid gap-3 text-sm">
             <div className="rounded-md border border-health-500/25 bg-health-500/10 px-3 py-2">
               <p className="text-xs font-medium uppercase text-health-500">
-                {t("Project")}
+                {t("launchpad.projectLabel")}
               </p>
               <p className="mt-1 truncate font-semibold text-ink">
                 {createReport.project.game.title}
@@ -405,13 +405,13 @@ function NewProjectForm({
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <MetricBox label={t("Files")} value={createReport.files_created.length} />
-              <MetricBox label={t("Template")} value={createReport.template} />
+              <MetricBox label={t("launchpad.files")} value={createReport.files_created.length} />
+              <MetricBox label={t("launchpad.template")} value={createReport.template} />
             </div>
           </div>
         ) : (
           <p className="mt-3 text-sm text-ink/55">
-            {t("No project created in this session.")}
+            {t("launchpad.noProjectCreated")}
           </p>
         )}
       </section>
@@ -438,9 +438,9 @@ function SourceFileList({
     <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-lg font-semibold tracking-display">{t("Source Artifacts")}</h3>
+          <h3 className="font-display text-lg font-semibold tracking-display">{t("launchpad.sourceArtifacts")}</h3>
           <p className="mt-1 text-sm text-ink/55">
-            {sourceFiles.length} {t("files")}
+            {t("common.files", { count: sourceFiles.length })}
           </p>
         </div>
         <TerminalSquare aria-hidden className="text-signal" size={22} />
@@ -468,7 +468,7 @@ function SourceFileList({
                   : "bg-ink/5 text-ink/55",
               ].join(" ")}
             >
-              {file.editable ? t("editable") : file.kind}
+              {file.editable ? t("common.editable") : file.kind}
             </span>
           </button>
         ))}
@@ -487,45 +487,60 @@ interface BoundaryCheckItem {
   ok: boolean;
 }
 
+type StudioTranslate = (key: string, params?: Record<string, string | number>) => string;
+
 function buildBoundaryChecks(
   checkReport: ProjectCheckReport | null,
   loadedPath: string,
+  t: StudioTranslate,
 ): BoundaryCheckItem[] {
   if (!checkReport) {
     return [
-      { label: "Generated contracts", value: "plotforge.d.ts", ok: true },
-      { label: "Rust core boundary", value: "UI adapter only", ok: true },
-      { label: "Tauri bridge", value: "commands wired", ok: true },
+      {
+        label: t("launchpad.check.generatedContracts"),
+        value: t("launchpad.check.generatedContractsValue"),
+        ok: true,
+      },
+      {
+        label: t("launchpad.check.rustCoreBoundary"),
+        value: t("launchpad.check.rustCoreBoundaryValue"),
+        ok: true,
+      },
+      {
+        label: t("launchpad.check.tauriBridge"),
+        value: t("launchpad.check.tauriBridgeValue"),
+        ok: true,
+      },
     ];
   }
   return [
     {
-      label: "Project",
+      label: t("launchpad.check.project"),
       value: checkReport.title,
       ok: Boolean(checkReport.title),
     },
     {
-      label: "Entry scene",
+      label: t("launchpad.check.entryScene"),
       value: checkReport.entry_scene,
       ok: Boolean(checkReport.entry_scene),
     },
     {
-      label: "Scenes",
+      label: t("launchpad.check.scenes"),
       value: String(checkReport.scene_count),
       ok: checkReport.scene_count > 0,
     },
     {
-      label: "Rules",
+      label: t("launchpad.check.rules"),
       value: String(checkReport.rule_count),
       ok: checkReport.rule_count >= 0,
     },
     {
-      label: "Characters",
+      label: t("launchpad.check.characters"),
       value: String(checkReport.character_count),
       ok: checkReport.character_count >= 0,
     },
     {
-      label: "Project path",
+      label: t("launchpad.check.projectPath"),
       value: loadedPath,
       ok: Boolean(loadedPath),
     },
@@ -540,11 +555,11 @@ function BoundaryChecks({
   loadedPath: string;
 }) {
   const { t } = useStudioI18n();
-  const checks = buildBoundaryChecks(checkReport, loadedPath);
+  const checks = buildBoundaryChecks(checkReport, loadedPath, t);
 
   return (
     <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
-      <h3 className="font-display text-lg font-semibold tracking-display">{t("Boundary Checks")}</h3>
+      <h3 className="font-display text-lg font-semibold tracking-display">{t("launchpad.boundaryChecks")}</h3>
       <div className="mt-4 grid gap-3">
         {checks.map((check) => (
           <div key={check.label} className="flex items-start gap-3">
@@ -612,7 +627,7 @@ function SourceEditor({
           ) : (
             <Save aria-hidden size={16} />
           )}
-          {t("Save")}
+          {t("common.save")}
         </button>
       </div>
 
@@ -624,7 +639,7 @@ function SourceEditor({
 
       <div className="mt-4">
         <textarea
-          aria-label="Source editor"
+          aria-label={t("launchpad.aria.sourceEditor")}
           value={editorContent}
           readOnly={!selectedFile.editable}
           onChange={(event) => setEditorContent(event.target.value)}
@@ -633,8 +648,8 @@ function SourceEditor({
         />
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-ink/55">
           <span>{selectedFile.kind}</span>
-          <span>{selectedFile.editable ? t("editable") : t("read only")}</span>
-          {dirty ? <span className="text-plum">{t("modified")}</span> : null}
+          <span>{selectedFile.editable ? t("common.editable") : t("common.readOnly")}</span>
+          {dirty ? <span className="text-plum">{t("common.modified")}</span> : null}
         </div>
       </div>
     </div>

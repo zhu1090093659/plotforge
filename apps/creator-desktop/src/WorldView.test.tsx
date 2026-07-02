@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorldView, type WorldViewProps } from "./WorldView";
 import type { WorldEditDocument } from "../../../contracts/plotforge";
+import { StudioI18nProvider } from "./i18n";
 
 afterEach(() => {
   cleanup();
@@ -27,9 +28,13 @@ function defaultProps(overrides: Partial<WorldViewProps> = {}): WorldViewProps {
   };
 }
 
+function renderView(ui: React.ReactElement) {
+  return render(ui, { wrapper: StudioI18nProvider });
+}
+
 describe("WorldView", () => {
   it("renders world bible, canon, and forbidden facts fields", () => {
-    render(<WorldView {...defaultProps()} />);
+    renderView(<WorldView {...defaultProps()} />);
 
     expect(screen.getByLabelText("World bible markdown")).toBeTruthy();
     expect(screen.getByLabelText("Canon markdown")).toBeTruthy();
@@ -42,13 +47,13 @@ describe("WorldView", () => {
   });
 
   it("shows forbidden facts count in subtitle", () => {
-    render(<WorldView {...defaultProps()} />);
+    renderView(<WorldView {...defaultProps()} />);
     expect(screen.getByText("2 forbidden facts")).toBeTruthy();
   });
 
   it("calls onSave when Save World Bible is clicked", () => {
     const onSave = vi.fn();
-    render(<WorldView {...defaultProps({ onSave })} />);
+    renderView(<WorldView {...defaultProps({ onSave })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save World Bible" }));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -56,7 +61,7 @@ describe("WorldView", () => {
 
   it("calls onUpdateWorldDocument when world bible text changes", () => {
     const onUpdateWorldDocument = vi.fn();
-    render(<WorldView {...defaultProps({ onUpdateWorldDocument })} />);
+    renderView(<WorldView {...defaultProps({ onUpdateWorldDocument })} />);
 
     fireEvent.change(screen.getByLabelText("World bible markdown"), {
       target: { value: "# World\n\nNew content.\n" },
@@ -68,7 +73,7 @@ describe("WorldView", () => {
 
   it("calls onUpdateWorldDocument when forbidden facts change", () => {
     const onUpdateWorldDocument = vi.fn();
-    render(<WorldView {...defaultProps({ onUpdateWorldDocument })} />);
+    renderView(<WorldView {...defaultProps({ onUpdateWorldDocument })} />);
 
     fireEvent.change(screen.getByLabelText("Forbidden facts"), {
       target: { value: "No secret heir\nNo resurrection" },
@@ -79,7 +84,7 @@ describe("WorldView", () => {
   });
 
   it("collapses AI expansion goal into Advanced section by default", () => {
-    render(<WorldView {...defaultProps()} />);
+    renderView(<WorldView {...defaultProps()} />);
 
     // The Advanced collapsible button should be visible
     expect(
@@ -90,7 +95,7 @@ describe("WorldView", () => {
   });
 
   it("reveals AI expansion goal after expanding Advanced section", () => {
-    render(<WorldView {...defaultProps()} />);
+    renderView(<WorldView {...defaultProps()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced/ }));
     expect(screen.getByLabelText("World generation goal")).toBeTruthy();
@@ -98,7 +103,7 @@ describe("WorldView", () => {
 
   it("calls onGenerateWorldExpansion when Generate World Expansion is clicked after expanding", () => {
     const onGenerateWorldExpansion = vi.fn();
-    render(<WorldView {...defaultProps({ onGenerateWorldExpansion })} />);
+    renderView(<WorldView {...defaultProps({ onGenerateWorldExpansion })} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced/ }));
     fireEvent.click(
@@ -109,7 +114,7 @@ describe("WorldView", () => {
 
   it("calls onWorldExpansionGoalChange when expansion goal input changes", () => {
     const onWorldExpansionGoalChange = vi.fn();
-    render(
+    renderView(
       <WorldView {...defaultProps({ onWorldExpansionGoalChange })} />,
     );
 
@@ -123,7 +128,7 @@ describe("WorldView", () => {
   });
 
   it("shows empty state when worldEditDocument is null", () => {
-    render(
+    renderView(
       <WorldView {...defaultProps({ worldEditDocument: null })} />,
     );
     expect(screen.getByText("World edit document not loaded.")).toBeTruthy();
@@ -131,7 +136,7 @@ describe("WorldView", () => {
   });
 
   it("shows success form status message for world section", () => {
-    render(
+    renderView(
       <WorldView
         {...defaultProps({
           formStatus: {
@@ -146,7 +151,7 @@ describe("WorldView", () => {
   });
 
   it("does not show form status for a different section", () => {
-    render(
+    renderView(
       <WorldView
         {...defaultProps({
           formStatus: {
@@ -161,7 +166,7 @@ describe("WorldView", () => {
   });
 
   it("disables Save World Bible button while saving", () => {
-    render(<WorldView {...defaultProps({ saving: true })} />);
+    renderView(<WorldView {...defaultProps({ saving: true })} />);
     expect(
       screen.getByRole("button", { name: "Save World Bible" }).hasAttribute("disabled"),
     ).toBe(true);

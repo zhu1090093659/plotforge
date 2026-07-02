@@ -70,42 +70,53 @@ export function DirectorModeView({
     loadedPath,
   });
   const trace = report?.trace ?? null;
-  const queueItems = directionQueue(report);
+  const queueItems = directionQueue(report, t);
   const activityItems = [
     {
       id: "project-source",
-      label: "Project source",
-      title: projectData ? "Folder project loaded" : "No project loaded",
+      label: t("director.projectSource"),
+      title: projectData
+        ? t("director.folderProjectLoaded")
+        : t("director.noProjectLoaded"),
       body: projectData
-        ? `${projectData.scenes.length} scenes, ${projectData.rules.length} rules, ${projectData.characters.length} characters`
-        : "Open a project before running a playable turn.",
+        ? t("common.scenesRulesCharacters", {
+            count: projectData.scenes.length,
+            rules: projectData.rules.length,
+            characters: projectData.characters.length,
+          })
+        : t("director.openProjectToRun"),
       detail: loadedPath,
     },
     {
       id: "runtime-proof",
-      label: "Runtime proof",
-      title: report ? "Latest playtest committed" : "No playtest run yet",
+      label: t("director.runtimeProof"),
+      title: report
+        ? t("director.latestPlaytestCommitted")
+        : t("director.noPlaytestRun"),
       body: report
-        ? `${report.delta_summary.length} visible state deltas from ${report.scene.title}`
-        : "Run turn calls the Studio runtime command and writes a trace.",
-      detail: report?.trace.id ?? "not captured",
+        ? t("common.visibleStateDeltasFromScene", {
+            count: report.delta_summary.length,
+            scene: report.scene.title,
+          })
+        : t("director.runTurnWritesTrace"),
+      detail: report?.trace.id ?? t("common.notCaptured"),
     },
   ];
 
   return (
-    <section aria-label="Director Mode Workspace" className="grid gap-5">
+    <section aria-label={t("director.aria.workspace")} className="grid gap-5">
       <div
         data-testid="director-mode-layout"
         className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]"
       >
         <div className="grid content-start gap-4">
           <aside
-            aria-label="Activity Stream"
+            aria-label={t("director.aria.activityStream")}
             className="rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel"
           >
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">Activity Stream</h3>
-              <StudioStatusChip tone="health">Live</StudioStatusChip>
+              <h3 className="text-sm font-semibold">{t("director.activityStream")}</h3>
+              <StudioStatusChip tone="health">{t("director.live")}</StudioStatusChip>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {activityItems.map((item) => (
@@ -118,7 +129,7 @@ export function DirectorModeView({
                       <p className="truncate text-sm font-semibold text-ink">
                         {item.label}
                       </p>
-                      <p className="mt-1 text-xs text-graphite-700/55">real data</p>
+                      <p className="mt-1 text-xs text-graphite-700/55">{t("director.realData")}</p>
                     </div>
                     <CheckCircle2
                       aria-hidden
@@ -141,13 +152,13 @@ export function DirectorModeView({
           </aside>
 
           <div
-            aria-label="Playable Scene Preview"
+            aria-label={t("director.aria.playableScenePreview")}
             className="overflow-hidden rounded-lg border border-canvas-200 bg-graphite-950 text-ink shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200 px-4 py-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-health-400" />
-                <p className="truncate text-sm font-semibold">Playable Scene</p>
+                <p className="truncate text-sm font-semibold">{t("director.playableScene")}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <StudioButton onClick={onRun} disabled={running}>
@@ -156,7 +167,7 @@ export function DirectorModeView({
                   ) : (
                     <Play aria-hidden size={16} />
                   )}
-                  Play
+                  {t("director.play")}
                 </StudioButton>
               </div>
             </div>
@@ -178,8 +189,7 @@ export function DirectorModeView({
                     {scene ? `${scene.title} / ${scene.location}` : loadedPath}
                   </p>
                   <p className="mt-2 text-base leading-7 text-ink">
-                    {beat?.text ??
-                      "Open a project to preview the player-facing scene."}
+                    {beat?.text ?? t("director.openProjectToPreview")}
                   </p>
                   <div className="mt-4 grid gap-2">
                     {(beat?.choices ?? []).slice(0, 4).map((choice, index) => (
@@ -201,14 +211,20 @@ export function DirectorModeView({
             </div>
 
             <div className="grid gap-3 border-t border-canvas-200 px-4 py-3 text-sm sm:grid-cols-3">
-              <CanvasFact label="Scene" value={scene?.key ?? "none"} />
+              <CanvasFact label={t("director.scene")} value={scene?.key ?? t("common.none")} />
               <CanvasFact
-                label="Tension"
-                value={trace?.narrative_review ? `${trace.narrative_review.score}/100` : "ready"}
+                label={t("director.tension")}
+                value={
+                  trace?.narrative_review
+                    ? t("common.scores", {
+                        score: trace.narrative_review.score,
+                      })
+                    : t("common.ready")
+                }
               />
               <CanvasFact
-                label="Branching"
-                value={`${beat?.choices.length ?? 0} choices`}
+                label={t("director.branching")}
+                value={t("common.choices", { count: beat?.choices.length ?? 0 })}
               />
             </div>
           </div>
@@ -223,48 +239,48 @@ export function DirectorModeView({
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase text-violet-600">
-                    Creative Goal
+                    {t("director.creativeGoal")}
                   </p>
                   <h3 className="mt-1 text-xl font-semibold text-ink">
-                    {input.trim() || "Frame the next playable change."}
+                    {input.trim() || t("director.frameNextChange")}
                   </h3>
                 </div>
               </div>
               <StudioButton onClick={onOpenStory}>
                 <FileText aria-hidden size={16} />
-                Refine goal
+                {t("director.refineGoal")}
               </StudioButton>
             </div>
           </div>
 
           <div
-            aria-label="Direction Bar"
+            aria-label={t("director.aria.directionBar")}
             className="rounded-lg border border-violet-500/30 bg-canvas-50 p-3 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase text-violet-600">
-                  Direction Bar
+                  {t("director.directionBar")}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-ink">
-                  Run a runtime turn
+                  {t("director.runRuntimeTurn")}
                 </h3>
               </div>
               <StudioButton onClick={onOpenTrace}>
                 <ShieldCheck aria-hidden size={16} />
-                Trace evidence
+                {t("director.traceEvidence")}
               </StudioButton>
             </div>
 
             <textarea
-              aria-label="Playtest input"
+              aria-label={t("director.aria.playtestInput")}
               value={input}
               onChange={(event) => onInputChange(event.target.value)}
               className={`${studioUiClassNames.textarea} mt-3 min-h-20 border-violet-500/45 bg-canvas-100 text-sm leading-6`}
             />
 
             <Collapsible
-              label={t("Advanced snapshot controls")}
+              label={t("director.advancedSnapshotControls")}
               defaultOpen={false}
               id="director-snapshot-controls"
               className="mt-3"
@@ -272,10 +288,10 @@ export function DirectorModeView({
               <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
                 <label className="grid min-w-0 gap-1">
                   <span className="text-xs font-medium uppercase text-ink/45">
-                    {t("Save ID")}
+                    {t("director.saveId")}
                   </span>
                   <input
-                    aria-label="Playtest save id"
+                    aria-label={t("director.aria.playtestSaveId")}
                     value={saveId}
                     onChange={(event) => onSaveIdChange(event.target.value)}
                     className={studioUiClassNames.input}
@@ -283,10 +299,10 @@ export function DirectorModeView({
                 </label>
                 <label className="grid min-w-0 gap-1">
                   <span className="text-xs font-medium uppercase text-ink/45">
-                    {t("Restore ID")}
+                    {t("director.restoreId")}
                   </span>
                   <input
-                    aria-label="Playtest restore id"
+                    aria-label={t("director.aria.playtestRestoreId")}
                     value={restoreId}
                     disabled={restoreLatest}
                     onChange={(event) => onRestoreIdChange(event.target.value)}
@@ -296,14 +312,14 @@ export function DirectorModeView({
                 <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-ink/10 px-3 text-sm font-medium text-ink/70">
                   <input
                     type="checkbox"
-                    aria-label="Restore latest save"
+                    aria-label={t("director.aria.restoreLatestSave")}
                     checked={restoreLatest}
                     onChange={(event) =>
                       onRestoreLatestChange(event.target.checked)
                     }
                     className="h-4 w-4 accent-ink"
                   />
-                  {t("Restore latest")}
+                  {t("director.restoreLatest")}
                 </label>
               </div>
             </Collapsible>
@@ -325,7 +341,7 @@ export function DirectorModeView({
               </div>
               <StudioButton
                 variant="primary"
-                aria-label="Run turn"
+                aria-label={t("director.aria.runTurn")}
                 onClick={onRun}
                 disabled={running}
                 className="w-full justify-center"
@@ -335,7 +351,7 @@ export function DirectorModeView({
                 ) : (
                   <Sparkles aria-hidden size={16} />
                 )}
-                Run turn
+                {t("director.runTurn")}
               </StudioButton>
             </div>
 
@@ -346,15 +362,15 @@ export function DirectorModeView({
             ) : null}
           </div>
           <div
-            aria-label="Decision Queue"
+            aria-label={t("director.aria.decisionQueue")}
             className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-canvas-50 p-3 shadow-studio-panel"
           >
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase text-violet-600">
-                Runtime
+                {t("director.runtime")}
               </p>
-              <h3 className="text-base font-semibold text-ink">Decision Queue</h3>
+              <h3 className="mt-1 text-base font-semibold text-ink">{t("director.decisionQueue")}</h3>
             </div>
             <StudioStatusChip tone="agent">{queueItems.length}</StudioStatusChip>
           </div>
@@ -379,25 +395,24 @@ export function DirectorModeView({
                   </StudioStatusChip>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs">
-                  <QueueFact label="Trace path" value={item.filesChanged} />
-                  <QueueFact label="Evidence" value={item.evidence} />
+                  <QueueFact label={t("director.tracePath")} value={item.filesChanged} />
+                  <QueueFact label={t("director.evidence")} value={item.evidence} />
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <StudioButton onClick={onOpenTrace}>
                     <FlaskConical aria-hidden size={16} />
-                    Open trace
+                    {t("director.openTrace")}
                   </StudioButton>
                   <StudioButton onClick={onOpenTrace}>
                     <CheckCircle2 aria-hidden size={16} />
-                    Review evidence
+                    {t("director.reviewEvidence")}
                   </StudioButton>
                 </div>
               </article>
             ))
           ) : (
             <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3 text-sm leading-6 text-ink/55">
-              No decision queue is available. Run a turn to create runtime
-              evidence; agent approval queues are not implemented.
+              {t("director.noQueue")}
             </div>
           )}
           </div>
@@ -430,7 +445,10 @@ function resolveEntryScene(projectData: ProjectData | null) {
   );
 }
 
-function directionQueue(report: PlayOnceReport | null): Array<{
+function directionQueue(
+  report: PlayOnceReport | null,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): Array<{
   id: string;
   title: string;
   body: string;
@@ -446,9 +464,14 @@ function directionQueue(report: PlayOnceReport | null): Array<{
   return [
     {
       id: "playtest-result",
-      title: "Playtest result",
-      body: `${report.scene.title} produced ${report.delta_summary.length} visible state deltas.`,
-      impact: report.trace.errors.length ? "Needs review" : "Informational",
+      title: t("director.playtestResult"),
+      body: t("common.visibleStateDeltasFrom", {
+        scene: report.scene.title,
+        count: report.delta_summary.length,
+      }),
+      impact: report.trace.errors.length
+        ? t("common.needsReview")
+        : t("common.informational"),
       filesChanged: report.trace_path,
       evidence: report.trace.id,
       tone: report.trace.errors.length ? "action" : "health",

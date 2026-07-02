@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArtifactReviewView } from "./ArtifactReviewView";
+import { StudioI18nProvider } from "./i18n";
 import { demoPlayOnceReport, demoProjectData } from "./demoStudioData";
 import { summarizeProject } from "./projectSummary";
 import { projectAssetCatalog } from "./assetCatalog";
@@ -13,28 +14,30 @@ describe("ArtifactReviewView", () => {
     const runProof = vi.fn();
 
     render(
-      <ArtifactReviewView
-        projectSummary={summarizeProject(demoProjectData)}
-        loadedPath="/tmp/starter-project"
-        sourceFiles={[
-          { path: "game.toml", kind: "toml", bytes: 120, editable: false },
-          { path: "world/world.md", kind: "markdown", bytes: 80, editable: true },
-        ]}
-        assetCatalog={projectAssetCatalog(demoProjectData, demoProjectData.asset_records)}
-        playtestReport={demoPlayOnceReport("raise emergency taxes")}
-        playtesting={false}
-        playtestError={null}
-        exportReport={{
-          output_dir: "/tmp/export",
-          archive_path: "/tmp/export.zip",
-          files_written: ["/tmp/export/index.html", "/tmp/export/game.json"],
-          archived_files: ["index.html", "game.json"],
-          allowed_files: ["index.html", "game.json"],
-          files_found: ["index.html", "game.json"],
-        }}
-        onOpenTrace={openTrace}
-        onRunPlayableProof={runProof}
-      />,
+      <StudioI18nProvider>
+        <ArtifactReviewView
+          projectSummary={summarizeProject(demoProjectData)}
+          loadedPath="/tmp/starter-project"
+          sourceFiles={[
+            { path: "game.toml", kind: "toml", bytes: 120, editable: false },
+            { path: "world/world.md", kind: "markdown", bytes: 80, editable: true },
+          ]}
+          assetCatalog={projectAssetCatalog(demoProjectData, demoProjectData.asset_records)}
+          playtestReport={demoPlayOnceReport("raise emergency taxes")}
+          playtesting={false}
+          playtestError={null}
+          exportReport={{
+            output_dir: "/tmp/export",
+            archive_path: "/tmp/export.zip",
+            files_written: ["/tmp/export/index.html", "/tmp/export/game.json"],
+            archived_files: ["index.html", "game.json"],
+            allowed_files: ["index.html", "game.json"],
+            files_found: ["index.html", "game.json"],
+          }}
+          onOpenTrace={openTrace}
+          onRunPlayableProof={runProof}
+        />
+      </StudioI18nProvider>,
     );
 
     expect(screen.getByRole("region", { name: "Artifact Review Workspace" }))

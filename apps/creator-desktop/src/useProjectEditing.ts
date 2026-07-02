@@ -18,6 +18,7 @@ import type {
 } from "../../../contracts/plotforge";
 import type { StudioDataSource } from "./studioDataSource";
 import { errorMessage } from "./errorMessage";
+import { useStudioI18n } from "./i18n";
 import type { StudioSectionId } from "./studioModel";
 import type { ResourceDraft } from "./StateView";
 
@@ -152,6 +153,7 @@ export function useProjectEditing({
   onRefreshProjectOverview,
   onSetProjectData,
 }: UseProjectEditingOptions): EditingWorkspace {
+  const { t } = useStudioI18n();
   // Edit documents
   const [worldEditDocument, setWorldEditDocument] =
     useState<WorldEditDocument | null>(null);
@@ -195,7 +197,7 @@ export function useProjectEditing({
   // Generic form-action wrapper
   async function runFormAction(
     section: StudioSectionId,
-    successMessage: string,
+    successKey: string,
     action: () => Promise<FormStatus | void>,
   ) {
     setFormSaving(section);
@@ -206,7 +208,7 @@ export function useProjectEditing({
         status ?? {
           section,
           tone: "success",
-          message: successMessage,
+          message: t(successKey),
         },
       );
     } catch (source) {
@@ -224,7 +226,7 @@ export function useProjectEditing({
 
   async function saveWorldEditDocument(loadedPath: string) {
     if (!worldEditDocument) return;
-    await runFormAction("world", "World Bible saved.", async () => {
+    await runFormAction("world", "form.worldSaved", async () => {
       const updated = await dataSource.updateWorldEditDocument(
         loadedPath,
         worldEditDocument,
@@ -239,12 +241,12 @@ export function useProjectEditing({
       setFormStatus({
         section: "world",
         tone: "error",
-        message: "World expansion goal is required.",
+        message: t("form.worldGoalRequired"),
       });
       return;
     }
 
-    await runFormAction("world", "World generation applied.", async () => {
+    await runFormAction("world", "form.worldGenerationApplied", async () => {
       const report = await dataSource.generateWorldExpansion(
         loadedPath,
         goal,
@@ -254,14 +256,17 @@ export function useProjectEditing({
       return {
         section: "world",
         tone: report.evidence.fallback_used ? "error" : "success",
-        message: `World generation ${report.evidence.status}${report.evidence.fallback_used ? " with visible fallback" : ""}.`,
+        message: t("form.worldGenerationStatus", {
+          status: report.evidence.status,
+          fallback: report.evidence.fallback_used ? t("form.withVisibleFallback") : "",
+        }),
       };
     });
   }
 
   async function saveStoryCraftEditDocument(loadedPath: string) {
     if (!storyCraftEditDocument) return;
-    await runFormAction("story", "Story Craft saved.", async () => {
+    await runFormAction("story", "form.storySaved", async () => {
       const updated = await dataSource.updateStoryCraftEditDocument(
         loadedPath,
         storyCraftEditDocument,
@@ -277,12 +282,12 @@ export function useProjectEditing({
       setFormStatus({
         section: "story",
         tone: "error",
-        message: "Story generation concept is required.",
+        message: t("form.storyConceptRequired"),
       });
       return;
     }
 
-    await runFormAction("story", "Story Craft generation applied.", async () => {
+    await runFormAction("story", "form.storyGenerationApplied", async () => {
       const report = await dataSource.generateStoryCraft(
         loadedPath,
         concept,
@@ -292,14 +297,17 @@ export function useProjectEditing({
       return {
         section: "story",
         tone: report.evidence.fallback_used ? "error" : "success",
-        message: `Story Craft generation ${report.evidence.status}${report.evidence.fallback_used ? " with visible fallback" : ""}.`,
+        message: t("form.storyGenerationStatus", {
+          status: report.evidence.status,
+          fallback: report.evidence.fallback_used ? t("form.withVisibleFallback") : "",
+        }),
       };
     });
   }
 
   async function saveCharacterEditDocument(loadedPath: string) {
     if (!characterEditDocument) return;
-    await runFormAction("characters", "Characters saved.", async () => {
+    await runFormAction("characters", "form.charactersSaved", async () => {
       const updated = await dataSource.updateCharacterEditDocument(
         loadedPath,
         characterEditDocument,
@@ -310,7 +318,7 @@ export function useProjectEditing({
   }
 
   async function createCharacterFromDraft(loadedPath: string) {
-    await runFormAction("characters", "Character created.", async () => {
+    await runFormAction("characters", "form.characterCreated", async () => {
       const updated = await dataSource.createCharacterFromDraft(
         loadedPath,
         newCharacter,
@@ -328,15 +336,14 @@ export function useProjectEditing({
       setFormStatus({
         section: "characters",
         tone: "error",
-        message:
-          "Character generation concept and role hint are required.",
+        message: t("form.characterConceptRequired"),
       });
       return;
     }
 
     await runFormAction(
       "characters",
-      "Character generation applied.",
+      "form.characterGenerationApplied",
       async () => {
         const report = await dataSource.generateCharacter(
           loadedPath,
@@ -355,7 +362,10 @@ export function useProjectEditing({
         return {
           section: "characters",
           tone: report.evidence.fallback_used ? "error" : "success",
-          message: `Character generation ${report.evidence.status}${report.evidence.fallback_used ? " with visible fallback" : ""}.`,
+          message: t("form.characterGenerationStatus", {
+            status: report.evidence.status,
+            fallback: report.evidence.fallback_used ? t("form.withVisibleFallback") : "",
+          }),
         };
       },
     );
@@ -363,7 +373,7 @@ export function useProjectEditing({
 
   async function saveStateVariablesEditDocument(loadedPath: string) {
     if (!stateVariablesEditDocument) return;
-    await runFormAction("state", "State variables saved.", async () => {
+    await runFormAction("state", "form.stateSaved", async () => {
       const updated = await dataSource.updateStateVariablesEditDocument(
         loadedPath,
         stateVariablesEditDocument,
@@ -382,7 +392,7 @@ export function useProjectEditing({
       max: newResource.max,
     };
 
-    await runFormAction("state", "Resource created.", async () => {
+    await runFormAction("state", "form.resourceCreated", async () => {
       const updated = await dataSource.createResource(
         loadedPath,
         resource,
@@ -395,7 +405,7 @@ export function useProjectEditing({
 
   async function saveRulesEditDocument(loadedPath: string) {
     if (!rulesEditDocument) return;
-    await runFormAction("rules", "Rules saved.", async () => {
+    await runFormAction("rules", "form.rulesSaved", async () => {
       const updated = await dataSource.updateRulesEditDocument(
         loadedPath,
         rulesEditDocument,
@@ -406,7 +416,7 @@ export function useProjectEditing({
   }
 
   async function createRuleFromDraft(loadedPath: string) {
-    await runFormAction("rules", "Rule created.", async () => {
+    await runFormAction("rules", "form.ruleCreated", async () => {
       const updated = await dataSource.createRuleFromDraft(
         loadedPath,
         newRule,
@@ -421,7 +431,7 @@ export function useProjectEditing({
     if (!aiSafetyPolicy) return;
     await runFormAction(
       "export-kit",
-      "AI safety policy saved.",
+      "form.aiSafetyPolicySaved",
       async () => {
         const updated = await dataSource.updateAiSafetyPolicy(
           loadedPath,
@@ -437,7 +447,7 @@ export function useProjectEditing({
 
   async function saveVisualBible(loadedPath: string) {
     if (!visualBible) return;
-    await runFormAction("assets", "Visual Bible saved.", async () => {
+    await runFormAction("assets", "form.visualBibleSaved", async () => {
       const updated = await dataSource.updateVisualBible(
         loadedPath,
         visualBible,
@@ -451,7 +461,7 @@ export function useProjectEditing({
 
   async function saveAudioBible(loadedPath: string) {
     if (!audioBible) return;
-    await runFormAction("assets", "Audio Bible saved.", async () => {
+    await runFormAction("assets", "form.audioBibleSaved", async () => {
       const updated = await dataSource.updateAudioBible(
         loadedPath,
         audioBible,

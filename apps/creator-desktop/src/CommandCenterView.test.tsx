@@ -110,4 +110,41 @@ describe("CommandCenterView", () => {
       ),
     ).toBeTruthy();
   });
+
+  it("renders metric detail text for open-threads and review-notes branches", () => {
+    const summary = summarizeProject(demoProjectData);
+    renderView({
+      projectSummary: summary,
+      metrics: [
+        {
+          labelKey: "metrics.openThreads",
+          value: String(summary.openThreadCount),
+          tone: "border-ink/30 text-ink",
+        },
+        {
+          labelKey: "metrics.scenes",
+          value: String(summary.sceneCount),
+          tone: "border-sage/50 text-sage",
+        },
+      ],
+    });
+    // openThreads branch → "{count} promises" with activePromiseCount.
+    expect(screen.getByText("1 promises")).toBeTruthy();
+    // other-metric branch → "{count} review notes" with unresolvedReviewCount.
+    expect(screen.getByText("1 review notes")).toBeTruthy();
+  });
+
+  it("renders not-loaded detail when project summary is null", () => {
+    renderView({
+      projectSummary: null,
+      metrics: [
+        {
+          labelKey: "metrics.scenes",
+          value: "0",
+          tone: "border-sage/50 text-sage",
+        },
+      ],
+    });
+    expect(screen.getAllByText("not loaded").length).toBeGreaterThan(0);
+  });
 });

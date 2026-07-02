@@ -9,6 +9,7 @@ import {
   Collapsible,
   studioUiClassNames,
 } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,13 +71,16 @@ export function StateView({
   onUpdateInitialTurn,
   onCreateResourceFromDraft,
 }: StateViewProps) {
+  const { t } = useStudioI18n();
   return (
     <section className={studioUiClassNames.panel}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">State</h3>
+          <h3 className="text-lg font-semibold">{t("state.title")}</h3>
           <p className="mt-1 truncate text-sm text-ink/55">
-            {stateVariablesEditDocument?.resources.length ?? 0} resources
+            {t("common.resources", {
+              count: stateVariablesEditDocument?.resources.length ?? 0,
+            })}
           </p>
         </div>
         <button
@@ -90,16 +94,14 @@ export function StateView({
           ) : (
             <Save aria-hidden size={16} />
           )}
-          Save State
+          {t("state.save")}
         </button>
       </div>
 
-      {/* Section status message */}
       <SectionStatusMessage section="state" formStatus={formStatus} />
 
       {stateVariablesEditDocument ? (
         <div className="mt-3 grid gap-3">
-          {/* Existing resource cards (collapsible) */}
           <div className="grid gap-3 lg:grid-cols-2">
             {stateVariablesEditDocument.resources.map((resource, index) => (
               <ResourceCard
@@ -119,20 +121,19 @@ export function StateView({
             ))}
           </div>
 
-          {/* Initial Story State — independent collapsible section */}
           <Collapsible
-            label="Initial Story State"
+            label={t("state.initialStoryState")}
             id="initial-story-state"
             defaultOpen={false}
             className="rounded-md border border-ink/10 bg-canvas-50 p-4"
           >
             <p className="mt-1 text-xs text-ink/55">
-              The starting scene and turn for a new game session.
+              {t("state.initialStoryStateDesc")}
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <TextInput
-                label="Current scene"
-                ariaLabel="Initial current scene"
+                label={t("state.currentScene")}
+                ariaLabel={t("state.aria.initialCurrentScene")}
                 value={
                   stateVariablesEditDocument.initial_story_state
                     .current_scene_key
@@ -140,17 +141,16 @@ export function StateView({
                 onChange={onUpdateInitialSceneKey}
               />
               <NumberInput
-                label="Turn"
-                ariaLabel="Initial turn"
+                label={t("state.turn")}
+                ariaLabel={t("state.aria.initialTurn")}
                 value={stateVariablesEditDocument.initial_story_state.turn}
                 onChange={onUpdateInitialTurn}
               />
             </div>
           </Collapsible>
 
-          {/* Add Resource — collapsed by default */}
           <Collapsible
-            label="Add Resource"
+            label={t("state.addResource")}
             id="add-resource"
             defaultOpen={false}
             className="rounded-md border border-ink/10 bg-canvas-50 p-4"
@@ -188,7 +188,12 @@ function ResourceCard({
   onUpdate(patch: Partial<ResourceDefinition>): void;
   onUpdateInitialWorldValue(value: number): void;
 }) {
-  const summary = `${resource.initial} default · ${resource.min}–${resource.max}`;
+  const { t } = useStudioI18n();
+  const summary = t("state.resourceSummary", {
+    initial: resource.initial,
+    min: resource.min,
+    max: resource.max,
+  });
   return (
     <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
       <Collapsible
@@ -199,38 +204,38 @@ function ResourceCard({
       >
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <TextInput
-            label="Resource key"
-            ariaLabel={`Resource key ${index + 1}`}
+            label={t("state.resourceKey")}
+            ariaLabel={t("state.aria.resourceKeyN", { index: index + 1 })}
             value={resource.key}
             onChange={(value) => onUpdate({ key: value })}
           />
           <TextInput
-            label="Label"
-            ariaLabel={`Resource label ${index + 1}`}
+            label={t("state.resourceLabel")}
+            ariaLabel={t("state.aria.resourceLabelN", { index: index + 1 })}
             value={resource.label}
             onChange={(value) => onUpdate({ label: value })}
           />
           <NumberInput
-            label="Default initial value"
-            ariaLabel={`Resource default initial value ${index + 1}`}
+            label={t("state.defaultInitialValue")}
+            ariaLabel={t("state.aria.resourceDefaultInitialValueN", { index: index + 1 })}
             value={resource.initial}
             onChange={(value) => onUpdate({ initial: value })}
           />
           <NumberInput
-            label="World initial value"
-            ariaLabel={`Resource world initial value ${index + 1}`}
+            label={t("state.worldInitialValue")}
+            ariaLabel={t("state.aria.resourceWorldInitialValueN", { index: index + 1 })}
             value={initialWorldValue}
             onChange={onUpdateInitialWorldValue}
           />
           <NumberInput
-            label="Min"
-            ariaLabel={`Resource min ${index + 1}`}
+            label={t("state.min")}
+            ariaLabel={t("state.aria.resourceMinN", { index: index + 1 })}
             value={resource.min}
             onChange={(value) => onUpdate({ min: value })}
           />
           <NumberInput
-            label="Max"
-            ariaLabel={`Resource max ${index + 1}`}
+            label={t("state.max")}
+            ariaLabel={t("state.aria.resourceMaxN", { index: index + 1 })}
             value={resource.max}
             onChange={(value) => onUpdate({ max: value })}
           />
@@ -255,37 +260,38 @@ function AddResourceForm({
   onDraftChange(draft: ResourceDraft): void;
   onSubmit(): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-3 grid gap-3 sm:grid-cols-2">
       <TextInput
-        label="Resource key"
-        ariaLabel="New resource key"
-        placeholder="e.g. loyalty"
+        label={t("state.resourceKey")}
+        ariaLabel={t("state.aria.newResourceKey")}
+        placeholder={t("state.placeholder.resourceKey")}
         value={draft.key}
         onChange={(value) => onDraftChange({ ...draft, key: value })}
       />
       <TextInput
-        label="Label"
-        ariaLabel="New resource label"
-        placeholder="Display name"
+        label={t("state.resourceLabel")}
+        ariaLabel={t("state.aria.newResourceLabel")}
+        placeholder={t("state.placeholder.resourceLabel")}
         value={draft.label}
         onChange={(value) => onDraftChange({ ...draft, label: value })}
       />
       <NumberInput
-        label="Default initial value"
-        ariaLabel="New resource default initial value"
+        label={t("state.defaultInitialValue")}
+        ariaLabel={t("state.aria.newResourceDefaultInitialValue")}
         value={draft.initial}
         onChange={(value) => onDraftChange({ ...draft, initial: value })}
       />
       <NumberInput
-        label="Min"
-        ariaLabel="New resource min"
+        label={t("state.min")}
+        ariaLabel={t("state.aria.newResourceMin")}
         value={draft.min}
         onChange={(value) => onDraftChange({ ...draft, min: value })}
       />
       <NumberInput
-        label="Max"
-        ariaLabel="New resource max"
+        label={t("state.max")}
+        ariaLabel={t("state.aria.newResourceMax")}
         value={draft.max}
         onChange={(value) => onDraftChange({ ...draft, max: value })}
       />
@@ -296,7 +302,7 @@ function AddResourceForm({
           disabled={saving}
           className={studioUiClassNames.secondaryButton}
         >
-          Create Resource
+          {t("state.create")}
         </button>
       </div>
     </div>
@@ -308,9 +314,10 @@ function AddResourceForm({
 // ---------------------------------------------------------------------------
 
 function EmptyState() {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
-      State edit document not loaded.
+      {t("state.notLoaded")}
     </div>
   );
 }

@@ -227,7 +227,7 @@ describe("App", () => {
     }
 
     fireEvent.click(getWorkflowButton("导演模式"));
-    fireEvent.click(await screen.findByRole("button", { name: "试玩" }));
+    fireEvent.click(getNavSectionButton("试玩"));
     fireEvent.click(screen.getByRole("button", { name: "高级快照控制" }));
     await waitFor(() => {
       expect(screen.getByText("导演指令栏")).toBeTruthy();
@@ -1125,12 +1125,17 @@ describe("App", () => {
 });
 
 function getWorkflowButton(name: string) {
-  // The workflow row is a single button that toggles expand/collapse on click
-  // (for workflows with children) or invokes onSelect (for childless items).
-  // Selecting by role+name inside the nav tree targets the labeled button.
-  return within(
-    screen.getByRole("navigation", { name: "Studio navigation tree" }),
-  ).getByRole("button", { name });
+  const navTree =
+    screen.queryByRole("navigation", { name: "Studio navigation tree" }) ??
+    screen.getByRole("navigation", { name: "Studio 导航树" });
+  return within(navTree).getByRole("button", { name });
+}
+
+function getNavSectionButton(name: string) {
+  const navTree =
+    screen.queryByRole("navigation", { name: "Studio navigation tree" }) ??
+    screen.getByRole("navigation", { name: "Studio 导航树" });
+  return within(navTree).getByRole("button", { name });
 }
 /**
  * Expand the given workflow by clicking its row, then click its default

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuleDraft, RulesEditDocument } from "../../../contracts/plotforge";
 import { RulesView } from "./RulesView";
+import { StudioI18nProvider } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,7 +30,9 @@ function renderRulesView(
     ...overrides,
   };
 
-  return render(<RulesView {...defaults} />);
+  return render(<RulesView {...defaults} />, {
+    wrapper: StudioI18nProvider,
+  });
 }
 
 const demoDocument: RulesEditDocument = {

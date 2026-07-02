@@ -4,6 +4,7 @@ import type { StudioSectionId } from "./studioModel";
 import type { AssetCatalogItem, AssetCatalog } from "./assetCatalog";
 import type { SourceFileSummary } from "./tauriBridge";
 import { Collapsible, StudioTabs, studioUiClassNames } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,6 +63,7 @@ export function AssetMaintenanceView({
   onSaveVisualBible,
   onSaveAudioBible,
 }: AssetMaintenanceViewProps) {
+  const { t } = useStudioI18n();
   const recordCount = assetCatalog.items.filter(
     (item) => item.source === "record",
   ).length;
@@ -75,11 +77,11 @@ export function AssetMaintenanceView({
     <section className={`${studioUiClassNames.panel} !p-4`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">Asset Maintenance</h3>
+          <h3 className="text-lg font-semibold">{t("assets.title")}</h3>
           <p className="mt-1 truncate text-sm text-ink/55">
             {assetCatalog.source === "records"
-              ? `${recordCount} asset records`
-              : `${assetCatalog.items.length} scene background fallbacks`}
+              ? t("common.assetRecords", { count: recordCount })
+              : t("common.sceneBgFallbacks", { count: assetCatalog.items.length })}
           </p>
         </div>
       </div>
@@ -87,12 +89,12 @@ export function AssetMaintenanceView({
       <SectionStatusMessage section="assets" formStatus={formStatus} />
 
       <StudioTabs
-        ariaLabel="Asset maintenance surfaces"
+        ariaLabel={t("assets.aria.maintenanceSurfaces")}
         className="mt-4"
         items={[
           {
             id: "visual",
-            label: "Visual Bible",
+            label: t("assets.visualBible"),
             badge: visualBible?.style_cards.length,
             children: (
               <VisualBibleEditor
@@ -105,7 +107,7 @@ export function AssetMaintenanceView({
           },
           {
             id: "audio",
-            label: "Audio Bible",
+            label: t("assets.audioBible"),
             badge: audioBible?.voice_cards.length,
             children: (
               <AudioBibleEditor
@@ -118,20 +120,20 @@ export function AssetMaintenanceView({
           },
           {
             id: "catalog",
-            label: "Asset Catalog",
+            label: t("assets.assetCatalog"),
             badge: recordCount,
             children: (
               <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
                 <div className="grid content-start gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                  <MetricBox label="Source files" value={sourceFiles.length} />
-                  <MetricBox label="Asset records" value={recordCount} />
-                  <MetricBox label="References" value={referenceCount} />
+                  <MetricBox label={t("assets.sourceFiles")} value={sourceFiles.length} />
+                  <MetricBox label={t("assets.assetRecords")} value={recordCount} />
+                  <MetricBox label={t("assets.references")} value={referenceCount} />
                   <MetricBox
-                    label="Visual cards"
+                    label={t("assets.visualCards")}
                     value={visualBible?.style_cards.length ?? 0}
                   />
                   <MetricBox
-                    label="Audio cards"
+                    label={t("assets.audioCards")}
                     value={audioBible?.voice_cards.length ?? 0}
                   />
                 </div>
@@ -141,7 +143,7 @@ export function AssetMaintenanceView({
                       <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />
                     ))
                   ) : (
-                    <EmptyPanel label="No asset records or scene background paths found." />
+                    <EmptyPanel label={t("assets.noAssetRecords")} />
                   )}
                 </div>
               </div>
@@ -168,17 +170,18 @@ function VisualBibleEditor({
   onUpdateCard(index: number, patch: Partial<VisualStyleCard>): void;
   onSave(): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <section className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold">Visual Bible</h4>
+          <h4 className="text-sm font-semibold">{t("assets.visualBible")}</h4>
           <p className="mt-1 text-xs font-medium uppercase text-ink/45">
-            {visualBible?.style_cards.length ?? 0} style cards
+            {t("common.styleCards", { count: visualBible?.style_cards.length ?? 0 })}
           </p>
         </div>
         <SaveButton
-          label="Save Visual Bible"
+          label={t("assets.saveVisualBible")}
           saving={saving}
           onClick={onSave}
         />
@@ -191,21 +194,21 @@ function VisualBibleEditor({
               label={card.title || card.id}
               id={`visual-card-${card.id}-${index}`}
               defaultOpen={false}
-              badge="style"
+              badge={t("assets.styleBadge")}
               className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
             >
               <div className="mt-3 grid gap-3">
                 <TextareaInput
-                  label="Prompt"
-                  ariaLabel={`Visual style prompt ${index + 1}`}
+                  label={t("assets.prompt")}
+                  ariaLabel={t("assets.aria.visualStylePromptN", { index: index + 1 })}
                   value={card.prompt}
                   onChange={(value) => onUpdateCard(index, { prompt: value })}
                   minHeight="min-h-28"
                 />
                 <div className="grid gap-3 sm:grid-cols-3">
                   <TextareaInput
-                    label="Palette"
-                    ariaLabel={`Visual style palette ${index + 1}`}
+                    label={t("assets.palette")}
+                    ariaLabel={t("assets.aria.visualStylePaletteN", { index: index + 1 })}
                     value={listToLines(card.palette)}
                     onChange={(value) =>
                       onUpdateCard(index, { palette: linesToList(value) })
@@ -213,8 +216,8 @@ function VisualBibleEditor({
                     minHeight="min-h-24"
                   />
                   <TextareaInput
-                    label="Tags"
-                    ariaLabel={`Visual style tags ${index + 1}`}
+                    label={t("assets.tags")}
+                    ariaLabel={t("assets.aria.visualStyleTagsN", { index: index + 1 })}
                     value={listToLines(card.tags)}
                     onChange={(value) =>
                       onUpdateCard(index, { tags: linesToList(value) })
@@ -222,8 +225,8 @@ function VisualBibleEditor({
                     minHeight="min-h-24"
                   />
                   <TextareaInput
-                    label="Reference assets"
-                    ariaLabel={`Visual style reference asset ids ${index + 1}`}
+                    label={t("assets.referenceAssets")}
+                    ariaLabel={t("assets.aria.visualStyleRefN", { index: index + 1 })}
                     value={listToLines(card.reference_asset_ids)}
                     onChange={(value) =>
                       onUpdateCard(index, {
@@ -238,7 +241,7 @@ function VisualBibleEditor({
           ))
         ) : (
           <p className="text-sm text-ink/55">
-            No Visual Bible style cards in project data.
+            {t("assets.noVisualCards")}
           </p>
         )}
       </div>
@@ -261,17 +264,18 @@ function AudioBibleEditor({
   onUpdateCard(index: number, patch: Partial<AudioVoiceCard>): void;
   onSave(): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <section className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold">Audio Bible</h4>
+          <h4 className="text-sm font-semibold">{t("assets.audioBible")}</h4>
           <p className="mt-1 text-xs font-medium uppercase text-ink/45">
-            {audioBible?.voice_cards.length ?? 0} voice cards
+            {t("common.voiceCards", { count: audioBible?.voice_cards.length ?? 0 })}
           </p>
         </div>
         <SaveButton
-          label="Save Audio Bible"
+          label={t("assets.saveAudioBible")}
           saving={saving}
           onClick={onSave}
         />
@@ -284,26 +288,26 @@ function AudioBibleEditor({
               label={card.title || card.id}
               id={`audio-card-${card.id}-${index}`}
               defaultOpen={false}
-              badge="voice"
+              badge={t("assets.voiceBadge")}
               className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
             >
               <div className="mt-3 grid gap-3">
                 <TextInput
-                  label="Voice"
-                  ariaLabel={`Audio voice ${index + 1}`}
+                  label={t("assets.voice")}
+                  ariaLabel={t("assets.aria.audioVoiceN", { index: index + 1 })}
                   value={card.voice}
                   onChange={(value) => onUpdateCard(index, { voice: value })}
                 />
                 <TextareaInput
-                  label="Delivery"
-                  ariaLabel={`Audio delivery ${index + 1}`}
+                  label={t("assets.delivery")}
+                  ariaLabel={t("assets.aria.audioDeliveryN", { index: index + 1 })}
                   value={card.delivery}
                   onChange={(value) => onUpdateCard(index, { delivery: value })}
                   minHeight="min-h-24"
                 />
                 <TextareaInput
-                  label="Sample text"
-                  ariaLabel={`Audio sample text ${index + 1}`}
+                  label={t("assets.sampleText")}
+                  ariaLabel={t("assets.aria.audioSampleTextN", { index: index + 1 })}
                   value={card.sample_text ?? ""}
                   onChange={(value) =>
                     onUpdateCard(index, { sample_text: optionalText(value) })
@@ -312,8 +316,8 @@ function AudioBibleEditor({
                 />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <TextareaInput
-                    label="Tags"
-                    ariaLabel={`Audio tags ${index + 1}`}
+                    label={t("assets.tags")}
+                    ariaLabel={t("assets.aria.audioTagsN", { index: index + 1 })}
                     value={listToLines(card.tags)}
                     onChange={(value) =>
                       onUpdateCard(index, { tags: linesToList(value) })
@@ -321,8 +325,8 @@ function AudioBibleEditor({
                     minHeight="min-h-24"
                   />
                   <TextareaInput
-                    label="Reference assets"
-                    ariaLabel={`Audio reference asset ids ${index + 1}`}
+                    label={t("assets.referenceAssets")}
+                    ariaLabel={t("assets.aria.audioRefN", { index: index + 1 })}
                     value={listToLines(card.reference_asset_ids)}
                     onChange={(value) =>
                       onUpdateCard(index, {
@@ -337,7 +341,7 @@ function AudioBibleEditor({
           ))
         ) : (
           <p className="text-sm text-ink/55">
-            No Audio Bible voice cards in project data.
+            {t("assets.noAudioCards")}
           </p>
         )}
       </div>
@@ -350,11 +354,12 @@ function AudioBibleEditor({
 // ---------------------------------------------------------------------------
 
 function AssetCatalogCard({ item }: { item: AssetCatalogItem }) {
+  const { t } = useStudioI18n();
   if (item.source === "scene-background-fallback") {
     return (
       <article className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
         <p className="text-xs font-medium uppercase text-ink/45">
-          Scene background fallback
+          {t("assets.sceneBgFallback")}
         </p>
         <code className="mt-2 block truncate text-sm text-ink/80">
           {item.path}
@@ -375,30 +380,30 @@ function AssetCatalogCard({ item }: { item: AssetCatalogItem }) {
         </div>
         {record.provider_metadata?.fallback_used ? (
           <span className="rounded-md border border-signal/30 bg-signal/10 px-2 py-1 text-xs font-semibold text-signal">
-            Fallback
+            {t("assets.fallbackBadge")}
           </span>
         ) : null}
       </div>
       <div className="mt-3 grid gap-2 text-sm text-ink/70">
-        <AssetField label="Project path" value={record.project_path} code />
-        <AssetField label="Export path" value={record.export_path} code />
-        <AssetField label="Content hash" value={record.content_hash} code />
-        <AssetField label="Hash algorithm" value={record.hash_algorithm} />
-        <AssetField label="Bytes" value={String(record.byte_length)} />
-        <AssetField label="Provider" value={providerLabel(record)} />
+        <AssetField label={t("assets.projectPath")} value={record.project_path} code />
+        <AssetField label={t("assets.exportPath")} value={record.export_path} code />
+        <AssetField label={t("assets.contentHash")} value={record.content_hash} code />
+        <AssetField label={t("assets.hashAlgorithm")} value={record.hash_algorithm} />
+        <AssetField label={t("assets.bytes")} value={String(record.byte_length)} />
+        <AssetField label={t("assets.provider")} value={providerLabel(record, t)} />
         <AssetField
-          label="Request id"
-          value={record.provider_metadata?.request_id ?? "none"}
+          label={t("assets.requestId")}
+          value={record.provider_metadata?.request_id ?? t("common.none")}
           code={Boolean(record.provider_metadata?.request_id)}
         />
         <AssetField
-          label="Prompt hash"
-          value={record.provider_metadata?.prompt_hash ?? "none"}
+          label={t("assets.promptHash")}
+          value={record.provider_metadata?.prompt_hash ?? t("common.none")}
           code={Boolean(record.provider_metadata?.prompt_hash)}
         />
         <AssetField
-          label="References"
-          value={referenceLabel(record)}
+          label={t("assets.referencesLabel")}
+          value={referenceLabel(record, t)}
           code={record.references.length > 0}
         />
       </div>
@@ -557,17 +562,23 @@ function assetCatalogItemKey(item: AssetCatalogItem): string {
   return item.source === "record" ? item.record.id : item.path;
 }
 
-function providerLabel(record: AssetRecord): string {
+function providerLabel(
+  record: AssetRecord,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
   const metadata = record.provider_metadata;
   if (!metadata) {
-    return "none";
+    return t("common.none");
   }
   return [metadata.provider, metadata.model].filter(Boolean).join(" / ");
 }
 
-function referenceLabel(record: AssetRecord): string {
+function referenceLabel(
+  record: AssetRecord,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
   if (record.references.length === 0) {
-    return "none";
+    return t("common.none");
   }
   return record.references
     .map(

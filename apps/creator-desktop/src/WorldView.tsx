@@ -2,6 +2,7 @@ import { Loader2, Save } from "lucide-react";
 import type { WorldEditDocument } from "../../../contracts/plotforge";
 import type { StudioSectionId } from "./studioModel";
 import { CollapsibleSection, studioUiClassNames } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,20 +46,23 @@ export function WorldView({
   onGenerateWorldExpansion,
   onUpdateWorldDocument,
 }: WorldViewProps) {
+  const { t } = useStudioI18n();
   return (
     <section className={studioUiClassNames.panel}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">World Bible</h3>
+          <h3 className="text-lg font-semibold">{t("world.title")}</h3>
           <p className="mt-1 truncate text-sm text-ink/55">
-            {worldEditDocument?.forbidden_facts.length ?? 0} forbidden facts
+            {t("common.forbiddenFacts", {
+              count: worldEditDocument?.forbidden_facts.length ?? 0,
+            })}
           </p>
         </div>
         <button
           type="button"
           disabled={saving}
           onClick={onSave}
-          aria-label="Save World Bible"
+          aria-label={t("world.aria.save")}
           className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
         >
           {saving ? (
@@ -66,7 +70,7 @@ export function WorldView({
           ) : (
             <Save aria-hidden size={16} />
           )}
-          Save World Bible
+          {t("world.save")}
         </button>
       </div>
 
@@ -76,8 +80,8 @@ export function WorldView({
         <div className="mt-3 grid gap-3">
           <div className="grid gap-3 lg:grid-cols-2">
             <TextareaInput
-              label="World Bible"
-              ariaLabel="World bible markdown"
+              label={t("world.worldBibleMarkdown")}
+              ariaLabel={t("world.aria.worldBibleMarkdown")}
               value={worldEditDocument.world_bible_markdown}
               onChange={(value) =>
                 onUpdateWorldDocument({ world_bible_markdown: value })
@@ -86,8 +90,8 @@ export function WorldView({
             />
             <div className="grid gap-3">
               <TextareaInput
-                label="Canon"
-                ariaLabel="Canon markdown"
+                label={t("world.canon")}
+                ariaLabel={t("world.aria.canonMarkdown")}
                 value={worldEditDocument.canon_markdown}
                 onChange={(value) =>
                   onUpdateWorldDocument({ canon_markdown: value })
@@ -95,8 +99,8 @@ export function WorldView({
                 minHeight="min-h-28"
               />
               <TextareaInput
-                label="Forbidden facts"
-                ariaLabel="Forbidden facts"
+                label={t("world.forbiddenFacts")}
+                ariaLabel={t("world.aria.forbiddenFacts")}
                 value={listToLines(worldEditDocument.forbidden_facts)}
                 onChange={(value) =>
                   onUpdateWorldDocument({ forbidden_facts: linesToList(value) })
@@ -106,12 +110,11 @@ export function WorldView({
             </div>
           </div>
 
-          {/* Advanced: AI expansion goal — collapsed by default */}
-          <CollapsibleSection title="Advanced" defaultOpen={false}>
+          <CollapsibleSection title={t("world.advanced")} defaultOpen={false}>
             <div className="flex flex-wrap items-end gap-3">
               <TextInput
-                label="AI expansion goal"
-                ariaLabel="World generation goal"
+                label={t("world.aiExpansionGoal")}
+                ariaLabel={t("world.aria.worldGenerationGoal")}
                 value={worldExpansionGoal}
                 onChange={onWorldExpansionGoalChange}
                 className="min-w-0 flex-1"
@@ -122,7 +125,7 @@ export function WorldView({
                 disabled={saving}
                 className={studioUiClassNames.secondaryButton}
               >
-                Generate World Expansion
+                {t("world.generate")}
               </button>
             </div>
           </CollapsibleSection>
@@ -139,9 +142,10 @@ export function WorldView({
 // ---------------------------------------------------------------------------
 
 function EmptyWorld() {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
-      World edit document not loaded.
+      {t("world.notLoaded")}
     </div>
   );
 }

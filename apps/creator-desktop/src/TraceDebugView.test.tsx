@@ -6,14 +6,19 @@ import {
   demoPlayOnceReport,
 } from "./demoStudioData";
 import { TraceDebugView, NarrativeReviewPanel } from "./TraceDebugView";
+import { StudioI18nProvider } from "./i18n";
 
 afterEach(cleanup);
+
+function renderView(ui: React.ReactElement) {
+  return render(ui, { wrapper: StudioI18nProvider });
+}
 
 describe("TraceDebugView", () => {
   it("renders Playable Proof region without leaking raw secrets or platform promises", () => {
     const report = demoPlayOnceReport("sk-test-secret should not render");
 
-    render(
+    renderView(
       <TraceDebugView
         report={report}
         error={null}
@@ -66,7 +71,7 @@ describe("TraceDebugView", () => {
   it("renders Run Result Summary open by default with state delta and run evidence", () => {
     const report = demoPlayOnceReport("continue");
 
-    render(
+    renderView(
       <TraceDebugView
         report={report}
         error={null}
@@ -88,7 +93,7 @@ describe("TraceDebugView", () => {
       current_beat_id: "opening-scene-beat-002",
     };
 
-    render(<TraceDebugView report={report} error={null} />);
+    renderView(<TraceDebugView report={report} error={null} />);
 
     expect(
       screen.getByText(
@@ -105,7 +110,7 @@ describe("TraceDebugView", () => {
   it("shows Technical Details heading but keeps content collapsed by default", () => {
     const report = demoPlayOnceReport("test");
 
-    render(<TraceDebugView report={report} error={null} />);
+    renderView(<TraceDebugView report={report} error={null} />);
 
     // Technical Details heading is present
     expect(screen.getByText("Technical Details")).toBeTruthy();
@@ -118,7 +123,7 @@ describe("TraceDebugView", () => {
   });
 
   it("shows placeholder when no trace is available", () => {
-    render(<TraceDebugView report={null} error={null} />);
+    renderView(<TraceDebugView report={null} error={null} />);
 
     expect(
       screen.getByText("Run a playtest turn to create proof"),
@@ -129,7 +134,7 @@ describe("TraceDebugView", () => {
   });
 
   it("shows error banner when error is present", () => {
-    render(
+    renderView(
       <TraceDebugView report={null} error="Something went wrong" />,
     );
 
@@ -142,7 +147,7 @@ describe("NarrativeReviewPanel", () => {
     const report = demoPlayOnceReport("test");
     const review = report.trace.narrative_review!;
 
-    render(<NarrativeReviewPanel review={review} />);
+    renderView(<NarrativeReviewPanel review={review} />);
 
     expect(screen.getByText("Narrative Review")).toBeTruthy();
     expect(screen.getByText("Hook")).toBeTruthy();

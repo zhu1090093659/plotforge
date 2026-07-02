@@ -13,6 +13,7 @@ import {
   useId,
   useState,
 } from "react";
+import { useStudioI18n } from "./i18n";
 
 export const agentNativeDesignTokens = {
   shell: {
@@ -103,18 +104,19 @@ export function StudioShell({
   onCloseDrawer,
   children,
 }: StudioShellProps) {
+  const { t } = useStudioI18n();
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-md border border-violet-400/55 bg-violet-500 font-display text-base font-black tracking-display text-canvas-50">
-          PF
+          {t("brand.logo")}
         </div>
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-tightish text-violet-600">
-            PlotForge Studio
+            {t("brand.studio")}
           </p>
           <h1 className="font-display truncate text-xl font-semibold tracking-display text-ink">
-            Creator Desktop
+            {t("brand.creatorDesktop")}
           </h1>
         </div>
       </div>
@@ -122,7 +124,7 @@ export function StudioShell({
       <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-2">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/70">
-            Open Project
+            {t("shell.openProject")}
           </p>
           <p className="max-w-44 truncate text-sm font-semibold text-ink">
             {projectPath}
@@ -130,7 +132,7 @@ export function StudioShell({
         </div>
         <button
           type="button"
-          title="Open project"
+          title={t("shell.openProject")}
           onClick={onOpenProject}
           className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400"
         >
@@ -158,7 +160,7 @@ export function StudioShell({
         className="grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto] xl:grid-cols-[260px_minmax(0,1fr)_280px] 2xl:grid-cols-[280px_minmax(0,1fr)_320px]"
       >
         <aside
-          aria-label="Studio navigation"
+          aria-label={t("shell.studioNav")}
           className="hidden min-h-0 overflow-y-auto border-r border-canvas-200 bg-graphite-900 px-3 py-4 shadow-shell-inset lg:block"
         >
           {sidebarContent}
@@ -169,8 +171,8 @@ export function StudioShell({
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                aria-label="Open navigation"
-                title="Open navigation"
+                aria-label={t("shell.openNav")}
+                title={t("shell.openNav")}
                 onClick={onToggleDrawer}
                 className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-accent-400 lg:hidden"
               >
@@ -208,7 +210,7 @@ export function StudioShell({
         </main>
 
         <aside
-          aria-label="Evidence panel"
+          aria-label={t("shell.evidencePanel")}
           className="min-h-0 overflow-y-auto border-l border-canvas-200 bg-graphite-900 px-3 py-4 text-ink shadow-shell-inset lg:col-span-2 lg:max-h-56 lg:border-l-0 lg:border-t xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0"
         >
           {rightPanel}
@@ -217,7 +219,7 @@ export function StudioShell({
         {commandDock ? (
           <div className="border-t border-canvas-200 bg-graphite-950 px-4 py-3 shadow-studio-dock lg:col-span-2 xl:col-span-3">
             <div
-              aria-label="Command dock"
+              aria-label={t("shell.commandDock")}
               className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3"
             >
               {commandDock}
@@ -235,7 +237,7 @@ export function StudioShell({
             className="absolute inset-0 bg-ink/30"
           />
           <aside
-            aria-label="Studio navigation"
+            aria-label={t("shell.studioNav")}
             className="absolute left-0 top-0 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-canvas-200 bg-graphite-900 px-4 py-5 text-ink shadow-shell-inset"
           >
             {sidebarContent}
@@ -325,8 +327,9 @@ function StudioNavTree({
   onToggleExpand(id: string): void;
   className: string;
 }) {
+  const { t } = useStudioI18n();
   return (
-    <nav aria-label="Studio navigation tree" className={`${className} grid gap-1`}>
+    <nav aria-label={t("shell.studioNavTree")} className={`${className} grid gap-1`}>
       {items.map((item) => (
         <StudioNavTreeNode
           key={item.id}
@@ -460,14 +463,15 @@ export function ScenePreviewPlaceholder({
 }: {
   assetPath: string | null;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,_rgba(138,111,184,0.12),_rgba(253,251,255,0.96)_55%)] px-4">
       <div className="max-w-md rounded-md border border-canvas-200 bg-canvas-50 px-4 py-3 text-center">
         <p className="font-display text-sm font-semibold text-ink">
-          Scene preview asset unavailable
+          {t("shell.scenePreviewUnavailable")}
         </p>
         <p className="mt-1 break-words text-xs leading-5 text-graphite-700/65">
-          {assetPath ?? "No background asset is declared for this scene."}
+          {assetPath ?? t("shell.scenePreviewNoBackground")}
         </p>
       </div>
     </div>

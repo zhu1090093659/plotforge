@@ -26,8 +26,8 @@ describe("studioModel", () => {
       "09-export-package.png",
     ]);
 
-    expect(screenReferencesForWorkflow("command").map((screen) => screen.title))
-      .toEqual(["Project Launchpad", "Command Center"]);
+    expect(screenReferencesForWorkflow("command").map((screen) => screen.titleKey))
+      .toEqual(["screen.projectLaunchpad.title", "screen.commandCenter.title"]);
   });
 
   it("keeps workflow and section identifiers typed, unique, and non-overlapping", () => {
@@ -65,7 +65,7 @@ describe("studioModel", () => {
   });
 
   it("routes shared sections through their canonical workflow without hiding export-specific access", () => {
-    expect(getAgentNativeWorkflow("export").label).toBe("Export Package");
+    expect(getAgentNativeWorkflow("export").labelKey).toBe("workflow.export.label");
     expect(defaultSectionForWorkflow("export")).toBe("export-kit");
     expect(workflowForSection("assets").id).toBe("artifacts");
     expect(isSectionInWorkflow("assets", "export")).toBe(true);

@@ -5,6 +5,7 @@ import {
   demoPlayOnceReport,
   demoProjectData,
 } from "./demoStudioData";
+import { StudioI18nProvider } from "./i18n";
 import type { StudioDataSource } from "./studioDataSource";
 import type {
   SourceFileContent,
@@ -29,7 +30,11 @@ describe("useStudioWorkspace", () => {
       },
     });
 
-    render(<WorkspaceProbe dataSource={dataSource} />);
+    render(
+      <StudioI18nProvider>
+        <WorkspaceProbe dataSource={dataSource} />
+      </StudioI18nProvider>,
+    );
 
     expect(await screen.findByText("title:Starter Project")).toBeTruthy();
     expect(screen.getByText("loaded:/tmp/starter-project")).toBeTruthy();
@@ -56,7 +61,11 @@ describe("useStudioWorkspace", () => {
       },
     });
 
-    render(<WorkspaceProbe dataSource={dataSource} />);
+    render(
+      <StudioI18nProvider>
+        <WorkspaceProbe dataSource={dataSource} />
+      </StudioI18nProvider>,
+    );
 
     await screen.findByText("dirty:false");
     fireEvent.change(screen.getByLabelText("Probe editor"), {
@@ -79,7 +88,11 @@ describe("useStudioWorkspace", () => {
       },
     });
 
-    render(<WorkspaceProbe dataSource={loadFailure} />);
+    render(
+      <StudioI18nProvider>
+        <WorkspaceProbe dataSource={loadFailure} />
+      </StudioI18nProvider>,
+    );
     expect(await screen.findByText("error:cannot load project")).toBeTruthy();
 
     cleanup();
@@ -90,7 +103,11 @@ describe("useStudioWorkspace", () => {
       },
     });
 
-    render(<WorkspaceProbe dataSource={refreshFailure} />);
+    render(
+      <StudioI18nProvider>
+        <WorkspaceProbe dataSource={refreshFailure} />
+      </StudioI18nProvider>,
+    );
     await screen.findByText("error:cannot refresh project");
   });
 
@@ -101,7 +118,11 @@ describe("useStudioWorkspace", () => {
       },
     });
 
-    render(<WorkspaceProbe dataSource={objectFailure} />);
+    render(
+      <StudioI18nProvider>
+        <WorkspaceProbe dataSource={objectFailure} />
+      </StudioI18nProvider>,
+    );
 
     expect(
       await screen.findByText(
@@ -114,7 +135,11 @@ describe("useStudioWorkspace", () => {
   it("keeps playtest and export state inside the workspace boundary", async () => {
     const dataSource = workspaceTestDataSource();
 
-    render(<WorkspaceProbe dataSource={dataSource} />);
+    render(
+      <StudioI18nProvider>
+        <WorkspaceProbe dataSource={dataSource} />
+      </StudioI18nProvider>,
+    );
 
     await screen.findByText("selected-export:static-web");
 
@@ -140,7 +165,7 @@ function WorkspaceProbe({ dataSource }: { dataSource: StudioDataSource }) {
     dataSource,
     initialProjectPath: "/tmp/starter-project",
   });
-  const sceneMetric = workspace.metrics.find((metric) => metric.label === "Scenes");
+  const sceneMetric = workspace.metrics.find((metric) => metric.labelKey === "metrics.scenes");
   const wp = workspace.loadedPath;
 
   return (

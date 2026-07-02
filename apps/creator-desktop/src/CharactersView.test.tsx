@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CharacterDraft, CharacterEditDocument } from "../../../contracts/plotforge";
 import { CharactersView, type CharactersViewProps } from "./CharactersView";
+import { StudioI18nProvider } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,7 +69,9 @@ function renderView(overrides: Partial<CharactersViewProps> = {}) {
     onUpdateCharacter: vi.fn(),
     ...overrides,
   };
-  return render(<CharactersView {...props} />);
+  return render(<CharactersView {...props} />, {
+    wrapper: StudioI18nProvider,
+  });
 }
 
 // ---------------------------------------------------------------------------

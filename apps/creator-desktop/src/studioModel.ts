@@ -29,59 +29,59 @@ export type AgentNativeScreenId = (typeof agentNativeScreenIds)[number];
 
 export interface AgentNativeScreenReference {
   id: AgentNativeScreenId;
-  title: string;
+  titleKey: string;
   fileName: string;
 }
 
 export const agentNativeScreenReferences: readonly AgentNativeScreenReference[] = [
   {
     id: "agent-mesh-core",
-    title: "Agent Mesh Core",
+    titleKey: "screen.agentMeshCore.title",
     fileName: "00-agent-mesh-core.png",
   },
   {
     id: "project-launchpad",
-    title: "Project Launchpad",
+    titleKey: "screen.projectLaunchpad.title",
     fileName: "01-project-launchpad.png",
   },
   {
     id: "command-center",
-    title: "Command Center",
+    titleKey: "screen.commandCenter.title",
     fileName: "02-command-center.png",
   },
   {
     id: "director-mode",
-    title: "Director Mode",
+    titleKey: "screen.directorMode.title",
     fileName: "03-director-mode.png",
   },
   {
     id: "pi-agent-bridge",
-    title: "pi-Agent Bridge Setup",
+    titleKey: "screen.piAgentBridge.title",
     fileName: "04-pi-agent-bridge-setup.png",
   },
   {
     id: "live-build-room",
-    title: "Live Build Room",
+    titleKey: "screen.liveBuildRoom.title",
     fileName: "05-live-build-room.png",
   },
   {
     id: "artifact-review",
-    title: "Artifact Review",
+    titleKey: "screen.artifactReview.title",
     fileName: "06-artifact-review.png",
   },
   {
     id: "playable-proof",
-    title: "Playable Proof",
+    titleKey: "screen.playableProof.title",
     fileName: "07-playable-proof.png",
   },
   {
     id: "trace-debug",
-    title: "Trace Debug",
+    titleKey: "screen.traceDebug.title",
     fileName: "08-trace-debug.png",
   },
   {
     id: "export-package",
-    title: "Export Package",
+    titleKey: "screen.exportPackage.title",
     fileName: "09-export-package.png",
   },
 ];
@@ -115,98 +115,98 @@ export type AgentNativeWorkflowId = (typeof agentNativeWorkflowIds)[number];
 
 export interface StudioSection {
   id: StudioSectionId;
-  label: string;
-  description: string;
-  status: "ready" | "next" | "later";
+  labelKey: string;
+  descriptionKey: string;
+  statusKey: string;
   icon: LucideIcon;
 }
 
 export const studioSections: StudioSection[] = [
   {
     id: "launchpad",
-    label: "Launchpad",
-    description: "Director intent, project health, artifact summary",
-    status: "ready",
+    labelKey: "nav.launchpad.label",
+    descriptionKey: "nav.launchpad.description",
+    statusKey: "status.ready",
     icon: Gauge,
   },
   {
     id: "agent-mesh",
-    label: "Agent Mesh",
-    description: "pi-Agent capability map, approvals, and local boundaries",
-    status: "ready",
+    labelKey: "nav.agentMesh.label",
+    descriptionKey: "nav.agentMesh.description",
+    statusKey: "status.ready",
     icon: Network,
   },
   {
     id: "world",
-    label: "World Bible",
-    description: "Canon, forbidden facts, setting notes",
-    status: "next",
+    labelKey: "nav.world.label",
+    descriptionKey: "nav.world.description",
+    statusKey: "status.next",
     icon: Map,
   },
   {
     id: "story",
-    label: "Story Craft",
-    description: "Promises, hooks, reversals, emotional arc",
-    status: "next",
+    labelKey: "nav.story.label",
+    descriptionKey: "nav.story.description",
+    statusKey: "status.next",
     icon: ScrollText,
   },
   {
     id: "characters",
-    label: "Characters",
-    description: "Roles, arcs, visual and voice cards",
-    status: "ready",
+    labelKey: "nav.characters.label",
+    descriptionKey: "nav.characters.description",
+    statusKey: "status.ready",
     icon: Users,
   },
   {
     id: "state",
-    label: "State",
-    description: "Resources, flags, triggered events",
-    status: "ready",
+    labelKey: "nav.state.label",
+    descriptionKey: "nav.state.description",
+    statusKey: "status.ready",
     icon: Network,
   },
   {
     id: "rules",
-    label: "Rules",
-    description: "Declarative conditions and effects",
-    status: "ready",
+    labelKey: "nav.rules.label",
+    descriptionKey: "nav.rules.description",
+    statusKey: "status.ready",
     icon: KeyRound,
   },
   {
     id: "assets",
-    label: "Assets",
-    description: "Generated and imported files",
-    status: "ready",
+    labelKey: "nav.assets.label",
+    descriptionKey: "nav.assets.description",
+    statusKey: "status.ready",
     icon: Boxes,
   },
   {
     id: "playtest",
-    label: "Playtest",
-    description: "Local runtime preview",
-    status: "ready",
+    labelKey: "nav.playtest.label",
+    descriptionKey: "nav.playtest.description",
+    statusKey: "status.ready",
     icon: Play,
   },
   {
     id: "debugger",
-    label: "Debugger",
-    description: "Trace, diagnostics, review notes",
-    status: "ready",
+    labelKey: "nav.debugger.label",
+    descriptionKey: "nav.debugger.description",
+    statusKey: "status.ready",
     icon: Bug,
   },
   {
     id: "export-kit",
-    label: "Export",
-    description: "Static web and package profiles",
-    status: "ready",
+    labelKey: "nav.exportKit.label",
+    descriptionKey: "nav.exportKit.description",
+    statusKey: "status.ready",
     icon: ShipWheel,
   },
 ];
 
 export interface AgentNativeWorkflow {
   id: AgentNativeWorkflowId;
-  label: string;
-  shortLabel: string;
-  description: string;
-  status: "ready" | "next";
+  labelKey: string;
+  shortLabelKey: string;
+  descriptionKey: string;
+  statusKey: string;
   icon: LucideIcon;
   defaultSectionId: StudioSectionId;
   sectionIds: readonly StudioSectionId[];
@@ -216,10 +216,10 @@ export interface AgentNativeWorkflow {
 export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
   {
     id: "command",
-    label: "Command Center",
-    shortLabel: "Command",
-    description: "Director intent, project launch, active run summary",
-    status: "ready",
+    labelKey: "workflow.command.label",
+    shortLabelKey: "workflow.command.shortLabel",
+    descriptionKey: "workflow.command.description",
+    statusKey: "status.ready",
     icon: Gauge,
     defaultSectionId: "launchpad",
     sectionIds: ["launchpad", "world", "story"],
@@ -227,10 +227,10 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
   },
   {
     id: "game",
-    label: "Director Mode",
-    shortLabel: "Game",
-    description: "Playable scene preview, creative direction, runtime loop",
-    status: "ready",
+    labelKey: "workflow.game.label",
+    shortLabelKey: "workflow.game.shortLabel",
+    descriptionKey: "workflow.game.description",
+    statusKey: "status.ready",
     icon: Play,
     defaultSectionId: "playtest",
     sectionIds: ["playtest", "world", "story", "characters", "state", "rules"],
@@ -238,10 +238,10 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
   },
   {
     id: "agents",
-    label: "Agent Mesh",
-    shortLabel: "Agents",
-    description: "Local capability map, pi-Agent setup, approval boundaries",
-    status: "ready",
+    labelKey: "workflow.agents.label",
+    shortLabelKey: "workflow.agents.shortLabel",
+    descriptionKey: "workflow.agents.description",
+    statusKey: "status.ready",
     icon: Network,
     defaultSectionId: "agent-mesh",
     sectionIds: ["agent-mesh"],
@@ -249,10 +249,10 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
   },
   {
     id: "artifacts",
-    label: "Artifact Review",
-    shortLabel: "Artifacts",
-    description: "Agent proposals, changed assets, validation evidence",
-    status: "ready",
+    labelKey: "workflow.artifacts.label",
+    shortLabelKey: "workflow.artifacts.shortLabel",
+    descriptionKey: "workflow.artifacts.description",
+    statusKey: "status.ready",
     icon: Boxes,
     defaultSectionId: "assets",
     sectionIds: ["assets", "world", "story", "characters", "rules"],
@@ -260,10 +260,10 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
   },
   {
     id: "proof",
-    label: "Playable Proof",
-    shortLabel: "Proof",
-    description: "Trace-visible playtest evidence and reproducibility",
-    status: "ready",
+    labelKey: "workflow.proof.label",
+    shortLabelKey: "workflow.proof.shortLabel",
+    descriptionKey: "workflow.proof.description",
+    statusKey: "status.ready",
     icon: Bug,
     defaultSectionId: "debugger",
     sectionIds: ["playtest", "debugger"],
@@ -271,10 +271,10 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
   },
   {
     id: "export",
-    label: "Export Package",
-    shortLabel: "Export",
-    description: "Local package readiness, manifests, disclosure drafts",
-    status: "ready",
+    labelKey: "workflow.export.label",
+    shortLabelKey: "workflow.export.shortLabel",
+    descriptionKey: "workflow.export.description",
+    statusKey: "status.ready",
     icon: ShipWheel,
     defaultSectionId: "export-kit",
     sectionIds: ["export-kit", "assets", "debugger"],

@@ -17,6 +17,7 @@ import { useState, type ReactNode } from "react";
 import type { CreatorProjectSummary } from "./projectSummary";
 import type { PlayOnceReport, SourceFileSummary } from "./tauriBridge";
 import { Collapsible, StudioButton, StudioStatusChip } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 interface AgentMeshViewProps {
   projectSummary: CreatorProjectSummary | null;
@@ -41,44 +42,44 @@ interface Capability {
 const realCapabilities: Capability[] = [
   {
     id: "project-open-check",
-    label: "Project open/check",
-    source: "plotforge-studio -> plotforge-storage",
-    evidence: "Folder project files and schema validation",
+    label: "mesh.cap.projectOpenCheck",
+    source: "mesh.cap.projectOpenCheckSource",
+    evidence: "mesh.cap.projectOpenCheckEvidence",
     status: "wired",
   },
   {
     id: "structured-editing",
-    label: "Structured editing",
-    source: "plotforge-studio -> plotforge-storage",
-    evidence: "World, StoryCraft, Characters, State, Rules documents",
+    label: "mesh.cap.structuredEditing",
+    source: "mesh.cap.projectOpenCheckSource",
+    evidence: "mesh.cap.structuredEditingEvidence",
     status: "wired",
   },
   {
     id: "source-files",
-    label: "Source file read/write",
-    source: "plotforge-studio source-file adapter",
-    evidence: "Editable source list and file content",
+    label: "mesh.cap.sourceFileReadWrite",
+    source: "mesh.cap.sourceFileReadWriteSource",
+    evidence: "mesh.cap.sourceFileReadWriteEvidence",
     status: "wired",
   },
   {
     id: "runtime-proof",
-    label: "Runtime proof",
-    source: "plotforge-runtime + trace storage",
-    evidence: "PlayOnceReport, RuntimeTrace, optional snapshot",
+    label: "mesh.cap.runtimeProof",
+    source: "mesh.cap.runtimeProofSource",
+    evidence: "mesh.cap.runtimeProofEvidence",
     status: "wired",
   },
   {
     id: "static-export",
-    label: "Static export zip",
-    source: "plotforge-export",
-    evidence: "Whitelisted package files and archive report",
+    label: "mesh.cap.staticExportZip",
+    source: "mesh.cap.staticExportZipSource",
+    evidence: "mesh.cap.staticExportZipEvidence",
     status: "wired",
   },
   {
     id: "agent-pi-agent-runtime",
-    label: "pi-Agent runtime",
-    source: "plotforge-studio: pi_agent_run",
-    evidence: "Local, schema-backed, redaction-safe envelope with trace evidence id",
+    label: "mesh.cap.piAgentRuntime",
+    source: "mesh.cap.piAgentRuntimeSource",
+    evidence: "mesh.cap.piAgentRuntimeEvidence",
     status: "wired",
   },
 ];
@@ -94,131 +95,127 @@ export function AgentMeshView({
   onOpenTrace,
   onRunPlayableProof,
 }: AgentMeshViewProps) {
+  const { t } = useStudioI18n();
   const wiredCount = realCapabilities.filter(
     (capability) => capability.status === "wired",
   ).length;
   const proofLabel = playtestReport
-    ? `${playtestReport.trace.id} / ${playtestReport.delta_summary.length} deltas`
-    : "not captured";
+    ? t("common.traceDeltas", {
+        trace: playtestReport.trace.id,
+        count: playtestReport.delta_summary.length,
+      })
+    : t("common.notCaptured");
 
   return (
-    <section aria-label="Agent Mesh Workspace" className="grid gap-4">
+    <section aria-label={t("mesh.aria.workspace")} className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <aside
-          aria-label="Studio Backend Bridge"
+          aria-label={t("mesh.aria.backendBridge")}
           className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-accent-400">
-                Backend Bridge
+                {t("mesh.backendBridgeLabel")}
               </p>
               <h3 className="mt-1 text-lg font-semibold text-ink">
-                Real Studio commands
+                {t("mesh.realStudioCommands")}
               </h3>
             </div>
             <StudioStatusChip tone="health">{runtimeName}</StudioStatusChip>
           </div>
 
           <div className="grid gap-2 rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
-            <BridgeFact label="Project truth" value="folder source files" />
-            <BridgeFact label="Command source" value="plotforge-studio" />
-            <BridgeFact label="pi-Agent runtime" value="wired (local)" />
-            <BridgeFact label="Provider calls" value="not implemented" />
+            <BridgeFact label={t("mesh.projectTruth")} value={t("mesh.folderSourceFiles")} />
+            <BridgeFact label={t("mesh.commandSource")} value={t("mesh.plotforgeStudio")} />
+            <BridgeFact label={t("mesh.piAgentRuntime")} value={t("mesh.wiredLocal")} />
+            <BridgeFact label={t("mesh.providerCalls")} value={t("common.notImplemented")} />
           </div>
 
-          <DarkCollapsible label="Removed Fake Surfaces" badge="disabled">
+          <DarkCollapsible label={t("mesh.removedFakeSurfaces")} badge={t("common.disabled")}>
             <ul className="grid gap-2 text-xs leading-5 text-graphite-700/70">
-              <BoundaryLine icon={Lock}>
-                No mock external workers or mock connected state.
-              </BoundaryLine>
-              <BoundaryLine icon={Lock}>
-                No local approval queue unless a real command exists.
-              </BoundaryLine>
-              <BoundaryLine icon={Lock}>
-                No generated artifact bundle without persisted evidence.
-              </BoundaryLine>
+              <BoundaryLine icon={Lock}>{t("mesh.noMockWorkers")}</BoundaryLine>
+              <BoundaryLine icon={Lock}>{t("mesh.noLocalApprovalQueue")}</BoundaryLine>
+              <BoundaryLine icon={Lock}>{t("mesh.noGeneratedBundle")}</BoundaryLine>
             </ul>
           </DarkCollapsible>
         </aside>
 
         <div className="grid content-start gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <div
-            aria-label="Command Boundary Map"
+            aria-label={t("mesh.aria.commandBoundaryMap")}
             className="rounded-lg border border-canvas-200 bg-graphite-950 p-4 text-ink shadow-studio-panel"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-accent-400">
-                  Command Boundary Map
+                  {t("mesh.commandBoundaryMap")}
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-ink">
-                  {projectSummary?.title ?? "No project loaded"}
+                  {projectSummary?.title ?? t("app.noProjectLoaded")}
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-700/65">
-                  The UI is now backed by Studio command results. pi-Agent
-                  runtime is wired locally; external agent boundaries stay
-                  unavailable until schema-backed ports are added.
+                  {t("mesh.uiBackedByStudio")}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <StudioStatusChip tone="health">
-                  {wiredCount} wired capabilities
+                  {t("common.wiredCapabilities", { count: wiredCount })}
                 </StudioStatusChip>
                 <StudioStatusChip tone="neutral">
-                  {sourceFiles.length} source files
+                  {t("common.sourceFiles", { count: sourceFiles.length })}
                 </StudioStatusChip>
               </div>
             </div>
 
             <div className="mt-4 grid gap-3 xl:grid-cols-3">
               <MeshColumn
-                title="Project Source"
+                title={t("mesh.projectSource")}
                 icon={FileText}
                 tone="border-health-400/45 bg-health-500/15"
               >
-                <MeshNode title={loadedPath} detail="Folder files win over cache" />
+                <MeshNode title={loadedPath} detail={t("mesh.folderFilesWin")} />
               </MeshColumn>
               <MeshColumn
-                title="Runtime Evidence"
+                title={t("mesh.runtimeEvidence")}
                 icon={Play}
                 tone="border-accent-400/45 bg-accent-500/15"
               >
-                <MeshNode title={proofLabel} detail="Generated only by play_once" />
+                <MeshNode title={proofLabel} detail={t("mesh.generatedByPlayOnce")} />
               </MeshColumn>
               <MeshColumn
-                title="Export Evidence"
+                title={t("mesh.exportEvidence")}
                 icon={PackageCheck}
                 tone="border-violet-400/45 bg-violet-500/15"
               >
                 <MeshNode
-                  title={`${exportProfileCount} profiles`}
-                  detail="Only static web has an executable Studio command"
+                  title={t("common.profiles", { count: exportProfileCount })}
+                  detail={t("mesh.onlyStaticWebExecutable")}
                 />
               </MeshColumn>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <ArtifactNode icon={FileText} title="Source Files" detail={String(sourceFiles.length)} />
-              <ArtifactNode icon={Boxes} title="Asset Records" detail={String(assetRecordCount)} />
-              <ArtifactNode icon={Network} title="External Agents" detail="not implemented" />
+              <ArtifactNode icon={FileText} title={t("mesh.sourceFiles")} detail={String(sourceFiles.length)} />
+              <ArtifactNode icon={Boxes} title={t("mesh.assetRecords")} detail={String(assetRecordCount)} />
+              <ArtifactNode icon={Network} title={t("mesh.externalAgents")} detail={t("common.notImplemented")} />
             </div>
           </div>
 
           <div
-            aria-label="Capability Matrix"
+            aria-label={t("mesh.aria.capabilityMatrix")}
             className="rounded-lg border border-canvas-200 bg-canvas-50 shadow-studio-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-4 py-3">
               <div>
                 <p className="text-xs font-semibold uppercase text-accent-500">
-                  Capability Matrix
+                  {t("mesh.capabilityMatrix")}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-ink">
-                  Studio-backed capabilities
+                  {t("mesh.studioBackedCapabilities")}
                 </h3>
               </div>
-              <StudioStatusChip tone="health">{wiredCount} wired</StudioStatusChip>
+              <StudioStatusChip tone="health">{t("common.wiredCount", { count: wiredCount })}</StudioStatusChip>
             </div>
 
             <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -232,50 +229,50 @@ export function AgentMeshView({
         </div>
 
         <aside
-          aria-label="Bridge Evidence"
+          aria-label={t("mesh.aria.bridgeEvidence")}
           className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-canvas-50 p-3 shadow-studio-panel lg:col-start-2 lg:row-start-2"
         >
           <div>
             <p className="text-xs font-semibold uppercase text-accent-500">
-              Bridge Evidence
+              {t("mesh.bridgeEvidence")}
             </p>
             <h3 className="mt-1 text-lg font-semibold text-ink">
-              Current backend facts
+              {t("mesh.currentBackendFacts")}
             </h3>
           </div>
 
           <div className="grid gap-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
-            <EvidenceLine label="Runtime" value={runtimeName} />
-            <EvidenceLine label="Loaded path" value={loadedPath} />
-            <EvidenceLine label="Playable proof" value={proofLabel} />
+            <EvidenceLine label={t("mesh.runtime")} value={runtimeName} />
+            <EvidenceLine label={t("mesh.loadedPath")} value={loadedPath} />
+            <EvidenceLine label={t("mesh.playableProof")} value={proofLabel} />
             <EvidenceLine
-              label="Trace id"
-              value={playtestReport?.trace.id ?? "not captured"}
+              label={t("mesh.traceId")}
+              value={playtestReport?.trace.id ?? t("common.notCaptured")}
             />
           </div>
 
           <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-ink">Safety Boundary</h3>
-              <StudioStatusChip tone="health">explicit</StudioStatusChip>
+              <h3 className="text-sm font-semibold text-ink">{t("mesh.safetyBoundary")}</h3>
+              <StudioStatusChip tone="health">{t("common.explicit")}</StudioStatusChip>
             </div>
             <div className="mt-3 grid gap-2 text-sm text-ink/65">
-              <p>No provider credentials are read by this UI surface.</p>
-              <p>No external agent connection is started from the browser.</p>
-              <p>Unsupported capabilities are disabled instead of simulated.</p>
+              <p>{t("mesh.noProviderCredentials")}</p>
+              <p>{t("mesh.noExternalAgentConnection")}</p>
+              <p>{t("mesh.unsupportedDisabled")}</p>
             </div>
           </div>
 
           <div className="rounded-md border border-ink/10 bg-graphite-950 px-3 py-3 text-ink">
-            <h3 className="text-sm font-semibold">Actions</h3>
+            <h3 className="text-sm font-semibold">{t("mesh.actions")}</h3>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <StudioButton onClick={onOpenTrace}>
                 <TerminalSquare aria-hidden size={16} />
-                Review trace
+                {t("mesh.reviewTrace")}
               </StudioButton>
               <StudioButton variant="primary" onClick={onRunPlayableProof}>
                 <Play aria-hidden size={16} />
-                Run proof
+                {t("mesh.runProof")}
               </StudioButton>
             </div>
           </div>
@@ -358,12 +355,13 @@ function DarkCollapsible({
  * horizontal scrolling on narrow screens.
  */
 function CapabilityCard({ capability }: { capability: Capability }) {
+  const { t } = useStudioI18n();
   const wired = capability.status === "wired";
   const StatusIcon = wired ? CheckCircle2 : XCircle;
   return (
     <article className="flex h-full flex-col gap-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-3">
       <div className="flex items-start justify-between gap-2">
-        <h4 className="text-sm font-semibold text-ink">{capability.label}</h4>
+        <h4 className="text-sm font-semibold text-ink">{t(capability.label)}</h4>
         <StatusIcon
           aria-hidden
           size={16}
@@ -372,12 +370,12 @@ function CapabilityCard({ capability }: { capability: Capability }) {
       </div>
       <dl className="grid gap-1.5 text-xs leading-5">
         <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
-          <dt className="font-semibold uppercase text-ink/45">Real source</dt>
-          <dd className="text-ink/70">{capability.source}</dd>
+          <dt className="font-semibold uppercase text-ink/45">{t("mesh.realSource")}</dt>
+          <dd className="text-ink/70">{t(capability.source)}</dd>
         </div>
         <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
-          <dt className="font-semibold uppercase text-ink/45">Evidence</dt>
-          <dd className="text-ink/70">{capability.evidence}</dd>
+          <dt className="font-semibold uppercase text-ink/45">{t("mesh.evidence")}</dt>
+          <dd className="text-ink/70">{t(capability.evidence)}</dd>
         </div>
       </dl>
       <StudioStatusChip tone={wired ? "health" : "danger"}>

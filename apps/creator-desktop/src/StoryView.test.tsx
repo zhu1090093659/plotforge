@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StoryView, type StoryViewProps } from "./StoryView";
 import type { StoryCraftEditDocument } from "../../../contracts/plotforge";
+import { StudioI18nProvider } from "./i18n";
 
 afterEach(() => {
   cleanup();
@@ -64,9 +65,13 @@ function defaultProps(overrides: Partial<StoryViewProps> = {}): StoryViewProps {
   };
 }
 
+function renderView(ui: React.ReactElement) {
+  return render(ui, { wrapper: StudioI18nProvider });
+}
+
 describe("StoryView", () => {
   it("renders story bible and style guide fields", () => {
-    render(<StoryView {...defaultProps()} />);
+    renderView(<StoryView {...defaultProps()} />);
 
     expect(screen.getByLabelText("Story bible markdown")).toBeTruthy();
     expect(screen.getByLabelText("Style guide markdown")).toBeTruthy();
@@ -79,19 +84,19 @@ describe("StoryView", () => {
   });
 
   it("shows plot thread count in subtitle", () => {
-    render(<StoryView {...defaultProps()} />);
+    renderView(<StoryView {...defaultProps()} />);
     expect(screen.getByText("1 plot threads")).toBeTruthy();
   });
 
   it("renders plot thread cards", () => {
-    render(<StoryView {...defaultProps()} />);
+    renderView(<StoryView {...defaultProps()} />);
 
     expect(screen.getByText("Tax Crisis")).toBeTruthy();
     expect(screen.getByText("The treasury will run dry.")).toBeTruthy();
   });
 
   it("keeps AI generation concept visible in main area (not collapsed)", () => {
-    render(<StoryView {...defaultProps()} />);
+    renderView(<StoryView {...defaultProps()} />);
 
     // The Story generation concept textarea should be immediately visible
     expect(screen.getByLabelText("Story generation concept")).toBeTruthy();
@@ -105,7 +110,7 @@ describe("StoryView", () => {
 
   it("calls onSave when Save Story Craft is clicked", () => {
     const onSave = vi.fn();
-    render(<StoryView {...defaultProps({ onSave })} />);
+    renderView(<StoryView {...defaultProps({ onSave })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save Story Craft" }));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -113,7 +118,7 @@ describe("StoryView", () => {
 
   it("calls onGenerateStoryCraft when Generate StoryCraft is clicked", () => {
     const onGenerateStoryCraft = vi.fn();
-    render(<StoryView {...defaultProps({ onGenerateStoryCraft })} />);
+    renderView(<StoryView {...defaultProps({ onGenerateStoryCraft })} />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Generate StoryCraft" }),
@@ -123,7 +128,7 @@ describe("StoryView", () => {
 
   it("calls onStoryGenerationConceptChange when concept input changes", () => {
     const onStoryGenerationConceptChange = vi.fn();
-    render(
+    renderView(
       <StoryView {...defaultProps({ onStoryGenerationConceptChange })} />,
     );
 
@@ -137,7 +142,7 @@ describe("StoryView", () => {
 
   it("calls onUpdateStoryBible when genre promise changes", () => {
     const onUpdateStoryBible = vi.fn();
-    render(<StoryView {...defaultProps({ onUpdateStoryBible })} />);
+    renderView(<StoryView {...defaultProps({ onUpdateStoryBible })} />);
 
     fireEvent.change(screen.getByLabelText("Genre promise"), {
       target: { value: "A sharper political survival story." },
@@ -149,7 +154,7 @@ describe("StoryView", () => {
 
   it("calls onUpdateStoryCraftDocument when story bible markdown changes", () => {
     const onUpdateStoryCraftDocument = vi.fn();
-    render(
+    renderView(
       <StoryView {...defaultProps({ onUpdateStoryCraftDocument })} />,
     );
 
@@ -162,7 +167,7 @@ describe("StoryView", () => {
   });
 
   it("shows empty state when storyCraftEditDocument is null", () => {
-    render(
+    renderView(
       <StoryView {...defaultProps({ storyCraftEditDocument: null })} />,
     );
     expect(
@@ -172,7 +177,7 @@ describe("StoryView", () => {
   });
 
   it("shows success form status message for story section", () => {
-    render(
+    renderView(
       <StoryView
         {...defaultProps({
           formStatus: {
@@ -187,7 +192,7 @@ describe("StoryView", () => {
   });
 
   it("does not show form status for a different section", () => {
-    render(
+    renderView(
       <StoryView
         {...defaultProps({
           formStatus: {
@@ -202,14 +207,14 @@ describe("StoryView", () => {
   });
 
   it("disables Save Story Craft button while saving", () => {
-    render(<StoryView {...defaultProps({ saving: true })} />);
+    renderView(<StoryView {...defaultProps({ saving: true })} />);
     expect(
       screen.getByRole("button", { name: "Save Story Craft" }).hasAttribute("disabled"),
     ).toBe(true);
   });
 
   it("has an Advanced collapsible section for extra details", () => {
-    render(<StoryView {...defaultProps()} />);
+    renderView(<StoryView {...defaultProps()} />);
 
     // Advanced section should exist
     expect(

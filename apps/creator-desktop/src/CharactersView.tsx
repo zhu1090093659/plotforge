@@ -10,6 +10,7 @@ import {
   Collapsible,
   studioUiClassNames,
 } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,15 +67,18 @@ export function CharactersView({
   onCreateCharacterFromDraft,
   onUpdateCharacter,
 }: CharactersViewProps) {
+  const { t } = useStudioI18n();
   const [addMode, setAddMode] = useState<"ai" | "manual">("manual");
 
   return (
     <section className={studioUiClassNames.panel}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">Characters</h3>
+          <h3 className="text-lg font-semibold">{t("characters.title")}</h3>
           <p className="mt-1 truncate text-sm text-ink/55">
-            {characterEditDocument?.characters.length ?? 0} records
+            {t("common.records", {
+              count: characterEditDocument?.characters.length ?? 0,
+            })}
           </p>
         </div>
         <button
@@ -88,16 +92,14 @@ export function CharactersView({
           ) : (
             <Save aria-hidden size={16} />
           )}
-          Save Characters
+          {t("characters.save")}
         </button>
       </div>
 
-      {/* Section status message */}
       <SectionStatusMessage section="characters" formStatus={formStatus} />
 
       {characterEditDocument ? (
         <div className="mt-3 grid gap-3">
-          {/* Existing character cards (collapsible) */}
           <div className="grid gap-3 lg:grid-cols-2">
             {characterEditDocument.characters.map((character, index) => (
               <CharacterCard
@@ -109,13 +111,11 @@ export function CharactersView({
             ))}
           </div>
 
-          {/* Unified "Add Character" collapsible */}
           <Collapsible
-            label="Add Character"
+            label={t("characters.addCharacter")}
             defaultOpen={false}
             className="rounded-md border border-ink/10 bg-canvas-50 p-4"
           >
-            {/* Mode selector */}
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
@@ -128,7 +128,7 @@ export function CharactersView({
                     : "border-graphite-700/20 bg-canvas-50 text-ink/60 hover:border-graphite-700/45",
                 ].join(" ")}
               >
-                Manual
+                {t("characters.manual")}
               </button>
               <button
                 type="button"
@@ -141,7 +141,7 @@ export function CharactersView({
                     : "border-graphite-700/20 bg-canvas-50 text-ink/60 hover:border-graphite-700/45",
                 ].join(" ")}
               >
-                AI Generate
+                {t("characters.aiGenerate")}
               </button>
             </div>
 
@@ -184,6 +184,7 @@ function CharacterCard({
   index: number;
   onUpdate(patch: Partial<Character>): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
       <Collapsible
@@ -194,26 +195,26 @@ function CharacterCard({
       >
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <TextInput
-            label="Character id"
-            ariaLabel={`Character id ${index + 1}`}
+            label={t("characters.characterId")}
+            ariaLabel={t("characters.aria.charIdN", { index: index + 1 })}
             value={character.id}
             onChange={(value) => onUpdate({ id: value })}
           />
           <TextInput
-            label="Name"
-            ariaLabel={`Character name ${index + 1}`}
+            label={t("characters.name")}
+            ariaLabel={t("characters.aria.charNameN", { index: index + 1 })}
             value={character.name}
             onChange={(value) => onUpdate({ name: value })}
           />
           <TextInput
-            label="Role"
-            ariaLabel={`Character role ${index + 1}`}
+            label={t("characters.role")}
+            ariaLabel={t("characters.aria.charRoleN", { index: index + 1 })}
             value={character.role}
             onChange={(value) => onUpdate({ role: value })}
           />
           <TextareaInput
-            label="Traits"
-            ariaLabel={`Character traits ${index + 1}`}
+            label={t("characters.traits")}
+            ariaLabel={t("characters.aria.charTraitsN", { index: index + 1 })}
             value={character.traits.join("\n")}
             onChange={(value) =>
               onUpdate({
@@ -226,17 +227,17 @@ function CharacterCard({
             minHeight="min-h-24"
           />
           <TextareaInput
-            label="Visual card"
-            ariaLabel={`Visual card ${index + 1}`}
-            placeholder="Describe appearance, clothing, color palette for image generation."
+            label={t("characters.visualCard")}
+            ariaLabel={t("characters.aria.visualCardN", { index: index + 1 })}
+            placeholder={t("characters.placeholder.visualCardExisting")}
             value={character.visual_card}
             onChange={(value) => onUpdate({ visual_card: value })}
             minHeight="min-h-24"
           />
           <TextareaInput
-            label="Voice card"
-            ariaLabel={`Voice card ${index + 1}`}
-            placeholder="Describe speech cadence, vocabulary, and emotional register."
+            label={t("characters.voiceCard")}
+            ariaLabel={t("characters.aria.voiceCardN", { index: index + 1 })}
+            placeholder={t("characters.placeholder.voiceCardExisting")}
             value={character.voice_card}
             onChange={(value) => onUpdate({ voice_card: value })}
             minHeight="min-h-24"
@@ -244,7 +245,7 @@ function CharacterCard({
           {character.portrait_request ? (
             <div className="sm:col-span-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm">
               <p className="text-xs font-medium uppercase text-ink/55">
-                Portrait request
+                {t("characters.portraitRequest")}
               </p>
               <p className="mt-1 text-ink/70">
                 {character.portrait_request.prompt_summary}
@@ -275,49 +276,50 @@ function ManualCharacterForm({
   onDraftChange(draft: CharacterDraft): void;
   onSubmit(): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-3 grid gap-3 lg:grid-cols-2">
       <TextInput
-        label="Character id"
-        ariaLabel="New character id"
-        placeholder="e.g. council-envoy"
+        label={t("characters.characterId")}
+        ariaLabel={t("characters.aria.newCharId")}
+        placeholder={t("characters.placeholder.charId")}
         value={draft.id}
         onChange={(value) => onDraftChange({ ...draft, id: value })}
       />
       <TextInput
-        label="Name"
-        ariaLabel="New character name"
-        placeholder="Full display name"
+        label={t("characters.name")}
+        ariaLabel={t("characters.aria.newCharName")}
+        placeholder={t("characters.placeholder.name")}
         value={draft.name}
         onChange={(value) => onDraftChange({ ...draft, name: value })}
       />
       <TextInput
-        label="Role"
-        ariaLabel="New character role"
-        placeholder="e.g. Council Envoy, Antagonist"
+        label={t("characters.role")}
+        ariaLabel={t("characters.aria.newCharRole")}
+        placeholder={t("characters.placeholder.role")}
         value={draft.role}
         onChange={(value) => onDraftChange({ ...draft, role: value })}
       />
       <TextareaInput
-        label="Traits"
-        ariaLabel="New character traits"
-        placeholder="One trait per line (e.g. cautious, articulate)"
+        label={t("characters.traits")}
+        ariaLabel={t("characters.aria.newCharTraits")}
+        placeholder={t("characters.placeholder.traits")}
         value={draft.traits_text}
         onChange={(value) => onDraftChange({ ...draft, traits_text: value })}
         minHeight="min-h-24"
       />
       <TextareaInput
-        label="Visual card"
-        ariaLabel="New visual card"
-        placeholder="Describe appearance for image generation."
+        label={t("characters.visualCard")}
+        ariaLabel={t("characters.aria.newVisualCard")}
+        placeholder={t("characters.placeholder.visualCard")}
         value={draft.visual_card}
         onChange={(value) => onDraftChange({ ...draft, visual_card: value })}
         minHeight="min-h-24"
       />
       <TextareaInput
-        label="Voice card"
-        ariaLabel="New voice card"
-        placeholder="Describe speech pattern and emotional register."
+        label={t("characters.voiceCard")}
+        ariaLabel={t("characters.aria.newVoiceCard")}
+        placeholder={t("characters.placeholder.voiceCard")}
         value={draft.voice_card}
         onChange={(value) => onDraftChange({ ...draft, voice_card: value })}
         minHeight="min-h-24"
@@ -329,7 +331,7 @@ function ManualCharacterForm({
           disabled={saving}
           className={studioUiClassNames.secondaryButton}
         >
-          Create Character
+          {t("characters.create")}
         </button>
       </div>
     </div>
@@ -355,21 +357,22 @@ function AiCharacterForm({
   onRoleHintChange(value: string): void;
   onSubmit(): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-3 flex flex-wrap items-end gap-3">
       <TextareaInput
-        label="AI character concept"
-        ariaLabel="Character generation concept"
-        placeholder="Describe the character concept and story role."
+        label={t("characters.aiCharacterConcept")}
+        ariaLabel={t("characters.aria.characterGenerationConcept")}
+        placeholder={t("characters.placeholder.concept")}
         value={concept}
         onChange={onConceptChange}
         className="min-w-0 flex-[2]"
         minHeight="min-h-20"
       />
       <TextInput
-        label="Role hint"
-        ariaLabel="Character generation role hint"
-        placeholder="e.g. council envoy"
+        label={t("characters.roleHint")}
+        ariaLabel={t("characters.aria.characterGenerationRoleHint")}
+        placeholder={t("characters.placeholder.roleHint")}
         value={roleHint}
         onChange={onRoleHintChange}
         className="min-w-56"
@@ -380,7 +383,7 @@ function AiCharacterForm({
         disabled={saving}
         className={studioUiClassNames.secondaryButton}
       >
-        Generate Character
+        {t("characters.generate")}
       </button>
     </div>
   );
@@ -391,9 +394,10 @@ function AiCharacterForm({
 // ---------------------------------------------------------------------------
 
 function EmptyCharacters() {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
-      Character edit document not loaded.
+      {t("characters.notLoaded")}
     </div>
   );
 }

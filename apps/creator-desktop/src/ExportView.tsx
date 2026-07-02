@@ -8,6 +8,7 @@ import type {
 import type { StaticExportReport } from "./tauriBridge";
 import type { AssetCatalog } from "./assetCatalog";
 import { Collapsible, StudioStatusChip, StudioTabs } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,14 +58,16 @@ function isAbsoluteMachinePath(path: string) {
   return path.startsWith("/") || path.startsWith("~") || /^[A-Za-z]:[\\/]/.test(path);
 }
 
-function evidenceStatusLabel(status: EvidenceStatus) {
+type StudioTranslate = (key: string, params?: Record<string, string | number>) => string;
+
+function evidenceStatusLabel(status: EvidenceStatus, t: StudioTranslate) {
   switch (status) {
     case "pass":
-      return "Pass";
+      return t("common.pass");
     case "review":
-      return "Review";
+      return t("common.review");
     case "pending":
-      return "Pending";
+      return t("common.pending");
   }
 }
 
@@ -137,9 +140,11 @@ function PackageReadinessRow({
     detail: string;
     status: string;
     files: number;
+    filesLabel: string;
+    ready: boolean;
   };
 }) {
-  const ready = item.status === "Ready" || item.status === "Passed";
+  const ready = item.ready;
   return (
     <div className="grid gap-3 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_120px_minmax(160px,0.7fr)_80px]">
       <div className="min-w-0">
@@ -165,9 +170,7 @@ function PackageReadinessRow({
           style={{ width: ready ? "100%" : "45%" }}
         />
       </div>
-      <p className="text-right text-xs font-semibold text-ink/60">
-        {item.files} files
-      </p>
+      <p className="text-right text-xs font-semibold text-ink/60">{item.filesLabel}</p>
     </div>
   );
 }
@@ -338,6 +341,7 @@ export function ExportView({
   updateAiSafetyPolicy,
   saveAiSafetyPolicy,
 }: ExportViewProps) {
+  const { t } = useStudioI18n();
   const exportDisabled = exporting || !staticExportSelected;
   const exportAuditMatched = exportReport
     ? sameStringSet(exportReport.allowed_files, exportReport.files_found)
@@ -353,59 +357,84 @@ export function ExportView({
 
   const packageItems = [
     {
-      label: "Player files",
-      detail: "HTML, CSS, JS, fonts",
-      status: exportReport ? "Ready" : staticExportSelected ? "Pending" : "Draft",
+      label: t("export.playerFiles"),
+      detail: t("export.playerFilesDetail"),
+      status: exportReport
+        ? t("common.ready")
+        : staticExportSelected
+          ? t("common.pending")
+          : t("export.draft"),
       files: exportReport?.files_found.length ?? 0,
+      filesLabel: t("common.files", { count: exportReport?.files_found.length ?? 0 }),
+      ready: Boolean(exportReport),
     },
     {
-      label: "ExportManifest",
-      detail: "export-manifest.json",
-      status: exportReport ? "Ready" : "Pending",
+      label: t("export.exportManifest"),
+      detail: t("export.exportManifestDetail"),
+      status: exportReport ? t("common.ready") : t("common.pending"),
       files: 1,
+      filesLabel: t("common.files", { count: 1 }),
+      ready: Boolean(exportReport),
     },
     {
-      label: "Reachable assets",
-      detail: "Images, audio, fonts",
-      status: exportReport && assetCatalog.items.length > 0 ? "Ready" : "Pending",
+      label: t("export.reachableAssets"),
+      detail: t("export.reachableAssetsDetail"),
+      status:
+        exportReport && assetCatalog.items.length > 0
+          ? t("common.ready")
+          : t("common.pending"),
       files: assetCatalog.items.length,
+      filesLabel: t("common.files", { count: assetCatalog.items.length }),
+      ready: Boolean(exportReport && assetCatalog.items.length > 0),
     },
     {
-      label: "Story and rules data",
-      detail: "Scenes, rules, contracts",
-      status: exportReport && projectData ? "Ready" : "Pending",
+      label: t("export.storyRulesData"),
+      detail: t("export.storyRulesDataDetail"),
+      status:
+        exportReport && projectData ? t("common.ready") : t("common.pending"),
       files: projectData ? projectData.scenes.length + projectData.rules.length : 0,
+      filesLabel: t("common.files", {
+        count: projectData ? projectData.scenes.length + projectData.rules.length : 0,
+      }),
+      ready: Boolean(exportReport && projectData),
     },
     {
-      label: "AI usage disclosure",
-      detail: aiSafetyPolicy?.policy_source_path ?? "ai-usage manifest",
-      status: exportReport && aiSafetyPolicy ? "Ready" : "Pending",
+      label: t("export.aiUsageDisclosure"),
+      detail: aiSafetyPolicy?.policy_source_path ?? t("export.aiUsageDisclosureDetail"),
+      status: exportReport && aiSafetyPolicy ? t("common.ready") : t("common.pending"),
       files: aiSafetyPolicy ? 1 : 0,
+      filesLabel: t("common.files", { count: aiSafetyPolicy ? 1 : 0 }),
+      ready: Boolean(exportReport && aiSafetyPolicy),
     },
     {
-      label: "Content warning draft",
-      detail: "local creator review",
-      status: exportReport && aiSafetyPolicy ? "Ready" : "Pending",
+      label: t("export.contentWarningDraft"),
+      detail: t("export.contentWarningDraftDetail"),
+      status: exportReport && aiSafetyPolicy ? t("common.ready") : t("common.pending"),
       files: aiSafetyPolicy?.content_kinds.length ?? 0,
+      filesLabel: t("common.files", { count: aiSafetyPolicy?.content_kinds.length ?? 0 }),
+      ready: Boolean(exportReport && aiSafetyPolicy),
     },
     {
-      label: "Archive manifest",
-      detail: exportReport?.archive_path ?? "created after export",
-      status: exportReport ? "Ready" : "Pending",
+      label: t("export.archiveManifest"),
+      detail: exportReport?.archive_path ?? t("export.archiveManifestDetail"),
+      status: exportReport ? t("common.ready") : t("common.pending"),
       files: exportReport?.archived_files.length ?? 0,
+      filesLabel: t("common.files", { count: exportReport?.archived_files.length ?? 0 }),
+      ready: Boolean(exportReport),
     },
     {
-      label: "Local smoke evidence",
-      detail: "static export smoke not run by this command",
-      status: "Pending",
+      label: t("export.localSmokeEvidence"),
+      detail: t("export.localSmokeEvidenceDetail"),
+      status: t("common.pending"),
       files: 0,
+      filesLabel: t("common.files", { count: 0 }),
+      ready: false,
     },
   ];
 
-  // Checks that can actually resolve (user-actionable or export-dependent)
   const actionableEvidenceChecks = [
     {
-      label: "No provider configuration",
+      label: t("export.check.noProviderConfig"),
       status: selectedExportProfile
         ? selectedExportProfile.includes_provider_config
           ? "review"
@@ -413,7 +442,7 @@ export function ExportView({
         : "pending",
     },
     {
-      label: "No private traces",
+      label: t("export.check.noPrivateTraces"),
       status: selectedExportProfile
         ? selectedExportProfile.includes_private_traces
           ? "review"
@@ -421,11 +450,11 @@ export function ExportView({
         : "pending",
     },
     {
-      label: "All referenced assets copied",
+      label: t("export.check.allAssetsCopied"),
       status: exportReport ? (exportAuditMatched ? "pass" : "review") : "pending",
     },
     {
-      label: "No absolute machine paths",
+      label: t("export.check.noAbsolutePaths"),
       status: exportReport
         ? hasAbsolutePackagePath
           ? "review"
@@ -434,18 +463,19 @@ export function ExportView({
     },
   ] satisfies Array<{ label: string; status: EvidenceStatus }>;
 
-  // Permanently-pending checks (system-level, user cannot act on them here)
   const technicalEvidenceChecks = [
-    { label: "No raw responses", status: "pending" as EvidenceStatus },
-    { label: "No secret markers", status: "pending" as EvidenceStatus },
-    { label: "HTTP smoke test passed", status: "pending" as EvidenceStatus },
+    { label: t("export.check.noRawResponses"), status: "pending" as EvidenceStatus },
+    { label: t("export.check.noSecretMarkers"), status: "pending" as EvidenceStatus },
+    { label: t("export.check.httpSmokePassed"), status: "pending" as EvidenceStatus },
   ];
 
   const allEvidenceChecks = [...actionableEvidenceChecks, ...technicalEvidenceChecks];
   const passedEvidenceCount = allEvidenceChecks.filter((c) => c.status === "pass").length;
   const reviewEvidenceCount = allEvidenceChecks.filter((c) => c.status === "review").length;
   const selectedProfileReady = allEvidenceChecks.every((c) => c.status === "pass");
-  const packageHash = exportReport ? "pending explicit package hash" : "pending export";
+  const packageHash = exportReport
+    ? t("export.pendingExplicitPackageHash")
+    : t("export.pendingExport");
 
   const panelClassName = "rounded-lg border border-ink/10 bg-canvas-50 p-4 text-ink shadow-studio-panel";
 
@@ -454,14 +484,14 @@ export function ExportView({
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">Export Package</h3>
+          <h3 className="text-lg font-semibold">{t("export.exportPackage")}</h3>
           <p className="mt-1 truncate text-sm text-ink/55">
-            Local package readiness, manifest evidence, and boundary checks
+            {t("export.subtitle")}
           </p>
         </div>
         <button
           type="button"
-          aria-label="Export zip"
+          aria-label={t("export.aria.exportZip")}
           onClick={() => void runStaticZipExport()}
           disabled={exportDisabled}
           className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
@@ -471,7 +501,7 @@ export function ExportView({
           ) : (
             <Download aria-hidden size={16} />
           )}
-          Export zip
+          {t("export.exportZip")}
         </button>
       </div>
 
@@ -490,12 +520,12 @@ export function ExportView({
 
       {/* Three-tab surface: Package / Profile / Policy */}
       <StudioTabs
-        ariaLabel="Export workspace"
+        ariaLabel={t("export.aria.exportWorkspace")}
         className="mt-4"
         items={[
           {
             id: "package",
-            label: "Package",
+            label: t("export.packageTab"),
             badge: exportReport ? exportReport.files_found.length : undefined,
             children: (
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -504,34 +534,34 @@ export function ExportView({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase text-violet-600">
-                        Build Profile
+                        {t("export.buildProfile")}
                       </p>
                       <h3 className="mt-1 text-lg font-semibold text-ink">
-                        {selectedExportProfile?.id ?? "No profile selected"}
+                        {selectedExportProfile?.id ?? t("export.noProfileSelected")}
                       </h3>
                     </div>
                     <StudioStatusChip tone={staticExportSelected ? "health" : "agent"}>
-                      {staticExportSelected ? "Executable" : "Draft"}
+                      {staticExportSelected
+                        ? t("export.executable")
+                        : t("export.draft")}
                     </StudioStatusChip>
                   </div>
                   <p className="text-sm leading-6 text-graphite-700/70">
-                    {selectedExportProfile?.intent ??
-                      "Select a local package profile to inspect export readiness."}
+                    {selectedExportProfile?.intent ?? t("export.selectProfilePrompt")}
                   </p>
 
                   <ExportEvidenceCard
-                    title="AI Usage Manifest"
-                    badge={aiSafetyPolicy ? "Included" : "Pending"}
+                    title={t("export.aiUsageManifest")}
+                    badge={aiSafetyPolicy ? t("export.included") : t("common.pending")}
                   >
                     <p className="text-sm leading-6 text-graphite-700/70">
-                      {aiSafetyPolicy?.moderation_policy ??
-                        "AI usage evidence appears after policy load."}
+                      {aiSafetyPolicy?.moderation_policy ?? t("export.aiUsageAfterPolicy")}
                     </p>
                   </ExportEvidenceCard>
 
                   <ExportEvidenceCard
-                    title="Content Warnings"
-                    badge={aiSafetyPolicy ? "Included" : "Pending"}
+                    title={t("export.contentWarnings")}
+                    badge={aiSafetyPolicy ? t("export.included") : t("common.pending")}
                   >
                     <div className="grid gap-2">
                       {(aiSafetyPolicy?.content_kinds ?? ["text"]).map((kind) => (
@@ -540,31 +570,38 @@ export function ExportView({
                           className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
                         >
                           <span className="capitalize text-ink">{kind}</span>
-                          <span className="text-graphite-700/60">creator review</span>
+                          <span className="text-graphite-700/60">
+                            {t("export.creatorReview")}
+                          </span>
                         </div>
                       ))}
                     </div>
                   </ExportEvidenceCard>
 
-                  <ExportEvidenceCard title="Redaction Rules" badge="On">
+                  <ExportEvidenceCard
+                    title={t("export.redactionRules")}
+                    badge={t("common.on")}
+                  >
                     <div className="grid gap-2 text-sm text-graphite-700/70">
                       {[
-                        "Strip provider configuration",
-                        "Remove private traces",
-                        "Remove raw responses",
-                        "Remove secret markers",
+                        t("export.stripProviderConfig"),
+                        t("export.removePrivateTraces"),
+                        t("export.removeRawResponses"),
+                        t("export.removeSecretMarkers"),
                       ].map((rule) => (
                         <div key={rule} className="flex items-center justify-between gap-3">
                           <span>{rule}</span>
-                          <span className="font-semibold text-health-400">On</span>
+                          <span className="font-semibold text-health-400">
+                            {t("common.on")}
+                          </span>
                         </div>
                       ))}
                     </div>
                   </ExportEvidenceCard>
 
-                  <ExportEvidenceCard title="Asset Whitelist" badge="Local">
+                  <ExportEvidenceCard title={t("export.assetWhitelist")} badge="Local">
                     <p className="text-sm leading-6 text-graphite-700/70">
-                      Allow only referenced assets under project asset paths.
+                      {t("export.allowReferencedAssets")}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {[".png", ".jpg", ".webp", ".ogg", ".mp3", ".json", ".md"].map(
@@ -583,10 +620,10 @@ export function ExportView({
                   {/* Boundary checks summary (merged from right aside) */}
                   <div className="mt-1">
                     <p className="text-xs font-semibold uppercase text-health-400">
-                      Evidence &amp; Boundaries
+                      {t("export.evidenceBoundaries")}
                     </p>
                     <p className="mt-1 text-sm text-graphite-700/70">
-                      Local export package only
+                      {t("export.localExportPackageOnly")}
                     </p>
                   </div>
                   <div className="grid gap-2">
@@ -602,7 +639,7 @@ export function ExportView({
                             evidenceStatusClassName(check.status),
                           ].join(" ")}
                         >
-                          {evidenceStatusLabel(check.status)}
+                          {evidenceStatusLabel(check.status, t)}
                         </span>
                       </div>
                     ))}
@@ -610,7 +647,7 @@ export function ExportView({
 
                   {/* Technical details (permanently pending checks) — collapsed by default */}
                   <Collapsible
-                    label="Technical Details"
+                    label={t("export.technicalDetails")}
                     defaultOpen={false}
                     badge={technicalEvidenceChecks.length}
                     className="mt-1"
@@ -628,36 +665,44 @@ export function ExportView({
                               evidenceStatusClassName(check.status),
                             ].join(" ")}
                           >
-                            {evidenceStatusLabel(check.status)}
+                            {evidenceStatusLabel(check.status, t)}
                           </span>
                         </div>
                       ))}
                       <p className="mt-1 text-xs text-graphite-700/55">
-                        These checks remain pending until a separate smoke test is run
-                        after export.
+                        {t("export.technicalChecksPending")}
                       </p>
                     </div>
                   </Collapsible>
 
-                  <ExportEvidenceCard title="Package Information" badge="Local">
+                  <ExportEvidenceCard title={t("export.packageInformation")} badge="Local">
                     <div className="grid gap-2 text-sm">
-                      <ProofLikeLine label="Profile" value={selectedExportProfile?.id ?? "none"} />
-                      <ProofLikeLine label="Package hash" value={packageHash} />
                       <ProofLikeLine
-                        label="Archive"
-                        value={exportReport?.archive_path ?? "not exported"}
+                        label={t("export.profile")}
+                        value={selectedExportProfile?.id ?? t("common.none")}
+                      />
+                      <ProofLikeLine
+                        label={t("export.packageHash")}
+                        value={packageHash}
+                      />
+                      <ProofLikeLine
+                        label={t("export.archive")}
+                        value={exportReport?.archive_path ?? t("common.notExported")}
                       />
                     </div>
                   </ExportEvidenceCard>
 
-                  <ExportEvidenceCard title="Validation Summary" badge="Local">
+                  <ExportEvidenceCard title={t("export.validationSummary")} badge="Local">
                     <div className="grid gap-2 text-sm">
                       <ProofLikeLine
-                        label="Checks passed"
-                        value={`${passedEvidenceCount} / ${allEvidenceChecks.length}`}
+                        label={t("export.checksPassed")}
+                        value={t("common.checksPassed", {
+                          passed: passedEvidenceCount,
+                          total: allEvidenceChecks.length,
+                        })}
                       />
                       <ProofLikeLine
-                        label="Needs review"
+                        label={t("export.needsReview")}
                         value={String(reviewEvidenceCount + (exportError ? 1 : 0))}
                       />
                     </div>
@@ -670,21 +715,21 @@ export function ExportView({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-semibold uppercase text-health-500">
-                          Package Readiness
+                          {t("export.packageReadiness")}
                         </p>
                         <h3 className="mt-1 text-lg font-semibold">
                           {selectedProfileReady
-                            ? "All local boundary checks passed"
-                            : "Review profile boundary checks"}
+                            ? t("export.allChecksPassed")
+                            : t("export.reviewProfileChecks")}
                         </h3>
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-right text-sm">
                         <ExportInfo
-                          label="Files"
+                          label={t("export.files")}
                           value={String(exportReport?.files_found.length ?? 0)}
                         />
                         <ExportInfo
-                          label="Asset records"
+                          label={t("export.assetRecords")}
                           value={String(assetCatalog.items.length)}
                         />
                       </div>
@@ -693,7 +738,7 @@ export function ExportView({
                     {/* Package items — collapsible to reduce visual noise */}
                     <div className="mt-4">
                       <Collapsible
-                        label="Package Contents"
+                        label={t("export.packageContents")}
                         defaultOpen={false}
                         badge={packageItems.length}
                       >
@@ -709,22 +754,21 @@ export function ExportView({
                   {/* Non-executable profile notice */}
                   {selectedExportProfile && !staticExportSelected ? (
                     <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm text-ink/60">
-                      This profile is available as contract metadata only; no Studio export
-                      command is wired for this target.
+                      {t("export.nonExecutableNotice")}
                     </div>
                   ) : null}
 
                   {/* Output paths — always visible to avoid layout shift */}
                   <div className="grid gap-3 lg:grid-cols-2">
                     <TextInput
-                      label="Output directory"
-                      ariaLabel="Static export output directory"
+                      label={t("export.outputDirectory")}
+                      ariaLabel={t("export.aria.staticExportDir")}
                       value={exportDir}
                       onChange={setExportDir}
                     />
                     <TextInput
-                      label="Zip archive"
-                      ariaLabel="Static export zip archive"
+                      label={t("export.zipArchive")}
+                      ariaLabel={t("export.aria.staticExportZipArchive")}
                       value={archivePath}
                       onChange={setArchivePath}
                     />
@@ -740,14 +784,23 @@ export function ExportView({
                   {/* Export report metrics */}
                   {exportReport ? (
                     <div className="grid gap-3 text-sm sm:grid-cols-3">
-                      <MetricBox label="Archive" value={exportReport.archive_path ?? "none"} />
-                      <MetricBox label="Files" value={exportReport.archived_files.length} />
                       <MetricBox
-                        label="Audit"
+                        label={t("export.archive")}
+                        value={exportReport.archive_path ?? t("common.none")}
+                      />
+                      <MetricBox
+                        label={t("export.files")}
+                        value={exportReport.archived_files.length}
+                      />
+                      <MetricBox
+                        label={t("export.audit")}
                         value={
-                          sameStringSet(exportReport.allowed_files, exportReport.files_found)
-                            ? "matched"
-                            : "mismatch"
+                          sameStringSet(
+                            exportReport.allowed_files,
+                            exportReport.files_found,
+                          )
+                            ? t("common.matched")
+                            : t("common.mismatch")
                         }
                       />
                     </div>
@@ -758,7 +811,7 @@ export function ExportView({
           },
           {
             id: "profile",
-            label: "Profile",
+            label: t("export.profileTab"),
             badge: exportProfiles.length > 0 ? exportProfiles.length : undefined,
             children: exportProfiles.length > 0 ? (
               <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -769,7 +822,7 @@ export function ExportView({
                       <button
                         type="button"
                         key={profile.id}
-                        aria-label={`Select export profile ${profile.id}`}
+                        aria-label={t("export.aria.selectProfileN", { id: profile.id })}
                         aria-pressed={selected}
                         onClick={() => selectExportProfile(profile.id)}
                         className={[
@@ -796,7 +849,9 @@ export function ExportView({
                                 : "bg-ink/5 text-ink/55",
                             ].join(" ")}
                           >
-                            {profile.target === "static_web" ? "Executable" : "Draft"}
+                            {profile.target === "static_web"
+                              ? t("export.executable")
+                              : t("export.draft")}
                           </span>
                         </div>
                         <p className="mt-2 text-sm leading-5 text-ink/65">
@@ -812,7 +867,7 @@ export function ExportView({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-medium uppercase text-ink/45">
-                          Selected Profile
+                          {t("export.selectedProfile")}
                         </p>
                         <h4 className="mt-1 text-base font-semibold">
                           {selectedExportProfile.id}
@@ -825,38 +880,38 @@ export function ExportView({
 
                     <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
                       <ProfileFlag
-                        label="Runtime network"
+                        label={t("export.runtimeNetwork")}
                         value={
                           selectedExportProfile.requires_network_at_runtime
-                            ? "required"
-                            : "not required"
+                            ? t("common.required")
+                            : t("common.notRequired")
                         }
                         safe={!selectedExportProfile.requires_network_at_runtime}
                       />
                       <ProfileFlag
-                        label="Provider config"
+                        label={t("export.providerConfig")}
                         value={
                           selectedExportProfile.includes_provider_config
-                            ? "included"
-                            : "excluded"
+                            ? t("common.included")
+                            : t("common.excluded")
                         }
                         safe={!selectedExportProfile.includes_provider_config}
                       />
                       <ProfileFlag
-                        label="Private traces"
+                        label={t("export.privateTraces")}
                         value={
                           selectedExportProfile.includes_private_traces
-                            ? "included"
-                            : "excluded"
+                            ? t("common.included")
+                            : t("common.excluded")
                         }
                         safe={!selectedExportProfile.includes_private_traces}
                       />
                       <ProfileFlag
-                        label="Submission ready"
+                        label={t("export.submissionReady")}
                         value={
                           selectedExportProfile.platform_submission_ready
-                            ? "claimed"
-                            : "not claimed"
+                            ? t("common.claimed")
+                            : t("common.notClaimed")
                         }
                         safe={!selectedExportProfile.platform_submission_ready}
                       />
@@ -864,7 +919,7 @@ export function ExportView({
 
                     <div className="mt-4">
                       <p className="text-xs font-medium uppercase text-ink/45">
-                        Capabilities
+                        {t("export.capabilities")}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {selectedExportProfile.capabilities.map((capability) => (
@@ -892,27 +947,27 @@ export function ExportView({
                 ) : null}
               </div>
             ) : (
-              <EmptyPanel label="No export profiles returned by the Studio adapter." />
+              <EmptyPanel label={t("export.noProfiles")} />
             ),
           },
           {
             id: "policy",
-            label: "Policy",
-            badge: aiSafetyPolicy ? undefined : "pending",
+            label: t("export.policyTab"),
+            badge: aiSafetyPolicy ? undefined : t("common.pending"),
             children: aiSafetyPolicy ? (
               <div className="rounded-md border border-ink/10 bg-canvas-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-semibold uppercase text-ink/55">
-                      AI Safety Policy
+                      {t("export.aiSafetyPolicy")}
                     </h4>
                     <p className="mt-1 text-sm text-ink/60">
-                      Export disclosure evidence
+                      {t("export.exportDisclosureEvidence")}
                     </p>
                   </div>
                   <button
                     type="button"
-                    aria-label="Save AI Safety Policy"
+                    aria-label={t("export.aria.saveAiSafetyPolicy")}
                     disabled={formSaving === "export-kit"}
                     onClick={() => void saveAiSafetyPolicy()}
                     className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
@@ -922,34 +977,34 @@ export function ExportView({
                     ) : (
                       <Save aria-hidden size={16} />
                     )}
-                    Save AI Safety Policy
+                    {t("export.saveAiSafetyPolicy")}
                   </button>
                 </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
                   <CheckboxInput
-                    label="Live generated content enabled"
+                    label={t("export.liveGeneratedContent")}
                     checked={aiSafetyPolicy.live_generated_content_enabled}
                     onChange={(value) =>
                       updateAiSafetyPolicy({ live_generated_content_enabled: value })
                     }
                   />
                   <CheckboxInput
-                    label="Human review required"
+                    label={t("export.humanReviewRequired")}
                     checked={aiSafetyPolicy.human_review_required}
                     onChange={(value) =>
                       updateAiSafetyPolicy({ human_review_required: value })
                     }
                   />
                   <CheckboxInput
-                    label="Moderation queue enabled"
+                    label={t("export.moderationQueueEnabled")}
                     checked={aiSafetyPolicy.moderation_queue_enabled}
                     onChange={(value) =>
                       updateAiSafetyPolicy({ moderation_queue_enabled: value })
                     }
                   />
                   <TextareaInput
-                    label="Content kinds"
-                    ariaLabel="AI safety content kinds"
+                    label={t("export.contentKinds")}
+                    ariaLabel={t("export.aria.aiSafetyContentKinds")}
                     value={listToLines(aiSafetyPolicy.content_kinds)}
                     onChange={(value) =>
                       updateAiSafetyPolicy({
@@ -959,16 +1014,16 @@ export function ExportView({
                     minHeight="min-h-24"
                   />
                   <TextInput
-                    label="Reporting path"
-                    ariaLabel="AI safety reporting path"
+                    label={t("export.reportingPath")}
+                    ariaLabel={t("export.aria.aiSafetyReportingPath")}
                     value={aiSafetyPolicy.user_reporting_path}
                     onChange={(value) =>
                       updateAiSafetyPolicy({ user_reporting_path: value })
                     }
                   />
                   <TextareaInput
-                    label="Moderation policy"
-                    ariaLabel="AI safety moderation policy"
+                    label={t("export.moderationPolicy")}
+                    ariaLabel={t("export.aria.aiSafetyModerationPolicy")}
                     value={aiSafetyPolicy.moderation_policy}
                     onChange={(value) =>
                       updateAiSafetyPolicy({ moderation_policy: value })
@@ -976,8 +1031,8 @@ export function ExportView({
                     minHeight="min-h-24"
                   />
                   <TextareaInput
-                    label="Safety guardrails"
-                    ariaLabel="AI safety guardrails"
+                    label={t("export.safetyGuardrails")}
+                    ariaLabel={t("export.aria.aiSafetyGuardrails")}
                     value={listToLines(aiSafetyPolicy.safety_guardrails)}
                     onChange={(value) =>
                       updateAiSafetyPolicy({ safety_guardrails: linesToList(value) })
@@ -988,7 +1043,7 @@ export function ExportView({
                 </div>
               </div>
             ) : (
-              <EmptyPanel label="AI Safety Policy not loaded for this project." />
+              <EmptyPanel label={t("export.aiSafetyNotLoaded")} />
             ),
           },
         ]}

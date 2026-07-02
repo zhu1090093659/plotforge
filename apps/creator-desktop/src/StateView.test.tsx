@@ -5,6 +5,7 @@ import type {
   StateVariablesEditDocument,
 } from "../../../contracts/plotforge";
 import { StateView, type ResourceDraft, type StateViewProps } from "./StateView";
+import { StudioI18nProvider } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +50,9 @@ function renderView(overrides: Partial<StateViewProps> = {}) {
     onCreateResourceFromDraft: vi.fn(),
     ...overrides,
   };
-  return render(<StateView {...props} />);
+  return render(<StateView {...props} />, {
+    wrapper: StudioI18nProvider,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -214,16 +217,24 @@ describe("StateView", () => {
 
   it("shows success form status message for state section", () => {
     renderView({
-      formStatus: { section: "state", tone: "success", message: "State saved." },
+      formStatus: {
+        section: "state",
+        tone: "success",
+        message: "State variables saved.",
+      },
     });
-    expect(screen.getByText("State saved.")).toBeTruthy();
+    expect(screen.getByText("State variables saved.")).toBeTruthy();
   });
 
   it("does not show form status from a different section", () => {
     renderView({
-      formStatus: { section: "world", tone: "success", message: "World saved." },
+      formStatus: {
+        section: "world",
+        tone: "success",
+        message: "World Bible saved.",
+      },
     });
-    expect(screen.queryByText("World saved.")).toBeNull();
+    expect(screen.queryByText("World Bible saved.")).toBeNull();
   });
 
   it("shows empty state when stateVariablesEditDocument is null", () => {

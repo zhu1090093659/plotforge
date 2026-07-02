@@ -16,6 +16,7 @@ import type {
   SourceFileSummary,
   StaticExportReport,
 } from "./tauriBridge";
+import { useStudioI18n } from "./i18n";
 
 export interface ArtifactReviewViewProps {
   projectSummary: CreatorProjectSummary | null;
@@ -45,49 +46,53 @@ export function ArtifactReviewView({
   onRunPlayableProof,
   children,
 }: ArtifactReviewViewProps) {
+  const { t } = useStudioI18n();
   const editableFiles = sourceFiles.filter((file) => file.editable);
   const assetRecordCount = assetCatalog.items.filter(
     (item) => item.source === "record",
   ).length;
-  const traceId = playtestReport?.trace.id ?? "not captured";
+  const traceId = playtestReport?.trace.id ?? t("common.notCaptured");
   const exportedFileCount = exportReport?.files_written.length ?? 0;
 
   return (
-    <section aria-label="Artifact Review Workspace" className="grid gap-4">
+    <section aria-label={t("artifacts.aria.workspace")} className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <aside
-          aria-label="Live Build Room"
+          aria-label={t("artifacts.aria.liveBuildRoom")}
           className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-accent-400">
-                Live Build Room
+                {t("artifacts.liveBuildRoom")}
               </p>
               <h3 className="mt-1 text-lg font-semibold text-ink">
-                No build run interface
+                {t("artifacts.noBuildRunInterface")}
               </h3>
               <p className="mt-1 text-sm leading-6 text-graphite-700/70">
-                Real Studio commands expose source files, assets, runtime proof,
-                and export reports. They do not expose an agent build queue yet.
+                {t("artifacts.studioCommandsExpose")}
               </p>
             </div>
-            <StudioStatusChip tone="danger">not implemented</StudioStatusChip>
+            <StudioStatusChip tone="danger">{t("common.notImplemented")}</StudioStatusChip>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-            <EvidenceCard title="Source Files" value={String(sourceFiles.length)}>
-              {`${editableFiles.length} editable surfaces loaded from the project.`}
+            <EvidenceCard title={t("artifacts.sourceFiles")} value={String(sourceFiles.length)}>
+              {t("common.editableSurfaces", { count: editableFiles.length })}
             </EvidenceCard>
-            <EvidenceCard title="Runtime Trace" value={traceId}>
+            <EvidenceCard title={t("artifacts.runtimeTrace")} value={traceId}>
               {playtestReport
-                ? `${playtestReport.delta_summary.length} state deltas produced.`
-                : "Run a playable proof to generate trace evidence."}
+                ? t("common.stateDeltasProduced", {
+                    count: playtestReport.delta_summary.length,
+                  })
+                : t("artifacts.runProofToGenerate")}
             </EvidenceCard>
-            <EvidenceCard title="Export Report" value={String(exportedFileCount)}>
+            <EvidenceCard title={t("artifacts.exportReport")} value={String(exportedFileCount)}>
               {exportReport
-                ? `${exportReport.archived_files.length} files archived.`
-                : "Run a static export to inspect package evidence."}
+                ? t("common.filesArchived", {
+                    count: exportReport.archived_files.length,
+                  })
+                : t("artifacts.runExportToInspect")}
             </EvidenceCard>
           </div>
         </aside>
@@ -97,28 +102,26 @@ export function ArtifactReviewView({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-violet-600">
-                  Artifact Review
+                  {t("artifacts.artifactReview")}
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-ink">
                   {projectSummary?.title ?? loadedPath}
                 </h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-graphite-700/70">
-                  This view now reviews artifacts returned by real Studio
-                  commands. Agent-generated patch bundles are hidden until a
-                  real persisted artifact interface exists.
+                  {t("artifacts.artifactReviewDesc")}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <StudioStatusChip tone="health">project source</StudioStatusChip>
+                <StudioStatusChip tone="health">{t("artifacts.projectSource")}</StudioStatusChip>
                 <StudioStatusChip tone="neutral">{loadedPath}</StudioStatusChip>
               </div>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-4">
-              <BundleFact label="Source files" value={String(sourceFiles.length)} />
-              <BundleFact label="Editable" value={String(editableFiles.length)} />
-              <BundleFact label="Asset records" value={String(assetRecordCount)} />
-              <BundleFact label="Trace" value={traceId} />
+              <BundleFact label={t("artifacts.sourceFilesLabel")} value={String(sourceFiles.length)} />
+              <BundleFact label={t("artifacts.editableLabel")} value={String(editableFiles.length)} />
+              <BundleFact label={t("artifacts.assetRecordsLabel")} value={String(assetRecordCount)} />
+              <BundleFact label={t("artifacts.traceLabel")} value={traceId} />
             </div>
 
             <div className="mt-4 rounded-md border border-violet-500/25 bg-violet-500/10 px-3 py-3">
@@ -129,19 +132,18 @@ export function ArtifactReviewView({
                   className="mt-0.5 shrink-0 text-violet-600"
                 />
                 <p className="text-sm leading-6 text-ink">
-                  No approval action is available because there is no real
-                  approval queue or persisted proposal bundle contract.
+                  {t("artifacts.noApprovalAction")}
                 </p>
               </div>
             </div>
           </div>
 
-          <section aria-label="Current Source Artifacts" className="grid gap-3">
+          <section aria-label={t("artifacts.aria.currentSourceArtifacts")} className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-base font-semibold text-ink">
-                Current Source Artifacts
+                {t("artifacts.currentSourceArtifacts")}
               </h3>
-              <StudioStatusChip tone="health">{sourceFiles.length} files</StudioStatusChip>
+              <StudioStatusChip tone="health">{t("common.files", { count: sourceFiles.length })}</StudioStatusChip>
             </div>
             <div className="grid gap-3 xl:grid-cols-2">
               {sourceFiles.slice(0, 8).map((file) => (
@@ -159,13 +161,13 @@ export function ArtifactReviewView({
                       </h4>
                     </div>
                     <StudioStatusChip tone={file.editable ? "health" : "neutral"}>
-                      {file.editable ? "editable" : "read only"}
+                      {file.editable ? t("common.editable") : t("common.readOnly")}
                     </StudioStatusChip>
                   </div>
-                  <EvidenceBlock label="Bytes" value={String(file.bytes)} />
+                  <EvidenceBlock label={t("artifacts.bytes")} value={String(file.bytes)} />
                   <EvidenceBlock
-                    label="Source"
-                    value="Loaded through StudioDataSource list_source_files"
+                    label={t("artifacts.source")}
+                    value={t("artifacts.loadedThroughStorage")}
                   />
                 </article>
               ))}
@@ -173,16 +175,16 @@ export function ArtifactReviewView({
           </section>
 
           <StudioTabs
-            ariaLabel="Runtime and export evidence"
+            ariaLabel={t("artifacts.aria.runtimeExportEvidence")}
             items={[
               {
                 id: "runtime-impact",
-                label: "Runtime Impact",
+                label: t("artifacts.runtimeImpact"),
                 badge: playtestReport?.delta_summary.length,
                 children: (
                   <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-base font-semibold">Runtime Impact</h3>
+                      <h3 className="text-base font-semibold">{t("artifacts.runtimeImpact")}</h3>
                       <StudioStatusChip tone={playtestReport ? "health" : "neutral"}>
                         {traceId}
                       </StudioStatusChip>
@@ -198,7 +200,7 @@ export function ArtifactReviewView({
                       ))}
                       {!playtestReport ? (
                         <p className="rounded-md border border-ink/10 bg-canvas-100 px-3 py-2 text-sm leading-6 text-ink/55">
-                          No runtime proof has been run for this session.
+                          {t("artifacts.noRuntimeProof")}
                         </p>
                       ) : null}
                       {playtestError ? (
@@ -210,27 +212,27 @@ export function ArtifactReviewView({
               },
               {
                 id: "export-evidence",
-                label: "Export Evidence",
+                label: t("artifacts.exportEvidence"),
                 badge: exportReport ? exportReport.files_written.length : undefined,
                 children: (
                   <section className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-base font-semibold">Export Evidence</h3>
+                      <h3 className="text-base font-semibold">{t("artifacts.exportEvidence")}</h3>
                       <StudioStatusChip tone={exportReport ? "health" : "neutral"}>
-                        {exportReport ? "available" : "not run"}
+                        {exportReport ? t("common.available") : t("common.notRun")}
                       </StudioStatusChip>
                     </div>
                     <div className="mt-3 grid gap-2">
                       <ExportFact
-                        label="Output"
-                        value={exportReport?.output_dir ?? "not exported"}
+                        label={t("artifacts.output")}
+                        value={exportReport?.output_dir ?? t("common.notExported")}
                       />
                       <ExportFact
-                        label="Archive"
-                        value={exportReport?.archive_path ?? "not archived"}
+                        label={t("artifacts.archive")}
+                        value={exportReport?.archive_path ?? t("common.notArchived")}
                       />
                       <ExportFact
-                        label="Files"
+                        label={t("artifacts.files")}
                         value={String(exportReport?.files_written.length ?? 0)}
                       />
                     </div>
@@ -242,58 +244,60 @@ export function ArtifactReviewView({
         </div>
 
         <aside
-          aria-label="Validation Evidence"
+          aria-label={t("artifacts.aria.validationEvidence")}
           className="grid content-start gap-3 rounded-lg border border-canvas-200 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-2"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-health-400">
-                Validation Evidence
+                {t("artifacts.validationEvidence")}
               </p>
               <h3 className="mt-1 text-lg font-semibold text-ink">
-                Real command outputs
+                {t("artifacts.realCommandOutputs")}
               </h3>
             </div>
-            <StudioStatusChip tone="health">visible</StudioStatusChip>
+            <StudioStatusChip tone="health">{t("common.visible")}</StudioStatusChip>
           </div>
 
           <ValidationLine
             icon={FileText}
-            label="Project source"
-            detail={`${sourceFiles.length} listed files from storage adapter.`}
+            label={t("artifacts.projectSourceVal")}
+            detail={t("common.editableSurfacesFromStorage", { count: sourceFiles.length })}
           />
           <ValidationLine
             icon={Boxes}
-            label="Asset registry"
-            detail={`${assetRecordCount} asset records from plotforge-media/storage.`}
+            label={t("artifacts.assetRegistry")}
+            detail={t("common.assetRecordsFromMedia", { count: assetRecordCount })}
           />
           <ValidationLine
             icon={GitBranch}
-            label="Runtime trace"
-            detail={playtestReport ? playtestReport.trace_path : "No trace captured yet."}
+            label={t("artifacts.runtimeTraceLabel")}
+            detail={playtestReport ? playtestReport.trace_path : t("artifacts.noTraceCaptured")}
           />
           <ValidationLine
             icon={PackageCheck}
-            label="Static package"
+            label={t("artifacts.staticPackage")}
             detail={
               exportReport
-                ? `${exportReport.files_found.length} files found after export.`
-                : "No export report captured yet."
+                ? t("common.filesFoundAfterExport", {
+                    count: exportReport.files_found.length,
+                  })
+                : t("artifacts.noExportReportCaptured")
             }
           />
 
           <div className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-3">
             <p className="text-sm font-semibold text-ink">
-              Available Actions
+              {t("artifacts.availableActions")}
             </p>
             <div className="mt-3 grid gap-2">
               <StudioButton onClick={onRunPlayableProof} disabled={playtesting}>
                 <Play aria-hidden size={16} />
-                {playtesting ? "Running proof" : "Run proof"}
+                {playtesting ? t("artifacts.runningProof") : t("artifacts.runProof")}
               </StudioButton>
               <StudioButton onClick={onOpenTrace}>
                 <GitBranch aria-hidden size={16} />
-                View trace
+                {t("artifacts.viewTrace")}
               </StudioButton>
             </div>
           </div>

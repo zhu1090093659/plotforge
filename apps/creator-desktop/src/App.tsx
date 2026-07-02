@@ -45,7 +45,7 @@ import {
   defaultNewProjectPath,
   useStudioWorkspace,
 } from "./useStudioWorkspace";
-import { LanguageToggle, StudioI18nProvider } from "./i18n";
+import { LanguageToggle, StudioI18nProvider, useStudioI18n } from "./i18n";
 import { errorMessage } from "./errorMessage";
 
 export interface AppProps {
@@ -53,10 +53,19 @@ export interface AppProps {
   initialProjectPath?: string;
 }
 
-export function App({
+export function App(props: AppProps) {
+  return (
+    <StudioI18nProvider>
+      <AppContent {...props} />
+    </StudioI18nProvider>
+  );
+}
+
+function AppContent({
   dataSource = createDefaultStudioDataSource(),
   initialProjectPath = defaultProjectPath(),
 }: AppProps) {
+  const { t } = useStudioI18n();
   const [activeWorkflow, setActiveWorkflow] =
     useState<AgentNativeWorkflowId>("command");
   const [activeSection, setActiveSection] =
@@ -156,9 +165,7 @@ export function App({
       !request.visual_style ||
       !request.initial_scene_request
     ) {
-      setCreateError(
-        "Project path, concept, visual style, and initial scene are required.",
-      );
+      setCreateError(t("app.createError"));
       return;
     }
 
@@ -502,20 +509,20 @@ export function App({
         : "health";
     const healthLabel =
       error || playtest.playtestError || exportWorkspace.exportError
-        ? "Error visible"
-        : "Trace visible";
+        ? t("common.errorVisible")
+        : t("common.traceVisible");
 
     return (
       <div className="grid gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-tightish text-violet-600">
-            Evidence Panel
+            {t("app.evidencePanel")}
           </p>
           <h3 className="font-display mt-1 text-lg font-semibold tracking-display text-ink">
-            {activeWorkflowMeta.label}
+            {t(activeWorkflowMeta.labelKey)}
           </h3>
           <p className="mt-1 text-sm leading-6 text-graphite-700/70">
-            {activeWorkflowMeta.description}
+            {t(activeWorkflowMeta.descriptionKey)}
           </p>
         </div>
 
@@ -524,15 +531,15 @@ export function App({
             <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
             <StudioStatusChip tone="accent">{dataSource.runtimeName}</StudioStatusChip>
             <StudioStatusChip tone="agent">
-              {activeSectionMeta.status}
+              {t(activeSectionMeta.statusKey)}
             </StudioStatusChip>
           </div>
           <div className="mt-4 grid gap-3 text-sm">
-            <EvidenceLine label="Project" value={projectSummary?.title ?? "none"} />
-            <EvidenceLine label="Loaded path" value={loadedPath} />
-            <EvidenceLine label="Source files" value={String(sourceFiles.length)} />
+            <EvidenceLine label={t("app.project")} value={projectSummary?.title ?? t("common.none")} />
+            <EvidenceLine label={t("app.loadedPath")} value={loadedPath} />
+            <EvidenceLine label={t("app.sourceFiles")} value={String(sourceFiles.length)} />
             <EvidenceLine
-              label="Asset records"
+              label={t("app.assetRecords")}
               value={String(
                 assetCatalog.items.filter((item) => item.source === "record")
                   .length,
@@ -545,10 +552,10 @@ export function App({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-                Backend Boundary
+                {t("app.backendBoundary")}
               </p>
               <h4 className="font-display mt-1 text-sm font-semibold tracking-display text-ink">
-                Real Studio command surface
+                {t("app.realStudioCommandSurface")}
               </h4>
             </div>
             <StudioStatusChip tone="health">{dataSource.runtimeName}</StudioStatusChip>
@@ -556,28 +563,28 @@ export function App({
 
           <div className="mt-3 grid gap-2 text-sm">
             <PreviewEvidenceLine
-              label="Project source"
-              value="folder files"
+              label={t("app.projectSource")}
+              value={t("app.folderFiles")}
             />
             <PreviewEvidenceLine
-              label="Runtime"
-              value={playtest.playtestReport?.trace.id ?? "not run"}
+              label={t("app.runtime")}
+              value={playtest.playtestReport?.trace.id ?? t("common.notRun")}
             />
             <PreviewEvidenceLine
-              label="Export"
-              value={exportWorkspace.exportReport?.archive_path ?? "not exported"}
+              label={t("app.export")}
+              value={exportWorkspace.exportReport?.archive_path ?? t("common.notExported")}
             />
             <PreviewEvidenceLine
-              label="External agents"
-              value="not implemented"
+              label={t("app.externalAgents")}
+              value={t("common.notImplemented")}
             />
           </div>
 
           <div className="mt-3 grid gap-2">
             {[
-              "Browser mode uses the HTTP dev bridge backed by plotforge-studio.",
-              "Tauri mode uses the same command names through IPC.",
-              "pi-Agent runtime is local and schema-backed; external agent execution, hidden network calls, and publishing automation remain not implemented.",
+              t("app.boundary.browserMode"),
+              t("app.boundary.tauriMode"),
+              t("app.boundary.piAgent"),
             ].map((boundary) => (
               <p
                 key={boundary}
@@ -591,13 +598,13 @@ export function App({
 
         <div className="rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-            Reference Screens
+            {t("app.referenceScreens")}
           </p>
           <div className="mt-3 grid gap-2">
             {activeScreenReferences.map((reference) => (
               <div
                 key={reference.id}
-                title={reference.title}
+                title={t(reference.titleKey)}
                 className="rounded-md border border-canvas-200 bg-canvas-100 px-3 py-2"
               >
                 <p className="font-display truncate text-sm font-semibold tracking-tightish text-ink">
@@ -619,23 +626,23 @@ export function App({
       <>
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-            Command Dock
+            {t("app.commandDock")}
           </p>
           <p className="font-display truncate text-sm font-semibold tracking-tightish text-ink">
-            {projectSummary?.title ?? "No project loaded"} /{" "}
-            {activeSectionMeta.label}
+            {projectSummary?.title ?? t("app.noProjectLoaded")} /{" "}
+            {t(activeSectionMeta.labelKey)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StudioStatusChip tone="action">
-            {dirty ? "Unsaved source" : "Workspace synced"}
+            {dirty ? t("app.unsavedSource") : t("app.workspaceSynced")}
           </StudioStatusChip>
           <StudioButton
             variant="primary"
             onClick={() => openStudioSection("playtest")}
           >
             <Play aria-hidden size={16} />
-            Run playable proof
+            {t("app.runPlayableProof")}
           </StudioButton>
         </div>
       </>
@@ -648,9 +655,9 @@ export function App({
       const section = getStudioSection(sectionId);
       return {
         id: sectionId,
-        label: section.label,
-        sublabel: section.status,
-        description: section.description,
+        label: t(section.labelKey),
+        sublabel: t(section.statusKey),
+        description: t(section.descriptionKey),
         icon: section.icon,
         selected: sectionId === activeSection,
         onSelect: () => openStudioSection(sectionId),
@@ -658,9 +665,9 @@ export function App({
     });
     return {
       id: workflow.id,
-      label: workflow.label,
-      sublabel: workflow.shortLabel,
-      description: workflow.description,
+      label: t(workflow.labelKey),
+      sublabel: t(workflow.shortLabelKey),
+      description: t(workflow.descriptionKey),
       icon: workflow.icon,
       selected: isActiveWorkflow,
       onSelect: () => openWorkflow(workflow.id),
@@ -669,57 +676,55 @@ export function App({
   });
 
   return (
-    <StudioI18nProvider>
-      <StudioShell
-        projectPath={loadedPath}
-        projectLoading={loading}
-        onOpenProject={() => void loadProject(projectPath)}
-        navItems={navItems}
-        expandedIds={expandedWorkflows}
-        onToggleExpand={(id) =>
-          toggleWorkflowExpand(id as AgentNativeWorkflowId)
-        }
-        header={{
-          eyebrow: `${activeWorkflowMeta.label} / ${dataSource.runtimeName}`,
-          title: activeSectionMeta.label,
-          subtitle: `${projectSummary?.title ?? "No project loaded"} - ${activeWorkflowMeta.description}`,
-          badges: activeScreenReferences.map((reference) => ({
-            id: reference.id,
-            label: reference.title,
-            title: reference.fileName,
-          })),
-        }}
-        topActions={
-          <>
-            <LanguageToggle />
-            <input
-              aria-label="Project path"
-              value={projectPath}
-              onChange={(event) => setProjectPath(event.target.value)}
-              className={`${studioUiClassNames.input} min-w-0 flex-1 sm:w-72 lg:w-80 xl:w-96`}
-            />
-            <StudioButton
-              title="Refresh project files"
-              aria-label="Refresh project files"
-              onClick={() => void loadProject(projectPath)}
-            >
-              {loading ? (
-                <Loader2 aria-hidden size={18} className="animate-spin" />
-              ) : (
-                <RefreshCcw aria-hidden size={18} />
-              )}
-            </StudioButton>
-          </>
-        }
-        rightPanel={renderEvidencePanel()}
-        commandDock={renderCommandDock()}
-        drawerOpen={drawerOpen}
-        onToggleDrawer={() => setDrawerOpen((prev) => !prev)}
-        onCloseDrawer={() => setDrawerOpen(false)}
-      >
-        {renderActiveSection()}
-      </StudioShell>
-    </StudioI18nProvider>
+    <StudioShell
+      projectPath={loadedPath}
+      projectLoading={loading}
+      onOpenProject={() => void loadProject(projectPath)}
+      navItems={navItems}
+      expandedIds={expandedWorkflows}
+      onToggleExpand={(id) =>
+        toggleWorkflowExpand(id as AgentNativeWorkflowId)
+      }
+      header={{
+        eyebrow: `${t(activeWorkflowMeta.labelKey)} / ${dataSource.runtimeName}`,
+        title: t(activeSectionMeta.labelKey),
+        subtitle: `${projectSummary?.title ?? t("app.noProjectLoaded")} - ${t(activeWorkflowMeta.descriptionKey)}`,
+        badges: activeScreenReferences.map((reference) => ({
+          id: reference.id,
+          label: t(reference.titleKey),
+          title: reference.fileName,
+        })),
+      }}
+      topActions={
+        <>
+          <LanguageToggle />
+          <input
+            aria-label={t("app.projectPath")}
+            value={projectPath}
+            onChange={(event) => setProjectPath(event.target.value)}
+            className={`${studioUiClassNames.input} min-w-0 flex-1 sm:w-72 lg:w-80 xl:w-96`}
+          />
+          <StudioButton
+            title={t("app.refreshProjectFiles")}
+            aria-label={t("app.refreshProjectFiles")}
+            onClick={() => void loadProject(projectPath)}
+          >
+            {loading ? (
+              <Loader2 aria-hidden size={18} className="animate-spin" />
+            ) : (
+              <RefreshCcw aria-hidden size={18} />
+            )}
+          </StudioButton>
+        </>
+      }
+      rightPanel={renderEvidencePanel()}
+      commandDock={renderCommandDock()}
+      drawerOpen={drawerOpen}
+      onToggleDrawer={() => setDrawerOpen((prev) => !prev)}
+      onCloseDrawer={() => setDrawerOpen(false)}
+    >
+      {renderActiveSection()}
+    </StudioShell>
   );
 }
 

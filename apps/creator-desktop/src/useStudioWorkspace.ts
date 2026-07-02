@@ -19,13 +19,14 @@ import {
 } from "./useProjectEditing";
 import { usePlaytest, type PlaytestWorkspace } from "./usePlaytest";
 import { useExport, type ExportWorkspace } from "./useExport";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Exported types
 // ---------------------------------------------------------------------------
 
 export interface StudioMetric {
-  label: string;
+  labelKey: string;
   value: string;
   tone: string;
 }
@@ -75,6 +76,7 @@ export function useStudioWorkspace({
   dataSource,
   initialProjectPath,
 }: UseStudioWorkspaceOptions): StudioWorkspace {
+  const { t } = useStudioI18n();
   const [projectPath, setProjectPath] = useState(initialProjectPath);
   const [loadedPath, setLoadedPath] = useState(initialProjectPath);
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
@@ -104,28 +106,28 @@ export function useStudioWorkspace({
   const metrics = useMemo(
     () => [
       {
-        label: "Scenes",
+        labelKey: "metrics.scenes",
         value: String(
           checkReport?.scene_count ?? projectSummary?.sceneCount ?? 0,
         ),
         tone: "border-sage/50 text-sage",
       },
       {
-        label: "Characters",
+        labelKey: "metrics.characters",
         value: String(
           checkReport?.character_count ?? projectSummary?.characterCount ?? 0,
         ),
         tone: "border-plum/50 text-plum",
       },
       {
-        label: "Rules",
+        labelKey: "metrics.rules",
         value: String(
           checkReport?.rule_count ?? projectSummary?.ruleCount ?? 0,
         ),
         tone: "border-signal/50 text-signal",
       },
       {
-        label: "Open Threads",
+        labelKey: "metrics.openThreads",
         value: String(projectSummary?.openThreadCount ?? 0),
         tone: "border-ink/30 text-ink",
       },

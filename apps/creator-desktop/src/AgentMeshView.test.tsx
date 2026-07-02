@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentMeshView } from "./AgentMeshView";
+import { StudioI18nProvider } from "./i18n";
 import { demoPlayOnceReport, demoProjectData } from "./demoStudioData";
 import { summarizeProject } from "./projectSummary";
 
@@ -10,20 +11,22 @@ function renderView() {
   const openTrace = vi.fn();
   const runProof = vi.fn();
   const view = render(
-    <AgentMeshView
-      projectSummary={summarizeProject(demoProjectData)}
-      loadedPath="/tmp/starter-project"
-      runtimeName="HTTP dev bridge"
-      sourceFiles={[
-        { path: "game.toml", kind: "toml", bytes: 120, editable: false },
-        { path: "world/world.md", kind: "markdown", bytes: 80, editable: true },
-      ]}
-      assetRecordCount={demoProjectData.asset_records.length}
-      exportProfileCount={3}
-      playtestReport={demoPlayOnceReport("raise emergency taxes")}
-      onOpenTrace={openTrace}
-      onRunPlayableProof={runProof}
-    />,
+    <StudioI18nProvider>
+      <AgentMeshView
+        projectSummary={summarizeProject(demoProjectData)}
+        loadedPath="/tmp/starter-project"
+        runtimeName="HTTP dev bridge"
+        sourceFiles={[
+          { path: "game.toml", kind: "toml", bytes: 120, editable: false },
+          { path: "world/world.md", kind: "markdown", bytes: 80, editable: true },
+        ]}
+        assetRecordCount={demoProjectData.asset_records.length}
+        exportProfileCount={3}
+        playtestReport={demoPlayOnceReport("raise emergency taxes")}
+        onOpenTrace={openTrace}
+        onRunPlayableProof={runProof}
+      />
+    </StudioI18nProvider>,
   );
   return { view, openTrace, runProof };
 }

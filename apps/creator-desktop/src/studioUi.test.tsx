@@ -13,6 +13,7 @@ import {
   StudioTabs,
   type StudioNavItem,
 } from "./studioUi";
+import { StudioI18nProvider } from "./i18n";
 
 afterEach(() => {
   cleanup();
@@ -95,32 +96,34 @@ describe("studioUi", () => {
   }) {
     const toggleExpand = props?.onToggleExpand ?? vi.fn();
     render(
-      <StudioShell
-        projectPath="/tmp/starter-project"
-        projectLoading={false}
-        onOpenProject={vi.fn()}
-        navItems={props?.navItems ?? treeNavItems()}
-        expandedIds={props?.expandedIds ?? new Set(["command"])}
-        onToggleExpand={toggleExpand}
-        header={{
-          eyebrow: "Command Center / Test runtime",
-          title: "Project Launchpad",
-          subtitle: "Starter Project - Director intent",
-          badges: [{ id: "command-center", label: "Command Center" }],
-        }}
-        topActions={<StudioButton>Refresh</StudioButton>}
-        rightPanel={
-          <StudioPanel>
-            <StudioStatusChip tone="health">Trace visible</StudioStatusChip>
-          </StudioPanel>
-        }
-        commandDock={<StudioButton variant="primary">Run turn</StudioButton>}
-        drawerOpen={props?.drawerOpen ?? false}
-        onToggleDrawer={props?.onToggleDrawer ?? vi.fn()}
-        onCloseDrawer={props?.onCloseDrawer ?? vi.fn()}
-      >
-        <StudioPanel>Workspace</StudioPanel>
-      </StudioShell>,
+      <StudioI18nProvider>
+        <StudioShell
+          projectPath="/tmp/starter-project"
+          projectLoading={false}
+          onOpenProject={vi.fn()}
+          navItems={props?.navItems ?? treeNavItems()}
+          expandedIds={props?.expandedIds ?? new Set(["command"])}
+          onToggleExpand={toggleExpand}
+          header={{
+            eyebrow: "Command Center / Test runtime",
+            title: "Project Launchpad",
+            subtitle: "Starter Project - Director intent",
+            badges: [{ id: "command-center", label: "Command Center" }],
+          }}
+          topActions={<StudioButton>Refresh</StudioButton>}
+          rightPanel={
+            <StudioPanel>
+              <StudioStatusChip tone="health">Trace visible</StudioStatusChip>
+            </StudioPanel>
+          }
+          commandDock={<StudioButton variant="primary">Run turn</StudioButton>}
+          drawerOpen={props?.drawerOpen ?? false}
+          onToggleDrawer={props?.onToggleDrawer ?? vi.fn()}
+          onCloseDrawer={props?.onCloseDrawer ?? vi.fn()}
+        >
+          <StudioPanel>Workspace</StudioPanel>
+        </StudioShell>
+      </StudioI18nProvider>,
     );
     return { toggleExpand };
   }
@@ -166,27 +169,29 @@ describe("studioUi", () => {
     const onToggleDrawer = vi.fn();
     const onCloseDrawer = vi.fn();
     const { rerender } = render(
-      <StudioShell
-        projectPath="/tmp/starter-project"
-        projectLoading={false}
-        onOpenProject={vi.fn()}
-        navItems={treeNavItems()}
-        expandedIds={new Set(["command"])}
-        onToggleExpand={vi.fn()}
-        header={{
-          eyebrow: "Command Center / Test runtime",
-          title: "Project Launchpad",
-          subtitle: "Starter Project - Director intent",
-          badges: [{ id: "command-center", label: "Command Center" }],
-        }}
-        topActions={<StudioButton>Refresh</StudioButton>}
-        rightPanel={<StudioPanel>Right</StudioPanel>}
-        drawerOpen={false}
-        onToggleDrawer={onToggleDrawer}
-        onCloseDrawer={onCloseDrawer}
-      >
-        <StudioPanel>Workspace</StudioPanel>
-      </StudioShell>,
+      <StudioI18nProvider>
+        <StudioShell
+          projectPath="/tmp/starter-project"
+          projectLoading={false}
+          onOpenProject={vi.fn()}
+          navItems={treeNavItems()}
+          expandedIds={new Set(["command"])}
+          onToggleExpand={vi.fn()}
+          header={{
+            eyebrow: "Command Center / Test runtime",
+            title: "Project Launchpad",
+            subtitle: "Starter Project - Director intent",
+            badges: [{ id: "command-center", label: "Command Center" }],
+          }}
+          topActions={<StudioButton>Refresh</StudioButton>}
+          rightPanel={<StudioPanel>Right</StudioPanel>}
+          drawerOpen={false}
+          onToggleDrawer={onToggleDrawer}
+          onCloseDrawer={onCloseDrawer}
+        >
+          <StudioPanel>Workspace</StudioPanel>
+        </StudioShell>
+      </StudioI18nProvider>,
     );
 
     // Drawer is closed initially: header hamburger exists, overlay does not.
@@ -197,27 +202,29 @@ describe("studioUi", () => {
 
     // Re-render with drawer open to assert overlay + drawer nav are visible.
     rerender(
-      <StudioShell
-        projectPath="/tmp/starter-project"
-        projectLoading={false}
-        onOpenProject={vi.fn()}
-        navItems={treeNavItems()}
-        expandedIds={new Set(["command"])}
-        onToggleExpand={vi.fn()}
-        header={{
-          eyebrow: "Command Center / Test runtime",
-          title: "Project Launchpad",
-          subtitle: "Starter Project - Director intent",
-          badges: [{ id: "command-center", label: "Command Center" }],
-        }}
-        topActions={<StudioButton>Refresh</StudioButton>}
-        rightPanel={<StudioPanel>Right</StudioPanel>}
-        drawerOpen={true}
-        onToggleDrawer={onToggleDrawer}
-        onCloseDrawer={onCloseDrawer}
-      >
-        <StudioPanel>Workspace</StudioPanel>
-      </StudioShell>,
+      <StudioI18nProvider>
+        <StudioShell
+          projectPath="/tmp/starter-project"
+          projectLoading={false}
+          onOpenProject={vi.fn()}
+          navItems={treeNavItems()}
+          expandedIds={new Set(["command"])}
+          onToggleExpand={vi.fn()}
+          header={{
+            eyebrow: "Command Center / Test runtime",
+            title: "Project Launchpad",
+            subtitle: "Starter Project - Director intent",
+            badges: [{ id: "command-center", label: "Command Center" }],
+          }}
+          topActions={<StudioButton>Refresh</StudioButton>}
+          rightPanel={<StudioPanel>Right</StudioPanel>}
+          drawerOpen={true}
+          onToggleDrawer={onToggleDrawer}
+          onCloseDrawer={onCloseDrawer}
+        >
+          <StudioPanel>Workspace</StudioPanel>
+        </StudioShell>
+      </StudioI18nProvider>,
     );
 
     // Two Studio navigation landmarks now: the persistent aside and the drawer aside.
@@ -231,37 +238,43 @@ describe("studioUi", () => {
   it("invokes onOpenProject when the open-project button is clicked", () => {
     const openProject = vi.fn();
     render(
-      <StudioShell
-        projectPath="/tmp/starter-project"
-        projectLoading={false}
-        onOpenProject={openProject}
-        navItems={treeNavItems()}
-        expandedIds={new Set(["command"])}
-        onToggleExpand={vi.fn()}
-        header={{
-          eyebrow: "Command Center / Test runtime",
-          title: "Project Launchpad",
-          subtitle: "Starter Project - Director intent",
-          badges: [{ id: "command-center", label: "Command Center" }],
-        }}
-        topActions={<StudioButton>Refresh</StudioButton>}
-        rightPanel={<StudioPanel>Right</StudioPanel>}
-        drawerOpen={false}
-        onToggleDrawer={vi.fn()}
-        onCloseDrawer={vi.fn()}
-      >
-        <StudioPanel>Workspace</StudioPanel>
-      </StudioShell>,
+      <StudioI18nProvider>
+        <StudioShell
+          projectPath="/tmp/starter-project"
+          projectLoading={false}
+          onOpenProject={openProject}
+          navItems={treeNavItems()}
+          expandedIds={new Set(["command"])}
+          onToggleExpand={vi.fn()}
+          header={{
+            eyebrow: "Command Center / Test runtime",
+            title: "Project Launchpad",
+            subtitle: "Starter Project - Director intent",
+            badges: [{ id: "command-center", label: "Command Center" }],
+          }}
+          topActions={<StudioButton>Refresh</StudioButton>}
+          rightPanel={<StudioPanel>Right</StudioPanel>}
+          drawerOpen={false}
+          onToggleDrawer={vi.fn()}
+          onCloseDrawer={vi.fn()}
+        >
+          <StudioPanel>Workspace</StudioPanel>
+        </StudioShell>
+      </StudioI18nProvider>,
     );
 
-    fireEvent.click(screen.getByTitle("Open project"));
+    fireEvent.click(screen.getByTitle("Open Project"));
     expect(openProject).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("ScenePreviewPlaceholder", () => {
   it("renders fallback message when assetPath is null", () => {
-    render(<ScenePreviewPlaceholder assetPath={null} />);
+    render(
+      <StudioI18nProvider>
+        <ScenePreviewPlaceholder assetPath={null} />
+      </StudioI18nProvider>,
+    );
     expect(screen.getByText("Scene preview asset unavailable")).toBeTruthy();
     expect(
       screen.getByText("No background asset is declared for this scene."),
@@ -269,13 +282,19 @@ describe("ScenePreviewPlaceholder", () => {
   });
 
   it("renders the provided assetPath when given", () => {
-    render(<ScenePreviewPlaceholder assetPath="assets/bg/ruins.webp" />);
+    render(
+      <StudioI18nProvider>
+        <ScenePreviewPlaceholder assetPath="assets/bg/ruins.webp" />
+      </StudioI18nProvider>,
+    );
     expect(screen.getByText("assets/bg/ruins.webp")).toBeTruthy();
   });
 
   it("uses the current violet/lavender palette, not the prior forge amber/cream", () => {
     const { container } = render(
-      <ScenePreviewPlaceholder assetPath={null} />,
+      <StudioI18nProvider>
+        <ScenePreviewPlaceholder assetPath={null} />
+      </StudioI18nProvider>,
     );
     const className = container.firstChild
       ? String((container.firstChild as HTMLElement).className)
@@ -290,9 +309,11 @@ describe("ScenePreviewPlaceholder", () => {
 describe("Collapsible", () => {
   it("starts collapsed by default (defaultOpen=false)", () => {
     render(
-      <Collapsible label="Advanced Options">
-        <p>Hidden content</p>
-      </Collapsible>,
+      <StudioI18nProvider>
+        <Collapsible label="Advanced Options">
+          <p>Hidden content</p>
+        </Collapsible>
+      </StudioI18nProvider>,
     );
     const toggle = screen.getByRole("button", { name: /advanced options/i });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -301,9 +322,11 @@ describe("Collapsible", () => {
 
   it("starts open when defaultOpen=true", () => {
     render(
-      <Collapsible label="Open Section" defaultOpen>
-        <p>Visible content</p>
-      </Collapsible>,
+      <StudioI18nProvider>
+        <Collapsible label="Open Section" defaultOpen>
+          <p>Visible content</p>
+        </Collapsible>
+      </StudioI18nProvider>,
     );
     const toggle = screen.getByRole("button", { name: /open section/i });
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -312,9 +335,11 @@ describe("Collapsible", () => {
 
   it("toggles open state and aria-expanded on click", () => {
     render(
-      <Collapsible label="Toggle Me">
-        <p>Toggled content</p>
-      </Collapsible>,
+      <StudioI18nProvider>
+        <Collapsible label="Toggle Me">
+          <p>Toggled content</p>
+        </Collapsible>
+      </StudioI18nProvider>,
     );
     const toggle = screen.getByRole("button", { name: /toggle me/i });
 
@@ -335,18 +360,22 @@ describe("Collapsible", () => {
 
   it("renders badge when provided", () => {
     render(
-      <Collapsible label="Items" badge={5}>
-        <p>Content</p>
-      </Collapsible>,
+      <StudioI18nProvider>
+        <Collapsible label="Items" badge={5}>
+          <p>Content</p>
+        </Collapsible>
+      </StudioI18nProvider>,
     );
     expect(screen.getByText("5")).toBeTruthy();
   });
 
   it("exposes aria-controls pointing to the region id", () => {
     render(
-      <Collapsible label="Accessible Section" defaultOpen>
-        <p>Region content</p>
-      </Collapsible>,
+      <StudioI18nProvider>
+        <Collapsible label="Accessible Section" defaultOpen>
+          <p>Region content</p>
+        </Collapsible>
+      </StudioI18nProvider>,
     );
     const toggle = screen.getByRole("button", { name: /accessible section/i });
     const controlsId = toggle.getAttribute("aria-controls");
@@ -358,9 +387,11 @@ describe("Collapsible", () => {
 
   it("region is labeled by the toggle button", () => {
     render(
-      <Collapsible label="Labeled Region" defaultOpen>
-        <p>Inner</p>
-      </Collapsible>,
+      <StudioI18nProvider>
+        <Collapsible label="Labeled Region" defaultOpen>
+          <p>Inner</p>
+        </Collapsible>
+      </StudioI18nProvider>,
     );
     const region = screen.getByRole("region", { name: /labeled region/i });
     expect(region).toBeTruthy();
@@ -370,9 +401,11 @@ describe("Collapsible", () => {
 describe("CollapsibleSection", () => {
   it("renders title and wraps children in a StudioPanel", () => {
     render(
-      <CollapsibleSection title="Advanced Settings" defaultOpen>
-        <p>Section body</p>
-      </CollapsibleSection>,
+      <StudioI18nProvider>
+        <CollapsibleSection title="Advanced Settings" defaultOpen>
+          <p>Section body</p>
+        </CollapsibleSection>
+      </StudioI18nProvider>,
     );
     expect(
       screen.getByRole("button", { name: /advanced settings/i }),
@@ -382,9 +415,11 @@ describe("CollapsibleSection", () => {
 
   it("starts collapsed when defaultOpen is omitted", () => {
     render(
-      <CollapsibleSection title="Hidden Section">
-        <p>Should not be visible</p>
-      </CollapsibleSection>,
+      <StudioI18nProvider>
+        <CollapsibleSection title="Hidden Section">
+          <p>Should not be visible</p>
+        </CollapsibleSection>
+      </StudioI18nProvider>,
     );
     expect(screen.queryByText("Should not be visible")).toBeNull();
     expect(
@@ -398,13 +433,15 @@ describe("CollapsibleSection", () => {
 describe("StudioTabs", () => {
   it("renders a tablist with the first tab selected by default and only its panel mounted", () => {
     render(
-      <StudioTabs
-        ariaLabel="Test workspace"
-        items={[
-          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
-          { id: "b", label: "Beta", children: <p>Beta panel</p> },
-        ]}
-      />,
+      <StudioI18nProvider>
+        <StudioTabs
+          ariaLabel="Test workspace"
+          items={[
+            { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+            { id: "b", label: "Beta", children: <p>Beta panel</p> },
+          ]}
+        />
+      </StudioI18nProvider>,
     );
 
     const tablist = screen.getByRole("tablist", { name: "Test workspace" });
@@ -426,13 +463,15 @@ describe("StudioTabs", () => {
 
   it("switches the active panel when a tab is clicked", () => {
     render(
-      <StudioTabs
-        ariaLabel="Test workspace"
-        items={[
-          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
-          { id: "b", label: "Beta", children: <p>Beta panel</p> },
-        ]}
-      />,
+      <StudioI18nProvider>
+        <StudioTabs
+          ariaLabel="Test workspace"
+          items={[
+            { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+            { id: "b", label: "Beta", children: <p>Beta panel</p> },
+          ]}
+        />
+      </StudioI18nProvider>,
     );
 
     expect(screen.queryByText("Beta panel")).toBeNull();
@@ -447,25 +486,29 @@ describe("StudioTabs", () => {
 
   it("renders a badge count next to the tab label when provided", () => {
     render(
-      <StudioTabs
-        ariaLabel="Test workspace"
-        items={[
-          { id: "a", label: "Alpha", badge: 3, children: <p /> },
-        ]}
-      />,
+      <StudioI18nProvider>
+        <StudioTabs
+          ariaLabel="Test workspace"
+          items={[
+            { id: "a", label: "Alpha", badge: 3, children: <p /> },
+          ]}
+        />
+      </StudioI18nProvider>,
     );
     expect(screen.getByText("3")).toBeTruthy();
   });
 
   it("falls back to the first tab when the active tab is removed from items", () => {
     const { rerender } = render(
-      <StudioTabs
-        ariaLabel="Test workspace"
-        items={[
-          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
-          { id: "b", label: "Beta", children: <p>Beta panel</p> },
-        ]}
-      />,
+      <StudioI18nProvider>
+        <StudioTabs
+          ariaLabel="Test workspace"
+          items={[
+            { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+            { id: "b", label: "Beta", children: <p>Beta panel</p> },
+          ]}
+        />
+      </StudioI18nProvider>,
     );
     // Select Beta so it is the active tab.
     fireEvent.click(screen.getByRole("tab", { name: /Beta/i }));
@@ -474,12 +517,14 @@ describe("StudioTabs", () => {
     // Re-render with only Alpha (Beta removed). The stale activeId must be
     // reconciled to the first item so a panel is still rendered.
     rerender(
-      <StudioTabs
-        ariaLabel="Test workspace"
-        items={[
-          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
-        ]}
-      />,
+      <StudioI18nProvider>
+        <StudioTabs
+          ariaLabel="Test workspace"
+          items={[
+            { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+          ]}
+        />
+      </StudioI18nProvider>,
     );
     expect(screen.getByRole("tab", { name: /Alpha/i }).getAttribute("aria-selected"))
       .toBe("true");
@@ -489,14 +534,16 @@ describe("StudioTabs", () => {
 
   it("supports keyboard navigation via Arrow Right / Home / End", () => {
     render(
-      <StudioTabs
-        ariaLabel="Test workspace"
-        items={[
-          { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
-          { id: "b", label: "Beta", children: <p>Beta panel</p> },
-          { id: "c", label: "Gamma", children: <p>Gamma panel</p> },
-        ]}
-      />,
+      <StudioI18nProvider>
+        <StudioTabs
+          ariaLabel="Test workspace"
+          items={[
+            { id: "a", label: "Alpha", children: <p>Alpha panel</p> },
+            { id: "b", label: "Beta", children: <p>Beta panel</p> },
+            { id: "c", label: "Gamma", children: <p>Gamma panel</p> },
+          ]}
+        />
+      </StudioI18nProvider>,
     );
 
     // Focus the first tab, then Arrow Right should select Beta.

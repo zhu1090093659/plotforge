@@ -11,6 +11,7 @@ import {
   Collapsible,
   studioUiClassNames,
 } from "./studioUi";
+import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,13 +58,16 @@ export function RulesView({
   onCreateRuleFromDraft,
   onUpdateRule,
 }: RulesViewProps) {
+  const { t } = useStudioI18n();
   return (
     <section className={studioUiClassNames.panel}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">Rules</h3>
+          <h3 className="text-lg font-semibold">{t("rules.title")}</h3>
           <p className="mt-1 truncate text-sm text-ink/55">
-            {rulesEditDocument?.rules.length ?? 0} rules
+            {t("common.rulesCount", {
+              count: rulesEditDocument?.rules.length ?? 0,
+            })}
           </p>
         </div>
         <button
@@ -78,16 +82,14 @@ export function RulesView({
               className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
             />
           ) : null}
-          Save Rules
+          {t("rules.save")}
         </button>
       </div>
 
-      {/* Section status message */}
       <SectionStatusMessage section="rules" formStatus={formStatus} />
 
       {rulesEditDocument ? (
         <div className="mt-3 grid gap-3">
-          {/* Existing rule cards (collapsible) */}
           <div className="grid gap-3 lg:grid-cols-2">
             {rulesEditDocument.rules.map((rule, index) => (
               <RuleCard
@@ -99,9 +101,8 @@ export function RulesView({
             ))}
           </div>
 
-          {/* Unified "Add Rule" collapsible */}
           <Collapsible
-            label="Add Rule"
+            label={t("rules.addRule")}
             defaultOpen={false}
             className="rounded-md border border-ink/10 bg-canvas-50 p-4"
           >
@@ -134,34 +135,38 @@ function RuleCard({
   index: number;
   onUpdate(patch: Partial<Rule>): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
       <Collapsible
-        label={rule.id || `Rule ${index + 1}`}
+        label={rule.id || t("rules.ruleFallback", { index: index + 1 })}
         id={`rule-${rule.id}`}
         defaultOpen={false}
         badge={rule.action_type || undefined}
       >
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <TextInput
-            label="Rule id"
-            ariaLabel={`Rule id ${index + 1}`}
+            label={t("rules.ruleId")}
+            ariaLabel={t("rules.aria.ruleIdN", { index: index + 1 })}
             value={rule.id}
             onChange={(value) => onUpdate({ id: value })}
           />
           <TextInput
-            label="Action type"
-            ariaLabel={`Rule action type ${index + 1}`}
+            label={t("rules.actionType")}
+            ariaLabel={t("rules.aria.ruleActionTypeN", { index: index + 1 })}
             value={rule.action_type}
             onChange={(value) => onUpdate({ action_type: value })}
           />
         </div>
 
-        {/* Conditions */}
         <div className="mt-3">
-          <p className="text-xs font-medium uppercase text-ink/55">Conditions</p>
+          <p className="text-xs font-medium uppercase text-ink/55">
+            {t("rules.conditions")}
+          </p>
           {rule.conditions.length === 0 ? (
-            <p className="mt-1 text-sm text-ink/40 italic">(none)</p>
+            <p className="mt-1 text-sm text-ink/40 italic">
+              {t("common.noneParen")}
+            </p>
           ) : (
             <ul className="mt-1 grid gap-1">
               {rule.conditions.map((cond, i) => (
@@ -176,11 +181,14 @@ function RuleCard({
           )}
         </div>
 
-        {/* Effects */}
         <div className="mt-3">
-          <p className="text-xs font-medium uppercase text-ink/55">Effects</p>
+          <p className="text-xs font-medium uppercase text-ink/55">
+            {t("rules.effects")}
+          </p>
           {rule.effects.length === 0 ? (
-            <p className="mt-1 text-sm text-ink/40 italic">(none)</p>
+            <p className="mt-1 text-sm text-ink/40 italic">
+              {t("common.noneParen")}
+            </p>
           ) : (
             <ul className="mt-1 grid gap-1">
               {rule.effects.map((effect, i) => (
@@ -204,6 +212,7 @@ function RuleCard({
 // ---------------------------------------------------------------------------
 
 function ConditionLabel({ condition }: { condition: Condition }): ReactNode {
+  const { t } = useStudioI18n();
   switch (condition.kind) {
     case "resource_at_least":
       return (
@@ -226,7 +235,9 @@ function ConditionLabel({ condition }: { condition: Condition }): ReactNode {
         <span>
           <span className="font-medium">{condition.key}</span>
           {" = "}
-          <span className="font-mono">{condition.value ? "true" : "false"}</span>
+          <span className="font-mono">
+            {condition.value ? t("common.true") : t("common.false")}
+          </span>
         </span>
       );
     default:
@@ -241,11 +252,14 @@ function ConditionLabel({ condition }: { condition: Condition }): ReactNode {
 // ---------------------------------------------------------------------------
 
 function EffectLabel({ effect }: { effect: Effect }): ReactNode {
+  const { t } = useStudioI18n();
   switch (effect.kind) {
     case "add_resource":
       return (
         <span>
-          <span className="text-xs font-semibold uppercase text-ink/50">add</span>{" "}
+          <span className="text-xs font-semibold uppercase text-ink/50">
+            {t("common.add")}
+          </span>{" "}
           <span className="font-medium">{effect.key}</span>{" "}
           <span className="font-mono">
             {effect.amount > 0 ? `+${effect.amount}` : String(effect.amount)}
@@ -255,7 +269,9 @@ function EffectLabel({ effect }: { effect: Effect }): ReactNode {
     case "set_resource":
       return (
         <span>
-          <span className="text-xs font-semibold uppercase text-ink/50">set</span>{" "}
+          <span className="text-xs font-semibold uppercase text-ink/50">
+            {t("common.set")}
+          </span>{" "}
           <span className="font-medium">{effect.key}</span>
           {" = "}
           <span className="font-mono">{effect.value}</span>
@@ -264,17 +280,21 @@ function EffectLabel({ effect }: { effect: Effect }): ReactNode {
     case "set_flag":
       return (
         <span>
-          <span className="text-xs font-semibold uppercase text-ink/50">flag</span>{" "}
+          <span className="text-xs font-semibold uppercase text-ink/50">
+            {t("common.flag")}
+          </span>{" "}
           <span className="font-medium">{effect.key}</span>
           {" = "}
-          <span className="font-mono">{effect.value ? "true" : "false"}</span>
+          <span className="font-mono">
+            {effect.value ? t("common.true") : t("common.false")}
+          </span>
         </span>
       );
     case "trigger_event":
       return (
         <span>
           <span className="text-xs font-semibold uppercase text-ink/50">
-            event
+            {t("common.event")}
           </span>{" "}
           <span className="font-medium">{effect.event}</span>
         </span>
@@ -301,41 +321,38 @@ function ManualRuleForm({
   onDraftChange(draft: RuleDraft): void;
   onSubmit(): void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-3 grid gap-3">
-      <p className="text-xs text-ink/55">
-        Note: only add_resource effect is supported when creating rules
-        manually. Edit the rules TOML file directly for complex conditions and
-        effects.
-      </p>
+      <p className="text-xs text-ink/55">{t("rules.manualNote")}</p>
       <div className="grid gap-3 lg:grid-cols-4">
         <TextInput
-          label="Rule id"
-          ariaLabel="New rule id"
-          placeholder="e.g. harvest-grain"
+          label={t("rules.ruleId")}
+          ariaLabel={t("rules.aria.newRuleId")}
+          placeholder={t("rules.placeholder.ruleId")}
           value={draft.id}
           onChange={(value) => onDraftChange({ ...draft, id: value })}
         />
         <TextInput
-          label="Action type"
-          ariaLabel="New rule action type"
-          placeholder="e.g. harvest"
+          label={t("rules.actionType")}
+          ariaLabel={t("rules.aria.newRuleActionType")}
+          placeholder={t("rules.placeholder.actionType")}
           value={draft.action_type}
           onChange={(value) => onDraftChange({ ...draft, action_type: value })}
         />
         <label className="grid gap-1">
           <span className="text-xs font-medium uppercase text-ink/55">
-            Resource
+            {t("rules.resource")}
           </span>
           <select
-            aria-label="New rule resource"
+            aria-label={t("rules.aria.newRuleResource")}
             value={draft.resource_key}
             onChange={(event) =>
               onDraftChange({ ...draft, resource_key: event.target.value })
             }
             className={studioUiClassNames.input}
           >
-            <option value="">Select resource</option>
+            <option value="">{t("rules.selectResource")}</option>
             {resourceKeys.map((key) => (
               <option key={key} value={key}>
                 {key}
@@ -344,8 +361,8 @@ function ManualRuleForm({
           </select>
         </label>
         <NumberInput
-          label="Amount"
-          ariaLabel="New rule amount"
+          label={t("rules.amount")}
+          ariaLabel={t("rules.aria.newRuleAmount")}
           value={draft.amount}
           onChange={(value) => onDraftChange({ ...draft, amount: value })}
         />
@@ -357,7 +374,7 @@ function ManualRuleForm({
           disabled={saving}
           className={studioUiClassNames.secondaryButton}
         >
-          Create Rule
+          {t("rules.create")}
         </button>
       </div>
     </div>
@@ -369,9 +386,10 @@ function ManualRuleForm({
 // ---------------------------------------------------------------------------
 
 function EmptyRules() {
+  const { t } = useStudioI18n();
   return (
     <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
-      Rule edit document not loaded.
+      {t("rules.notLoaded")}
     </div>
   );
 }
