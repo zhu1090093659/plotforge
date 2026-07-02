@@ -25,7 +25,6 @@ import {
 } from "./studioDataSource";
 import {
   agentNativeWorkflows,
-  defaultSectionForWorkflow,
   getAgentNativeWorkflow,
   getStudioSection,
   isSectionInWorkflow,
@@ -40,6 +39,7 @@ import {
   StudioShell,
   StudioStatusChip,
   studioUiClassNames,
+  type StudioNavItem,
 } from "./studioUi";
 import {
   defaultNewProjectPath,
@@ -61,6 +61,10 @@ export function App({
     useState<AgentNativeWorkflowId>("command");
   const [activeSection, setActiveSection] =
     useState<StudioSectionId>("launchpad");
+  const [expandedWorkflows, setExpandedWorkflows] = useState<
+    Set<AgentNativeWorkflowId>
+  >(() => new Set(["command"]));
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const {
     projectPath,
@@ -109,9 +113,6 @@ export function App({
   const activeSectionMeta = getStudioSection(activeSection);
   const activeWorkflowMeta = getAgentNativeWorkflow(activeWorkflow);
   const activeScreenReferences = screenReferencesForWorkflow(activeWorkflow);
-  const activeWorkflowSections = activeWorkflowMeta.sectionIds.map(
-    (sectionId) => getStudioSection(sectionId),
-  );
 
   useEffect(() => {
     setCreateProjectPath(defaultNewProjectPath(initialProjectPath));
@@ -128,9 +129,19 @@ export function App({
     if (succeeded) {
       setActiveWorkflow("proof");
       setActiveSection("debugger");
+      setExpandedWorkflows((prev) => {
+        const next = new Set(prev);
+        next.add("proof");
+        return next;
+      });
     } else {
       setActiveWorkflow("game");
       setActiveSection("playtest");
+      setExpandedWorkflows((prev) => {
+        const next = new Set(prev);
+        next.add("game");
+        return next;
+      });
     }
   }
 
@@ -165,9 +176,33 @@ export function App({
     }
   }
 
+  /**
+   * Currently unreachable: `StudioNavTreeNode` invokes `onToggleExpand` for
+   * items with children, never `onSelect`.  All 6 workflows have children, so
+   * clicking a workflow row only toggles expand/collapse.  `activeWorkflow`
+   * changes exclusively via `openStudioSection` (surface clicks) and
+   * `runPlaytest`.  Kept as the `onSelect` wiring for `navItems` so the type
+   * contract holds and future workflows without children fall back to it.
+   */
   function openWorkflow(workflowId: AgentNativeWorkflowId) {
     setActiveWorkflow(workflowId);
-    setActiveSection(defaultSectionForWorkflow(workflowId));
+    setExpandedWorkflows((prev) => {
+      const next = new Set(prev);
+      next.add(workflowId);
+      return next;
+    });
+  }
+
+  function toggleWorkflowExpand(workflowId: AgentNativeWorkflowId) {
+    setExpandedWorkflows((prev) => {
+      const next = new Set(prev);
+      if (next.has(workflowId)) {
+        next.delete(workflowId);
+      } else {
+        next.add(workflowId);
+      }
+      return next;
+    });
   }
 
   function openStudioSection(section: StudioSectionId) {
@@ -176,6 +211,12 @@ export function App({
       : workflowForSection(section).id;
     setActiveWorkflow(workflowId);
     setActiveSection(section);
+    setExpandedWorkflows((prev) => {
+      const next = new Set(prev);
+      next.add(workflowId);
+      return next;
+    });
+    setDrawerOpen(false);
   }
 
   function openExportProfile(profileId: string) {
@@ -601,30 +642,43 @@ export function App({
     );
   }
 
+  const navItems: StudioNavItem[] = agentNativeWorkflows.map((workflow) => {
+    const isActiveWorkflow = workflow.id === activeWorkflow;
+    const sectionItems = workflow.sectionIds.map((sectionId) => {
+      const section = getStudioSection(sectionId);
+      return {
+        id: sectionId,
+        label: section.label,
+        sublabel: section.status,
+        description: section.description,
+        icon: section.icon,
+        selected: sectionId === activeSection,
+        onSelect: () => openStudioSection(sectionId),
+      } satisfies StudioNavItem;
+    });
+    return {
+      id: workflow.id,
+      label: workflow.label,
+      sublabel: workflow.shortLabel,
+      description: workflow.description,
+      icon: workflow.icon,
+      selected: isActiveWorkflow,
+      onSelect: () => openWorkflow(workflow.id),
+      children: sectionItems,
+    } satisfies StudioNavItem;
+  });
+
   return (
     <StudioI18nProvider>
       <StudioShell
         projectPath={loadedPath}
         projectLoading={loading}
         onOpenProject={() => void loadProject(projectPath)}
-        workflowItems={agentNativeWorkflows.map((workflow) => ({
-          id: workflow.id,
-          label: workflow.label,
-          sublabel: workflow.shortLabel,
-          description: workflow.description,
-          icon: workflow.icon,
-          selected: workflow.id === activeWorkflow,
-          onSelect: () => openWorkflow(workflow.id),
-        }))}
-        surfaceItems={activeWorkflowSections.map((section) => ({
-          id: section.id,
-          label: section.label,
-          sublabel: section.status,
-          description: section.description,
-          icon: section.icon,
-          selected: section.id === activeSection,
-          onSelect: () => openStudioSection(section.id),
-        }))}
+        navItems={navItems}
+        expandedIds={expandedWorkflows}
+        onToggleExpand={(id) =>
+          toggleWorkflowExpand(id as AgentNativeWorkflowId)
+        }
         header={{
           eyebrow: `${activeWorkflowMeta.label} / ${dataSource.runtimeName}`,
           title: activeSectionMeta.label,
@@ -659,6 +713,9 @@ export function App({
         }
         rightPanel={renderEvidencePanel()}
         commandDock={renderCommandDock()}
+        drawerOpen={drawerOpen}
+        onToggleDrawer={() => setDrawerOpen((prev) => !prev)}
+        onCloseDrawer={() => setDrawerOpen(false)}
       >
         {renderActiveSection()}
       </StudioShell>

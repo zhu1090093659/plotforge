@@ -3,6 +3,7 @@ import {
   ChevronRight,
   FolderOpen,
   Loader2,
+  Menu,
   type LucideIcon,
 } from "lucide-react";
 import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
@@ -47,6 +48,8 @@ export interface StudioNavItem {
   icon: LucideIcon;
   selected: boolean;
   onSelect(): void;
+  /** Nested surface items rendered in-place when this item is expanded. */
+  children?: StudioNavItem[];
 }
 
 interface StudioShellHeader {
@@ -64,12 +67,16 @@ interface StudioShellProps {
   projectPath: string;
   projectLoading: boolean;
   onOpenProject(): void;
-  workflowItems: StudioNavItem[];
-  surfaceItems: StudioNavItem[];
+  navItems: StudioNavItem[];
+  expandedIds: Set<string>;
+  onToggleExpand(id: string): void;
   header: StudioShellHeader;
   topActions: ReactNode;
   rightPanel: ReactNode;
   commandDock?: ReactNode;
+  drawerOpen: boolean;
+  onToggleDrawer(): void;
+  onCloseDrawer(): void;
   children: ReactNode;
 }
 
@@ -77,93 +84,108 @@ export function StudioShell({
   projectPath,
   projectLoading,
   onOpenProject,
-  workflowItems,
-  surfaceItems,
+  navItems,
+  expandedIds,
+  onToggleExpand,
   header,
   topActions,
   rightPanel,
   commandDock,
+  drawerOpen,
+  onToggleDrawer,
+  onCloseDrawer,
   children,
 }: StudioShellProps) {
+  const sidebarContent = (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="grid h-10 w-10 place-items-center rounded-md border border-amber-400/55 bg-amber-500 font-display text-base font-black tracking-display text-graphite-950">
+          PF
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-tightish text-amber-400">
+            PlotForge Studio
+          </p>
+          <h1 className="font-display truncate text-xl font-semibold tracking-display text-canvas-50">
+            Creator Desktop
+          </h1>
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/60">
+            Open Project
+          </p>
+          <p className="max-w-44 truncate text-sm font-semibold text-canvas-50">
+            {projectPath}
+          </p>
+        </div>
+        <button
+          type="button"
+          title="Open project"
+          onClick={onOpenProject}
+          className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200/18 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70"
+        >
+          {projectLoading ? (
+            <Loader2 aria-hidden size={18} className="animate-spin" />
+          ) : (
+            <FolderOpen aria-hidden size={18} />
+          )}
+        </button>
+      </div>
+
+      <StudioNavTree
+        items={navItems}
+        expandedIds={expandedIds}
+        onToggleExpand={onToggleExpand}
+        className="mt-5"
+      />
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-graphite-950 text-canvas-50">
       <div
         data-testid="studio-shell-grid"
-        className="grid min-h-screen grid-cols-[280px_minmax(0,1fr)_320px] max-xl:grid-cols-[260px_minmax(0,1fr)] max-lg:grid-cols-1"
+        className="grid min-h-screen grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_320px]"
       >
         <aside
           aria-label="Studio navigation"
-          className="border-r border-canvas-200/12 bg-graphite-900 px-4 py-5 shadow-shell-inset max-lg:border-b max-lg:border-r-0"
+          className="hidden border-r border-canvas-200/12 bg-graphite-900 px-4 py-5 shadow-shell-inset lg:block"
         >
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md border border-amber-400/55 bg-amber-500 font-display text-base font-black tracking-display text-graphite-950">
-              PF
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-tightish text-amber-400">
-                PlotForge Studio
-              </p>
-              <h1 className="font-display truncate text-xl font-semibold tracking-display text-canvas-50">
-                Creator Desktop
-              </h1>
-            </div>
-          </div>
-
-          <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200/12 bg-graphite-850 px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-tightish text-canvas-200/60">
-                Open Project
-              </p>
-              <p className="max-w-44 truncate text-sm font-semibold text-canvas-50">
-                {projectPath}
-              </p>
-            </div>
-            <button
-              type="button"
-              title="Open project"
-              onClick={onOpenProject}
-              className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200/18 bg-canvas-50/10 text-canvas-50 transition hover:border-amber-400/70"
-            >
-              {projectLoading ? (
-                <Loader2 aria-hidden size={18} className="animate-spin" />
-              ) : (
-                <FolderOpen aria-hidden size={18} />
-              )}
-            </button>
-          </div>
-
-          <StudioNavList
-            label="Agent-native workflows"
-            items={workflowItems}
-            className="mt-5"
-            selectedTone="workflow"
-          />
-          <StudioNavList
-            label="Workflow surfaces"
-            items={surfaceItems}
-            className="mt-5"
-            selectedTone="surface"
-          />
+          {sidebarContent}
         </aside>
 
         <main className="paper-grain min-w-0 text-ink">
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-canvas-200/55 px-6 py-5 lg:px-8">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-                {header.eyebrow}
-              </p>
-              <h2 className="font-display mt-1 text-2xl font-semibold tracking-display text-ink">
-                {header.title}
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-700/75">
-                {header.subtitle}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {header.badges.map((badge) => (
-                  <StudioStatusChip key={badge.id} title={badge.title}>
-                    {badge.label}
-                  </StudioStatusChip>
-                ))}
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                aria-label="Open navigation"
+                title="Open navigation"
+                onClick={onToggleDrawer}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200/70 bg-canvas-50 text-ink transition hover:border-accent-400 lg:hidden"
+              >
+                <Menu aria-hidden size={18} />
+              </button>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
+                  {header.eyebrow}
+                </p>
+                <h2 className="font-display mt-1 text-2xl font-semibold tracking-display text-ink">
+                  {header.title}
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-700/75">
+                  {header.subtitle}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {header.badges.map((badge) => (
+                    <StudioStatusChip key={badge.id} title={badge.title}>
+                      {badge.label}
+                    </StudioStatusChip>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -176,13 +198,13 @@ export function StudioShell({
 
         <aside
           aria-label="Evidence panel"
-          className="border-l border-canvas-200/12 bg-graphite-900 px-4 py-5 text-canvas-50 shadow-shell-inset max-xl:col-span-2 max-xl:border-l-0 max-xl:border-t max-lg:col-span-1"
+          className="border-l border-canvas-200/12 bg-graphite-900 px-4 py-5 text-canvas-50 shadow-shell-inset lg:col-span-2 lg:border-l-0 lg:border-t xl:col-span-1 xl:border-l xl:border-t-0"
         >
           {rightPanel}
         </aside>
 
         {commandDock ? (
-          <div className="col-span-3 border-t border-canvas-200/12 bg-graphite-950 px-4 py-3 shadow-studio-dock max-xl:col-span-2 max-lg:col-span-1">
+          <div className="border-t border-canvas-200/12 bg-graphite-950 px-4 py-3 shadow-studio-dock lg:col-span-2 xl:col-span-3">
             <div
               aria-label="Command dock"
               className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3"
@@ -192,6 +214,23 @@ export function StudioShell({
           </div>
         ) : null}
       </div>
+
+      {drawerOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            aria-hidden
+            data-testid="drawer-overlay"
+            onClick={onCloseDrawer}
+            className="absolute inset-0 bg-black/50"
+          />
+          <aside
+            aria-label="Studio navigation"
+            className="absolute left-0 top-0 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-canvas-200/12 bg-graphite-900 px-4 py-5 text-canvas-50 shadow-shell-inset"
+          >
+            {sidebarContent}
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -264,42 +303,112 @@ export function StudioStatusChip({
   );
 }
 
-function StudioNavList({
-  label,
+function StudioNavTree({
   items,
+  expandedIds,
+  onToggleExpand,
   className,
-  selectedTone,
 }: {
-  label: string;
   items: StudioNavItem[];
+  expandedIds: Set<string>;
+  onToggleExpand(id: string): void;
   className: string;
-  selectedTone: "workflow" | "surface";
 }) {
   return (
-    <nav aria-label={label} className={`${className} grid gap-1`}>
+    <nav aria-label="Studio navigation tree" className={`${className} grid gap-1`}>
       {items.map((item) => (
-        <StudioNavButton
+        <StudioNavTreeNode
           key={item.id}
           item={item}
-          selectedTone={selectedTone}
+          expanded={expandedIds.has(item.id)}
+          onToggleExpand={onToggleExpand}
         />
       ))}
     </nav>
   );
 }
 
-function StudioNavButton({
+function StudioNavTreeNode({
   item,
-  selectedTone,
+  expanded,
+  onToggleExpand,
 }: {
   item: StudioNavItem;
-  selectedTone: "workflow" | "surface";
+  expanded: boolean;
+  onToggleExpand(id: string): void;
 }) {
   const Icon = item.icon;
+  const hasChildren = (item.children?.length ?? 0) > 0;
+  const selectedClass = "border-amber-400/55 bg-amber-500 text-graphite-950";
+  return (
+    <div className="relative">
+      {item.selected ? (
+        <span
+          aria-hidden
+          className="absolute -left-4 top-1 bottom-1 w-1 rounded-full bg-amber-400"
+        />
+      ) : null}
+      <button
+        type="button"
+        aria-label={item.label}
+        aria-pressed={item.selected}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-controls={hasChildren ? `nav-children-${item.id}` : undefined}
+        title={item.description}
+        onClick={() => {
+          if (hasChildren) {
+            onToggleExpand(item.id);
+          } else {
+            item.onSelect();
+          }
+        }}
+        className={[
+          "flex min-h-12 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
+          item.selected
+            ? selectedClass
+            : "border-transparent text-canvas-50/75 hover:border-canvas-200/15 hover:bg-canvas-50/10 hover:text-canvas-50",
+        ].join(" ")}
+      >
+        <Icon aria-hidden size={18} className="shrink-0" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{item.label}</span>
+          <span
+            className={[
+              "block truncate text-xs",
+              item.selected ? "opacity-70" : "text-canvas-200/45",
+            ].join(" ")}
+          >
+            {item.sublabel}
+          </span>
+        </span>
+        {hasChildren ? (
+          expanded ? (
+            <ChevronDown aria-hidden size={16} className="shrink-0 opacity-60" />
+          ) : (
+            <ChevronRight aria-hidden size={16} className="shrink-0 opacity-60" />
+          )
+        ) : null}
+      </button>
+      {hasChildren && expanded ? (
+        <ul
+          id={`nav-children-${item.id}`}
+          className="mt-1 grid gap-1 pl-9"
+        >
+          {item.children!.map((child) => (
+            <li key={child.id}>
+              <StudioNavSurfaceButton item={child} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function StudioNavSurfaceButton({ item }: { item: StudioNavItem }) {
+  const Icon = item.icon;
   const selectedClass =
-    selectedTone === "workflow"
-      ? "border-amber-400/55 bg-amber-500 text-graphite-950"
-      : "border-accent-400/45 bg-accent-500/20 text-canvas-50";
+    "border-accent-400/45 bg-accent-500/20 text-canvas-50";
   return (
     <button
       type="button"
@@ -308,13 +417,13 @@ function StudioNavButton({
       title={item.description}
       onClick={item.onSelect}
       className={[
-        "flex min-h-12 items-center gap-3 rounded-md border px-3 py-2 text-left transition",
+        "flex min-h-9 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
         item.selected
           ? selectedClass
           : "border-transparent text-canvas-50/75 hover:border-canvas-200/15 hover:bg-canvas-50/10 hover:text-canvas-50",
       ].join(" ")}
     >
-      <Icon aria-hidden size={18} className="shrink-0" />
+      <Icon aria-hidden size={16} className="shrink-0" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{item.label}</span>
         <span
@@ -326,7 +435,6 @@ function StudioNavButton({
           {item.sublabel}
         </span>
       </span>
-      {item.selected ? <ChevronRight aria-hidden size={16} /> : null}
     </button>
   );
 }

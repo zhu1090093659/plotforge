@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { Boxes, Gauge } from "lucide-react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Boxes, Folder, Gauge } from "lucide-react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   agentNativeDesignTokens,
   Collapsible,
@@ -10,7 +10,12 @@ import {
   StudioPanel,
   StudioShell,
   StudioStatusChip,
+  type StudioNavItem,
 } from "./studioUi";
+
+afterEach(() => {
+  cleanup();
+});
 
 describe("studioUi", () => {
   it("exposes the agent-native token layer used by the shell", () => {
@@ -22,28 +27,29 @@ describe("studioUi", () => {
     expect(agentNativeDesignTokens.accent.agentBrass).toBe("#2d6258");
   });
 
-  it("renders shell landmarks, responsive grid classes, right panel, and command dock", () => {
-    const selectWorkflow = vi.fn();
-    const selectSurface = vi.fn();
-    const openProject = vi.fn();
-
-    render(
-      <StudioShell
-        projectPath="/tmp/starter-project"
-        projectLoading={false}
-        onOpenProject={openProject}
-        workflowItems={[
+  function treeNavItems(overrides?: {
+    selectWorkflow?: () => void;
+    selectSurface?: () => void;
+  }): StudioNavItem[] {
+    return [
+      {
+        id: "command",
+        label: "Command Center",
+        sublabel: "Command",
+        description: "Director intent",
+        icon: Gauge,
+        selected: true,
+        onSelect: overrides?.selectWorkflow ?? (() => {}),
+        children: [
           {
-            id: "command",
-            label: "Command Center",
-            sublabel: "Command",
-            description: "Director intent",
+            id: "launchpad",
+            label: "Launchpad",
+            sublabel: "ready",
+            description: "Project launchpad",
             icon: Gauge,
             selected: true,
-            onSelect: selectWorkflow,
+            onSelect: () => {},
           },
-        ]}
-        surfaceItems={[
           {
             id: "assets",
             label: "Artifact Review",
@@ -51,9 +57,50 @@ describe("studioUi", () => {
             description: "Review changed assets",
             icon: Boxes,
             selected: false,
-            onSelect: selectSurface,
+            onSelect: overrides?.selectSurface ?? (() => {}),
           },
-        ]}
+        ],
+      },
+      {
+        id: "agents",
+        label: "Agent Mesh",
+        sublabel: "Agents",
+        description: "Agent mesh overview",
+        icon: Folder,
+        selected: false,
+        onSelect: () => {},
+        children: [
+          {
+            id: "agent-mesh",
+            label: "Agent Mesh Workspace",
+            sublabel: "ready",
+            description: "Agent mesh workspace",
+            icon: Folder,
+            selected: false,
+            onSelect: () => {},
+          },
+        ],
+      },
+    ];
+  }
+
+  function renderShell(props?: {
+    expandedIds?: Set<string>;
+    onToggleExpand?: (id: string) => void;
+    navItems?: StudioNavItem[];
+    drawerOpen?: boolean;
+    onToggleDrawer?: () => void;
+    onCloseDrawer?: () => void;
+  }) {
+    const toggleExpand = props?.onToggleExpand ?? vi.fn();
+    render(
+      <StudioShell
+        projectPath="/tmp/starter-project"
+        projectLoading={false}
+        onOpenProject={vi.fn()}
+        navItems={props?.navItems ?? treeNavItems()}
+        expandedIds={props?.expandedIds ?? new Set(["command"])}
+        onToggleExpand={toggleExpand}
         header={{
           eyebrow: "Command Center / Test runtime",
           title: "Project Launchpad",
@@ -67,36 +114,146 @@ describe("studioUi", () => {
           </StudioPanel>
         }
         commandDock={<StudioButton variant="primary">Run turn</StudioButton>}
+        drawerOpen={props?.drawerOpen ?? false}
+        onToggleDrawer={props?.onToggleDrawer ?? vi.fn()}
+        onCloseDrawer={props?.onCloseDrawer ?? vi.fn()}
+      >
+        <StudioPanel>Workspace</StudioPanel>
+      </StudioShell>,
+    );
+    return { toggleExpand };
+  }
+
+  it("renders shell landmarks, evidence panel, and command dock", () => {
+    renderShell();
+
+    expect(screen.getByLabelText("Studio navigation")).toBeTruthy();
+    expect(screen.getByRole("main")).toBeTruthy();
+    expect(screen.getByLabelText("Evidence panel")).toBeTruthy();
+    expect(screen.getByLabelText("Command dock")).toBeTruthy();
+    expect(screen.getByText("Trace visible")).toBeTruthy();
+  });
+
+  it("renders an expanded child section in place under its parent", () => {
+    renderShell({ expandedIds: new Set(["command"]) });
+    // The child "Artifact Review" is rendered in the tree (parent command is expanded).
+    expect(screen.getByRole("button", { name: "Artifact Review" })).toBeTruthy();
+  });
+
+  it("hides child sections when the parent is collapsed", () => {
+    renderShell({ expandedIds: new Set() });
+    expect(screen.queryByRole("button", { name: "Artifact Review" })).toBeNull();
+  });
+
+  it("toggles expand/collapse on clicking a workflow row without invoking select", () => {
+    const selectWorkflow = vi.fn();
+    const onToggleExpand = vi.fn();
+    renderShell({
+      onToggleExpand,
+      navItems: treeNavItems({ selectWorkflow }),
+      expandedIds: new Set(),
+    });
+
+    // Clicking the workflow row toggles expand; it must not call the workflow
+    // select handler (which would jump to the default section).
+    fireEvent.click(screen.getByRole("button", { name: "Command Center" }));
+    expect(onToggleExpand).toHaveBeenCalledTimes(1);
+    expect(selectWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("opens the drawer via the header menu button and closes via the overlay", () => {
+    const onToggleDrawer = vi.fn();
+    const onCloseDrawer = vi.fn();
+    const { rerender } = render(
+      <StudioShell
+        projectPath="/tmp/starter-project"
+        projectLoading={false}
+        onOpenProject={vi.fn()}
+        navItems={treeNavItems()}
+        expandedIds={new Set(["command"])}
+        onToggleExpand={vi.fn()}
+        header={{
+          eyebrow: "Command Center / Test runtime",
+          title: "Project Launchpad",
+          subtitle: "Starter Project - Director intent",
+          badges: [{ id: "command-center", label: "Command Center" }],
+        }}
+        topActions={<StudioButton>Refresh</StudioButton>}
+        rightPanel={<StudioPanel>Right</StudioPanel>}
+        drawerOpen={false}
+        onToggleDrawer={onToggleDrawer}
+        onCloseDrawer={onCloseDrawer}
       >
         <StudioPanel>Workspace</StudioPanel>
       </StudioShell>,
     );
 
-    expect(screen.getByLabelText("Studio navigation")).toBeTruthy();
-    expect(screen.getByRole("main")).toBeTruthy();
-    const evidencePanel = screen.getByLabelText("Evidence panel");
-    const commandDock = screen.getByLabelText("Command dock");
-    expect(evidencePanel).toBeTruthy();
-    expect(commandDock).toBeTruthy();
-    const shellGridClass =
-      screen.getByTestId("studio-shell-grid").getAttribute("class") ?? "";
-    expect(shellGridClass).toContain("grid-cols-[280px_minmax(0,1fr)_320px]");
-    expect(shellGridClass).toContain("max-xl:grid-cols-[260px_minmax(0,1fr)]");
-    expect(shellGridClass).toContain("max-lg:grid-cols-1");
-    expect(evidencePanel.getAttribute("class") ?? "").toContain(
-      "max-xl:col-span-2",
-    );
-    expect(commandDock.parentElement?.getAttribute("class") ?? "").toContain(
-      "max-lg:col-span-1",
-    );
-    expect(screen.getByText("Trace visible")).toBeTruthy();
+    // Drawer is closed initially: header hamburger exists, overlay does not.
+    expect(screen.getByLabelText("Open navigation")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Command Center" }));
-    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
+    fireEvent.click(screen.getByLabelText("Open navigation"));
+    expect(onToggleDrawer).toHaveBeenCalledTimes(1);
+
+    // Re-render with drawer open to assert overlay + drawer nav are visible.
+    rerender(
+      <StudioShell
+        projectPath="/tmp/starter-project"
+        projectLoading={false}
+        onOpenProject={vi.fn()}
+        navItems={treeNavItems()}
+        expandedIds={new Set(["command"])}
+        onToggleExpand={vi.fn()}
+        header={{
+          eyebrow: "Command Center / Test runtime",
+          title: "Project Launchpad",
+          subtitle: "Starter Project - Director intent",
+          badges: [{ id: "command-center", label: "Command Center" }],
+        }}
+        topActions={<StudioButton>Refresh</StudioButton>}
+        rightPanel={<StudioPanel>Right</StudioPanel>}
+        drawerOpen={true}
+        onToggleDrawer={onToggleDrawer}
+        onCloseDrawer={onCloseDrawer}
+      >
+        <StudioPanel>Workspace</StudioPanel>
+      </StudioShell>,
+    );
+
+    // Two Studio navigation landmarks now: the persistent aside and the drawer aside.
+    expect(screen.getAllByLabelText("Studio navigation").length).toBe(2);
+    // Clicking the overlay closes the drawer.
+    const overlay = screen.getByTestId("drawer-overlay");
+    fireEvent.click(overlay);
+    expect(onCloseDrawer).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes onOpenProject when the open-project button is clicked", () => {
+    const openProject = vi.fn();
+    render(
+      <StudioShell
+        projectPath="/tmp/starter-project"
+        projectLoading={false}
+        onOpenProject={openProject}
+        navItems={treeNavItems()}
+        expandedIds={new Set(["command"])}
+        onToggleExpand={vi.fn()}
+        header={{
+          eyebrow: "Command Center / Test runtime",
+          title: "Project Launchpad",
+          subtitle: "Starter Project - Director intent",
+          badges: [{ id: "command-center", label: "Command Center" }],
+        }}
+        topActions={<StudioButton>Refresh</StudioButton>}
+        rightPanel={<StudioPanel>Right</StudioPanel>}
+        drawerOpen={false}
+        onToggleDrawer={vi.fn()}
+        onCloseDrawer={vi.fn()}
+      >
+        <StudioPanel>Workspace</StudioPanel>
+      </StudioShell>,
+    );
+
     fireEvent.click(screen.getByTitle("Open project"));
-
-    expect(selectWorkflow).toHaveBeenCalledTimes(1);
-    expect(selectSurface).toHaveBeenCalledTimes(1);
     expect(openProject).toHaveBeenCalledTimes(1);
   });
 });

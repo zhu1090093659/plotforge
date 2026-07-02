@@ -135,12 +135,12 @@ describe("App", () => {
     expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
     expect(screen.getAllByText("State Delta").length).toBeGreaterThan(0);
 
-    fireEvent.click(getWorkflowButton("Director Mode"));
+    openWorkflowDefaultSection("Director Mode", "Playtest");
 
     expect(screen.getAllByText("Director Mode").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Playtest input")).toBeTruthy();
 
-    fireEvent.click(getWorkflowButton("Export Package"));
+    openWorkflowDefaultSection("Export Package", "Export");
 
     expect(screen.getAllByText("Export Package").length).toBeGreaterThan(0);
     expect(screen.getAllByText("steam-submission-kit").length).toBeGreaterThan(0);
@@ -175,8 +175,12 @@ describe("App", () => {
     expect(screen.queryByText("Mock pi-Agent Worker")).toBeNull();
     expect(screen.queryByText("Approve local preview patch")).toBeNull();
     expect(screen.queryByText("local-preview-only")).toBeNull();
-
-    fireEvent.click(getWorkflowButton("Agent Mesh"));
+    // Agent Mesh workflow and its default surface share the label "Agent Mesh".
+    // Click the workflow to expand (first match), then the surface (second match).
+    fireEvent.click(screen.getAllByRole("button", { name: "Agent Mesh" })[0]);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Agent Mesh" })[1],
+    );
     expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
       .toBeTruthy();
     expect(screen.getByText("Studio-backed capabilities")).toBeTruthy();
@@ -209,7 +213,8 @@ describe("App", () => {
       );
     }
 
-    fireEvent.click(screen.getByRole("button", { name: "导演模式" }));
+    fireEvent.click(getWorkflowButton("导演模式"));
+    fireEvent.click(await screen.findByRole("button", { name: "试玩" }));
     fireEvent.click(screen.getByRole("button", { name: "高级快照控制" }));
     await waitFor(() => {
       expect(screen.getByText("导演指令栏")).toBeTruthy();
@@ -223,7 +228,8 @@ describe("App", () => {
       ).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "产物审查" }));
+    fireEvent.click(getWorkflowButton("产物审查"));
+    fireEvent.click(await screen.findByRole("button", { name: "资产" }));
     await waitFor(() => {
       expect(screen.getAllByText("实时构建室").length).toBeGreaterThan(0);
       expect(screen.getAllByText("未捕获").length).toBeGreaterThan(0);
@@ -255,7 +261,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
+    openWorkflowDefaultSection("Artifact Review", "Assets");
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
     expect(screen.getAllByText("asset-image-opening-scene").length)
@@ -302,7 +308,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
+    openWorkflowDefaultSection("Artifact Review", "Assets");
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
     expect(screen.getByText("Scene background fallback")).toBeTruthy();
@@ -334,7 +340,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Artifact Review" }));
+    openWorkflowDefaultSection("Artifact Review", "Assets");
     fireEvent.click(screen.getByRole("button", { name: /Winter council ink wash/ }));
 
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
@@ -394,8 +400,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
-
+    openWorkflowDefaultSection("Director Mode", "Playtest");
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "continue" },
     });
@@ -444,6 +449,15 @@ describe("App", () => {
       ).length,
     ).toBeGreaterThan(0);
     expect(screen.queryByText(/sk-test-secret/)).toBeNull();
+
+    // After a successful run, the workspace switches to proof/debugger.  The
+    // "Playable Proof" workflow must be expanded so the "Debugger" surface is
+    // visible in the sidebar tree (regression: runPlaytest must expand target).
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Studio navigation tree" }),
+      ).getByRole("button", { name: "Debugger" }),
+    ).toBeTruthy();
   });
 
   it("runs playtest with explicit and latest runtime snapshot controls", async () => {
@@ -486,7 +500,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
+    openWorkflowDefaultSection("Director Mode", "Playtest");
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "pay the army" },
@@ -501,8 +515,14 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run turn" }));
 
     await screen.findByText("/tmp/starter-project/saves/save-after-army.runtime_snapshot.json");
-
-    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
+    // After a successful run, the workspace switches to the proof/debugger
+    // section.  Navigate back to the Playtest surface under Director Mode
+    // (still expanded) to run the next snapshot turn.  Scope to Director Mode's
+    // children region because "Playtest" also appears under "Playable Proof".
+    const directorRegionId = getWorkflowButton("Director Mode").getAttribute("aria-controls");
+    fireEvent.click(
+      within(document.getElementById(directorRegionId!)!).getByRole("button", { name: "Playtest" }),
+    );
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "raise emergency taxes" },
     });
@@ -556,7 +576,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(getWorkflowButton("Export Package"));
+    openWorkflowDefaultSection("Export Package", "Export");
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(screen.getByText("byo-key-web")).toBeTruthy();
     expect(screen.getByText("self-host-backend")).toBeTruthy();
@@ -631,7 +651,7 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    fireEvent.click(getWorkflowButton("Export Package"));
+    openWorkflowDefaultSection("Export Package", "Export");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Select export profile steam-workshop",
@@ -851,8 +871,8 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Story Craft" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
-    fireEvent.click(screen.getByRole("button", { name: /Characters/ }));
+    fireEvent.click(getWorkflowButton("Director Mode"));
+    fireEvent.click(getWorkflowButton("Characters"));
     // Open the "Add Character" collapsible (defaults to Manual mode).
     fireEvent.click(screen.getByRole("button", { name: "Add Character" }));
     fireEvent.change(screen.getByLabelText("New character id"), {
@@ -1030,8 +1050,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate StoryCraft" }));
     await screen.findByText("Generated Pressure");
 
-    fireEvent.click(screen.getByRole("button", { name: "Director Mode" }));
-    fireEvent.click(screen.getByRole("button", { name: /Characters/ }));
+    fireEvent.click(getWorkflowButton("Director Mode"));
+    fireEvent.click(getWorkflowButton("Characters"));
     // Open the "Add Character" collapsible and switch to AI Generate mode.
     fireEvent.click(screen.getByRole("button", { name: "Add Character" }));
     fireEvent.click(screen.getByRole("button", { name: "AI Generate", pressed: false }));
@@ -1049,7 +1069,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Grain Envoy/ }));
     expect(screen.getByText("Generated portrait request")).toBeTruthy();
 
-    fireEvent.click(getWorkflowButton("Export Package"));
+    openWorkflowDefaultSection("Export Package", "Export");
     fireEvent.click(screen.getByLabelText("Live generated content enabled"));
     fireEvent.click(screen.getByLabelText("Moderation queue enabled"));
     fireEvent.change(screen.getByLabelText("AI safety moderation policy"), {
@@ -1071,9 +1091,42 @@ describe("App", () => {
 });
 
 function getWorkflowButton(name: string) {
+  // The workflow row is a single button that toggles expand/collapse on click
+  // (for workflows with children) or invokes onSelect (for childless items).
+  // Selecting by role+name inside the nav tree targets the labeled button.
   return within(
-    screen.getByRole("navigation", { name: "Agent-native workflows" }),
+    screen.getByRole("navigation", { name: "Studio navigation tree" }),
   ).getByRole("button", { name });
+}
+
+/**
+ * Expand the given workflow by clicking its row, then click its default
+ * surface section.  Used by tests that previously relied on a single click on
+ * a workflow to jump to its default section; the tree navigation now requires
+ * two steps (expand the workflow, then pick the section).
+ *
+ * The surface lookup is scoped to the clicked workflow's children region
+ * (via aria-controls) so that the same section name appearing under multiple
+ * expanded workflows does not cause a multiple-match error.
+ */
+function openWorkflowDefaultSection(workflowName: string, sectionName: string) {
+  const workflowButton = getWorkflowButton(workflowName);
+  fireEvent.click(workflowButton);
+  const regionId = workflowButton.getAttribute("aria-controls");
+  if (!regionId) {
+    throw new Error(
+      `Workflow "${workflowName}" has no aria-controls; cannot scope surface lookup`,
+    );
+  }
+  const region = document.getElementById(regionId);
+  if (!region) {
+    throw new Error(
+      `Workflow "${workflowName}" children region #${regionId} not found`,
+    );
+  }
+  fireEvent.click(
+    within(region).getByRole("button", { name: sectionName }),
+  );
 }
 
 function expectExportEvidenceStatus(label: string, status: string) {
