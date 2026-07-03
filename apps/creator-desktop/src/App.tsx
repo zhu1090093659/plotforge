@@ -686,14 +686,8 @@ function AppContent({
         toggleWorkflowExpand(id as AgentNativeWorkflowId)
       }
       header={{
-        eyebrow: `${t(activeWorkflowMeta.labelKey)} / ${dataSource.runtimeName}`,
         title: t(activeSectionMeta.labelKey),
         subtitle: `${projectSummary?.title ?? t("app.noProjectLoaded")} - ${t(activeWorkflowMeta.descriptionKey)}`,
-        badges: activeScreenReferences.map((reference) => ({
-          id: reference.id,
-          label: t(reference.titleKey),
-          title: reference.fileName,
-        })),
       }}
       topActions={
         <>

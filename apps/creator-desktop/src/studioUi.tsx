@@ -61,14 +61,8 @@ export interface StudioNavItem {
 }
 
 interface StudioShellHeader {
-  eyebrow: string;
   title: string;
   subtitle: string;
-  badges: Array<{
-    id: string;
-    label: string;
-    title?: string;
-  }>;
 }
 
 interface StudioShellProps {
@@ -179,24 +173,12 @@ export function StudioShell({
                 <Menu aria-hidden size={18} />
               </button>
               <div className="min-w-0">
-                <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-                    {header.eyebrow}
-                  </p>
-                  <h2 className="font-display text-xl font-semibold tracking-display text-ink xl:text-2xl">
-                    {header.title}
-                  </h2>
-                </div>
+                <h2 className="font-display text-xl font-semibold tracking-display text-ink xl:text-2xl">
+                  {header.title}
+                </h2>
                 <p className="mt-1 max-w-3xl truncate text-sm leading-5 text-graphite-700/75">
                   {header.subtitle}
                 </p>
-                <div className="mt-2 flex max-h-9 flex-wrap gap-2 overflow-hidden">
-                  {header.badges.map((badge) => (
-                    <StudioStatusChip key={badge.id} title={badge.title}>
-                      {badge.label}
-                    </StudioStatusChip>
-                  ))}
-                </div>
               </div>
             </div>
             <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap lg:justify-end">

@@ -105,10 +105,8 @@ describe("studioUi", () => {
           expandedIds={props?.expandedIds ?? new Set(["command"])}
           onToggleExpand={toggleExpand}
           header={{
-            eyebrow: "Command Center / Test runtime",
             title: "Project Launchpad",
             subtitle: "Starter Project - Director intent",
-            badges: [{ id: "command-center", label: "Command Center" }],
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={
@@ -135,6 +133,8 @@ describe("studioUi", () => {
     expect(screen.getByRole("main")).toBeTruthy();
     expect(screen.getByLabelText("Evidence panel")).toBeTruthy();
     expect(screen.getByLabelText("Command dock")).toBeTruthy();
+    expect(screen.getByText("Project Launchpad")).toBeTruthy();
+    expect(screen.queryByText("Command Center / Test runtime")).toBeNull();
     expect(screen.getByText("Trace visible")).toBeTruthy();
   });
 
@@ -178,10 +178,8 @@ describe("studioUi", () => {
           expandedIds={new Set(["command"])}
           onToggleExpand={vi.fn()}
           header={{
-            eyebrow: "Command Center / Test runtime",
             title: "Project Launchpad",
             subtitle: "Starter Project - Director intent",
-            badges: [{ id: "command-center", label: "Command Center" }],
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={<StudioPanel>Right</StudioPanel>}
@@ -211,10 +209,8 @@ describe("studioUi", () => {
           expandedIds={new Set(["command"])}
           onToggleExpand={vi.fn()}
           header={{
-            eyebrow: "Command Center / Test runtime",
             title: "Project Launchpad",
             subtitle: "Starter Project - Director intent",
-            badges: [{ id: "command-center", label: "Command Center" }],
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={<StudioPanel>Right</StudioPanel>}
@@ -247,10 +243,8 @@ describe("studioUi", () => {
           expandedIds={new Set(["command"])}
           onToggleExpand={vi.fn()}
           header={{
-            eyebrow: "Command Center / Test runtime",
             title: "Project Launchpad",
             subtitle: "Starter Project - Director intent",
-            badges: [{ id: "command-center", label: "Command Center" }],
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={<StudioPanel>Right</StudioPanel>}
@@ -565,4 +559,3 @@ describe("StudioTabs", () => {
       .toBe("true");
   });
 });
-
