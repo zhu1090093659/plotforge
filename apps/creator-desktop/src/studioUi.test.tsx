@@ -94,8 +94,11 @@ describe("studioUi", () => {
     drawerOpen?: boolean;
     onToggleDrawer?: () => void;
     onCloseDrawer?: () => void;
+    railCollapsed?: boolean;
+    onToggleRail?: () => void;
   }) {
     const toggleExpand = props?.onToggleExpand ?? vi.fn();
+    const onToggleRail = props?.onToggleRail ?? vi.fn();
     render(
       <StudioI18nProvider>
         <StudioShell
@@ -115,7 +118,8 @@ describe("studioUi", () => {
               <StudioStatusChip tone="health">Trace visible</StudioStatusChip>
             </StudioPanel>
           }
-          commandDock={<StudioButton variant="primary">Run turn</StudioButton>}
+          railCollapsed={props?.railCollapsed ?? false}
+          onToggleRail={onToggleRail}
           drawerOpen={props?.drawerOpen ?? false}
           onToggleDrawer={props?.onToggleDrawer ?? vi.fn()}
           onCloseDrawer={props?.onCloseDrawer ?? vi.fn()}
@@ -124,19 +128,153 @@ describe("studioUi", () => {
         </StudioShell>
       </StudioI18nProvider>,
     );
-    return { toggleExpand };
+    return { toggleExpand, onToggleRail };
   }
 
-  it("renders shell landmarks, evidence panel, and command dock", () => {
+  it("renders shell landmarks and the agent rail", () => {
     renderShell();
 
     expect(screen.getByLabelText("Studio navigation")).toBeTruthy();
     expect(screen.getByRole("main")).toBeTruthy();
-    expect(screen.getByLabelText("Evidence panel")).toBeTruthy();
-    expect(screen.getByLabelText("Command dock")).toBeTruthy();
+    expect(screen.getByLabelText("Agent rail")).toBeTruthy();
     expect(screen.getByText("Project Launchpad")).toBeTruthy();
     expect(screen.queryByText("Command Center / Test runtime")).toBeNull();
     expect(screen.getByText("Trace visible")).toBeTruthy();
+    // The rail toggle affordance is present and reflects the expanded state.
+    const toggle = screen.getByLabelText("Collapse agent rail");
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("collapses the agent rail via the toggle button", () => {
+    const onToggleRail = vi.fn();
+    renderShell({ railCollapsed: false, onToggleRail });
+
+    // Expanded state: rail is visible, toggle announces "collapse".
+    expect(screen.getByLabelText("Agent rail")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Collapse agent rail"));
+    expect(onToggleRail).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the agent rail when collapsed and announces expand", () => {
+    renderShell({ railCollapsed: true });
+
+    expect(screen.queryByLabelText("Agent rail")).toBeNull();
+    expect(screen.getByLabelText("Expand agent rail")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Expand agent rail").getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
+  it("re-expands the rail and flips aria-expanded back to true after a collapse→expand round-trip", () => {
+    function renderShellAt(railCollapsed: boolean) {
+      return render(
+        <StudioI18nProvider>
+          <StudioShell
+            projectPath="/tmp/starter-project"
+            projectLoading={false}
+            onOpenProject={vi.fn()}
+            navItems={treeNavItems()}
+            expandedIds={new Set(["command"])}
+            onToggleExpand={vi.fn()}
+            header={{
+              title: "Project Launchpad",
+              subtitle: "Starter Project - Director intent",
+            }}
+            topActions={<StudioButton>Refresh</StudioButton>}
+            rightPanel={
+              <StudioPanel>
+                <StudioStatusChip tone="health">Trace visible</StudioStatusChip>
+              </StudioPanel>
+            }
+            railCollapsed={railCollapsed}
+            onToggleRail={vi.fn()}
+            drawerOpen={false}
+            onToggleDrawer={vi.fn()}
+            onCloseDrawer={vi.fn()}
+          >
+            <StudioPanel>Workspace</StudioPanel>
+          </StudioShell>
+        </StudioI18nProvider>,
+      );
+    }
+
+    const { rerender } = renderShellAt(false);
+    // Expanded: rail present, toggle says collapse, aria-expanded true.
+    expect(screen.getByLabelText("Agent rail")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Collapse agent rail").getAttribute("aria-expanded"),
+    ).toBe("true");
+
+    // Re-render collapsed: rail hidden, toggle says expand, aria-expanded false.
+    rerender(
+      <StudioI18nProvider>
+        <StudioShell
+          projectPath="/tmp/starter-project"
+          projectLoading={false}
+          onOpenProject={vi.fn()}
+          navItems={treeNavItems()}
+          expandedIds={new Set(["command"])}
+          onToggleExpand={vi.fn()}
+          header={{
+            title: "Project Launchpad",
+            subtitle: "Starter Project - Director intent",
+          }}
+          topActions={<StudioButton>Refresh</StudioButton>}
+          rightPanel={
+            <StudioPanel>
+              <StudioStatusChip tone="health">Trace visible</StudioStatusChip>
+            </StudioPanel>
+          }
+          railCollapsed={true}
+          onToggleRail={vi.fn()}
+          drawerOpen={false}
+          onToggleDrawer={vi.fn()}
+          onCloseDrawer={vi.fn()}
+        >
+          <StudioPanel>Workspace</StudioPanel>
+        </StudioShell>
+      </StudioI18nProvider>,
+    );
+    expect(screen.queryByLabelText("Agent rail")).toBeNull();
+    expect(
+      screen.getByLabelText("Expand agent rail").getAttribute("aria-expanded"),
+    ).toBe("false");
+
+    // Re-render expanded again: rail reappears, aria-expanded true.
+    rerender(
+      <StudioI18nProvider>
+        <StudioShell
+          projectPath="/tmp/starter-project"
+          projectLoading={false}
+          onOpenProject={vi.fn()}
+          navItems={treeNavItems()}
+          expandedIds={new Set(["command"])}
+          onToggleExpand={vi.fn()}
+          header={{
+            title: "Project Launchpad",
+            subtitle: "Starter Project - Director intent",
+          }}
+          topActions={<StudioButton>Refresh</StudioButton>}
+          rightPanel={
+            <StudioPanel>
+              <StudioStatusChip tone="health">Trace visible</StudioStatusChip>
+            </StudioPanel>
+          }
+          railCollapsed={false}
+          onToggleRail={vi.fn()}
+          drawerOpen={false}
+          onToggleDrawer={vi.fn()}
+          onCloseDrawer={vi.fn()}
+        >
+          <StudioPanel>Workspace</StudioPanel>
+        </StudioShell>
+      </StudioI18nProvider>,
+    );
+    expect(screen.getByLabelText("Agent rail")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Collapse agent rail").getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("renders an expanded child section in place under its parent", () => {
@@ -184,6 +322,8 @@ describe("studioUi", () => {
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={<StudioPanel>Right</StudioPanel>}
+          railCollapsed={false}
+          onToggleRail={vi.fn()}
           drawerOpen={false}
           onToggleDrawer={onToggleDrawer}
           onCloseDrawer={onCloseDrawer}
@@ -215,6 +355,8 @@ describe("studioUi", () => {
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={<StudioPanel>Right</StudioPanel>}
+          railCollapsed={false}
+          onToggleRail={vi.fn()}
           drawerOpen={true}
           onToggleDrawer={onToggleDrawer}
           onCloseDrawer={onCloseDrawer}
@@ -249,6 +391,8 @@ describe("studioUi", () => {
           }}
           topActions={<StudioButton>Refresh</StudioButton>}
           rightPanel={<StudioPanel>Right</StudioPanel>}
+          railCollapsed={false}
+          onToggleRail={vi.fn()}
           drawerOpen={false}
           onToggleDrawer={vi.fn()}
           onCloseDrawer={vi.fn()}

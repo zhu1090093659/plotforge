@@ -37,11 +37,7 @@ function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {})
       { path: "world/world.md", kind: "markdown" as const, bytes: 80, editable: true },
     ],
     selectedFile: null,
-    editorContent: "",
-    setEditorContent: vi.fn(),
     dirty: false,
-    saving: false,
-    error: null,
     playtestInput: "Raise emergency taxes.",
     setPlaytestInput: vi.fn(),
     playtesting: false,
@@ -70,8 +66,6 @@ function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {})
     onRunPlayableProof: vi.fn(),
     onOpenSection: vi.fn(),
     onOpenExportProfile: vi.fn(),
-    onSelectSourceFile: vi.fn(),
-    onSaveSelectedFile: vi.fn(),
     onCreateProject: vi.fn(),
     dataSource: createDefaultStudioDataSource(),
     ...overrides,
@@ -108,11 +102,13 @@ describe("LaunchpadView", () => {
     expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
   });
 
-  it("exposes the Source Artifacts and Editor tabs alongside the New Project tab", () => {
+  it("exposes the New Project and Project Health tabs (source moved to Source view)", () => {
     renderLaunchpad();
 
-    expect(screen.getByRole("tab", { name: /Source Artifacts/i })).toBeTruthy();
-    // Editor tab is only present when a file is selected; absent here.
+    expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /Project Health/i })).toBeTruthy();
+    // Source browsing/editing moved to the dedicated Source view (Phase B).
+    expect(screen.queryByRole("tab", { name: /Source Artifacts/i })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Artifact Text Editor/i })).toBeNull();
   });
 
@@ -160,8 +156,8 @@ describe("LaunchpadView", () => {
     };
     renderLaunchpad({ checkReport });
 
-    // Switch to the Source Artifacts tab to see the boundary checks.
-    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
+    // Switch to the Project Health tab to see the boundary checks.
+    fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
 
     // Should display real data from checkReport (not hardcoded strings)
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
@@ -174,8 +170,8 @@ describe("LaunchpadView", () => {
   it("shows the no-project boundary-check state when no project is loaded", () => {
     renderLaunchpad({ checkReport: null, projectData: null, loadedPath: "" });
 
-    // Switch to the Source Artifacts tab.
-    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
+    // Switch to the Project Health tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
 
     // No project loaded -> no fake "passed" checks; show the empty state.
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
@@ -187,8 +183,8 @@ describe("LaunchpadView", () => {
   it("shows a pending boundary-check state when a project is loaded but no checkReport is available", () => {
     renderLaunchpad({ checkReport: null });
 
-    // Switch to the Source Artifacts tab.
-    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
+    // Switch to the Project Health tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
 
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
     expect(
@@ -198,73 +194,6 @@ describe("LaunchpadView", () => {
     ).toBeTruthy();
     // The no-project message must not appear when a project is loaded.
     expect(screen.queryByText("Open a project to run boundary checks.")).toBeNull();
-  });
-
-  it("shows source file list when Source Artifacts tab is selected", () => {
-    renderLaunchpad({
-      sourceFiles: [
-        { path: "game.toml", kind: "toml" as const, bytes: 120, editable: false },
-        { path: "world/world.md", kind: "markdown" as const, bytes: 80, editable: true },
-      ],
-    });
-
-    // Initially not visible (New Project tab is active).
-    expect(screen.queryByText("game.toml")).toBeNull();
-
-    // Select the Source Artifacts tab.
-    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
-
-    expect(screen.getByText("game.toml")).toBeTruthy();
-    expect(screen.getByText("world/world.md")).toBeTruthy();
-  });
-
-  it("calls onSelectSourceFile when a source file is clicked", () => {
-    const onSelectSourceFile = vi.fn();
-    renderLaunchpad({ onSelectSourceFile });
-
-    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
-    fireEvent.click(screen.getByRole("button", { name: /game\.toml/ }));
-
-    expect(onSelectSourceFile).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "game.toml" }),
-    );
-  });
-
-  it("shows the source editor on the Editor tab when a file is selected", () => {
-    renderLaunchpad({
-      selectedFile: {
-        path: "world/world.md",
-        kind: "markdown",
-        editable: true,
-        content: "# World Bible\n",
-      },
-      editorContent: "# World Bible content",
-    });
-
-    // Selecting a file adds an Editor tab; switch to it to see the editor.
-    fireEvent.click(screen.getByRole("tab", { name: /Artifact Text Editor/i }));
-    const editor = screen.getByLabelText("Source editor");
-    expect(editor).toBeTruthy();
-    expect((editor as HTMLTextAreaElement).value).toBe("# World Bible content");
-  });
-
-  it("calls onSaveSelectedFile when Save is clicked with dirty state", () => {
-    const onSaveSelectedFile = vi.fn();
-    renderLaunchpad({
-      onSaveSelectedFile,
-      selectedFile: {
-        path: "world/world.md",
-        kind: "markdown",
-        editable: true,
-        content: "# World Bible\n",
-      },
-      editorContent: "# Modified content\n",
-      dirty: true,
-    });
-
-    fireEvent.click(screen.getByRole("tab", { name: /Artifact Text Editor/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(onSaveSelectedFile).toHaveBeenCalledTimes(1);
   });
 
   it("renders a playtest report result when proof has been run", () => {

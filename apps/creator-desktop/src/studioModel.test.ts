@@ -20,6 +20,7 @@ describe("studioModel", () => {
       "artifacts",
       "proof",
       "export",
+      "source",
     ]);
     expect(new Set(workflowIds).size).toBe(workflowIds.length);
     expect(new Set(studioSectionIds).size).toBe(studioSectionIds.length);

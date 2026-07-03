@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Boxes,
   Bug,
+  FileCode,
   Gauge,
   KeyRound,
   Map,
@@ -24,6 +25,7 @@ export const studioSectionIds = [
   "playtest",
   "debugger",
   "export-kit",
+  "source-files",
 ] as const;
 
 export type StudioSectionId = (typeof studioSectionIds)[number];
@@ -35,6 +37,7 @@ export const agentNativeWorkflowIds = [
   "artifacts",
   "proof",
   "export",
+  "source",
 ] as const;
 
 export type AgentNativeWorkflowId = (typeof agentNativeWorkflowIds)[number];
@@ -125,6 +128,13 @@ export const studioSections: StudioSection[] = [
     statusKey: "status.ready",
     icon: ShipWheel,
   },
+  {
+    id: "source-files",
+    labelKey: "nav.source.label",
+    descriptionKey: "nav.source.description",
+    statusKey: "status.ready",
+    icon: FileCode,
+  },
 ];
 
 export interface AgentNativeWorkflow {
@@ -198,6 +208,16 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     icon: ShipWheel,
     defaultSectionId: "export-kit",
     sectionIds: ["export-kit"],
+  },
+  {
+    id: "source",
+    labelKey: "workflow.source.label",
+    shortLabelKey: "workflow.source.shortLabel",
+    descriptionKey: "workflow.source.description",
+    statusKey: "status.ready",
+    icon: FileCode,
+    defaultSectionId: "source-files",
+    sectionIds: ["source-files"],
   },
 ];
 

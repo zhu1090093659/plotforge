@@ -20,6 +20,10 @@ import {
 } from "./useProjectEditing";
 import { usePlaytest, type PlaytestWorkspace } from "./usePlaytest";
 import { useExport, type ExportWorkspace } from "./useExport";
+import {
+  useAgentConversation,
+  type AgentConversationWorkspace,
+} from "./useAgentConversation";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +72,7 @@ export interface StudioWorkspace {
   editing: EditingWorkspace;
   playtest: PlaytestWorkspace;
   export: ExportWorkspace;
+  agent: AgentConversationWorkspace;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +164,8 @@ export function useStudioWorkspace({
   const playtest = usePlaytest(dataSource);
 
   const exportWorkspace = useExport({ dataSource, initialProjectPath });
+
+  const agent = useAgentConversation(playtest, loadedPath);
 
   // Core operations --------------------------------------------------------
 
@@ -350,6 +357,7 @@ export function useStudioWorkspace({
     editing,
     playtest,
     export: exportWorkspace,
+    agent,
   };
 }
 

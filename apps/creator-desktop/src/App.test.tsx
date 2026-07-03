@@ -86,14 +86,13 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    // Source files live on the Source Artifacts tab in the Launchpad.
-    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
+    await waitForDefaultSourceCanvas();
+    // Source files are the default editor canvas; Launchpad is now a secondary
+    // navigation/palette destination.
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
-    // Open the file, then switch to the Editor tab to see the textarea.
+    // Open the file; the editor appears inline (no tab switch).
     fireEvent.click(screen.getByRole("button", { name: /world\/world\.md/ }));
-    fireEvent.click(screen.getByRole("tab", { name: /Artifact Text Editor/i }));
-    expect(screen.getByDisplayValue(/The city is under pressure/)).toBeTruthy();
+    expect(await screen.findByDisplayValue(/The city is under pressure/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Source editor"), {
       target: { value: "# World Bible\n\nThe council has changed.\n" },
@@ -117,26 +116,30 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     expect(getWorkflowButton("Command Center")).toBeTruthy();
     expect(getWorkflowButton("Director Mode")).toBeTruthy();
     expect(getWorkflowButton("Agent Mesh")).toBeTruthy();
     expect(getWorkflowButton("Artifact Review")).toBeTruthy();
     expect(getWorkflowButton("Playable Proof")).toBeTruthy();
     expect(getWorkflowButton("Export Package")).toBeTruthy();
+    expect(getWorkflowButton("Source")).toBeTruthy();
     expect(
-      getWorkflowButton("Command Center").getAttribute("aria-pressed"),
+      getWorkflowButton("Source").getAttribute("aria-pressed"),
     ).toBe("true");
+    expect(screen.getAllByText("Source Artifacts").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Agent rail")).toBeTruthy();
+    expect(screen.getByLabelText("Collapse agent rail")).toBeTruthy();
+
+    fireEvent.click(getWorkflowButton("Command Center"));
     expect(screen.getByRole("region", { name: "Project Launchpad" })).toBeTruthy();
     expect(screen.getByText("Playable Proof Status")).toBeTruthy();
     expect(screen.getByText("Recent Runs")).toBeTruthy();
     expect(screen.getByLabelText("Director intent")).toBeTruthy();
     expect(screen.getAllByText("Command Center").length).toBeGreaterThan(0);
-    const commandDock = screen.getByLabelText("Command dock");
-    expect(within(commandDock).getByText("Command Dock")).toBeTruthy();
-    expect(
-      within(commandDock).getByRole("button", { name: "Run playable proof" }),
-    ).toBeTruthy();
+    // The bottom command dock is gone. The "Run playable proof"
+    // affordance now lives in the active view (Command Center) as the
+    // "Apply as proof run" action, verified below.
 
     fireEvent.change(screen.getByLabelText("Director intent"), {
       target: { value: "pay the army and show the consequence" },
@@ -181,7 +184,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     const navTree = screen.getByRole("navigation", {
       name: "Studio navigation tree",
     });
@@ -208,8 +211,14 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
+    // Cursor-reshape: the honesty-surface evidence now lives inside the
+    // AgentChatRail "Evidence" popover (default closed), and the Backend
+    // Boundary block is a collapsible within it. Open the popover, then
+    // expand the collapsible, to assert the no-fake details.
+    fireEvent.click(screen.getByRole("button", { name: /^Evidence$/ }));
     expect(screen.getByText("Backend Boundary")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Backend Boundary/i }));
     expect(screen.getByText("Real Studio command surface")).toBeTruthy();
     expect(screen.getAllByText("External agents").length).toBeGreaterThan(0);
     expect(screen.queryByText("Mock pi-Agent Worker")).toBeNull();
@@ -231,16 +240,20 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
-    expect(screen.getAllByText("Project Launchpad").length).toBeGreaterThan(0);
+    await waitForDefaultSourceCanvas();
+    expect(screen.getAllByText("Source Artifacts").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Language"), {
       target: { value: "zh" },
     });
 
     await waitFor(() => {
+      expect(screen.getAllByText("源产物").length).toBeGreaterThan(0);
+    });
+    fireEvent.click(getWorkflowButton("命令中心"));
+    await waitFor(() => {
       expect(screen.getAllByText("项目启动台").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("运行可玩证明").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("运行证明").length).toBeGreaterThan(0);
     });
     if (typeof window.localStorage?.getItem === "function") {
       expect(window.localStorage.getItem("plotforge:creator-desktop:locale")).toBe(
@@ -295,7 +308,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Artifact Review", "Assets");
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
@@ -346,7 +359,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Artifact Review", "Assets");
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
@@ -380,7 +393,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Artifact Review", "Assets");
     fireEvent.click(screen.getByRole("button", { name: /Winter council ink wash/ }));
 
@@ -442,7 +455,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Director Mode", "Playtest");
     fireEvent.change(screen.getByLabelText("Playtest input"), {
       target: { value: "continue" },
@@ -541,7 +554,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Director Mode", "Playtest");
 
     fireEvent.change(screen.getByLabelText("Playtest input"), {
@@ -616,7 +629,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Export Package", "Export");
     // Profile selectors + selected-profile detail live on the Profile tab.
     fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
@@ -669,7 +682,8 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
+    openWorkflowDefaultSection("Command Center", "Launchpad");
     const launchpad = screen.getByRole("region", { name: "Project Launchpad" });
     fireEvent.click(within(launchpad).getByRole("button", { name: "Export Package" }));
 
@@ -700,7 +714,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     openWorkflowDefaultSection("Export Package", "Export");
     // Profile selector + selected-profile detail live on the Profile tab.
     fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
@@ -782,9 +796,10 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
 
-    // The New Project tab is active by default in the Launchpad; the form is visible.
+    openWorkflowDefaultSection("Command Center", "Launchpad");
+    // The New Project tab is active by default once Launchpad is opened; the form is visible.
     fireEvent.change(screen.getByLabelText("New project path"), {
       target: { value: "/tmp/winter-regency" },
     });
@@ -898,7 +913,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
     for (const label of [
       "Command Center",
       "Director Mode",
@@ -1081,7 +1096,7 @@ describe("App", () => {
       <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
     );
 
-    expect(await screen.findAllByText("Starter Project")).toBeTruthy();
+    await waitForDefaultSourceCanvas();
 
     openWorkflowDefaultSection("Artifact Review", "World Bible");
     // AI expansion goal is in the "Advanced" collapsible — expand it first.
@@ -1147,6 +1162,10 @@ function getWorkflowButton(name: string) {
     screen.queryByRole("navigation", { name: "Studio navigation tree" }) ??
     screen.getByRole("navigation", { name: "Studio 导航树" });
   return within(navTree).getByRole("button", { name });
+}
+
+async function waitForDefaultSourceCanvas() {
+  expect(await screen.findAllByText("world/world.md")).toBeTruthy();
 }
 
 function getNavSectionButton(name: string) {

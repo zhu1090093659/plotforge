@@ -6,6 +6,10 @@ import { errorMessage } from "./errorMessage";
 export const defaultPlaytestInput =
   "Raise emergency taxes while auditing corrupt officials.";
 
+export type PlaytestRunResult =
+  | { succeeded: true; report: PlayOnceReport }
+  | { succeeded: false; error: string };
+
 export interface PlaytestWorkspace {
   playtestInput: string;
   setPlaytestInput: React.Dispatch<React.SetStateAction<string>>;
@@ -20,7 +24,7 @@ export interface PlaytestWorkspace {
   playtesting: boolean;
   playtestError: string | null;
   setPlaytestError: React.Dispatch<React.SetStateAction<string | null>>;
-  runPlaytest(loadedPath: string): Promise<boolean>;
+  runPlaytest(loadedPath: string): Promise<PlaytestRunResult>;
   resetPlaytest(): void;
 }
 
@@ -37,11 +41,12 @@ export function usePlaytest(
   const [playtesting, setPlaytesting] = useState(false);
   const [playtestError, setPlaytestError] = useState<string | null>(null);
 
-  async function runPlaytest(loadedPath: string): Promise<boolean> {
+  async function runPlaytest(loadedPath: string): Promise<PlaytestRunResult> {
     const input = playtestInput.trim();
     if (!input) {
-      setPlaytestError("Playtest input is required.");
-      return false;
+      const message = "Playtest input is required.";
+      setPlaytestError(message);
+      return { succeeded: false, error: message };
     }
 
     setPlaytesting(true);
@@ -70,10 +75,11 @@ export function usePlaytest(
               )
             : await dataSource.playOnceProject(loadedPath, input);
       setPlaytestReport(report);
-      return true;
+      return { succeeded: true, report };
     } catch (source) {
-      setPlaytestError(errorMessage(source));
-      return false;
+      const message = errorMessage(source);
+      setPlaytestError(message);
+      return { succeeded: false, error: message };
     } finally {
       setPlaytesting(false);
     }

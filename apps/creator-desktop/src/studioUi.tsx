@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Loader2,
   Menu,
+  PanelRight,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -76,7 +77,8 @@ interface StudioShellProps {
   header: StudioShellHeader;
   topActions: ReactNode;
   rightPanel: ReactNode;
-  commandDock?: ReactNode;
+  railCollapsed: boolean;
+  onToggleRail(): void;
   drawerOpen: boolean;
   onToggleDrawer(): void;
   onCloseDrawer(): void;
@@ -93,7 +95,8 @@ export function StudioShell({
   header,
   topActions,
   rightPanel,
-  commandDock,
+  railCollapsed,
+  onToggleRail,
   drawerOpen,
   onToggleDrawer,
   onCloseDrawer,
@@ -152,7 +155,12 @@ export function StudioShell({
     <div className="min-h-screen bg-graphite-950 text-ink lg:h-screen lg:overflow-hidden">
       <div
         data-testid="studio-shell-grid"
-        className="grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto] xl:grid-cols-[260px_minmax(0,1fr)_280px] 2xl:grid-cols-[280px_minmax(0,1fr)_320px]"
+        className={[
+          "grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto]",
+          railCollapsed
+            ? "xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]"
+            : "xl:grid-cols-[240px_minmax(0,1fr)_360px] 2xl:grid-cols-[260px_minmax(0,1fr)_400px]",
+        ].join(" ")}
       >
         <aside
           aria-label={t("shell.studioNav")}
@@ -184,6 +192,24 @@ export function StudioShell({
             </div>
             <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap lg:justify-end">
               {topActions}
+              <button
+                type="button"
+                aria-label={
+                  railCollapsed
+                    ? t("shell.expandRail")
+                    : t("shell.collapseRail")
+                }
+                aria-expanded={!railCollapsed}
+                title={
+                  railCollapsed
+                    ? t("shell.expandRail")
+                    : t("shell.collapseRail")
+                }
+                onClick={onToggleRail}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400"
+              >
+                <PanelRight aria-hidden size={18} />
+              </button>
             </div>
           </header>
 
@@ -192,22 +218,13 @@ export function StudioShell({
           </div>
         </main>
 
-        <aside
-          aria-label={t("shell.evidencePanel")}
-          className="min-h-0 overflow-y-auto border-l border-canvas-200 bg-graphite-900 px-3 py-4 text-ink shadow-shell-inset lg:col-span-2 lg:max-h-56 lg:border-l-0 lg:border-t xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0"
-        >
-          {rightPanel}
-        </aside>
-
-        {commandDock ? (
-          <div className="border-t border-canvas-200 bg-graphite-950 px-4 py-3 shadow-studio-dock lg:col-span-2 xl:col-span-3">
-            <div
-              aria-label={t("shell.commandDock")}
-              className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3"
-            >
-              {commandDock}
-            </div>
-          </div>
+        {!railCollapsed ? (
+          <aside
+            aria-label={t("shell.agentRail")}
+            className="min-h-0 overflow-hidden border-l border-canvas-200 bg-graphite-900 text-ink shadow-shell-inset lg:col-span-2 lg:max-h-64 lg:border-l-0 lg:border-t xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0"
+          >
+            {rightPanel}
+          </aside>
         ) : null}
       </div>
 
