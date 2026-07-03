@@ -12,80 +12,6 @@ import {
   Users,
 } from "lucide-react";
 
-export const agentNativeScreenIds = [
-  "agent-mesh-core",
-  "project-launchpad",
-  "command-center",
-  "director-mode",
-  "pi-agent-bridge",
-  "live-build-room",
-  "artifact-review",
-  "playable-proof",
-  "trace-debug",
-  "export-package",
-] as const;
-
-export type AgentNativeScreenId = (typeof agentNativeScreenIds)[number];
-
-export interface AgentNativeScreenReference {
-  id: AgentNativeScreenId;
-  titleKey: string;
-  fileName: string;
-}
-
-export const agentNativeScreenReferences: readonly AgentNativeScreenReference[] = [
-  {
-    id: "agent-mesh-core",
-    titleKey: "screen.agentMeshCore.title",
-    fileName: "00-agent-mesh-core.png",
-  },
-  {
-    id: "project-launchpad",
-    titleKey: "screen.projectLaunchpad.title",
-    fileName: "01-project-launchpad.png",
-  },
-  {
-    id: "command-center",
-    titleKey: "screen.commandCenter.title",
-    fileName: "02-command-center.png",
-  },
-  {
-    id: "director-mode",
-    titleKey: "screen.directorMode.title",
-    fileName: "03-director-mode.png",
-  },
-  {
-    id: "pi-agent-bridge",
-    titleKey: "screen.piAgentBridge.title",
-    fileName: "04-pi-agent-bridge-setup.png",
-  },
-  {
-    id: "live-build-room",
-    titleKey: "screen.liveBuildRoom.title",
-    fileName: "05-live-build-room.png",
-  },
-  {
-    id: "artifact-review",
-    titleKey: "screen.artifactReview.title",
-    fileName: "06-artifact-review.png",
-  },
-  {
-    id: "playable-proof",
-    titleKey: "screen.playableProof.title",
-    fileName: "07-playable-proof.png",
-  },
-  {
-    id: "trace-debug",
-    titleKey: "screen.traceDebug.title",
-    fileName: "08-trace-debug.png",
-  },
-  {
-    id: "export-package",
-    titleKey: "screen.exportPackage.title",
-    fileName: "09-export-package.png",
-  },
-];
-
 export const studioSectionIds = [
   "launchpad",
   "agent-mesh",
@@ -210,7 +136,6 @@ export interface AgentNativeWorkflow {
   icon: LucideIcon;
   defaultSectionId: StudioSectionId;
   sectionIds: readonly StudioSectionId[];
-  screenIds: readonly AgentNativeScreenId[];
 }
 
 export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
@@ -222,8 +147,7 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     statusKey: "status.ready",
     icon: Gauge,
     defaultSectionId: "launchpad",
-    sectionIds: ["launchpad", "world", "story"],
-    screenIds: ["project-launchpad", "command-center"],
+    sectionIds: ["launchpad"],
   },
   {
     id: "game",
@@ -233,8 +157,7 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     statusKey: "status.ready",
     icon: Play,
     defaultSectionId: "playtest",
-    sectionIds: ["playtest", "world", "story", "characters", "state", "rules"],
-    screenIds: ["director-mode"],
+    sectionIds: ["playtest", "state"],
   },
   {
     id: "agents",
@@ -245,7 +168,6 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     icon: Network,
     defaultSectionId: "agent-mesh",
     sectionIds: ["agent-mesh"],
-    screenIds: ["agent-mesh-core", "pi-agent-bridge"],
   },
   {
     id: "artifacts",
@@ -256,7 +178,6 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     icon: Boxes,
     defaultSectionId: "assets",
     sectionIds: ["assets", "world", "story", "characters", "rules"],
-    screenIds: ["live-build-room", "artifact-review"],
   },
   {
     id: "proof",
@@ -266,8 +187,7 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     statusKey: "status.ready",
     icon: Bug,
     defaultSectionId: "debugger",
-    sectionIds: ["playtest", "debugger"],
-    screenIds: ["playable-proof", "trace-debug"],
+    sectionIds: ["debugger"],
   },
   {
     id: "export",
@@ -277,8 +197,7 @@ export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
     statusKey: "status.ready",
     icon: ShipWheel,
     defaultSectionId: "export-kit",
-    sectionIds: ["export-kit", "assets", "debugger"],
-    screenIds: ["export-package"],
+    sectionIds: ["export-kit"],
   },
 ];
 
@@ -298,26 +217,6 @@ export function getStudioSection(id: StudioSectionId): StudioSection {
     throw new Error(`Unknown Studio section: ${id}`);
   }
   return section;
-}
-
-export function getAgentNativeScreenReference(
-  id: AgentNativeScreenId,
-): AgentNativeScreenReference {
-  const reference = agentNativeScreenReferences.find(
-    (candidate) => candidate.id === id,
-  );
-  if (!reference) {
-    throw new Error(`Unknown agent-native screen reference: ${id}`);
-  }
-  return reference;
-}
-
-export function screenReferencesForWorkflow(
-  workflowId: AgentNativeWorkflowId,
-): AgentNativeScreenReference[] {
-  return getAgentNativeWorkflow(workflowId).screenIds.map((screenId) =>
-    getAgentNativeScreenReference(screenId),
-  );
 }
 
 export function workflowForSection(

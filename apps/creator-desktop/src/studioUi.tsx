@@ -10,6 +10,7 @@ import {
   type ButtonHTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
+  useEffect,
   useId,
   useState,
 } from "react";
@@ -458,6 +459,45 @@ export function ScenePreviewPlaceholder({
       </div>
     </div>
   );
+}
+
+/**
+ * Renders the scene background image when a resolvable asset URL is
+ * available, falling back to {@link ScenePreviewPlaceholder} when the URL is
+ * null or the underlying image fails to load (e.g. the asset file is
+ * missing or outside the Tauri asset scope). This keeps the preview area
+ * honest: it never shows a broken-image icon, only either the real image
+ * or an explicit placeholder.
+ */
+export function ScenePreviewImage({
+  src,
+  assetPath,
+  className,
+}: {
+  src: string | null;
+  assetPath: string | null;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  // Reset the failure flag whenever the src changes so a transient load
+  // error (e.g. an asset briefly outside the Tauri asset scope) does not
+  // permanently pin the placeholder for the rest of the session. Without
+  // this, navigating to another scene with a valid asset would keep
+  // showing the placeholder because the component instance persists.
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+        className={className}
+      />
+    );
+  }
+  return <ScenePreviewPlaceholder assetPath={assetPath} />;
 }
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,9 @@ import type {
   CharacterEditDocument,
   CharacterGenerationReport,
   ExportProfile,
+  PiAgentCapability,
+  PiAgentRunRequest,
+  PiAgentRunResult,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
@@ -65,6 +68,8 @@ export const studioCommandNames = {
   listSourceFiles: "list_source_files",
   readSourceFile: "read_source_file",
   writeSourceFile: "write_source_file",
+  piAgentRun: "pi_agent_run",
+  piAgentCapabilities: "pi_agent_capabilities",
 } as const;
 
 export interface StudioCommandError {
@@ -478,6 +483,16 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
           relative_path: relativePath,
           content,
         },
+      );
+    },
+    piAgentRun(request: PiAgentRunRequest): Promise<PiAgentRunResult> {
+      return invokeCommand<PiAgentRunResult>(studioCommandNames.piAgentRun, {
+        request,
+      });
+    },
+    piAgentCapabilities(): Promise<PiAgentCapability[]> {
+      return invokeCommand<PiAgentCapability[]>(
+        studioCommandNames.piAgentCapabilities,
       );
     },
   };

@@ -132,6 +132,108 @@ describe("creator desktop i18n", () => {
     }
   });
 
+  it("zh values do not leak untranslated English words (regression: 测试 alternate ending)", () => {
+    // Catch un-translated English words inside zh chrome strings. Allows a
+    // narrow whitelist of intentional English: brand/product names, file
+    // extensions, technical identifiers, units, and widely-accepted
+    // borrow words. A run of >=3 ASCII letters that is not whitelisted is
+    // treated as a leak. Adjust the whitelist only when adding a new
+    // intentional English term, never to silence a real leak.
+    const wordRe = /[a-zA-Z]{3,}/g;
+    const whitelist = new Set([
+      // Brand / product names
+      "PlotForge",
+      "Studio",
+      "Workshop",
+      "Steam",
+      "Tauri",
+      // File formats / protocols / acronyms
+      "json",
+      "toml",
+      "html",
+      "http",
+      "css",
+      "ipc",
+      "zip",
+      "web",
+      "dev",
+      // Technical identifiers / contract names kept verbatim
+      "RuntimeTrace",
+      "PlayOnceReport",
+      "ExportManifest",
+      "StudioDataSource",
+      "Markdown",
+      "Provider",
+      // Widely-accepted borrow words in zh tech UI
+      "adapter",
+      "agent",
+      "bridge",
+      "characters",
+      "check",
+      "contract",
+      "contracts",
+      "council",
+      "count",
+      "envoy",
+      "error",
+      "export",
+      "fallback",
+      "files",
+      "grain",
+      "harvest",
+      "index",
+      "initial",
+      "kinds",
+      "list",
+      "loyalty",
+      "manifest",
+      "max",
+      "media",
+      "min",
+      "mock",
+      "once",
+      "open",
+      "passed",
+      "path",
+      "play",
+      "plotforge",
+      "project",
+      "provider",
+      "resource",
+      "review",
+      "rules",
+      "run",
+      "runtime",
+      "scene",
+      "schema",
+      "score",
+      "source",
+      "static",
+      "status",
+      "storage",
+      "studio",
+      "total",
+      "trace",
+      "worker",
+      // Technical identifiers referenced verbatim in zh docs
+      "add",
+      // Language name kept verbatim (it names the English language itself)
+      "English",
+    ]);
+    const leaks: Array<[string, string]> = [];
+    for (const [key, value] of Object.entries(zhDictionary)) {
+      let match: RegExpExecArray | null;
+      wordRe.lastIndex = 0;
+      while ((match = wordRe.exec(value)) !== null) {
+        const word = match[0];
+        if (!whitelist.has(word) && !whitelist.has(word.toLowerCase())) {
+          leaks.push([key, word]);
+        }
+      }
+    }
+    expect(leaks).toEqual([]);
+  });
+
   afterEach(() => {
     cleanup();
     if (

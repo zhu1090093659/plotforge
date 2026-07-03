@@ -39,7 +39,9 @@ pub fn run() {
             commands::list_asset_records,
             commands::list_source_files,
             commands::read_source_file,
-            commands::write_source_file
+            commands::write_source_file,
+            commands::pi_agent_run,
+            commands::pi_agent_capabilities
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlotForge Studio");

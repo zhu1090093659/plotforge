@@ -11,7 +11,6 @@ REQUIRED_UI_MARKERS = [
     "Project Launchpad",
     "Command Dock",
     "Agent Mesh",
-    "pi-Agent Bridge Setup",
     "Playable Proof",
     "Trace Debug",
     "Export Package",

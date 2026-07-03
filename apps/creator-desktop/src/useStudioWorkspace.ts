@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import type {
   AssetRecord,
   ExportProfile,
+  PiAgentCapability,
   ProjectData,
 } from "../../../contracts/plotforge";
 import { summarizeProject, type CreatorProjectSummary } from "./projectSummary";
@@ -55,6 +56,7 @@ export interface StudioWorkspace {
   error: string | null;
   assetCatalog: AssetCatalog;
   metrics: StudioMetric[];
+  piAgentCapabilities: PiAgentCapability[];
 
   // Project-level methods
   loadProject(path: string): Promise<void>;
@@ -95,6 +97,9 @@ export function useStudioWorkspace({
   const [loading, setLoading] = useState(Boolean(initialProjectPath));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [piAgentCapabilities, setPiAgentCapabilities] = useState<
+    PiAgentCapability[]
+  >([]);
 
   const dirty = Boolean(selectedFile?.editable && editorContent !== savedContent);
 
@@ -175,6 +180,7 @@ export function useStudioWorkspace({
         visualBibleDocument,
         audioBibleDocument,
         records,
+        piCapabilities,
       ] = await Promise.all([
         dataSource.openProject(path),
         dataSource.checkProject(path),
@@ -189,6 +195,7 @@ export function useStudioWorkspace({
         dataSource.readVisualBible(path),
         dataSource.readAudioBible(path),
         dataSource.listAssetRecords(path),
+        dataSource.piAgentCapabilities(),
       ]);
       const firstEditable =
         files.find((file) => file.editable) ?? files[0];
@@ -211,6 +218,7 @@ export function useStudioWorkspace({
       setSelectedFile(firstContent);
       setEditorContent(firstContent?.content ?? "");
       setSavedContent(firstContent?.content ?? "");
+      setPiAgentCapabilities(piCapabilities);
 
       // Sync to sub-hooks
       editing.loadEditingDocuments({
@@ -334,6 +342,7 @@ export function useStudioWorkspace({
     error,
     assetCatalog,
     metrics,
+    piAgentCapabilities,
     loadProject,
     refreshProjectOverview,
     selectSourceFile,

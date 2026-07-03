@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import type { PiAgentCapability } from "../../../contracts/plotforge";
 import type { CreatorProjectSummary } from "./projectSummary";
 import type { PlayOnceReport, SourceFileSummary } from "./tauriBridge";
 import { Collapsible, StudioButton, StudioStatusChip } from "./studioUi";
@@ -27,6 +28,7 @@ interface AgentMeshViewProps {
   assetRecordCount: number;
   exportProfileCount: number;
   playtestReport: PlayOnceReport | null;
+  piAgentCapabilities: PiAgentCapability[];
   onOpenTrace(): void;
   onRunPlayableProof(): void;
 }
@@ -75,14 +77,19 @@ const realCapabilities: Capability[] = [
     evidence: "mesh.cap.staticExportZipEvidence",
     status: "wired",
   },
-  {
-    id: "agent-pi-agent-runtime",
-    label: "mesh.cap.piAgentRuntime",
-    source: "mesh.cap.piAgentRuntimeSource",
-    evidence: "mesh.cap.piAgentRuntimeEvidence",
-    status: "wired",
-  },
 ];
+
+function piAgentCapabilityItems(
+  piAgentCapabilities: PiAgentCapability[],
+): Capability[] {
+  return piAgentCapabilities.map((capability) => ({
+    id: capability.id,
+    label: capability.label,
+    source: capability.source,
+    evidence: capability.evidence,
+    status: capability.status === "wired" ? "wired" : "not-implemented",
+  }));
+}
 
 export function AgentMeshView({
   projectSummary,
@@ -92,11 +99,16 @@ export function AgentMeshView({
   assetRecordCount,
   exportProfileCount,
   playtestReport,
+  piAgentCapabilities,
   onOpenTrace,
   onRunPlayableProof,
 }: AgentMeshViewProps) {
   const { t } = useStudioI18n();
-  const wiredCount = realCapabilities.filter(
+  const capabilities = [
+    ...realCapabilities,
+    ...piAgentCapabilityItems(piAgentCapabilities),
+  ];
+  const wiredCount = capabilities.filter(
     (capability) => capability.status === "wired",
   ).length;
   const proofLabel = playtestReport
@@ -219,7 +231,7 @@ export function AgentMeshView({
             </div>
 
             <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
-              {realCapabilities.map((capability) => (
+              {capabilities.map((capability) => (
                 <li key={capability.id}>
                   <CapabilityCard capability={capability} />
                 </li>
@@ -379,7 +391,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
         </div>
       </dl>
       <StudioStatusChip tone={wired ? "health" : "danger"}>
-        {capability.status}
+        {t(wired ? "mesh.statusWired" : "mesh.statusNotImplemented")}
       </StudioStatusChip>
     </article>
   );

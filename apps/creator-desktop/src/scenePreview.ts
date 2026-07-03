@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Beat, Scene } from "../../../contracts/plotforge";
 
 export function resolveSceneBeat(
@@ -16,12 +17,46 @@ export function resolveSceneBeat(
   );
 }
 
-export function resolveScenePreviewImage(_: {
+export function resolveScenePreviewImage({
+  scene,
+  loadedPath,
+}: {
   scene: Scene | null | undefined;
   projectId?: string | null;
   loadedPath?: string | null;
 }): string | null {
-  return null;
+  const assetPath = scene?.background_asset ?? null;
+  if (!assetPath || !loadedPath) {
+    return null;
+  }
+
+  // Only resolve real image URLs when running inside the Tauri desktop
+  // shell, where convertFileSrc can map a local file path onto the
+  // asset:// protocol. In the HTTP dev bridge (or under jsdom in tests)
+  // there is no such protocol, so we fall back to the placeholder and
+  // never emit a broken img src.
+  if (!isTauriRuntime()) {
+    return null;
+  }
+
+  const fullPath = joinPath(loadedPath, assetPath);
+  return convertFileSrc(fullPath);
+}
+
+function isTauriRuntime(): boolean {
+  return Boolean(
+    typeof window !== "undefined" &&
+      (window as Window & { __TAURI_INTERNALS__?: unknown })
+        .__TAURI_INTERNALS__,
+  );
+}
+
+function joinPath(base: string, relative: string): string {
+  if (!base) {
+    return relative;
+  }
+  const trimmed = base.replace(/\/+$/, "");
+  return `${trimmed}/${relative.replace(/^\/+/, "")}`;
 }
 
 function findBeat(scene: Scene, beatId: string | null | undefined): Beat | null {

@@ -1,10 +1,11 @@
 use plotforge_studio::{
     AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
-    CharacterGenerationReport, ExportProfile, PlayOnceReport, ProjectCheckReport,
-    ProjectCreationReport, ProjectCreationRequest, ProjectData, ResourceDefinition, Rule,
-    RulesEditDocument, SourceFileContent, SourceFileSummary, StateVariablesEditDocument,
-    StaticExportReport, StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError,
-    VisualBible, WorldEditDocument, WorldGenerationReport,
+    CharacterGenerationReport, ExportProfile, PiAgentCapability, PiAgentRunRequest,
+    PiAgentRunResult, PlayOnceReport, ProjectCheckReport, ProjectCreationReport,
+    ProjectCreationRequest, ProjectData, ResourceDefinition, Rule, RulesEditDocument,
+    SourceFileContent, SourceFileSummary, StateVariablesEditDocument, StaticExportReport,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError, VisualBible,
+    WorldEditDocument, WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -274,4 +275,16 @@ pub fn write_source_file(
     content: String,
 ) -> Result<SourceFileContent, StudioCommandError> {
     plotforge_studio::write_source_file(path, &relative_path, &content)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn pi_agent_run(
+    request: PiAgentRunRequest,
+) -> Result<PiAgentRunResult, StudioCommandError> {
+    plotforge_studio::pi_agent_run(request)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn pi_agent_capabilities() -> Result<Vec<PiAgentCapability>, StudioCommandError> {
+    plotforge_studio::pi_agent_capabilities()
 }

@@ -5,6 +5,7 @@ import {
   agentNativeDesignTokens,
   Collapsible,
   CollapsibleSection,
+  ScenePreviewImage,
   ScenePreviewPlaceholder,
   StudioButton,
   StudioPanel,
@@ -557,5 +558,65 @@ describe("StudioTabs", () => {
     fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
     expect(screen.getByRole("tab", { name: /Alpha/i }).getAttribute("aria-selected"))
       .toBe("true");
+  });
+
+  it("ScenePreviewImage renders the placeholder when src is null", () => {
+    const { container } = render(
+      <StudioI18nProvider>
+        <ScenePreviewImage src={null} assetPath="bg.png" />
+      </StudioI18nProvider>,
+    );
+    expect(screen.getByText("Scene preview asset unavailable")).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("ScenePreviewImage renders the image when src is present", () => {
+    const { container } = render(
+      <StudioI18nProvider>
+        <ScenePreviewImage
+          src="asset://localhost/preview.png"
+          assetPath="bg.png"
+        />
+      </StudioI18nProvider>,
+    );
+    // The img carries alt="" so its accessible role is "presentation"; query
+    // via the DOM rather than getByRole to assert the rendered <img>.
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute("src")).toBe("asset://localhost/preview.png");
+    expect(screen.queryByText("Scene preview asset unavailable")).toBeNull();
+  });
+
+  it("ScenePreviewImage falls back to placeholder on image error and recovers when src changes", () => {
+    const { container, rerender } = render(
+      <StudioI18nProvider>
+        <ScenePreviewImage
+          src="asset://localhost/missing.png"
+          assetPath="missing.png"
+        />
+      </StudioI18nProvider>,
+    );
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    // Simulate a failed load (asset outside scope / missing file).
+    fireEvent.error(img!);
+    // Now the placeholder must be shown, not a broken image.
+    expect(screen.getByText("Scene preview asset unavailable")).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+
+    // Re-render with a new, valid src. The failed flag must reset so the
+    // image is attempted again instead of staying pinned on the placeholder.
+    rerender(
+      <StudioI18nProvider>
+        <ScenePreviewImage
+          src="asset://localhost/valid.png"
+          assetPath="valid.png"
+        />
+      </StudioI18nProvider>,
+    );
+    const nextImg = container.querySelector("img");
+    expect(nextImg).not.toBeNull();
+    expect(nextImg!.getAttribute("src")).toBe("asset://localhost/valid.png");
+    expect(screen.queryByText("Scene preview asset unavailable")).toBeNull();
   });
 });

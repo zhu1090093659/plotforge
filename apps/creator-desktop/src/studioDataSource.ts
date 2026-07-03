@@ -7,6 +7,9 @@ import type {
   CharacterEditDocument,
   CharacterGenerationReport,
   ExportProfile,
+  PiAgentCapability,
+  PiAgentRunRequest,
+  PiAgentRunResult,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
@@ -138,6 +141,8 @@ export interface StudioDataSource {
     relativePath: string,
     content: string,
   ): Promise<SourceFileContent>;
+  piAgentRun(request: PiAgentRunRequest): Promise<PiAgentRunResult>;
+  piAgentCapabilities(): Promise<PiAgentCapability[]>;
 }
 
 export function createTauriStudioDataSource(): StudioDataSource {
@@ -211,5 +216,7 @@ function createStudioDataSource(
     listSourceFiles: bridge.listSourceFiles,
     readSourceFile: bridge.readSourceFile,
     writeSourceFile: bridge.writeSourceFile,
+    piAgentRun: bridge.piAgentRun,
+    piAgentCapabilities: bridge.piAgentCapabilities,
   };
 }

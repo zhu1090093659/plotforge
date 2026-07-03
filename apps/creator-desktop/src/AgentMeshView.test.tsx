@@ -1,11 +1,39 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PiAgentCapability } from "../../../contracts/plotforge";
 import { AgentMeshView } from "./AgentMeshView";
 import { StudioI18nProvider } from "./i18n";
 import { demoPlayOnceReport, demoProjectData } from "./demoStudioData";
 import { summarizeProject } from "./projectSummary";
 
 afterEach(cleanup);
+
+const demoPiAgentCapabilities: PiAgentCapability[] = [
+  {
+    id: "pi-agent.text-generation",
+    label: "Text generation",
+    status: "wired",
+    source: "local-mock-text-provider",
+    evidence:
+      "FakeTextModelProvider produces validated agent output envelopes.",
+  },
+  {
+    id: "pi-agent.image-generation",
+    label: "Image generation",
+    status: "not-implemented",
+    source: "deferred",
+    evidence:
+      "Deferred to a later phase; no image provider is wired into the pi-Agent facade.",
+  },
+  {
+    id: "pi-agent.steam-upload",
+    label: "Steam upload",
+    status: "not-implemented",
+    source: "deferred",
+    evidence:
+      "Steam/Workshop integration remains deferred; no upload automation is implied.",
+  },
+];
 
 function renderView() {
   const openTrace = vi.fn();
@@ -23,6 +51,7 @@ function renderView() {
         assetRecordCount={demoProjectData.asset_records.length}
         exportProfileCount={3}
         playtestReport={demoPlayOnceReport("raise emergency taxes")}
+        piAgentCapabilities={demoPiAgentCapabilities}
         onOpenTrace={openTrace}
         onRunPlayableProof={runProof}
       />
@@ -44,7 +73,10 @@ describe("AgentMeshView", () => {
     expect(screen.getByText("Project open/check")).toBeTruthy();
     expect(screen.getByText("Runtime proof")).toBeTruthy();
     expect(screen.getByText("Static export zip")).toBeTruthy();
-    expect(screen.getAllByText("pi-Agent runtime").length).toBeGreaterThan(0);
+    // pi-Agent runtime capability now comes from the real
+    // pi_agent_capabilities command; the local mock lists text-generation
+    // as wired and image-generation/steam-upload as not-implemented.
+    expect(screen.getByText("Text generation")).toBeTruthy();
     expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
     expect(screen.queryByText("Codex Worker")).toBeNull();
     expect(screen.queryByText("Claude Code Worker")).toBeNull();
@@ -65,9 +97,10 @@ describe("AgentMeshView", () => {
     // No fixed-width scrolling table: every capability is an individual card.
     const matrix = screen.getByLabelText("Capability Matrix");
     expect(matrix.querySelector("table")).toBeNull();
-    expect(matrix.querySelectorAll("article").length).toBe(6);
+    // 5 static Studio-command capabilities + 3 pi-agent capabilities.
+    expect(matrix.querySelectorAll("article").length).toBe(8);
     // Field labels render per card so the matrix reads on narrow screens.
-    expect(screen.getAllByText("Real source").length).toBe(6);
+    expect(screen.getAllByText("Real source").length).toBe(8);
   });
 
   it("keeps the Removed Fake Surfaces technical section collapsed by default", () => {

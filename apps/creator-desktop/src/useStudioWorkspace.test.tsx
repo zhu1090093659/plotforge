@@ -445,6 +445,12 @@ function workspaceTestDataSource(
       contents[relativePath] = updated;
       return updated;
     },
+    async piAgentRun() {
+      throw new Error("piAgentRun not supported in test fixture");
+    },
+    async piAgentCapabilities() {
+      return [];
+    },
   };
 
   return { ...base, ...overrides };

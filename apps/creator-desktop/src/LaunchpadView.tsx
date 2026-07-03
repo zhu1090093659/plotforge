@@ -212,7 +212,11 @@ export function LaunchpadView({
                   selectedFile={selectedFile}
                   onSelectSourceFile={onSelectSourceFile}
                 />
-                <BoundaryChecks checkReport={checkReport} loadedPath={loadedPath} />
+                <BoundaryChecks
+                  checkReport={checkReport}
+                  loadedPath={loadedPath}
+                  projectData={projectData}
+                />
               </div>
             ),
           },
@@ -495,23 +499,7 @@ function buildBoundaryChecks(
   t: StudioTranslate,
 ): BoundaryCheckItem[] {
   if (!checkReport) {
-    return [
-      {
-        label: t("launchpad.check.generatedContracts"),
-        value: t("launchpad.check.generatedContractsValue"),
-        ok: true,
-      },
-      {
-        label: t("launchpad.check.rustCoreBoundary"),
-        value: t("launchpad.check.rustCoreBoundaryValue"),
-        ok: true,
-      },
-      {
-        label: t("launchpad.check.tauriBridge"),
-        value: t("launchpad.check.tauriBridgeValue"),
-        ok: true,
-      },
-    ];
+    return [];
   }
   return [
     {
@@ -550,38 +538,48 @@ function buildBoundaryChecks(
 function BoundaryChecks({
   checkReport,
   loadedPath,
+  projectData,
 }: {
   checkReport: ProjectCheckReport | null;
   loadedPath: string;
+  projectData: ProjectData | null;
 }) {
   const { t } = useStudioI18n();
   const checks = buildBoundaryChecks(checkReport, loadedPath, t);
+  const projectLoaded = Boolean(projectData) || Boolean(loadedPath);
+  const emptyKey = projectLoaded
+    ? "launchpad.boundaryChecksPending"
+    : "launchpad.noBoundaryChecks";
 
   return (
     <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
       <h3 className="font-display text-lg font-semibold tracking-display">{t("launchpad.boundaryChecks")}</h3>
       <div className="mt-4 grid gap-3">
-        {checks.map((check) => (
-          <div key={check.label} className="flex items-start gap-3">
-            {check.ok ? (
-              <CheckCircle2
-                aria-hidden
-                className="mt-0.5 shrink-0 text-sage"
-                size={18}
-              />
-            ) : (
-              <XCircle
-                aria-hidden
-                className="mt-0.5 shrink-0 text-signal"
-                size={18}
-              />
-            )}
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">{check.label}</p>
-              <p className="truncate text-sm text-ink/55">{check.value}</p>
+        {checks.length > 0 ? (
+          checks.map((check) => (
+            <div key={check.label} className="flex items-start gap-3">
+              {check.ok ? (
+                <CheckCircle2
+                  aria-hidden
+                  className="mt-0.5 shrink-0 text-sage"
+                  size={18}
+                />
+              ) : (
+                <XCircle
+                  aria-hidden
+                  className="mt-0.5 shrink-0 text-signal"
+                  size={18}
+                />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{check.label}</p>
+                <p className="truncate text-sm text-ink/55">{check.value}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        ) : (
+          <p className="text-sm text-ink/55">{t(emptyKey)}</p>
+        )}
       </div>
     </section>
   );

@@ -72,6 +72,14 @@ describe("CommandCenterView", () => {
     expect(screen.getByText("Loaded path")).toBeTruthy();
   });
 
+  it("shows the empty-state message in Recent Runs when no proof has run", () => {
+    renderView({ playtestReport: null });
+    expect(screen.getByText("No runs in this session yet.")).toBeTruthy();
+    // The previous fake "trace-ready" fallback row must not appear.
+    expect(screen.queryByText(/waiting for first proof run/)).toBeNull();
+    expect(screen.queryByText("trace-ready")).toBeNull();
+  });
+
   it("shows Backend Commands and Unavailable Agent Interfaces on the Backend tab", () => {
     renderView();
     fireEvent.click(screen.getByRole("tab", { name: /Backend/i }));

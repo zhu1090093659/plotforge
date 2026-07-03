@@ -13,7 +13,7 @@ describe("scenePreview", () => {
     );
   });
 
-  it("does not map bundled demo images", () => {
+  it("returns null outside the Tauri desktop shell (HTTP dev / jsdom)", () => {
     const scene = demoProjectData.scenes[0];
 
     expect(
@@ -21,6 +21,31 @@ describe("scenePreview", () => {
         scene,
         projectId: "starter-project",
         loadedPath: "/tmp/starter-project",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when no background asset is declared", () => {
+    const sceneWithoutBackground = {
+      ...demoProjectData.scenes[0],
+      background_asset: "",
+    };
+
+    expect(
+      resolveScenePreviewImage({
+        scene: sceneWithoutBackground,
+        loadedPath: "/tmp/starter-project",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when loadedPath is empty", () => {
+    const scene = demoProjectData.scenes[0];
+
+    expect(
+      resolveScenePreviewImage({
+        scene,
+        loadedPath: "",
       }),
     ).toBeNull();
   });

@@ -28,7 +28,6 @@ import {
   getAgentNativeWorkflow,
   getStudioSection,
   isSectionInWorkflow,
-  screenReferencesForWorkflow,
   workflowForSection,
   type AgentNativeWorkflowId,
   type StudioSectionId,
@@ -93,6 +92,7 @@ function AppContent({
     error,
     assetCatalog,
     metrics,
+    piAgentCapabilities,
     loadProject: loadWorkspaceProject,
     refreshProjectOverview,
     selectSourceFile,
@@ -121,7 +121,6 @@ function AppContent({
 
   const activeSectionMeta = getStudioSection(activeSection);
   const activeWorkflowMeta = getAgentNativeWorkflow(activeWorkflow);
-  const activeScreenReferences = screenReferencesForWorkflow(activeWorkflow);
 
   useEffect(() => {
     setCreateProjectPath(defaultNewProjectPath(initialProjectPath));
@@ -183,23 +182,6 @@ function AppContent({
     }
   }
 
-  /**
-   * Currently unreachable: `StudioNavTreeNode` invokes `onToggleExpand` for
-   * items with children, never `onSelect`.  All 6 workflows have children, so
-   * clicking a workflow row only toggles expand/collapse.  `activeWorkflow`
-   * changes exclusively via `openStudioSection` (surface clicks) and
-   * `runPlaytest`.  Kept as the `onSelect` wiring for `navItems` so the type
-   * contract holds and future workflows without children fall back to it.
-   */
-  function openWorkflow(workflowId: AgentNativeWorkflowId) {
-    setActiveWorkflow(workflowId);
-    setExpandedWorkflows((prev) => {
-      const next = new Set(prev);
-      next.add(workflowId);
-      return next;
-    });
-  }
-
   function toggleWorkflowExpand(workflowId: AgentNativeWorkflowId) {
     setExpandedWorkflows((prev) => {
       const next = new Set(prev);
@@ -248,6 +230,7 @@ function AppContent({
             }
             exportProfileCount={exportWorkspace.exportProfiles.length}
             playtestReport={playtest.playtestReport}
+            piAgentCapabilities={piAgentCapabilities}
             onOpenTrace={() => openStudioSection("debugger")}
             onRunPlayableProof={() => void runPlaytest()}
           />
@@ -595,28 +578,6 @@ function AppContent({
             ))}
           </div>
         </div>
-
-        <div className="rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-3">
-          <p className="text-xs font-semibold uppercase tracking-tightish text-graphite-700/65">
-            {t("app.referenceScreens")}
-          </p>
-          <div className="mt-3 grid gap-2">
-            {activeScreenReferences.map((reference) => (
-              <div
-                key={reference.id}
-                title={t(reference.titleKey)}
-                className="rounded-md border border-canvas-200 bg-canvas-100 px-3 py-2"
-              >
-                <p className="font-display truncate text-sm font-semibold tracking-tightish text-ink">
-                  {reference.fileName}
-                </p>
-                <p className="mt-1 truncate text-xs text-graphite-700/60">
-                  {reference.id}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     );
   }
@@ -663,6 +624,7 @@ function AppContent({
         onSelect: () => openStudioSection(sectionId),
       } satisfies StudioNavItem;
     });
+    const hasMultipleSections = sectionItems.length > 1;
     return {
       id: workflow.id,
       label: t(workflow.labelKey),
@@ -670,8 +632,8 @@ function AppContent({
       description: t(workflow.descriptionKey),
       icon: workflow.icon,
       selected: isActiveWorkflow,
-      onSelect: () => openWorkflow(workflow.id),
-      children: sectionItems,
+      onSelect: () => openStudioSection(workflow.defaultSectionId),
+      children: hasMultipleSections ? sectionItems : undefined,
     } satisfies StudioNavItem;
   });
 

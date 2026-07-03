@@ -1,35 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentNativeScreenReferences,
   agentNativeWorkflows,
   defaultSectionForWorkflow,
   getAgentNativeWorkflow,
   getStudioSection,
   isSectionInWorkflow,
-  screenReferencesForWorkflow,
   studioSectionIds,
   workflowForSection,
 } from "./studioModel";
 
 describe("studioModel", () => {
-  it("references the complete agent-native mockup screen set", () => {
-    expect(agentNativeScreenReferences.map((screen) => screen.fileName)).toEqual([
-      "00-agent-mesh-core.png",
-      "01-project-launchpad.png",
-      "02-command-center.png",
-      "03-director-mode.png",
-      "04-pi-agent-bridge-setup.png",
-      "05-live-build-room.png",
-      "06-artifact-review.png",
-      "07-playable-proof.png",
-      "08-trace-debug.png",
-      "09-export-package.png",
-    ]);
-
-    expect(screenReferencesForWorkflow("command").map((screen) => screen.titleKey))
-      .toEqual(["screen.projectLaunchpad.title", "screen.commandCenter.title"]);
-  });
-
   it("keeps workflow and section identifiers typed, unique, and non-overlapping", () => {
     const workflowIds = agentNativeWorkflows.map((workflow) => workflow.id);
 
@@ -47,9 +27,7 @@ describe("studioModel", () => {
     expect(workflowIds.filter((id) => sectionIds.has(id))).toEqual([]);
   });
 
-  it("assigns every workflow to valid default sections, sections, and screen references", () => {
-    const screenIds = new Set(agentNativeScreenReferences.map((screen) => screen.id));
-
+  it("assigns every workflow to valid default sections and sections", () => {
     for (const workflow of agentNativeWorkflows) {
       expect(workflow.sectionIds).toContain(workflow.defaultSectionId);
       expect(() => getStudioSection(workflow.defaultSectionId)).not.toThrow();
@@ -57,19 +35,21 @@ describe("studioModel", () => {
       for (const sectionId of workflow.sectionIds) {
         expect(studioSectionIds).toContain(sectionId);
       }
-
-      for (const screenId of workflow.screenIds) {
-        expect(screenIds.has(screenId)).toBe(true);
-      }
     }
   });
 
-  it("routes shared sections through their canonical workflow without hiding export-specific access", () => {
+  it("assigns each navigable section to one workflow", () => {
     expect(getAgentNativeWorkflow("export").labelKey).toBe("workflow.export.label");
     expect(defaultSectionForWorkflow("export")).toBe("export-kit");
     expect(workflowForSection("assets").id).toBe("artifacts");
-    expect(isSectionInWorkflow("assets", "export")).toBe(true);
+    expect(isSectionInWorkflow("assets", "export")).toBe(false);
     expect(studioSectionIds).not.toContain("dashboard");
     expect(isSectionInWorkflow("launchpad", "export")).toBe(false);
+
+    const assignedSectionIds = agentNativeWorkflows.flatMap(
+      (workflow) => workflow.sectionIds,
+    );
+    expect(new Set(assignedSectionIds).size).toBe(assignedSectionIds.length);
+    expect(new Set(assignedSectionIds)).toEqual(new Set(studioSectionIds));
   });
 });

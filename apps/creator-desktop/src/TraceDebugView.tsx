@@ -14,7 +14,7 @@ import type {
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport, StaticExportReport } from "./tauriBridge";
 import {
-  ScenePreviewPlaceholder,
+  ScenePreviewImage,
   Collapsible,
   CollapsibleSection,
 } from "./studioUi";
@@ -104,17 +104,11 @@ export function TraceDebugView({
             </div>
 
             <div className="relative min-h-[260px] overflow-hidden bg-graphite-900">
-              {sceneImage ? (
-                <img
-                  src={sceneImage}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover opacity-60"
-                />
-              ) : (
-                <ScenePreviewPlaceholder
-                  assetPath={report?.scene.background_asset ?? null}
-                />
-              )}
+              <ScenePreviewImage
+                src={sceneImage}
+                assetPath={report?.scene.background_asset ?? null}
+                className="absolute inset-0 h-full w-full object-cover opacity-60"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/35 to-graphite-950/10" />
               <div className="relative flex min-h-[260px] flex-col justify-end p-4">
                 <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">

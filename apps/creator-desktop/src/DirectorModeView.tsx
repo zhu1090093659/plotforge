@@ -13,7 +13,7 @@ import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport } from "./tauriBridge";
 import {
   Collapsible,
-  ScenePreviewPlaceholder,
+  ScenePreviewImage,
   StudioButton,
   StudioStatusChip,
   studioUiClassNames,
@@ -71,6 +71,12 @@ export function DirectorModeView({
   });
   const trace = report?.trace ?? null;
   const queueItems = directionQueue(report, t);
+  const suggestedDirections = [
+    t("director.suggestedRaiseStakes"),
+    t("director.suggestedAddClue"),
+    t("director.suggestedMakeConsequence"),
+    t("director.suggestedTestAlternate"),
+  ];
   const activityItems = [
     {
       id: "project-source",
@@ -173,15 +179,11 @@ export function DirectorModeView({
             </div>
 
             <div className="relative min-h-[320px] overflow-hidden bg-graphite-900">
-              {sceneImage ? (
-                <img
-                  src={sceneImage}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover opacity-70"
-                />
-              ) : (
-                <ScenePreviewPlaceholder assetPath={scene?.background_asset ?? null} />
-              )}
+              <ScenePreviewImage
+                src={sceneImage}
+                assetPath={scene?.background_asset ?? null}
+                className="absolute inset-0 h-full w-full object-cover opacity-70"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/25 to-graphite-950/5" />
               <div className="relative flex min-h-[320px] flex-col justify-end p-4">
                 <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
@@ -421,13 +423,6 @@ export function DirectorModeView({
     </section>
   );
 }
-
-const suggestedDirections = [
-  "raise stakes",
-  "add clue",
-  "make choice consequence visible",
-  "test alternate ending",
-];
 
 function resolveEntryScene(projectData: ProjectData | null) {
   if (!projectData) {

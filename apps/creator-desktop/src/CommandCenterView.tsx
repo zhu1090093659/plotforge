@@ -22,7 +22,7 @@ import type {
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import { useStudioI18n } from "./i18n";
 import {
-  ScenePreviewPlaceholder,
+  ScenePreviewImage,
   StudioButton,
   StudioStatusChip,
   StudioTabs,
@@ -208,17 +208,11 @@ export function CommandCenterView({
             </div>
 
             <div className="relative min-h-[220px] overflow-hidden bg-graphite-900">
-              {sceneImage ? (
-                <img
-                  src={sceneImage}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover opacity-70"
-                />
-              ) : (
-                <ScenePreviewPlaceholder
-                  assetPath={entryScene?.background_asset ?? null}
-                />
-              )}
+              <ScenePreviewImage
+                src={sceneImage}
+                assetPath={entryScene?.background_asset ?? null}
+                className="absolute inset-0 h-full w-full object-cover opacity-70"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/30 to-graphite-950/10" />
               <div className="relative flex min-h-[220px] flex-col justify-end p-3">
                 <div className="max-w-3xl rounded-lg border border-canvas-200 bg-canvas-100 px-3 py-3 text-ink shadow-studio-panel">
@@ -322,27 +316,33 @@ export function CommandCenterView({
                     </Panel>
 
                     <Panel title={t("commandCenter.recentRuns")}>
-                      <div className="grid gap-2">
-                        {recentRuns.map((run) => (
-                          <div
-                            key={run.id}
-                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2"
-                          >
-                            <CheckCircle2
-                              aria-hidden
-                              className={run.tone === "success" ? "text-sage" : "text-plum"}
-                              size={16}
-                            />
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold">{run.id}</p>
-                              <p className="truncate text-xs text-ink/50">{run.detail}</p>
+                      {recentRuns.length > 0 ? (
+                        <div className="grid gap-2">
+                          {recentRuns.map((run) => (
+                            <div
+                              key={run.id}
+                              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2"
+                            >
+                              <CheckCircle2
+                                aria-hidden
+                                className={run.tone === "success" ? "text-sage" : "text-plum"}
+                                size={16}
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold">{run.id}</p>
+                                <p className="truncate text-xs text-ink/50">{run.detail}</p>
+                              </div>
+                              <span className="text-xs font-semibold text-ink/45">
+                                {run.when}
+                              </span>
                             </div>
-                            <span className="text-xs font-semibold text-ink/45">
-                              {run.when}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-ink/55">
+                          {t("commandCenter.noRecentRuns")}
+                        </p>
+                      )}
                     </Panel>
                   </div>
                 ),
@@ -494,14 +494,7 @@ function recentRunRows(
     ];
   }
 
-  return [
-    {
-      id: "trace-ready",
-      detail: t("common.projectWaitingProof", { project: projectTitle }),
-      when: t("common.ready"),
-      tone: "partial",
-    },
-  ];
+  return [];
 }
 
 function StatusTile({

@@ -171,17 +171,33 @@ describe("LaunchpadView", () => {
     expect(screen.getByText("5")).toBeTruthy(); // rule_count
   });
 
-  it("shows fallback hardcoded checks when no checkReport is available", () => {
+  it("shows the no-project boundary-check state when no project is loaded", () => {
+    renderLaunchpad({ checkReport: null, projectData: null, loadedPath: "" });
+
+    // Switch to the Source Artifacts tab.
+    fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
+
+    // No project loaded -> no fake "passed" checks; show the empty state.
+    expect(screen.getByText("Boundary Checks")).toBeTruthy();
+    expect(screen.getByText("Open a project to run boundary checks.")).toBeTruthy();
+    expect(screen.queryByText("Generated contracts")).toBeNull();
+    expect(screen.queryByText("Tauri bridge")).toBeNull();
+  });
+
+  it("shows a pending boundary-check state when a project is loaded but no checkReport is available", () => {
     renderLaunchpad({ checkReport: null });
 
     // Switch to the Source Artifacts tab.
     fireEvent.click(screen.getByRole("tab", { name: /Source Artifacts/ }));
 
-    // Should show the hardcoded fallback checks
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
-    expect(screen.getByText("Generated contracts")).toBeTruthy();
-    expect(screen.getByText("plotforge.d.ts")).toBeTruthy();
-    expect(screen.getByText("Tauri bridge")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Boundary checks pending — run check or reload the project.",
+      ),
+    ).toBeTruthy();
+    // The no-project message must not appear when a project is loaded.
+    expect(screen.queryByText("Open a project to run boundary checks.")).toBeNull();
   });
 
   it("shows source file list when Source Artifacts tab is selected", () => {
