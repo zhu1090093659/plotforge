@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Boxes, Folder, Gauge } from "lucide-react";
+import { Folder, Gauge } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   agentNativeDesignTokens,
@@ -36,53 +36,22 @@ describe("studioUi", () => {
   }): StudioNavItem[] {
     return [
       {
-        id: "command",
-        label: "Command Center",
-        sublabel: "Command",
-        description: "Director intent",
+        id: "home",
+        label: "Home",
+        sublabel: "Project overview, health, new project",
+        description: "Project overview",
         icon: Gauge,
         selected: true,
         onSelect: overrides?.selectWorkflow ?? (() => {}),
-        children: [
-          {
-            id: "launchpad",
-            label: "Launchpad",
-            sublabel: "ready",
-            description: "Project launchpad",
-            icon: Gauge,
-            selected: true,
-            onSelect: () => {},
-          },
-          {
-            id: "assets",
-            label: "Artifact Review",
-            sublabel: "ready",
-            description: "Review changed assets",
-            icon: Boxes,
-            selected: false,
-            onSelect: overrides?.selectSurface ?? (() => {}),
-          },
-        ],
       },
       {
-        id: "agents",
-        label: "Agent Mesh",
-        sublabel: "Agents",
-        description: "Agent mesh overview",
+        id: "play",
+        label: "Play",
+        sublabel: "Preview the current scene and choices",
+        description: "Scene preview",
         icon: Folder,
         selected: false,
-        onSelect: () => {},
-        children: [
-          {
-            id: "agent-mesh",
-            label: "Agent Mesh Workspace",
-            sublabel: "ready",
-            description: "Agent mesh workspace",
-            icon: Folder,
-            selected: false,
-            onSelect: () => {},
-          },
-        ],
+        onSelect: overrides?.selectSurface ?? (() => {}),
       },
     ];
   }
@@ -277,18 +246,14 @@ describe("studioUi", () => {
     ).toBe("true");
   });
 
-  it("renders an expanded child section in place under its parent", () => {
-    renderShell({ expandedIds: new Set(["command"]) });
-    // The child "Artifact Review" is rendered in the tree (parent command is expanded).
-    expect(screen.getByRole("button", { name: "Artifact Review" })).toBeTruthy();
-  });
-
-  it("hides child sections when the parent is collapsed", () => {
+  it("renders all flat nav items in the tree", () => {
     renderShell({ expandedIds: new Set() });
-    expect(screen.queryByRole("button", { name: "Artifact Review" })).toBeNull();
+    // Flat nav: both top-level items render directly.
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
   });
 
-  it("toggles expand/collapse on clicking a workflow row without invoking select", () => {
+  it("invokes the item's onSelect when a flat nav row is clicked (no expand/collapse)", () => {
     const selectWorkflow = vi.fn();
     const onToggleExpand = vi.fn();
     renderShell({
@@ -297,11 +262,10 @@ describe("studioUi", () => {
       expandedIds: new Set(),
     });
 
-    // Clicking the workflow row toggles expand; it must not call the workflow
-    // select handler (which would jump to the default section).
-    fireEvent.click(screen.getByRole("button", { name: "Command Center" }));
-    expect(onToggleExpand).toHaveBeenCalledTimes(1);
-    expect(selectWorkflow).not.toHaveBeenCalled();
+    // Flat nav rows call onSelect directly; they do not toggle expand.
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    expect(selectWorkflow).toHaveBeenCalledTimes(1);
+    expect(onToggleExpand).not.toHaveBeenCalled();
   });
 
   it("opens the drawer via the header menu button and closes via the overlay", () => {

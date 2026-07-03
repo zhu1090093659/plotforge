@@ -87,10 +87,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    // Source files are the default editor canvas; Launchpad is now a secondary
-    // navigation/palette destination.
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
-    // Open the file; the editor appears inline (no tab switch).
     fireEvent.click(screen.getByRole("button", { name: /world\/world\.md/ }));
     expect(await screen.findByDisplayValue(/The city is under pressure/)).toBeTruthy();
 
@@ -109,7 +106,7 @@ describe("App", () => {
     });
   });
 
-  it("switches agent-native workflows and keeps package entries local-first", async () => {
+  it("exposes the flat nav (Home, Play, World, Story, Characters, State, Rules, Assets, Trace, Export, Source)", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -117,67 +114,24 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    expect(getWorkflowButton("Command Center")).toBeTruthy();
-    expect(getWorkflowButton("Director Mode")).toBeTruthy();
-    expect(getWorkflowButton("Agent Mesh")).toBeTruthy();
-    expect(getWorkflowButton("Artifact Review")).toBeTruthy();
-    expect(getWorkflowButton("Playable Proof")).toBeTruthy();
-    expect(getWorkflowButton("Export Package")).toBeTruthy();
-    expect(getWorkflowButton("Source")).toBeTruthy();
-    expect(
-      getWorkflowButton("Source").getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(screen.getAllByText("Source Artifacts").length).toBeGreaterThan(0);
+    expect(getNavButton("Home")).toBeTruthy();
+    expect(getNavButton("Play")).toBeTruthy();
+    expect(getNavButton("World Bible")).toBeTruthy();
+    expect(getNavButton("Story Craft")).toBeTruthy();
+    expect(getNavButton("Characters")).toBeTruthy();
+    expect(getNavButton("State")).toBeTruthy();
+    expect(getNavButton("Rules")).toBeTruthy();
+    expect(getNavButton("Assets")).toBeTruthy();
+    expect(getNavButton("Trace")).toBeTruthy();
+    expect(getNavButton("Export")).toBeTruthy();
+    expect(getNavButton("Source")).toBeTruthy();
+    // Source is the default landing section.
+    expect(getNavButton("Source").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Agent rail")).toBeTruthy();
     expect(screen.getByLabelText("Collapse agent rail")).toBeTruthy();
-
-    fireEvent.click(getWorkflowButton("Command Center"));
-    expect(screen.getByRole("region", { name: "Project Launchpad" })).toBeTruthy();
-    expect(screen.getByText("Playable Proof Status")).toBeTruthy();
-    expect(screen.getByText("Recent Runs")).toBeTruthy();
-    expect(screen.getByLabelText("Director intent")).toBeTruthy();
-    expect(screen.getAllByText("Command Center").length).toBeGreaterThan(0);
-    // The bottom command dock is gone. The "Run playable proof"
-    // affordance now lives in the active view (Command Center) as the
-    // "Apply as proof run" action, verified below.
-
-    fireEvent.change(screen.getByLabelText("Director intent"), {
-      target: { value: "pay the army and show the consequence" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply as proof run" }));
-    await screen.findByText("Runtime Trace");
-    expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("State Delta").length).toBeGreaterThan(0);
-
-    openWorkflowDefaultSection("Director Mode", "Playtest");
-
-    expect(screen.getAllByText("Director Mode").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Playtest input")).toBeTruthy();
-
-    openWorkflowDefaultSection("Export Package", "Export");
-
-    expect(screen.getAllByText("Export Package").length).toBeGreaterThan(0);
-    // Profile selectors live on the Profile tab.
-    fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
-    expect(screen.getAllByText("steam-submission-kit").length).toBeGreaterThan(0);
-    expect(document.body.textContent ?? "").not.toMatch(
-      /one-click Steam launch|automatic publishing|approval guarantee|legal guarantee|real pi-Agent execution|real external agent execution/i,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Select export profile steam-submission-kit",
-      }),
-    );
-    expect(screen.getAllByText("steam_submission_kit").length).toBeGreaterThan(0);
-    expect(
-      screen.getByText(
-        "This profile does not call Steamworks APIs or promise approval.",
-      ),
-    ).toBeTruthy();
   });
 
-  it("renders sidebar surface entries without duplicate second-level buttons", async () => {
+  it("renders sidebar nav without duplicate second-level buttons", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -189,18 +143,12 @@ describe("App", () => {
       name: "Studio navigation tree",
     });
 
-    fireEvent.click(getWorkflowButton("Director Mode"));
-    fireEvent.click(getWorkflowButton("Artifact Review"));
-
-    expect(within(navTree).getAllByRole("button", { name: "Agent Mesh" }))
-      .toHaveLength(1);
+    // Each nav label appears exactly once in the flat tree.
     expect(within(navTree).getAllByRole("button", { name: "Assets" }))
       .toHaveLength(1);
     expect(within(navTree).getAllByRole("button", { name: "World Bible" }))
       .toHaveLength(1);
     expect(within(navTree).getAllByRole("button", { name: "Story Craft" }))
-      .toHaveLength(1);
-    expect(within(navTree).getAllByRole("button", { name: "Playtest" }))
       .toHaveLength(1);
   });
 
@@ -212,24 +160,30 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    // Cursor-reshape: the honesty-surface evidence now lives inside the
-    // AgentChatRail "Evidence" popover (default closed), and the Backend
-    // Boundary block is a collapsible within it. Open the popover, then
-    // expand the collapsible, to assert the no-fake details.
+    // Honesty-surface evidence lives inside the AgentChatRail "Evidence" popover
+    // (default closed). Open it to assert no-fake details + creator-facing
+    // boundaries.
+    //
+    // NOTE: the former AgentMeshView surfaced a positive "capability rendered
+    // as not-implemented" assertion (pi-Agent image-generation / steam-upload).
+    // When the Agent Mesh surface was deleted and navigation was flattened,
+    // that capability list no longer renders anywhere in the UI, so the
+    // positive capability-honesty assertion was intentionally retired with it.
+    // This test now guards only the negative honesty contract (no fake
+    // workers, no approval queues, no platform-promise text) plus the
+    // positive local-boundaries text. Do NOT reintroduce a capability surface
+    // without re-adding a "rendered as not-implemented" assertion here.
     fireEvent.click(screen.getByRole("button", { name: /^Evidence$/ }));
-    expect(screen.getByText("Backend Boundary")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Backend Boundary/i }));
-    expect(screen.getByText("Real Studio command surface")).toBeTruthy();
-    expect(screen.getAllByText("External agents").length).toBeGreaterThan(0);
+    const popover = screen.getByRole("dialog");
+    expect(within(popover).getByText("Source files")).toBeTruthy();
+    // Expand the local-boundaries collapsible.
+    fireEvent.click(within(popover).getByRole("button", { name: /Local boundaries/i }));
+    expect(within(popover).getByText(/All runs happen locally/)).toBeTruthy();
+    expect(within(popover).getByText(/No external agents are connected/)).toBeTruthy();
+    // No fake worker / approval queue text anywhere.
     expect(screen.queryByText("Mock pi-Agent Worker")).toBeNull();
     expect(screen.queryByText("Approve local preview patch")).toBeNull();
     expect(screen.queryByText("local-preview-only")).toBeNull();
-    fireEvent.click(getWorkflowButton("Agent Mesh"));
-    expect(screen.getByRole("region", { name: "Agent Mesh Workspace" }))
-      .toBeTruthy();
-    expect(screen.getByText("Studio-backed capabilities")).toBeTruthy();
-    expect(screen.getAllByText("pi-Agent runtime").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("not implemented").length).toBeGreaterThan(0);
     expect(screen.queryByText("Mock Story Agent")).toBeNull();
   });
 
@@ -241,19 +195,13 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    expect(screen.getAllByText("Source Artifacts").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Language"), {
       target: { value: "zh" },
     });
 
     await waitFor(() => {
-      expect(screen.getAllByText("源产物").length).toBeGreaterThan(0);
-    });
-    fireEvent.click(getWorkflowButton("命令中心"));
-    await waitFor(() => {
-      expect(screen.getAllByText("项目启动台").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("运行证明").length).toBeGreaterThan(0);
+      expect(getNavButton("首页")).toBeTruthy();
     });
     if (typeof window.localStorage?.getItem === "function") {
       expect(window.localStorage.getItem("plotforge:creator-desktop:locale")).toBe(
@@ -261,30 +209,10 @@ describe("App", () => {
       );
     }
 
-    fireEvent.click(getWorkflowButton("导演模式"));
-    fireEvent.click(getNavSectionButton("试玩"));
-    fireEvent.click(screen.getByRole("button", { name: "高级快照控制" }));
+    fireEvent.click(getNavButton("追踪"));
     await waitFor(() => {
-      expect(screen.getByText("导演指令栏")).toBeTruthy();
-      expect(screen.getByText("运行一次运行时回合")).toBeTruthy();
-      expect(screen.getByText(/\d+ 个选择/)).toBeTruthy();
-      expect(screen.getByText("恢复最新")).toBeTruthy();
-      expect(
-        screen.getByText(
-          "当前没有可用的决策队列。运行一个回合以生成运行时证据；Agent 审批队列尚未实现。",
-        ),
-      ).toBeTruthy();
-    });
-
-    fireEvent.click(getWorkflowButton("产物审查"));
-    fireEvent.click(await screen.findByRole("button", { name: "资产" }));
-    await waitFor(() => {
-      expect(screen.getAllByText("实时构建室").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("未捕获").length).toBeGreaterThan(0);
-      expect(screen.getByText("项目中已加载 1 个可编辑界面。")).toBeTruthy();
-      expect(screen.getByText("运行可玩证明以生成追踪证据。")).toBeTruthy();
-      expect(screen.getByText("当前源产物")).toBeTruthy();
-      expect(screen.getByText("本会话尚未运行运行时证明。")).toBeTruthy();
+      // Trace view placeholder when no proof has run.
+      expect(screen.getByText(/运行试玩回合以创建证明|Run a playtest turn to create proof/)).toBeTruthy();
     });
 
     fireEvent.change(screen.getByLabelText("语言"), {
@@ -292,13 +220,9 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getAllByText("Live Build Room").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Artifact Review").length).toBeGreaterThan(0);
-      expect(screen.getByText("Current Source Artifacts")).toBeTruthy();
-      expect(screen.getByText("No runtime proof has been run for this session."))
-        .toBeTruthy();
+      expect(getNavButton("Trace")).toBeTruthy();
     });
-    expect(screen.queryByText("实时构建室")).toBeNull();
+    expect(screen.queryByText("追踪")).toBeNull();
   });
 
   it("renders asset records and visual-audio bible cards before background fallback", async () => {
@@ -309,10 +233,9 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Artifact Review", "Assets");
+    fireEvent.click(getNavButton("Assets"));
 
     expect(screen.getByText("2 asset records")).toBeTruthy();
-    // Asset records live on the Asset Catalog tab.
     fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getAllByText("asset-image-opening-scene").length)
       .toBeGreaterThan(0);
@@ -331,11 +254,9 @@ describe("App", () => {
     expect(screen.getAllByText("asset-voice-censor-001").length)
       .toBeGreaterThan(0);
     expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
-    // Visual Bible cards live on the Visual Bible tab; switch back to it.
     fireEvent.click(screen.getByRole("tab", { name: /Visual Bible/i }));
     expect(screen.getByText("Winter council ink wash")).toBeTruthy();
     expect(screen.getByText("Official portrait restraint")).toBeTruthy();
-    // Audio Bible cards live on the Audio Bible tab.
     fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     expect(screen.getByText("Civic Auditor")).toBeTruthy();
     expect(screen.getByText("Minister of War")).toBeTruthy();
@@ -360,10 +281,9 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Artifact Review", "Assets");
+    fireEvent.click(getNavButton("Assets"));
 
     expect(screen.getByText("1 scene background fallbacks")).toBeTruthy();
-    // Scene background fallbacks live on the Asset Catalog tab.
     fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getByText("Scene background fallback")).toBeTruthy();
     expect(screen.getAllByText("assets/generated/opening-scene.png").length)
@@ -394,7 +314,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Artifact Review", "Assets");
+    fireEvent.click(getNavButton("Assets"));
     fireEvent.click(screen.getByRole("button", { name: /Winter council ink wash/ }));
 
     fireEvent.change(screen.getByLabelText("Visual style prompt 1"), {
@@ -414,7 +334,6 @@ describe("App", () => {
     await waitFor(() => {
       expect(updates).toHaveLength(1);
     });
-    // Audio Bible cards live on the Audio Bible tab; switch to it.
     fireEvent.click(screen.getByRole("tab", { name: /Audio Bible/ }));
     fireEvent.click(screen.getByRole("button", { name: /Civic Auditor/ }));
 
@@ -443,7 +362,7 @@ describe("App", () => {
     });
   });
 
-  it("runs playtest and renders fallback trace, errors, review, and diagnostics without raw keys", async () => {
+  it("runs playtest via the Agent rail Send and renders fallback trace/errors/review in Trace without raw keys", async () => {
     const fallbackReport = fallbackPlayOnceReport();
     const dataSource = appTestDataSource({
       async playOnceProject() {
@@ -456,22 +375,23 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Director Mode", "Playtest");
-    fireEvent.change(screen.getByLabelText("Playtest input"), {
+    // The Agent rail is the single "describe a change / run a turn" entry.
+    fireEvent.change(screen.getByLabelText("Direct the agent — describe a change…"), {
       target: { value: "continue" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Advanced snapshot controls" }));
-    fireEvent.change(screen.getByLabelText("Playtest save id"), {
-      target: { value: "" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Run turn" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
-    await screen.findByText("Fallback Council");
+    // After a run, App switches to the Trace section.
+    await waitFor(() => {
+      expect(getNavButton("Trace").getAttribute("aria-pressed")).toBe("true");
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Fallback Council").length).toBeGreaterThan(0);
+    });
     expect(screen.getAllByText("trace-fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("provider_timeout").length).toBeGreaterThan(0);
 
-    // Expand Technical Details to verify trace debug content
     fireEvent.click(screen.getByText("Technical Details"));
     expect(screen.getByText("weak_hook")).toBeTruthy();
     expect(screen.getByText("Trace Evidence")).toBeTruthy();
@@ -497,7 +417,9 @@ describe("App", () => {
     expect(screen.getAllByText("assets/generated/opening-scene.png").length)
       .toBeGreaterThan(0);
     expect(
-      screen.getByText("planner returned fallback scene `[REDACTED_SECRET]`"),
+      screen.getByText(
+        "planner returned fallback scene `[REDACTED_SECRET]`",
+      ),
     ).toBeTruthy();
     expect(
       screen.getAllByText(
@@ -505,14 +427,45 @@ describe("App", () => {
       ).length,
     ).toBeGreaterThan(0);
     expect(screen.queryByText(/sk-test-secret/)).toBeNull();
+  });
 
-    // After a successful run, the workspace switches to the proof/debugger
-    // surface and selects the direct Playable Proof navigation row.
-    expect(
-      within(
-        screen.getByRole("navigation", { name: "Studio navigation tree" }),
-      ).getByRole("button", { name: "Playable Proof" }).getAttribute("aria-pressed"),
-    ).toBe("true");
+  it("runs a playtest turn by clicking a choice button on the Play view and submits the choice label as the turn intent", async () => {
+    const seenInputs: string[] = [];
+    const report = demoPlayOnceReport("raise emergency taxes");
+    const dataSource = appTestDataSource({
+      async playOnceProject(_path, playerInput) {
+        seenInputs.push(playerInput);
+        return report;
+      },
+    });
+
+    render(
+      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
+    );
+
+    await waitForDefaultSourceCanvas();
+    fireEvent.click(getNavButton("Play"));
+    // The Play view renders choice buttons; clicking one submits it as the
+    // next turn's intent through the Agent conversation pipeline.
+    const choiceButtons = screen
+      .getAllByRole("button")
+      .filter((btn) => /raise emergency taxes|hear one more minister/i.test(btn.textContent ?? ""));
+    expect(choiceButtons.length).toBeGreaterThan(0);
+    // The button textContent includes a numeric badge ("1Hear one more
+    // minister"); the submitted intent must be the choice label only, so
+    // strip the leading digits before clicking.
+    const pickedLabel = (choiceButtons[0].textContent ?? "").replace(/^\d+/, "");
+    fireEvent.click(choiceButtons[0]);
+
+    await waitFor(() => {
+      expect(getNavButton("Trace").getAttribute("aria-pressed")).toBe("true");
+    });
+    // The clicked choice label must be the playerInput sent to the data source,
+    // AND exactly one playOnce call fires. This double-guards against the
+    // historical bug where an earlier implementation set shared input state
+    // then re-read it in a closure (submitting stale input), and against any
+    // future regression that double-fires the data source on rapid clicks.
+    expect(seenInputs).toEqual([pickedLabel]);
   });
 
   it("runs playtest with explicit and latest runtime snapshot controls", async () => {
@@ -555,54 +508,63 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Director Mode", "Playtest");
 
-    fireEvent.change(screen.getByLabelText("Playtest input"), {
+    // First turn: explicit snapshot restore + save id.
+    fireEvent.change(screen.getByLabelText("Direct the agent — describe a change…"), {
       target: { value: "pay the army" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Advanced snapshot controls" }));
+    fireEvent.click(getNavButton("Trace"));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced snapshot controls/i }));
     fireEvent.change(screen.getByLabelText("Playtest save id"), {
       target: { value: "save-after-army" },
     });
     fireEvent.change(screen.getByLabelText("Playtest restore id"), {
       target: { value: "save-before-army" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run turn" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
+    await waitFor(() => {
+      expect(calls).toEqual([
+        {
+          method: "snapshot",
+          path: "/tmp/starter-project",
+          playerInput: "pay the army",
+          snapshotId: "save-before-army",
+          saveId: "save-after-army",
+        },
+      ]);
+    });
     await screen.findByText("/tmp/starter-project/saves/save-after-army.runtime_snapshot.json");
-    // After a successful run, the workspace switches to the proof/debugger
-    // section. Navigate back to the Playtest surface under Director Mode
-    // (still expanded) to run the next snapshot turn.
-    const directorRegionId = getWorkflowButton("Director Mode").getAttribute("aria-controls");
-    fireEvent.click(
-      within(document.getElementById(directorRegionId!)!).getByRole("button", { name: "Playtest" }),
-    );
-    fireEvent.change(screen.getByLabelText("Playtest input"), {
+
+    // Second turn: restore-latest + new save id.
+    fireEvent.change(screen.getByLabelText("Direct the agent — describe a change…"), {
       target: { value: "raise emergency taxes" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Advanced snapshot controls" }));
+    // Snapshot collapsible is still open from the first turn; update save id.
     fireEvent.change(screen.getByLabelText("Playtest save id"), {
       target: { value: "save-after-tax" },
     });
     fireEvent.click(screen.getByLabelText("Restore latest save"));
-    fireEvent.click(screen.getByRole("button", { name: "Run turn" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
+    await waitFor(() => {
+      expect(calls).toEqual([
+        {
+          method: "snapshot",
+          path: "/tmp/starter-project",
+          playerInput: "pay the army",
+          snapshotId: "save-before-army",
+          saveId: "save-after-army",
+        },
+        {
+          method: "latest",
+          path: "/tmp/starter-project",
+          playerInput: "raise emergency taxes",
+          saveId: "save-after-tax",
+        },
+      ]);
+    });
     await screen.findByText("/tmp/starter-project/saves/save-after-tax.runtime_snapshot.json");
-    expect(calls).toEqual([
-      {
-        method: "snapshot",
-        path: "/tmp/starter-project",
-        playerInput: "pay the army",
-        snapshotId: "save-before-army",
-        saveId: "save-after-army",
-      },
-      {
-        method: "latest",
-        path: "/tmp/starter-project",
-        playerInput: "raise emergency taxes",
-        saveId: "save-after-tax",
-      },
-    ]);
   });
 
   it("exports static zip packages through the Studio data source", async () => {
@@ -630,8 +592,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Export Package", "Export");
-    // Profile selectors + selected-profile detail live on the Profile tab.
+    fireEvent.click(getNavButton("Export"));
     fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(screen.getByText("byo-key-web")).toBeTruthy();
@@ -643,7 +604,6 @@ describe("App", () => {
     expect(screen.getByText("Provider config")).toBeTruthy();
     expect(screen.getByText("Submission ready")).toBeTruthy();
 
-    // Output paths + export button live on the Package tab.
     fireEvent.click(screen.getByRole("tab", { name: /^Package/ }));
     fireEvent.change(screen.getByLabelText("Static export output directory"), {
       target: { value: "/tmp/static-export" },
@@ -668,14 +628,13 @@ describe("App", () => {
     expect(screen.getByText("matched")).toBeTruthy();
     expect(screen.getByText("pending explicit package hash")).toBeTruthy();
     expectExportEvidenceStatus("All referenced assets copied", "Pass");
-    // Permanently-pending checks are under the "Technical Details" collapsible — expand it first
     fireEvent.click(screen.getByRole("button", { name: /Technical Details/ }));
     expectExportEvidenceStatus("No raw responses", "Pending");
     expectExportEvidenceStatus("No secret markers", "Pending");
     expectExportEvidenceStatus("HTTP smoke test passed", "Pending");
   });
 
-  it("opens the executable static profile from the Command Center export CTA", async () => {
+  it("opens the static export profile from the Home export CTA", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -683,12 +642,10 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Command Center", "Launchpad");
-    const launchpad = screen.getByRole("region", { name: "Project Launchpad" });
-    fireEvent.click(within(launchpad).getByRole("button", { name: "Export Package" }));
+    fireEvent.click(getNavButton("Home"));
+    const homeRegion = screen.getByRole("region", { name: /Project overview/i });
+    fireEvent.click(within(homeRegion).getByRole("button", { name: /^Export$/i }));
 
-    // The export CTA switches to the Export section; the static-web profile
-    // selector lives on the Profile tab.
     fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
     expect(
@@ -696,7 +653,6 @@ describe("App", () => {
         .getByRole("button", { name: "Select export profile static-web" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
-    // Output directory is on the Package tab.
     fireEvent.click(screen.getByRole("tab", { name: /^Package/ }));
     expect(screen.getByLabelText("Static export output directory")).toBeTruthy();
   });
@@ -715,8 +671,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    openWorkflowDefaultSection("Export Package", "Export");
-    // Profile selector + selected-profile detail live on the Profile tab.
+    fireEvent.click(getNavButton("Export"));
     fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     fireEvent.click(
       screen.getByRole("button", {
@@ -729,7 +684,6 @@ describe("App", () => {
     expect(
       screen.getByText("This profile does not upload content or promise platform approval."),
     ).toBeTruthy();
-    // The non-executable notice + Export zip button live on the Package tab.
     fireEvent.click(screen.getByRole("tab", { name: /^Package/ }));
     expect(
       screen.getByText(
@@ -798,8 +752,7 @@ describe("App", () => {
 
     await waitForDefaultSourceCanvas();
 
-    openWorkflowDefaultSection("Command Center", "Launchpad");
-    // The New Project tab is active by default once Launchpad is opened; the form is visible.
+    fireEvent.click(getNavButton("Home"));
     fireEvent.change(screen.getByLabelText("New project path"), {
       target: { value: "/tmp/winter-regency" },
     });
@@ -838,7 +791,7 @@ describe("App", () => {
     expect(openedPaths).toContain("/tmp/winter-regency");
   });
 
-  it("exposes PRD navigation and saves structured editing forms through the data source", async () => {
+  it("saves structured editing forms (World/Story/Characters/State/Rules) through the data source", async () => {
     const updates: string[] = [];
     const dataSource = appTestDataSource({
       async updateWorldEditDocument(_path, document) {
@@ -848,12 +801,6 @@ describe("App", () => {
       async updateStoryCraftEditDocument(_path, document) {
         updates.push(`story:${document.story_craft.bible.genre_promise}`);
         return document;
-      },
-      async createCharacter(_path, character) {
-        updates.push(`character:${character.id}:${character.traits.join("|")}`);
-        return {
-          characters: [...demoProjectData.characters, character],
-        };
       },
       async createCharacterFromDraft(_path, draft) {
         const character = {
@@ -885,12 +832,6 @@ describe("App", () => {
           initial_story_state: demoProjectData.story_state,
         };
       },
-      async createRule(_path, rule) {
-        updates.push(`rule:${rule.id}:${rule.effects[0]?.kind}`);
-        return {
-          rules: [...demoProjectData.rules, rule],
-        };
-      },
       async createRuleFromDraft(_path, draft) {
         updates.push(`rule-draft:${draft.id}`);
         return {
@@ -914,32 +855,20 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    for (const label of [
-      "Command Center",
-      "Director Mode",
-      "Agent Mesh",
-      "Artifact Review",
-      "Playable Proof",
-      "Export Package",
-    ]) {
-      expect(screen.getAllByRole("button", { name: new RegExp(label) }).length)
-        .toBeGreaterThan(0);
-    }
 
-    openWorkflowDefaultSection("Artifact Review", "World Bible");
+    fireEvent.click(getNavButton("World Bible"));
     fireEvent.change(screen.getByLabelText("Forbidden facts"), {
       target: { value: "No secret heir" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save World Bible" }));
 
-    openWorkflowDefaultSection("Artifact Review", "Story Craft");
+    fireEvent.click(getNavButton("Story Craft"));
     fireEvent.change(screen.getByLabelText("Genre promise"), {
       target: { value: "A sharper political survival story." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Story Craft" }));
 
-    openWorkflowDefaultSection("Artifact Review", "Characters");
-    // Open the "Add Character" collapsible (defaults to Manual mode).
+    fireEvent.click(getNavButton("Characters"));
     fireEvent.click(screen.getByRole("button", { name: "Add Character" }));
     fireEvent.change(screen.getByLabelText("New character id"), {
       target: { value: "regent" },
@@ -961,7 +890,7 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Character" }));
 
-    openWorkflowDefaultSection("Director Mode", "State");
+    fireEvent.click(getNavButton("State"));
     fireEvent.click(screen.getByRole("button", { name: "Add Resource" }));
     fireEvent.change(screen.getByLabelText("New resource key"), {
       target: { value: "grain" },
@@ -974,7 +903,7 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Resource" }));
 
-    openWorkflowDefaultSection("Artifact Review", "Rules");
+    fireEvent.click(getNavButton("Rules"));
     fireEvent.click(screen.getByRole("button", { name: /Add Rule/ }));
     fireEvent.change(screen.getByLabelText("New rule id"), {
       target: { value: "spend-grain" },
@@ -1098,8 +1027,7 @@ describe("App", () => {
 
     await waitForDefaultSourceCanvas();
 
-    openWorkflowDefaultSection("Artifact Review", "World Bible");
-    // AI expansion goal is in the "Advanced" collapsible — expand it first.
+    fireEvent.click(getNavButton("World Bible"));
     fireEvent.click(screen.getByRole("button", { name: /Advanced/ }));
     fireEvent.change(screen.getByLabelText("World generation goal"), {
       target: { value: "Expand northern border canon." },
@@ -1109,15 +1037,14 @@ describe("App", () => {
     );
     await screen.findByDisplayValue(/Expand northern border canon/);
 
-    openWorkflowDefaultSection("Artifact Review", "Story Craft");
+    fireEvent.click(getNavButton("Story Craft"));
     fireEvent.change(screen.getByLabelText("Story generation concept"), {
       target: { value: "Generate three linked council pressures." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Generate StoryCraft" }));
     await screen.findByText("Generated Pressure");
 
-    openWorkflowDefaultSection("Artifact Review", "Characters");
-    // Open the "Add Character" collapsible and switch to AI Generate mode.
+    fireEvent.click(getNavButton("Characters"));
     fireEvent.click(screen.getByRole("button", { name: "Add Character" }));
     fireEvent.click(screen.getByRole("button", { name: "AI Generate", pressed: false }));
     fireEvent.change(screen.getByLabelText("Character generation concept"), {
@@ -1127,15 +1054,11 @@ describe("App", () => {
       target: { value: "Grain Envoy" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Generate Character" }));
-    // After generation the new character card appears as a collapsed item.
-    // The Collapsible label is the character name (roleHint passed as name).
     await screen.findByRole("button", { name: /Grain Envoy/ });
-    // Expand the card to verify portrait request is visible.
     fireEvent.click(screen.getByRole("button", { name: /Grain Envoy/ }));
     expect(screen.getByText("Generated portrait request")).toBeTruthy();
 
-    openWorkflowDefaultSection("Export Package", "Export");
-    // The AI Safety Policy editor lives on the Policy tab.
+    fireEvent.click(getNavButton("Export"));
     fireEvent.click(screen.getByRole("tab", { name: /^Policy$/ }));
     fireEvent.click(screen.getByLabelText("Live generated content enabled"));
     fireEvent.click(screen.getByLabelText("Moderation queue enabled"));
@@ -1157,7 +1080,7 @@ describe("App", () => {
   });
 });
 
-function getWorkflowButton(name: string) {
+function getNavButton(name: string) {
   const navTree =
     screen.queryByRole("navigation", { name: "Studio navigation tree" }) ??
     screen.getByRole("navigation", { name: "Studio 导航树" });
@@ -1168,36 +1091,6 @@ async function waitForDefaultSourceCanvas() {
   expect(await screen.findAllByText("world/world.md")).toBeTruthy();
 }
 
-function getNavSectionButton(name: string) {
-  const navTree =
-    screen.queryByRole("navigation", { name: "Studio navigation tree" }) ??
-    screen.getByRole("navigation", { name: "Studio 导航树" });
-  return within(navTree).getByRole("button", { name });
-}
-/**
- * Open a workflow surface. Multi-section workflows expand first, then click the
- * requested child section. Single-section workflows navigate directly.
- */
-function openWorkflowDefaultSection(workflowName: string, sectionName: string) {
-  const workflowButton = getWorkflowButton(workflowName);
-  const regionId = workflowButton.getAttribute("aria-controls");
-  if (!regionId) {
-    fireEvent.click(workflowButton);
-    return;
-  }
-  if (workflowButton.getAttribute("aria-expanded") !== "true") {
-    fireEvent.click(workflowButton);
-  }
-  const region = document.getElementById(regionId);
-  if (!region) {
-    throw new Error(
-      `Workflow "${workflowName}" children region #${regionId} not found`,
-    );
-  }
-  fireEvent.click(
-    within(region).getByRole("button", { name: sectionName }),
-  );
-}
 function expectExportEvidenceStatus(label: string, status: string) {
   const row = screen.getByText(label).closest("div");
   expect(row).toBeTruthy();
@@ -1292,7 +1185,6 @@ function appTestDataSource(
       };
     },
     async createCharacterFromDraft(_path, draft) {
-      // Simulate what Rust does: trim and split traits.
       const character = {
         id: draft.id.trim(),
         name: draft.name.trim(),
@@ -1320,13 +1212,7 @@ function appTestDataSource(
     async createResource(_path, resource) {
       return {
         resources: [...demoProjectData.resources, resource],
-        initial_world_state: {
-          ...demoProjectData.world_state,
-          resources: {
-            ...demoProjectData.world_state.resources,
-            [resource.key]: resource.initial,
-          },
-        },
+        initial_world_state: demoProjectData.world_state,
         initial_story_state: demoProjectData.story_state,
       };
     },
@@ -1358,82 +1244,14 @@ function appTestDataSource(
         ],
       };
     },
-    async generateWorldExpansion(_path, expansionGoal) {
-      return {
-        document: {
-          world_bible_markdown: `# World Bible\n\n${expansionGoal}\n`,
-          canon_markdown: "# Canon\n- Generated canon remains reviewable.\n",
-          forbidden_facts: ["Generated facts cannot erase revealed costs."],
-        },
-        evidence: {
-          status: "succeeded",
-          fallback_used: false,
-          error: null,
-          reproducibility: demoReproducibilityMetadata,
-          envelopes: [],
-        },
-      };
+    async generateWorldExpansion() {
+      throw new Error("not used");
     },
-    async generateStoryCraft(_path, concept) {
-      return {
-        document: {
-          story_bible_markdown: `# Story Bible\n\n${concept}\n`,
-          style_guide_markdown: "# Style Guide\n\nConsequence-first choices.\n",
-          story_craft: {
-            ...demoProjectData.story_craft,
-            plot_threads: [
-              ...demoProjectData.story_craft.plot_threads,
-              {
-                id: "generated-pressure",
-                title: "Generated Pressure",
-                promise: "A generated arc creates a visible cost.",
-                thread_type: "political",
-                status: "open",
-                introduced_at: "generated-scene",
-                related_characters: [],
-                related_world_flags: [],
-                last_update: "generated",
-              },
-            ],
-          },
-        },
-        evidence: {
-          status: "succeeded",
-          fallback_used: false,
-          error: null,
-          reproducibility: demoReproducibilityMetadata,
-          envelopes: [],
-        },
-      };
+    async generateStoryCraft() {
+      throw new Error("not used");
     },
-    async generateCharacter(_path, concept, roleHint) {
-      return {
-        character: {
-          id: "generated-envoy",
-          name: roleHint,
-          role: "Generated story catalyst",
-          traits: ["observant"],
-          visual_card: "generated visual card",
-          voice_card: `generated voice from ${concept}`,
-          portrait_request: {
-            prompt_summary: "Generated portrait request",
-            style: "council portrait",
-            target_asset_slot: "portrait",
-            prompt_hash: "sha256:test-generated-character",
-            provider_config_hash:
-              demoReproducibilityMetadata.provider_config_hash,
-            reference_asset_ids: [],
-            fallback_allowed: true,
-          },
-        },
-        evidence: {
-          status: "succeeded",
-          fallback_used: false,
-          error: null,
-          reproducibility: demoReproducibilityMetadata,
-          envelopes: [],
-        },
-      };
+    async generateCharacter() {
+      throw new Error("not used");
     },
     async readAiSafetyPolicy() {
       return demoProjectData.ai_safety_policy;
@@ -1456,14 +1274,14 @@ function appTestDataSource(
     async playOnceProject(_path, playerInput) {
       return demoPlayOnceReport(playerInput);
     },
-    async playOnceProjectWithSave(...args: Parameters<typeof mockPlayOnceProjectWithSave>) {
-      return mockPlayOnceProjectWithSave(...args);
+    async playOnceProjectWithSave(_path, playerInput) {
+      return demoPlayOnceReport(playerInput);
     },
-    async playOnceProjectFromSnapshot(...args: Parameters<typeof mockPlayOnceProjectFromSnapshot>) {
-      return mockPlayOnceProjectFromSnapshot(...args);
+    async playOnceProjectFromSnapshot(_path, playerInput) {
+      return demoPlayOnceReport(playerInput);
     },
-    async playOnceProjectFromLatestSnapshot(...args: Parameters<typeof mockPlayOnceProjectFromLatestSnapshot>) {
-      return mockPlayOnceProjectFromLatestSnapshot(...args);
+    async playOnceProjectFromLatestSnapshot(_path, playerInput) {
+      return demoPlayOnceReport(playerInput);
     },
     async exportStaticProjectZip(_path, outputDir, archivePath) {
       return {

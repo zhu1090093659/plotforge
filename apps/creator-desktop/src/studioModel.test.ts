@@ -1,56 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentNativeWorkflows,
-  defaultSectionForWorkflow,
-  getAgentNativeWorkflow,
   getStudioSection,
-  isSectionInWorkflow,
   studioSectionIds,
-  workflowForSection,
+  studioSections,
 } from "./studioModel";
 
 describe("studioModel", () => {
-  it("keeps workflow and section identifiers typed, unique, and non-overlapping", () => {
-    const workflowIds = agentNativeWorkflows.map((workflow) => workflow.id);
-
-    expect(workflowIds).toEqual([
-      "command",
-      "game",
-      "agents",
-      "artifacts",
-      "proof",
-      "export",
-      "source",
-    ]);
-    expect(new Set(workflowIds).size).toBe(workflowIds.length);
+  it("exposes a flat, unique, non-empty set of section ids", () => {
+    expect(studioSectionIds.length).toBe(studioSections.length);
     expect(new Set(studioSectionIds).size).toBe(studioSectionIds.length);
-    const sectionIds = new Set<string>(studioSectionIds);
-    expect(workflowIds.filter((id) => sectionIds.has(id))).toEqual([]);
+    expect(studioSectionIds.length).toBeGreaterThan(0);
   });
 
-  it("assigns every workflow to valid default sections and sections", () => {
-    for (const workflow of agentNativeWorkflows) {
-      expect(workflow.sectionIds).toContain(workflow.defaultSectionId);
-      expect(() => getStudioSection(workflow.defaultSectionId)).not.toThrow();
-
-      for (const sectionId of workflow.sectionIds) {
-        expect(studioSectionIds).toContain(sectionId);
-      }
+  it("resolves every section id via getStudioSection", () => {
+    for (const id of studioSectionIds) {
+      expect(() => getStudioSection(id)).not.toThrow();
+      const section = getStudioSection(id);
+      expect(section.id).toBe(id);
+      expect(section.labelKey.length).toBeGreaterThan(0);
+      expect(section.descriptionKey.length).toBeGreaterThan(0);
     }
   });
 
-  it("assigns each navigable section to one workflow", () => {
-    expect(getAgentNativeWorkflow("export").labelKey).toBe("workflow.export.label");
-    expect(defaultSectionForWorkflow("export")).toBe("export-kit");
-    expect(workflowForSection("assets").id).toBe("artifacts");
-    expect(isSectionInWorkflow("assets", "export")).toBe(false);
-    expect(studioSectionIds).not.toContain("dashboard");
-    expect(isSectionInWorkflow("launchpad", "export")).toBe(false);
+  it("throws on unknown section id", () => {
+    expect(() => getStudioSection("unknown" as never)).toThrow(/Unknown Studio section/);
+  });
 
-    const assignedSectionIds = agentNativeWorkflows.flatMap(
-      (workflow) => workflow.sectionIds,
-    );
-    expect(new Set(assignedSectionIds).size).toBe(assignedSectionIds.length);
-    expect(new Set(assignedSectionIds)).toEqual(new Set(studioSectionIds));
+  it("keeps the flat default-navigation section (no workflow grouping)", () => {
+    expect(studioSectionIds).not.toContain("dashboard");
+    expect(studioSectionIds).toContain("home");
+    expect(studioSectionIds).toContain("play");
+    expect(studioSectionIds).toContain("trace");
   });
 });

@@ -104,7 +104,6 @@ describe("AssetMaintenanceView", () => {
     renderView();
     fireEvent.click(screen.getByRole("tab", { name: /Asset Catalog/ }));
     expect(screen.getByText("Source files")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
     expect(screen.getByText("Visual cards")).toBeTruthy();
     expect(screen.getByText("Audio cards")).toBeTruthy();
   });

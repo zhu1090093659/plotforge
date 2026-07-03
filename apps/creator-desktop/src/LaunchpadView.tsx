@@ -1,7 +1,5 @@
 import {
   CheckCircle2,
-  Loader2,
-  PlusCircle,
   XCircle,
 } from "lucide-react";
 import type { FormEvent } from "react";
@@ -10,54 +8,24 @@ import type {
   ProjectCreationRequest,
   ProjectTemplateId,
 } from "../../../contracts/plotforge";
-import { CommandCenterView } from "./CommandCenterView";
 import { useStudioI18n } from "./i18n";
 import type { CreatorProjectSummary } from "./projectSummary";
-import type { StudioDataSource } from "./studioDataSource";
 import type { StudioMetric } from "./useStudioWorkspace";
 import type { StudioSectionId } from "./studioModel";
-import type {
-  ExportProfile,
-  ProjectData,
-} from "../../../contracts/plotforge";
-import type {
-  PlayOnceReport,
-  ProjectCheckReport,
-  SourceFileSummary,
-  SourceFileContent,
-  StaticExportReport,
-} from "./tauriBridge";
-import type { AssetCatalog } from "./assetCatalog";
-import { StudioTabs } from "./studioUi";
+import type { ProjectData } from "../../../contracts/plotforge";
+import type { ProjectCheckReport } from "./tauriBridge";
+import { StudioButton, StudioStatusChip, StudioTabs } from "./studioUi";
 
 // ---------------------------------------------------------------------------
 // LaunchpadViewProps
 // ---------------------------------------------------------------------------
 
 export interface LaunchpadViewProps {
-  // --- project data ---
   projectSummary: CreatorProjectSummary | null;
   projectData: ProjectData | null;
   loadedPath: string;
   checkReport: ProjectCheckReport | null;
   metrics: StudioMetric[];
-  // --- source files (consumed by CommandCenter summary only; the source
-  //     browser/editor now live in SourceView) ---
-  sourceFiles: SourceFileSummary[];
-  selectedFile: SourceFileContent | null;
-  dirty: boolean;
-  // --- playtest ---
-  playtestInput: string;
-  setPlaytestInput(value: string): void;
-  playtesting: boolean;
-  playtestReport: PlayOnceReport | null;
-  playtestError: string | null;
-  // --- export ---
-  exportProfiles: ExportProfile[];
-  exportReport: StaticExportReport | null;
-  // --- asset catalog ---
-  assetCatalog: AssetCatalog;
-  // --- project creation wizard state ---
   createProjectPath: string;
   setCreateProjectPath(value: string): void;
   createTemplate: ProjectTemplateId;
@@ -75,13 +43,8 @@ export interface LaunchpadViewProps {
   createReport: ProjectCreationReport | null;
   creating: boolean;
   createError: string | null;
-  // --- callbacks ---
-  onRunPlayableProof(): void;
   onOpenSection(section: StudioSectionId): void;
-  onOpenExportProfile(profileId: string): void;
   onCreateProject(path: string, request: ProjectCreationRequest, force: boolean): void;
-  // --- data source for CommandCenterView ---
-  dataSource: StudioDataSource;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,17 +57,6 @@ export function LaunchpadView({
   loadedPath,
   checkReport,
   metrics,
-  sourceFiles,
-  selectedFile,
-  dirty,
-  playtestInput,
-  setPlaytestInput,
-  playtesting,
-  playtestReport,
-  playtestError,
-  exportProfiles,
-  exportReport,
-  assetCatalog,
   createProjectPath,
   setCreateProjectPath,
   createTemplate,
@@ -122,38 +74,74 @@ export function LaunchpadView({
   createReport,
   creating,
   createError,
-  onRunPlayableProof,
   onOpenSection,
-  onOpenExportProfile,
   onCreateProject,
 }: LaunchpadViewProps) {
   const { t } = useStudioI18n();
+  const projectTitle = projectSummary?.title ?? t("app.noProjectLoaded");
 
   return (
     <div className="grid gap-5">
-      {/* Core CTA: Command Center */}
-      <CommandCenterView
-        projectSummary={projectSummary}
-        projectData={projectData}
-        loadedPath={loadedPath}
-        metrics={metrics}
-        sourceFiles={sourceFiles}
-        selectedFile={selectedFile}
-        playtestInput={playtestInput}
-        playtesting={playtesting}
-        playtestReport={playtestReport}
-        playtestError={playtestError}
-        exportProfiles={exportProfiles}
-        dirty={dirty}
-        onIntentChange={setPlaytestInput}
-        onRunPlayableProof={onRunPlayableProof}
-        onOpenSection={onOpenSection}
-        onOpenExportProfile={onOpenExportProfile}
-      />
+      <section
+        aria-label={t("launchpad.aria.projectOverview")}
+        className="rounded-lg border border-canvas-200/70 bg-canvas-50 p-5 text-ink shadow-studio-panel"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-violet-600">
+              {t("launchpad.projectOverview")}
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-ink">
+              {projectTitle}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-5 text-graphite-700/70">
+              {loadedPath || t("launchpad.noProjectLoaded")}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StudioStatusChip tone={projectSummary ? "health" : "neutral"}>
+              {projectSummary
+                ? t("launchpad.projectLoaded")
+                : t("launchpad.noProject")}
+            </StudioStatusChip>
+            {projectData ? (
+              <StudioStatusChip tone="accent">
+                {t("common.scenesRulesCharacters", {
+                  count: projectData.scenes.length,
+                  rules: projectData.rules.length,
+                  characters: projectData.characters.length,
+                })}
+              </StudioStatusChip>
+            ) : null}
+          </div>
+        </div>
 
-      {/* Secondary surfaces share one tab strip so they never stack past the
-          fold. Source browsing/editing moved to the dedicated Source view
-          (Phase B); this strip now carries project creation + health only. */}
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map((metric) => (
+            <div
+              key={metric.labelKey}
+              className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-2"
+            >
+              <p className="text-xs font-semibold uppercase text-graphite-700/55">
+                {t(metric.labelKey)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-ink">
+                {metric.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StudioButton onClick={() => onOpenSection("play")}>
+            {t("launchpad.openPlay")}
+          </StudioButton>
+          <StudioButton onClick={() => onOpenSection("export-kit")}>
+            {t("launchpad.openExport")}
+          </StudioButton>
+        </div>
+      </section>
+
       <StudioTabs
         ariaLabel={t("launchpad.secondarySurfaces")}
         className="mt-1"
@@ -202,7 +190,7 @@ export function LaunchpadView({
 }
 
 // ---------------------------------------------------------------------------
-// NewProjectForm — extracted sub-component
+// NewProjectForm
 // ---------------------------------------------------------------------------
 
 interface NewProjectFormProps {
@@ -273,11 +261,6 @@ function NewProjectForm({
             disabled={creating}
             className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
           >
-            {creating ? (
-              <Loader2 aria-hidden size={16} className="animate-spin" />
-            ) : (
-              <PlusCircle aria-hidden size={16} />
-            )}
             {t("launchpad.create")}
           </button>
         </div>
@@ -347,7 +330,6 @@ function NewProjectForm({
         ) : null}
       </form>
 
-      {/* Creation Report */}
       <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-4 shadow-studio-panel">
         <h4 className="text-xs font-semibold uppercase tracking-tightish text-ink/55">
           {t("launchpad.creationReport")}
@@ -381,7 +363,7 @@ function NewProjectForm({
 }
 
 // ---------------------------------------------------------------------------
-// BoundaryChecks — reads from real checkReport instead of hardcoded array
+// BoundaryChecks
 // ---------------------------------------------------------------------------
 
 interface BoundaryCheckItem {
@@ -485,7 +467,7 @@ function BoundaryChecks({
 }
 
 // ---------------------------------------------------------------------------
-// Small internal primitive components
+// Small internal primitives
 // ---------------------------------------------------------------------------
 
 function LaunchpadTextInput({

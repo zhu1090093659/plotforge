@@ -1,10 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LaunchpadView } from "./LaunchpadView";
-import { demoExportProfiles, demoPlayOnceReport, demoProjectData } from "./demoStudioData";
+import { demoProjectData } from "./demoStudioData";
 import { summarizeProject } from "./projectSummary";
-import { projectAssetCatalog } from "./assetCatalog";
-import { createDefaultStudioDataSource } from "./studioDataSource";
 import type { ProjectCreationRequest, ProjectTemplateId } from "../../../contracts/plotforge";
 import type { ProjectCheckReport } from "./tauriBridge";
 import { StudioI18nProvider } from "./i18n";
@@ -31,21 +29,9 @@ function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {})
     projectData: demoProjectData,
     loadedPath: "/tmp/starter-project",
     checkReport,
-    metrics: [],
-    sourceFiles: [
-      { path: "game.toml", kind: "toml" as const, bytes: 120, editable: false },
-      { path: "world/world.md", kind: "markdown" as const, bytes: 80, editable: true },
+    metrics: [
+      { labelKey: "metrics.scenes", value: "2", tone: "border-sage/50 text-sage" },
     ],
-    selectedFile: null,
-    dirty: false,
-    playtestInput: "Raise emergency taxes.",
-    setPlaytestInput: vi.fn(),
-    playtesting: false,
-    playtestReport: null,
-    playtestError: null,
-    exportProfiles: demoExportProfiles,
-    exportReport: null,
-    assetCatalog: projectAssetCatalog(demoProjectData, demoProjectData.asset_records),
     createProjectPath: "/tmp/new-project",
     setCreateProjectPath: vi.fn(),
     createTemplate: "historical_crisis" as ProjectTemplateId,
@@ -63,11 +49,8 @@ function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {})
     createReport: null,
     creating: false,
     createError: null,
-    onRunPlayableProof: vi.fn(),
     onOpenSection: vi.fn(),
-    onOpenExportProfile: vi.fn(),
     onCreateProject: vi.fn(),
-    dataSource: createDefaultStudioDataSource(),
     ...overrides,
   };
 }
@@ -81,35 +64,34 @@ function renderLaunchpad(overrides: Partial<Parameters<typeof LaunchpadView>[0]>
 }
 
 describe("LaunchpadView", () => {
-  it("renders the Command Center region and core CTAs", () => {
+  it("renders the project overview region with title and metrics", () => {
     renderLaunchpad();
 
-    // Command Center region should be visible
-    expect(screen.getByRole("region", { name: "Project Launchpad" })).toBeTruthy();
-    // Run proof button accessible
-    expect(screen.getByRole("button", { name: "Run proof" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: /Project overview/i }),
+    ).toBeTruthy();
+    expect(screen.getByText("Starter Project")).toBeTruthy();
+    expect(screen.getByText("/tmp/starter-project")).toBeTruthy();
+    expect(screen.getByText("Project loaded")).toBeTruthy();
+    // Metric renders.
+    expect(screen.getByText("2")).toBeTruthy();
   });
 
   it("shows the New Project form fields by default (first tab)", () => {
     renderLaunchpad();
 
-    // The New Project tab is selected by default, so the form fields are visible.
     expect(screen.getByLabelText("New project path")).toBeTruthy();
     expect(screen.getByLabelText("Visual style")).toBeTruthy();
     expect(screen.getByLabelText("Concept")).toBeTruthy();
     expect(screen.getByLabelText("Initial scene request")).toBeTruthy();
-    // The tab button should exist too.
     expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
   });
 
-  it("exposes the New Project and Project Health tabs (source moved to Source view)", () => {
+  it("exposes the New Project and Project Health tabs", () => {
     renderLaunchpad();
 
     expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Project Health/i })).toBeTruthy();
-    // Source browsing/editing moved to the dedicated Source view (Phase B).
-    expect(screen.queryByRole("tab", { name: /Source Artifacts/i })).toBeNull();
-    expect(screen.queryByRole("tab", { name: /Artifact Text Editor/i })).toBeNull();
   });
 
   it("calls onCreateProject when the create form is submitted", async () => {
@@ -122,7 +104,6 @@ describe("LaunchpadView", () => {
       createInitialSceneRequest: "Open with a sealed edict.",
     });
 
-    // New Project tab is active by default; submit directly.
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
     await waitFor(() => {
@@ -138,14 +119,6 @@ describe("LaunchpadView", () => {
     });
   });
 
-  it("calls onRunPlayableProof when the run proof button is clicked", () => {
-    const onRunPlayableProof = vi.fn();
-    renderLaunchpad({ onRunPlayableProof });
-
-    fireEvent.click(screen.getByRole("button", { name: "Run proof" }));
-    expect(onRunPlayableProof).toHaveBeenCalledTimes(1);
-  });
-
   it("shows real boundary checks from checkReport, not hardcoded pass", () => {
     const checkReport: ProjectCheckReport = {
       title: "My Project",
@@ -156,10 +129,8 @@ describe("LaunchpadView", () => {
     };
     renderLaunchpad({ checkReport });
 
-    // Switch to the Project Health tab to see the boundary checks.
     fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
 
-    // Should display real data from checkReport (not hardcoded strings)
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
     expect(screen.getByText("My Project")).toBeTruthy();
     expect(screen.getAllByText("opening-scene").length).toBeGreaterThan(0);
@@ -170,20 +141,15 @@ describe("LaunchpadView", () => {
   it("shows the no-project boundary-check state when no project is loaded", () => {
     renderLaunchpad({ checkReport: null, projectData: null, loadedPath: "" });
 
-    // Switch to the Project Health tab.
     fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
 
-    // No project loaded -> no fake "passed" checks; show the empty state.
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
     expect(screen.getByText("Open a project to run boundary checks.")).toBeTruthy();
-    expect(screen.queryByText("Generated contracts")).toBeNull();
-    expect(screen.queryByText("Tauri bridge")).toBeNull();
   });
 
   it("shows a pending boundary-check state when a project is loaded but no checkReport is available", () => {
     renderLaunchpad({ checkReport: null });
 
-    // Switch to the Project Health tab.
     fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
 
     expect(screen.getByText("Boundary Checks")).toBeTruthy();
@@ -192,15 +158,17 @@ describe("LaunchpadView", () => {
         "Boundary checks pending — run check or reload the project.",
       ),
     ).toBeTruthy();
-    // The no-project message must not appear when a project is loaded.
     expect(screen.queryByText("Open a project to run boundary checks.")).toBeNull();
   });
 
-  it("renders a playtest report result when proof has been run", () => {
-    const report = demoPlayOnceReport("pay the army");
-    renderLaunchpad({ playtestReport: report });
+  it("calls onOpenSection when the Open Play / Open Export buttons are clicked", () => {
+    const onOpenSection = vi.fn();
+    renderLaunchpad({ onOpenSection });
 
-    // The recent runs area should show the trace
-    expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /^Play$/i }));
+    expect(onOpenSection).toHaveBeenCalledWith("play");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Export$/i }));
+    expect(onOpenSection).toHaveBeenCalledWith("export-kit");
   });
 });

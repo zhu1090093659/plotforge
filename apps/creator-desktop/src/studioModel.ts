@@ -6,7 +6,6 @@ import {
   Gauge,
   KeyRound,
   Map,
-  Network,
   Play,
   ScrollText,
   ShipWheel,
@@ -14,33 +13,20 @@ import {
 } from "lucide-react";
 
 export const studioSectionIds = [
-  "launchpad",
-  "agent-mesh",
+  "home",
+  "play",
   "world",
   "story",
   "characters",
   "state",
   "rules",
   "assets",
-  "playtest",
-  "debugger",
+  "trace",
   "export-kit",
   "source-files",
 ] as const;
 
 export type StudioSectionId = (typeof studioSectionIds)[number];
-
-export const agentNativeWorkflowIds = [
-  "command",
-  "game",
-  "agents",
-  "artifacts",
-  "proof",
-  "export",
-  "source",
-] as const;
-
-export type AgentNativeWorkflowId = (typeof agentNativeWorkflowIds)[number];
 
 export interface StudioSection {
   id: StudioSectionId;
@@ -52,18 +38,18 @@ export interface StudioSection {
 
 export const studioSections: StudioSection[] = [
   {
-    id: "launchpad",
-    labelKey: "nav.launchpad.label",
-    descriptionKey: "nav.launchpad.description",
+    id: "home",
+    labelKey: "nav.home.label",
+    descriptionKey: "nav.home.description",
     statusKey: "status.ready",
     icon: Gauge,
   },
   {
-    id: "agent-mesh",
-    labelKey: "nav.agentMesh.label",
-    descriptionKey: "nav.agentMesh.description",
+    id: "play",
+    labelKey: "nav.play.label",
+    descriptionKey: "nav.play.description",
     statusKey: "status.ready",
-    icon: Network,
+    icon: Play,
   },
   {
     id: "world",
@@ -91,7 +77,7 @@ export const studioSections: StudioSection[] = [
     labelKey: "nav.state.label",
     descriptionKey: "nav.state.description",
     statusKey: "status.ready",
-    icon: Network,
+    icon: Boxes,
   },
   {
     id: "rules",
@@ -108,16 +94,9 @@ export const studioSections: StudioSection[] = [
     icon: Boxes,
   },
   {
-    id: "playtest",
-    labelKey: "nav.playtest.label",
-    descriptionKey: "nav.playtest.description",
-    statusKey: "status.ready",
-    icon: Play,
-  },
-  {
-    id: "debugger",
-    labelKey: "nav.debugger.label",
-    descriptionKey: "nav.debugger.description",
+    id: "trace",
+    labelKey: "nav.trace.label",
+    descriptionKey: "nav.trace.description",
     statusKey: "status.ready",
     icon: Bug,
   },
@@ -137,129 +116,10 @@ export const studioSections: StudioSection[] = [
   },
 ];
 
-export interface AgentNativeWorkflow {
-  id: AgentNativeWorkflowId;
-  labelKey: string;
-  shortLabelKey: string;
-  descriptionKey: string;
-  statusKey: string;
-  icon: LucideIcon;
-  defaultSectionId: StudioSectionId;
-  sectionIds: readonly StudioSectionId[];
-}
-
-export const agentNativeWorkflows: readonly AgentNativeWorkflow[] = [
-  {
-    id: "command",
-    labelKey: "workflow.command.label",
-    shortLabelKey: "workflow.command.shortLabel",
-    descriptionKey: "workflow.command.description",
-    statusKey: "status.ready",
-    icon: Gauge,
-    defaultSectionId: "launchpad",
-    sectionIds: ["launchpad"],
-  },
-  {
-    id: "game",
-    labelKey: "workflow.game.label",
-    shortLabelKey: "workflow.game.shortLabel",
-    descriptionKey: "workflow.game.description",
-    statusKey: "status.ready",
-    icon: Play,
-    defaultSectionId: "playtest",
-    sectionIds: ["playtest", "state"],
-  },
-  {
-    id: "agents",
-    labelKey: "workflow.agents.label",
-    shortLabelKey: "workflow.agents.shortLabel",
-    descriptionKey: "workflow.agents.description",
-    statusKey: "status.ready",
-    icon: Network,
-    defaultSectionId: "agent-mesh",
-    sectionIds: ["agent-mesh"],
-  },
-  {
-    id: "artifacts",
-    labelKey: "workflow.artifacts.label",
-    shortLabelKey: "workflow.artifacts.shortLabel",
-    descriptionKey: "workflow.artifacts.description",
-    statusKey: "status.ready",
-    icon: Boxes,
-    defaultSectionId: "assets",
-    sectionIds: ["assets", "world", "story", "characters", "rules"],
-  },
-  {
-    id: "proof",
-    labelKey: "workflow.proof.label",
-    shortLabelKey: "workflow.proof.shortLabel",
-    descriptionKey: "workflow.proof.description",
-    statusKey: "status.ready",
-    icon: Bug,
-    defaultSectionId: "debugger",
-    sectionIds: ["debugger"],
-  },
-  {
-    id: "export",
-    labelKey: "workflow.export.label",
-    shortLabelKey: "workflow.export.shortLabel",
-    descriptionKey: "workflow.export.description",
-    statusKey: "status.ready",
-    icon: ShipWheel,
-    defaultSectionId: "export-kit",
-    sectionIds: ["export-kit"],
-  },
-  {
-    id: "source",
-    labelKey: "workflow.source.label",
-    shortLabelKey: "workflow.source.shortLabel",
-    descriptionKey: "workflow.source.description",
-    statusKey: "status.ready",
-    icon: FileCode,
-    defaultSectionId: "source-files",
-    sectionIds: ["source-files"],
-  },
-];
-
-export function getAgentNativeWorkflow(
-  id: AgentNativeWorkflowId,
-): AgentNativeWorkflow {
-  const workflow = agentNativeWorkflows.find((candidate) => candidate.id === id);
-  if (!workflow) {
-    throw new Error(`Unknown agent-native workflow: ${id}`);
-  }
-  return workflow;
-}
-
 export function getStudioSection(id: StudioSectionId): StudioSection {
   const section = studioSections.find((candidate) => candidate.id === id);
   if (!section) {
     throw new Error(`Unknown Studio section: ${id}`);
   }
   return section;
-}
-
-export function workflowForSection(
-  sectionId: StudioSectionId,
-): AgentNativeWorkflow {
-  const workflow = agentNativeWorkflows.find((candidate) =>
-    candidate.sectionIds.includes(sectionId),
-  );
-  if (!workflow) {
-    throw new Error(`Studio section is not assigned to a workflow: ${sectionId}`);
-  }
-  return workflow;
-}
-
-export function defaultSectionForWorkflow(
-  workflowId: AgentNativeWorkflowId,
-): StudioSectionId {
-  return getAgentNativeWorkflow(workflowId).defaultSectionId;
-}
-
-export function isSectionInWorkflow(
-  sectionId: StudioSectionId,
-  workflowId: AgentNativeWorkflowId,
-): boolean {
-  return getAgentNativeWorkflow(workflowId).sectionIds.includes(sectionId);
 }

@@ -149,6 +149,49 @@ export function AssetMaintenanceView({
               </div>
             ),
           },
+          {
+            id: "source-files",
+            label: t("assets.sourceFilesTab"),
+            badge: sourceFiles.length,
+            children: (
+              <div className="grid gap-3">
+                <p className="text-sm text-ink/55">
+                  {t("assets.sourceFilesNote")}
+                </p>
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {sourceFiles.map((file) => (
+                    <article
+                      key={file.path}
+                      className="rounded-lg border border-canvas-200 bg-canvas-50 p-4 text-ink shadow-studio-panel"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase text-graphite-700/45">
+                            {file.kind}
+                          </p>
+                          <h4 className="mt-1 truncate text-base font-semibold">
+                            {file.path}
+                          </h4>
+                        </div>
+                        <span
+                          className={`rounded-sm border px-2 py-1 text-xs font-semibold ${
+                            file.editable
+                              ? "border-health-500/35 bg-health-500/15 text-health-500"
+                              : "border-canvas-200/40 bg-canvas-100/60 text-graphite-700/80"
+                          }`}
+                        >
+                          {file.editable ? t("common.editable") : t("common.readOnly")}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs text-ink/55">
+                        {t("assets.bytes")}: {file.bytes}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ),
+          },
         ]}
       />
     </section>

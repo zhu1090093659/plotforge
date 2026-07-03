@@ -11,15 +11,14 @@ import {
 describe("creator desktop i18n", () => {
   it("translates dotted keys to zh", () => {
     expect(translate("common.save", "zh")).toBe("保存");
-    expect(translate("commandCenter.runProof", "zh")).toBe("运行证明");
     expect(translate("trace.traceEvidence", "zh")).toBe("追踪证据");
     expect(translate("export.exportPackage", "zh")).toBe("导出包");
-    expect(translate("mesh.capabilityMatrix", "zh")).toBe("能力矩阵");
+    expect(translate("launchpad.projectOverview", "zh")).toBe("项目概览");
   });
 
   it("returns en value for en locale", () => {
     expect(translate("common.save", "en")).toBe("Save");
-    expect(translate("commandCenter.runProof", "en")).toBe("Run proof");
+    expect(translate("trace.traceEvidence", "en")).toBe("Trace Evidence");
   });
 
   it("interpolates params into zh and en", () => {

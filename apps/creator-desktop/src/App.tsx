@@ -5,15 +5,12 @@ import type {
   ProjectCreationRequest,
   ProjectTemplateId,
 } from "../../../contracts/plotforge";
-import { AgentMeshView } from "./AgentMeshView";
 import { AgentChatRail } from "./AgentChatRail";
-import { ArtifactReviewView } from "./ArtifactReviewView";
 import { AssetMaintenanceView } from "./AssetMaintenanceView";
 import { LaunchpadView } from "./LaunchpadView";
 import { CharactersView } from "./CharactersView";
 import { StateView } from "./StateView";
-import { CommandCenterView } from "./CommandCenterView";
-import { DirectorModeView } from "./DirectorModeView";
+import { PlayView } from "./PlayView";
 import { ExportView } from "./ExportView";
 import { RulesView } from "./RulesView";
 import { SourceView } from "./SourceView";
@@ -27,19 +24,13 @@ import {
   type StudioDataSource,
 } from "./studioDataSource";
 import {
-  agentNativeWorkflows,
-  getAgentNativeWorkflow,
   getStudioSection,
-  isSectionInWorkflow,
   studioSections,
-  workflowForSection,
-  type AgentNativeWorkflowId,
   type StudioSectionId,
 } from "./studioModel";
 import {
   Collapsible,
   StudioButton,
-  StudioPanel,
   StudioShell,
   StudioStatusChip,
   type StudioNavItem,
@@ -70,13 +61,8 @@ function AppContent({
   initialProjectPath = defaultProjectPath(),
 }: AppProps) {
   const { t } = useStudioI18n();
-  const [activeWorkflow, setActiveWorkflow] =
-    useState<AgentNativeWorkflowId>("source");
   const [activeSection, setActiveSection] =
     useState<StudioSectionId>("source-files");
-  const [expandedWorkflows, setExpandedWorkflows] = useState<
-    Set<AgentNativeWorkflowId>
-  >(() => new Set(["source"]));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const rail = useStudioRail();
@@ -128,7 +114,6 @@ function AppContent({
   const [createError, setCreateError] = useState<string | null>(null);
 
   const activeSectionMeta = getStudioSection(activeSection);
-  const activeWorkflowMeta = getAgentNativeWorkflow(activeWorkflow);
 
   useEffect(() => {
     setCreateProjectPath(defaultNewProjectPath(initialProjectPath));
@@ -155,21 +140,20 @@ function AppContent({
   async function runPlaytest() {
     const result = await playtest.runPlaytest(loadedPath);
     if (result.succeeded) {
-      setActiveWorkflow("proof");
-      setActiveSection("debugger");
-      setExpandedWorkflows((prev) => {
-        const next = new Set(prev);
-        next.add("proof");
-        return next;
-      });
-    } else {
-      setActiveWorkflow("game");
-      setActiveSection("playtest");
-      setExpandedWorkflows((prev) => {
-        const next = new Set(prev);
-        next.add("game");
-        return next;
-      });
+      setActiveSection("trace");
+    }
+    return result;
+  }
+
+  // "Click option = submit": submit the clicked choice label directly as
+  // the turn intent through `submitWith` (which sets the shared input and
+  // runs with the argument in one closure — `setPlaytestInput` + `submit()`
+  // would read stale state within the same tick). The turn appears in the
+  // right-side chat rail and the user is moved to the Trace view.
+  async function handleChooseChoice(choiceLabel: string) {
+    const result = await agent.submitWith(choiceLabel);
+    if (result?.succeeded) {
+      setActiveSection("trace");
     }
   }
 
@@ -202,29 +186,8 @@ function AppContent({
     }
   }
 
-  function toggleWorkflowExpand(workflowId: AgentNativeWorkflowId) {
-    setExpandedWorkflows((prev) => {
-      const next = new Set(prev);
-      if (next.has(workflowId)) {
-        next.delete(workflowId);
-      } else {
-        next.add(workflowId);
-      }
-      return next;
-    });
-  }
-
   function openStudioSection(section: StudioSectionId) {
-    const workflowId = isSectionInWorkflow(section, activeWorkflow)
-      ? activeWorkflow
-      : workflowForSection(section).id;
-    setActiveWorkflow(workflowId);
     setActiveSection(section);
-    setExpandedWorkflows((prev) => {
-      const next = new Set(prev);
-      next.add(workflowId);
-      return next;
-    });
     setDrawerOpen(false);
   }
 
@@ -237,22 +200,45 @@ function AppContent({
 
   function renderActiveSection() {
     switch (activeSection) {
-      case "agent-mesh":
+      case "home":
         return (
-          <AgentMeshView
+          <LaunchpadView
             projectSummary={projectSummary}
+            projectData={projectData}
             loadedPath={loadedPath}
-            runtimeName={dataSource.runtimeName}
-            sourceFiles={sourceFiles}
-            assetRecordCount={
-              assetCatalog.items.filter((item) => item.source === "record")
-                .length
+            checkReport={checkReport}
+            metrics={metrics}
+            createProjectPath={createProjectPath}
+            setCreateProjectPath={setCreateProjectPath}
+            createTemplate={createTemplate}
+            setCreateTemplate={setCreateTemplate}
+            createConcept={createConcept}
+            setCreateConcept={setCreateConcept}
+            createVisualStyle={createVisualStyle}
+            setCreateVisualStyle={setCreateVisualStyle}
+            createVoiceEnabled={createVoiceEnabled}
+            setCreateVoiceEnabled={setCreateVoiceEnabled}
+            createInitialSceneRequest={createInitialSceneRequest}
+            setCreateInitialSceneRequest={setCreateInitialSceneRequest}
+            createForce={createForce}
+            setCreateForce={setCreateForce}
+            createReport={createReport}
+            creating={creating}
+            createError={createError}
+            onOpenSection={openStudioSection}
+            onCreateProject={(path, request, force) =>
+              void handleCreateProject(path, request, force)
             }
-            exportProfileCount={exportWorkspace.exportProfiles.length}
-            playtestReport={playtest.playtestReport}
-            piAgentCapabilities={piAgentCapabilities}
-            onOpenTrace={() => openStudioSection("debugger")}
-            onRunPlayableProof={() => void runPlaytest()}
+          />
+        );
+      case "play":
+        return (
+          <PlayView
+            projectData={projectData}
+            loadedPath={loadedPath}
+            report={playtest.playtestReport}
+            running={playtest.playtesting}
+            onChooseChoice={(label) => void handleChooseChoice(label)}
           />
         );
       case "world":
@@ -354,58 +340,24 @@ function AppContent({
         );
       case "assets":
         return (
-          <ArtifactReviewView
-            projectSummary={projectSummary}
-            loadedPath={loadedPath}
-            sourceFiles={sourceFiles}
+          <AssetMaintenanceView
             assetCatalog={assetCatalog}
-            playtestReport={playtest.playtestReport}
-            playtesting={playtest.playtesting}
-            playtestError={playtest.playtestError}
-            exportReport={exportWorkspace.exportReport}
-            onOpenTrace={() => openStudioSection("debugger")}
-            onRunPlayableProof={() => void runPlaytest()}
-          >
-            <AssetMaintenanceView
-              assetCatalog={assetCatalog}
-              sourceFiles={sourceFiles}
-              visualBible={editing.visualBible}
-              audioBible={editing.audioBible}
-              saving={editing.formSaving === "assets"}
-              formStatus={editing.formStatus}
-              onUpdateVisualStyleCard={editing.updateVisualStyleCard}
-              onUpdateAudioVoiceCard={editing.updateAudioVoiceCard}
-              onSaveVisualBible={() =>
-                void editing.saveVisualBible(loadedPath)
-              }
-              onSaveAudioBible={() =>
-                void editing.saveAudioBible(loadedPath)
-              }
-            />
-          </ArtifactReviewView>
-        );
-      case "playtest":
-        return (
-          <DirectorModeView
-            projectData={projectData}
-            loadedPath={loadedPath}
-            input={playtest.playtestInput}
-            running={playtest.playtesting}
-            report={playtest.playtestReport}
-            error={playtest.playtestError}
-            saveId={playtest.playtestSaveId}
-            restoreId={playtest.playtestRestoreId}
-            restoreLatest={playtest.playtestRestoreLatest}
-            onInputChange={playtest.setPlaytestInput}
-            onSaveIdChange={playtest.setPlaytestSaveId}
-            onRestoreIdChange={playtest.setPlaytestRestoreId}
-            onRestoreLatestChange={playtest.setPlaytestRestoreLatest}
-            onRun={() => void runPlaytest()}
-            onOpenStory={() => openStudioSection("story")}
-            onOpenTrace={() => openStudioSection("debugger")}
+            sourceFiles={sourceFiles}
+            visualBible={editing.visualBible}
+            audioBible={editing.audioBible}
+            saving={editing.formSaving === "assets"}
+            formStatus={editing.formStatus}
+            onUpdateVisualStyleCard={editing.updateVisualStyleCard}
+            onUpdateAudioVoiceCard={editing.updateAudioVoiceCard}
+            onSaveVisualBible={() =>
+              void editing.saveVisualBible(loadedPath)
+            }
+            onSaveAudioBible={() =>
+              void editing.saveAudioBible(loadedPath)
+            }
           />
         );
-      case "debugger":
+      case "trace":
         return (
           <TraceDebugView
             report={playtest.playtestReport}
@@ -415,6 +367,12 @@ function AppContent({
             aiSafetyPolicy={editing.aiSafetyPolicy}
             loadedPath={loadedPath}
             projectId={projectData?.game.id ?? null}
+            saveId={playtest.playtestSaveId}
+            restoreId={playtest.playtestRestoreId}
+            restoreLatest={playtest.playtestRestoreLatest}
+            onSaveIdChange={playtest.setPlaytestSaveId}
+            onRestoreIdChange={playtest.setPlaytestRestoreId}
+            onRestoreLatestChange={playtest.setPlaytestRestoreLatest}
           />
         );
       case "export-kit":
@@ -447,6 +405,7 @@ function AppContent({
           />
         );
       case "source-files":
+      default:
         return (
           <SourceView
             sourceFiles={sourceFiles}
@@ -460,57 +419,7 @@ function AppContent({
             onSaveSelectedFile={() => void saveSelectedFile()}
           />
         );
-      case "launchpad":
-      default:
-        return renderLaunchpad();
     }
-  }
-
-  function renderLaunchpad() {
-    return (
-      <LaunchpadView
-        projectSummary={projectSummary}
-        projectData={projectData}
-        loadedPath={loadedPath}
-        checkReport={checkReport}
-        metrics={metrics}
-        sourceFiles={sourceFiles}
-        selectedFile={selectedFile}
-        dirty={dirty}
-        playtestInput={playtest.playtestInput}
-        setPlaytestInput={playtest.setPlaytestInput}
-        playtesting={playtest.playtesting}
-        playtestReport={playtest.playtestReport}
-        playtestError={playtest.playtestError}
-        exportProfiles={exportWorkspace.exportProfiles}
-        exportReport={exportWorkspace.exportReport}
-        assetCatalog={assetCatalog}
-        createProjectPath={createProjectPath}
-        setCreateProjectPath={setCreateProjectPath}
-        createTemplate={createTemplate}
-        setCreateTemplate={setCreateTemplate}
-        createConcept={createConcept}
-        setCreateConcept={setCreateConcept}
-        createVisualStyle={createVisualStyle}
-        setCreateVisualStyle={setCreateVisualStyle}
-        createVoiceEnabled={createVoiceEnabled}
-        setCreateVoiceEnabled={setCreateVoiceEnabled}
-        createInitialSceneRequest={createInitialSceneRequest}
-        setCreateInitialSceneRequest={setCreateInitialSceneRequest}
-        createForce={createForce}
-        setCreateForce={setCreateForce}
-        createReport={createReport}
-        creating={creating}
-        createError={createError}
-        onRunPlayableProof={() => void runPlaytest()}
-        onOpenSection={openStudioSection}
-        onOpenExportProfile={openExportProfile}
-        onCreateProject={(path, request, force) =>
-          void handleCreateProject(path, request, force)
-        }
-        dataSource={dataSource}
-      />
-    );
   }
 
   function renderAgentRail() {
@@ -521,15 +430,20 @@ function AppContent({
         onInputChange={agent.setInput}
         running={agent.running}
         canSubmit={agent.canSubmit}
-        onSubmit={() => void agent.submit()}
+        onSubmit={async () => {
+          const result = await agent.submit();
+          if (result.succeeded) {
+            setActiveSection("trace");
+          }
+        }}
         runtimeName={dataSource.runtimeName}
-        onOpenTrace={() => openStudioSection("debugger")}
+        onOpenTrace={() => openStudioSection("trace")}
         evidence={renderEvidencePopover()}
       />
     );
   }
 
-  // The no-fake honesty surface (boundary evidence). Now shown on demand via
+  // The no-fake honesty surface (boundary evidence). Shown on demand via
   // the AgentChatRail "Evidence" popover instead of always-painted.
   function renderEvidencePopover() {
     const healthTone =
@@ -543,7 +457,7 @@ function AppContent({
 
     return (
       <div className="grid gap-3">
-        <StudioPanel>
+        <div className="rounded-lg border border-canvas-200 bg-canvas-50 p-3">
           <div className="flex flex-wrap gap-2">
             <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
             <StudioStatusChip tone="accent">{dataSource.runtimeName}</StudioStatusChip>
@@ -563,87 +477,32 @@ function AppContent({
               )}
             />
           </div>
-        </StudioPanel>
+        </div>
 
         <Collapsible
-          label={t("app.backendBoundary")}
+          label={t("app.boundariesLabel")}
           defaultOpen={false}
         >
-          <div className="rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h4 className="font-display text-sm font-semibold tracking-display text-ink">
-                  {t("app.realStudioCommandSurface")}
-                </h4>
-              </div>
-              <StudioStatusChip tone="health">{dataSource.runtimeName}</StudioStatusChip>
-            </div>
-
-            <div className="mt-3 grid gap-2 text-sm">
-              <PreviewEvidenceLine
-                label={t("app.projectSource")}
-                value={t("app.folderFiles")}
-              />
-              <PreviewEvidenceLine
-                label={t("app.runtime")}
-                value={playtest.playtestReport?.trace.id ?? t("common.notRun")}
-              />
-              <PreviewEvidenceLine
-                label={t("app.export")}
-                value={exportWorkspace.exportReport?.archive_path ?? t("common.notExported")}
-              />
-              <PreviewEvidenceLine
-                label={t("app.externalAgents")}
-                value={t("common.notImplemented")}
-              />
-            </div>
-
-            <div className="mt-3 grid gap-2">
-              {[
-                t("app.boundary.browserMode"),
-                t("app.boundary.tauriMode"),
-                t("app.boundary.piAgent"),
-              ].map((boundary) => (
-                <p
-                  key={boundary}
-                  className="rounded-md border border-canvas-200 bg-canvas-100 px-3 py-2 text-xs leading-5 text-graphite-700/75"
-                >
-                  {boundary}
-                </p>
-              ))}
-            </div>
+          <div className="grid gap-2 text-sm text-ink/70">
+            <p>{t("app.boundariesLocalOnly")}</p>
+            <p>{t("app.boundariesNoExternalAgent")}</p>
+            <p>{t("app.boundariesNoUpload")}</p>
+            <p>{t("app.boundariesFolderWins")}</p>
           </div>
         </Collapsible>
       </div>
     );
   }
 
-  const navItems: StudioNavItem[] = agentNativeWorkflows.map((workflow) => {
-    const isActiveWorkflow = workflow.id === activeWorkflow;
-    const sectionItems = workflow.sectionIds.map((sectionId) => {
-      const section = getStudioSection(sectionId);
-      return {
-        id: sectionId,
-        label: t(section.labelKey),
-        sublabel: t(section.statusKey),
-        description: t(section.descriptionKey),
-        icon: section.icon,
-        selected: sectionId === activeSection,
-        onSelect: () => openStudioSection(sectionId),
-      } satisfies StudioNavItem;
-    });
-    const hasMultipleSections = sectionItems.length > 1;
-    return {
-      id: workflow.id,
-      label: t(workflow.labelKey),
-      sublabel: t(workflow.shortLabelKey),
-      description: t(workflow.descriptionKey),
-      icon: workflow.icon,
-      selected: isActiveWorkflow,
-      onSelect: () => openStudioSection(workflow.defaultSectionId),
-      children: hasMultipleSections ? sectionItems : undefined,
-    } satisfies StudioNavItem;
-  });
+  const navItems: StudioNavItem[] = studioSections.map((section) => ({
+    id: section.id,
+    label: t(section.labelKey),
+    sublabel: t(section.descriptionKey),
+    description: t(section.descriptionKey),
+    icon: section.icon,
+    selected: section.id === activeSection,
+    onSelect: () => openStudioSection(section.id),
+  }));
 
   const paletteActions: PaletteAction[] = [
     ...studioSections.map((section) => ({
@@ -675,13 +534,11 @@ function AppContent({
       projectLoading={loading}
       onOpenProject={() => void loadProject(projectPath)}
       navItems={navItems}
-      expandedIds={expandedWorkflows}
-      onToggleExpand={(id) =>
-        toggleWorkflowExpand(id as AgentNativeWorkflowId)
-      }
+      expandedIds={new Set()}
+      onToggleExpand={() => {}}
       header={{
         title: t(activeSectionMeta.labelKey),
-        subtitle: `${projectSummary?.title ?? t("app.noProjectLoaded")} - ${t(activeWorkflowMeta.descriptionKey)}`,
+        subtitle: `${projectSummary?.title ?? t("app.noProjectLoaded")} - ${t(activeSectionMeta.descriptionKey)}`,
       }}
       topActions={
         <>
@@ -743,23 +600,6 @@ function EvidenceLine({
     <div className="min-w-0">
       <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/65">{label}</p>
       <p className="font-display mt-1 truncate text-sm font-semibold tracking-tightish text-ink">{value}</p>
-    </div>
-  );
-}
-
-function PreviewEvidenceLine({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
-      <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/60">
-        {label}
-      </p>
-      <p className="font-display truncate text-xs font-semibold tracking-tightish text-ink">{value}</p>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   ScenePreviewImage,
   Collapsible,
   CollapsibleSection,
+  studioUiClassNames,
 } from "./studioUi";
 import { useStudioI18n } from "./i18n";
 
@@ -28,6 +29,18 @@ export interface TraceDebugViewProps {
   aiSafetyPolicy?: AiSafetyPolicy | null;
   loadedPath?: string | null;
   projectId?: string | null;
+  /** Snapshot save id (shared with the playtest workspace). */
+  saveId?: string;
+  /** Snapshot restore id (shared with the playtest workspace). */
+  restoreId?: string;
+  /** Whether to restore from the latest snapshot instead of a specific id. */
+  restoreLatest?: boolean;
+  /** Update the snapshot save id. */
+  onSaveIdChange?(value: string): void;
+  /** Update the snapshot restore id. */
+  onRestoreIdChange?(value: string): void;
+  /** Toggle restoring from the latest snapshot. */
+  onRestoreLatestChange?(value: boolean): void;
 }
 
 export interface NarrativeReviewPanelProps {
@@ -42,6 +55,12 @@ export function TraceDebugView({
   aiSafetyPolicy = null,
   loadedPath = null,
   projectId = null,
+  saveId = "",
+  restoreId = "",
+  restoreLatest = false,
+  onSaveIdChange,
+  onRestoreIdChange,
+  onRestoreLatestChange,
 }: TraceDebugViewProps) {
   const { t } = useStudioI18n();
   const trace = report?.trace ?? null;
@@ -258,6 +277,52 @@ export function TraceDebugView({
             </div>
           )}
         </div>
+
+        <Collapsible
+          label={t("trace.advancedSnapshotControls")}
+          defaultOpen={false}
+          id="trace-snapshot-controls"
+          className="rounded-md border border-canvas-200 bg-canvas-50 p-3"
+        >
+          <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+            <label className="grid min-w-0 gap-1">
+              <span className="text-xs font-medium uppercase text-ink/45">
+                {t("trace.saveId")}
+              </span>
+              <input
+                aria-label={t("trace.aria.playtestSaveId")}
+                value={saveId}
+                onChange={(event) => onSaveIdChange?.(event.target.value)}
+                className={studioUiClassNames.input}
+              />
+            </label>
+            <label className="grid min-w-0 gap-1">
+              <span className="text-xs font-medium uppercase text-ink/45">
+                {t("trace.restoreId")}
+              </span>
+              <input
+                aria-label={t("trace.aria.playtestRestoreId")}
+                value={restoreId}
+                disabled={restoreLatest}
+                onChange={(event) => onRestoreIdChange?.(event.target.value)}
+                className={`${studioUiClassNames.input} disabled:cursor-not-allowed disabled:bg-ink/5 disabled:text-ink/35`}
+              />
+            </label>
+            <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-ink/10 px-3 text-sm font-medium text-ink/70">
+              <input
+                type="checkbox"
+                aria-label={t("trace.aria.restoreLatestSave")}
+                checked={restoreLatest}
+                onChange={(event) => onRestoreLatestChange?.(event.target.checked)}
+                className="h-4 w-4 accent-ink"
+              />
+              {t("trace.restoreLatest")}
+            </label>
+          </div>
+          <p className="mt-3 text-xs text-ink/55">
+            {t("trace.snapshotHint")}
+          </p>
+        </Collapsible>
 
         <aside
           aria-label={t("trace.aria.proofEvidencePanel")}

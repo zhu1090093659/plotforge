@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { PlayOnceReport } from "./tauriBridge";
-import type { PlaytestWorkspace } from "./usePlaytest";
+import type { PlaytestRunResult, PlaytestWorkspace } from "./usePlaytest";
 
 // ---------------------------------------------------------------------------
 // useAgentConversation — the Cursor-style agent chat state.
@@ -31,7 +31,17 @@ export interface AgentConversationWorkspace {
   turns: AgentTurn[];
   running: boolean;
   canSubmit: boolean;
-  submit(): Promise<void>;
+  /** Run a turn using the current shared `input` state. */
+  submit(): Promise<PlaytestRunResult>;
+  /**
+   * Run a turn with an explicit intent (e.g. a clicked choice label),
+   * bypassing the shared-input React-state commit delay. Also mirrors the
+   * intent into the shared input box so the chat rail stays in sync. This is
+   * the only correct path for "click a choice → submit it" because
+   * `setPlaytestInput` + `submit()` would read stale state inside the same
+   * tick.
+   */
+  submitWith(intent: string): Promise<PlaytestRunResult>;
 }
 
 export function useAgentConversation(
@@ -42,23 +52,59 @@ export function useAgentConversation(
   // Monotonic id counter (deterministic for tests).
   const idCounterRef = useRef(0);
 
-  const submit = useCallback(async () => {
-    const intent = playtest.playtestInput.trim();
-    if (!intent || playtest.playtesting) {
-      return;
-    }
-    const result = await playtest.runPlaytest(loadedPath);
-    idCounterRef.current += 1;
-    setTurns((prev) => [
-      ...prev,
-      {
-        id: `agent-turn-${idCounterRef.current}`,
-        intent,
-        report: result.succeeded ? result.report : null,
-        error: result.succeeded ? null : result.error,
-      },
-    ]);
-  }, [playtest, loadedPath]);
+  const runAndAppend = useCallback(
+    async (intent: string): Promise<PlaytestRunResult> => {
+      const trimmed = intent.trim();
+      if (!trimmed) {
+        return {
+          succeeded: false,
+          error: "Playtest input is required.",
+        };
+      }
+      if (playtest.playtesting) {
+        // React-state mirror of usePlaytest's synchronous `runningRef` guard.
+        // Same "already running" dedup case: do not surface as a chat turn.
+        return {
+          succeeded: false,
+          error: "A playtest turn is already running.",
+          deduped: true,
+        };
+      }
+      const result = await playtest.runPlaytest(loadedPath, trimmed);
+      // A deduped concurrent submit (caught by usePlaytest's `runningRef`
+      // before React state committed `playtesting=true`) is not a real
+      // failure — do not append a misleading error turn for it.
+      if (result.succeeded || !result.deduped) {
+        idCounterRef.current += 1;
+        setTurns((prev) => [
+          ...prev,
+          {
+            id: `agent-turn-${idCounterRef.current}`,
+            intent: trimmed,
+            report: result.succeeded ? result.report : null,
+            error: result.succeeded ? null : result.error,
+          },
+        ]);
+      }
+      return result;
+    },
+    [playtest, loadedPath],
+  );
+
+  const submit = useCallback(async (): Promise<PlaytestRunResult> => {
+    return runAndAppend(playtest.playtestInput);
+  }, [runAndAppend, playtest.playtestInput]);
+
+  const submitWith = useCallback(
+    async (intent: string): Promise<PlaytestRunResult> => {
+      // Mirror the intent into the shared input box so the rail shows what
+      // was submitted, then run with the argument directly (not the
+      // just-dispatched state, which is not yet visible synchronously).
+      playtest.setPlaytestInput(intent);
+      return runAndAppend(intent);
+    },
+    [runAndAppend, playtest],
+  );
 
   const setInput = playtest.setPlaytestInput;
   const canSubmit =
@@ -71,5 +117,6 @@ export function useAgentConversation(
     running: playtest.playtesting,
     canSubmit,
     submit,
+    submitWith,
   };
 }

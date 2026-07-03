@@ -8,21 +8,29 @@ REQUIRED_UI_MARKERS = [
     "PlotForge Studio",
     "Creator Desktop",
     "No project loaded",
-    "Project Launchpad",
+    # Launchpad (Home) overview surface — replaced the deleted Command Center /
+    # Project Launchpad capability matrix.
+    "Project overview",
     "Source Artifacts",
     "Agent rail",
-    "Agent Mesh",
+    # Play view — the single read-only scene preview surface.
+    "Scene preview",
+    "Play Workspace",
     "Playable Proof",
     "Trace Debug",
+    # Snapshot controls relocated from the deleted Director Mode view into the
+    # Trace view's "Advanced snapshot controls" Collapsible.
+    "Advanced snapshot controls",
     "Export Package",
     "Local export package only",
-    "Runtime Trace",
+    # Honesty-surface evidence now lives on demand inside the AgentChatRail
+    # "Evidence" popover (Local boundaries), not as an always-painted
+    # Backend Boundary / Agent Mesh panel.
+    "Local boundaries",
+    "All runs happen locally",
+    "Trace Evidence",
     "No raw responses",
     "No secret markers",
-    "Backend Boundary",
-    "Real Studio command surface",
-    "Studio-backed capabilities",
-    "No build run interface",
     "Package Evidence Summary",
 ]
 
