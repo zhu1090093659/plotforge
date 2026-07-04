@@ -58,9 +58,56 @@ select {
 @layer components {
   .font-display {
     font-optical-sizing: auto;
-    font-variation-settings: "SOFT" 30, "WONK" 0;
-    letter-spacing: -0.028em;
-    line-height: 1.08;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 144;
+    letter-spacing: -0.034em;
+    line-height: 1.06;
+  }
+}
+
+/* Hairline — the editorial manuscript rule. A 1px violet-wash border used
+ * to separate header from body, fact columns, and section groups. Never a
+ * thick divider; the whole point is restraint. */
+.hairline {
+  border-top: 1px solid color-mix(in srgb, var(--hairline, #ded7ee) 80%, transparent);
+}
+
+/* Eyebrow — the small uppercase label that sits above a display heading.
+ * Wide tracking, copper-violet tone, mono numerals when numbered. Pairs
+ * with .font-display titles to form the illuminated-manuscript header. */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #6f54a3;
+  font-feature-settings: "tnum", "ss01";
+}
+.eyebrow--copper {
+  color: #8a6450;
+}
+.eyebrow__numeral {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-feature-settings: "tnum";
+  color: #8a6450;
+}
+
+/* Reveal stagger — applied via inline animation-delay on [data-reveal]
+ * children. The keyframe lives in tailwind.config.js (reveal-in). */
+[data-reveal] {
+  will-change: transform, opacity;
+}
+
+/* Respect the user's motion preference: kill all reveal/lift animation so
+ * the interface stays usable without distraction. Pure stillness is still
+ * on-brand for a manuscript. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -70,7 +117,8 @@ select {
   color: #fdfbff;
 }
 
-/* Focus ring — soft lilac, intentional and in-family with the violet accent. */
+/* Focus ring — violet with a copper undertone, intentional and in-family
+ * with the illuminated-manuscript palette. */
 :focus-visible {
   outline: 2px solid #7a5a95;
   outline-offset: 2px;
@@ -105,8 +153,8 @@ select {
 }
 
 /* Subtle paper-grain texture for the canvas content surface, applied as a
- * faint violet radial wash so panels feel like laid lilac paper, not flat
- * #fff. */
+ * faint violet radial wash with a second copper wash for warmth so panels
+ * feel like laid illuminated parchment, not flat #fff. */
 .paper-grain {
   background-image:
     radial-gradient(
@@ -116,7 +164,7 @@ select {
     ),
     radial-gradient(
       circle at 86% 8%,
-      rgba(168, 66, 107, 0.03),
+      rgba(138, 100, 80, 0.04),
       transparent 38%
     );
   background-color: #fdfbff;

@@ -1,7 +1,16 @@
-import { Loader2, Save } from "lucide-react";
 import type { StoryCraftEditDocument } from "../../../contracts/plotforge";
 import type { StudioSectionId } from "./studioModel";
-import { CollapsibleSection, studioUiClassNames } from "./studioUi";
+import {
+  CollapsibleSection,
+  EmptyState,
+  Reveal,
+  SaveButton,
+  SectionStatusMessage,
+  TextareaInput,
+  TextInput,
+  ViewHeader,
+  studioUiClassNames,
+} from "./studioUi";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -55,31 +64,21 @@ export function StoryView({
   const bible = storyCraftEditDocument?.story_craft.bible;
 
   return (
-    <section className={studioUiClassNames.panel}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold">{t("story.title")}</h3>
-          <p className="mt-1 truncate text-sm text-ink/55">
-            {t("common.plotThreads", {
-              count: storyCraftEditDocument?.story_craft.plot_threads.length ?? 0,
-            })}
-          </p>
-        </div>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={onSave}
-          aria-label={t("story.aria.save")}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
-        >
-          {saving ? (
-            <Loader2 aria-hidden size={16} className="animate-spin" />
-          ) : (
-            <Save aria-hidden size={16} />
-          )}
-          {t("story.save")}
-        </button>
-      </div>
+    <Reveal as="section" className={`${studioUiClassNames.panel} grid`}>
+      <ViewHeader
+        title={t("story.title")}
+        subtitle={t("common.plotThreads", {
+          count: storyCraftEditDocument?.story_craft.plot_threads.length ?? 0,
+        })}
+        actions={
+          <SaveButton
+            saving={saving}
+            onSave={onSave}
+            label={t("story.save")}
+            ariaLabel={t("story.aria.save")}
+          />
+        }
+      />
 
       <SectionStatusMessage section="story" formStatus={formStatus} />
 
@@ -166,7 +165,7 @@ export function StoryView({
             {storyCraftEditDocument.story_craft.plot_threads.map((thread) => (
               <article
                 key={thread.id}
-                className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
+                className="rounded-md border border-ink/10 border-t border-ink/5 bg-canvas-50 px-3 py-3 transition ease-expo hover:-translate-y-0.5 hover:shadow-panel-lift"
               >
                 <p className="text-sm font-semibold">{thread.title}</p>
                 <p className="mt-1 text-xs font-medium uppercase text-ink/45">
@@ -184,105 +183,15 @@ export function StoryView({
           </CollapsibleSection>
         </div>
       ) : (
-        <EmptyStory />
+        <EmptyState>{t("story.notLoaded")}</EmptyState>
       )}
-    </section>
+    </Reveal>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Shared small components (local to StoryView)
 // ---------------------------------------------------------------------------
-
-function EmptyStory() {
-  const { t } = useStudioI18n();
-  return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
-      {t("story.notLoaded")}
-    </div>
-  );
-}
-
-function SectionStatusMessage({
-  section,
-  formStatus,
-}: {
-  section: StudioSectionId;
-  formStatus: FormStatus | null;
-}) {
-  if (!formStatus || formStatus.section !== section) {
-    return null;
-  }
-  const toneClass =
-    formStatus.tone === "success"
-      ? "border-sage/30 bg-sage/10 text-sage"
-      : "border-signal/30 bg-signal/10 text-signal";
-  return (
-    <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass}`}>
-      {formStatus.message}
-    </div>
-  );
-}
-
-function TextInput({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  className = "",
-  placeholder,
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange(value: string): void;
-  className?: string;
-  placeholder?: string;
-}) {
-  return (
-    <label className={`grid gap-1 ${className}`}>
-      <span className="text-xs font-medium uppercase text-ink/55">{label}</span>
-      <input
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className={studioUiClassNames.input}
-      />
-    </label>
-  );
-}
-
-function TextareaInput({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  className = "",
-  minHeight = "",
-  placeholder,
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange(value: string): void;
-  className?: string;
-  minHeight?: string;
-  placeholder?: string;
-}) {
-  return (
-    <label className={`grid gap-1 ${className}`}>
-      <span className="text-xs font-medium uppercase text-ink/55">{label}</span>
-      <textarea
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className={`${studioUiClassNames.textarea} ${minHeight}`}
-      />
-    </label>
-  );
-}
 
 function listToLines(values: string[]) {
   return values.join("\n");

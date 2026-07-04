@@ -6,8 +6,9 @@ export default {
       colors: {
         // Ink — primary text on the lavender-white canvas. Deep aubergine,
         // tinted toward violet (never the cold blue-black of generic dark
-        // themes nor the warm umber of the prior forge palette).
-        ink: "#3a3149",
+        // themes nor the warm umber of the prior forge palette). Deepened
+        // for stronger display hierarchy against the illuminated canvas.
+        ink: "#2b2238",
         // Lavender white — the default canvas. A whisper of violet, never
         // cold blue-white nor the prior warm cream.
         parchment: "#faf8ff",
@@ -16,10 +17,22 @@ export default {
         signal: "#a8426b",
         // Plum — secondary accent for status / success chips. A desaturated
         // grape, warmer than violet but still in-family. Replaces prior brass.
-        plum: "#7a5a8a",
+        plum: {
+          400: "#9a7ab0",
+          500: "#7a5a8a",
+        },
         // Sage — success / proof-valid green. A muted, cool sage that
         // complements violet without fighting it. Replaces prior jade.
         sage: "#5a8a7a",
+        // Copper — the warm metallic counterpoint to violet. Used sparingly
+        // for numbered eyebrows, hairline accents, selected-card rules, and
+        // the "agent" side of two-tone compositions. Aged-penny, not bright
+        // orange, so it stays inside the candlelit-manuscript family.
+        copper: {
+          400: "#b58a6e",
+          500: "#8a6450",
+          600: "#6b4d3d",
+        },
         // Paper — the lavender-white chrome surfaces (sidebar, evidence panel,
         // command dock). Tinted toward lilac, never cold blue-gray.
         paper: {
@@ -40,9 +53,11 @@ export default {
         // violet (not the saturated AI-slop neon purple). Pairs restraint with
         // a literary, manuscript-by-candlelight feel. Replaces prior amber.
         violet: {
+          300: "#a893cc",
           400: "#8a6fb8",
           500: "#6f54a3",
           600: "#594085",
+          700: "#473366",
         },
         // Health — success / proof-valid green (kept as a token name for the
         // chip tone system; mirrors sage).
@@ -117,12 +132,41 @@ export default {
         // Violet-tinted shadows — a soft lilac haze, never neutral gray nor
         // the prior warm-umber desk-lamp shadow.
         "studio-panel": "0 18px 48px rgba(90, 70, 130, 0.10)",
+        // Lift — a tighter, warmer shadow for hover-raised cards. Two-layer
+        // (contact + ambient) so cards feel like they rise off the parchment
+        // rather than float in a generic drop-shadow slop.
+        "panel-lift":
+          "0 1px 2px rgba(43, 34, 56, 0.04), 0 24px 64px rgba(90, 70, 130, 0.12)",
         "studio-dock": "0 -10px 28px rgba(90, 70, 130, 0.10)",
         "shell-inset": "inset 0 1px 0 rgba(138, 111, 184, 0.20)",
+      },
+      transitionTimingFunction: {
+        // Exponential ease-out (ease-out-quint-ish). Real objects decelerate
+        // smoothly; never bounce/elastic.
+        expo: "cubic-bezier(0.16, 1, 0.3, 1)",
       },
       letterSpacing: {
         tightish: "-0.018em",
         display: "-0.028em",
+        "display-tight": "-0.034em",
+        // Eyebrow — wide, uppercase micro-labels above display headings.
+        eyebrow: "0.18em",
+      },
+      keyframes: {
+        // Page-load reveal — opacity + small translateY, expo deceleration.
+        "reveal-in": {
+          "0%": { opacity: "0", transform: "translateY(6px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        // Scene image slow scale-in (opacity only, no Ken-Burns drift).
+        "scene-fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+      },
+      animation: {
+        "reveal-in": "reveal-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
+        "scene-fade-in": "scene-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both",
       },
     },
   },

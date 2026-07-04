@@ -65,9 +65,12 @@ describe("studioUi", () => {
     onCloseDrawer?: () => void;
     railCollapsed?: boolean;
     onToggleRail?: () => void;
+    sidebarCollapsed?: boolean;
+    onToggleSidebar?: () => void;
   }) {
     const toggleExpand = props?.onToggleExpand ?? vi.fn();
     const onToggleRail = props?.onToggleRail ?? vi.fn();
+    const onToggleSidebar = props?.onToggleSidebar ?? vi.fn();
     render(
       <StudioI18nProvider>
         <StudioShell
@@ -89,6 +92,8 @@ describe("studioUi", () => {
           }
           railCollapsed={props?.railCollapsed ?? false}
           onToggleRail={onToggleRail}
+          sidebarCollapsed={props?.sidebarCollapsed ?? false}
+          onToggleSidebar={onToggleSidebar}
           drawerOpen={props?.drawerOpen ?? false}
           onToggleDrawer={props?.onToggleDrawer ?? vi.fn()}
           onCloseDrawer={props?.onCloseDrawer ?? vi.fn()}
@@ -97,7 +102,7 @@ describe("studioUi", () => {
         </StudioShell>
       </StudioI18nProvider>,
     );
-    return { toggleExpand, onToggleRail };
+    return { toggleExpand, onToggleRail, onToggleSidebar };
   }
 
   it("renders shell landmarks and the agent rail", () => {
@@ -158,6 +163,8 @@ describe("studioUi", () => {
             }
             railCollapsed={railCollapsed}
             onToggleRail={vi.fn()}
+            sidebarCollapsed={false}
+            onToggleSidebar={vi.fn()}
             drawerOpen={false}
             onToggleDrawer={vi.fn()}
             onCloseDrawer={vi.fn()}
@@ -197,6 +204,8 @@ describe("studioUi", () => {
           }
           railCollapsed={true}
           onToggleRail={vi.fn()}
+          sidebarCollapsed={false}
+          onToggleSidebar={vi.fn()}
           drawerOpen={false}
           onToggleDrawer={vi.fn()}
           onCloseDrawer={vi.fn()}
@@ -232,6 +241,8 @@ describe("studioUi", () => {
           }
           railCollapsed={false}
           onToggleRail={vi.fn()}
+          sidebarCollapsed={false}
+          onToggleSidebar={vi.fn()}
           drawerOpen={false}
           onToggleDrawer={vi.fn()}
           onCloseDrawer={vi.fn()}
@@ -288,6 +299,8 @@ describe("studioUi", () => {
           rightPanel={<StudioPanel>Right</StudioPanel>}
           railCollapsed={false}
           onToggleRail={vi.fn()}
+          sidebarCollapsed={false}
+          onToggleSidebar={vi.fn()}
           drawerOpen={false}
           onToggleDrawer={onToggleDrawer}
           onCloseDrawer={onCloseDrawer}
@@ -321,6 +334,8 @@ describe("studioUi", () => {
           rightPanel={<StudioPanel>Right</StudioPanel>}
           railCollapsed={false}
           onToggleRail={vi.fn()}
+          sidebarCollapsed={false}
+          onToggleSidebar={vi.fn()}
           drawerOpen={true}
           onToggleDrawer={onToggleDrawer}
           onCloseDrawer={onCloseDrawer}
@@ -357,6 +372,8 @@ describe("studioUi", () => {
           rightPanel={<StudioPanel>Right</StudioPanel>}
           railCollapsed={false}
           onToggleRail={vi.fn()}
+          sidebarCollapsed={false}
+          onToggleSidebar={vi.fn()}
           drawerOpen={false}
           onToggleDrawer={vi.fn()}
           onCloseDrawer={vi.fn()}

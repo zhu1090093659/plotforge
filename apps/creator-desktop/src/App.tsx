@@ -436,7 +436,6 @@ function AppContent({
             setActiveSection("trace");
           }
         }}
-        runtimeName={dataSource.runtimeName}
         onOpenTrace={() => openStudioSection("trace")}
         evidence={renderEvidencePopover()}
       />
@@ -458,13 +457,12 @@ function AppContent({
     return (
       <div className="grid gap-3">
         <div className="rounded-lg border border-canvas-200 bg-canvas-50 p-3">
-          <div className="flex flex-wrap gap-2">
-            <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
-            <StudioStatusChip tone="accent">{dataSource.runtimeName}</StudioStatusChip>
-            <StudioStatusChip tone="agent">
-              {t(activeSectionMeta.statusKey)}
-            </StudioStatusChip>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
+          <StudioStatusChip tone="agent">
+            {t(activeSectionMeta.statusKey)}
+          </StudioStatusChip>
+        </div>
           <div className="mt-3 grid gap-2 text-sm">
             <EvidenceLine label={t("app.project")} value={projectSummary?.title ?? t("common.none")} />
             <EvidenceLine label={t("app.loadedPath")} value={loadedPath} />
@@ -566,6 +564,8 @@ function AppContent({
       rightPanel={renderAgentRail()}
       railCollapsed={rail.railCollapsed}
       onToggleRail={rail.toggleRail}
+      sidebarCollapsed={rail.sidebarCollapsed}
+      onToggleSidebar={rail.toggleSidebar}
       drawerOpen={drawerOpen}
       onToggleDrawer={() => setDrawerOpen((prev) => !prev)}
       onCloseDrawer={() => setDrawerOpen(false)}

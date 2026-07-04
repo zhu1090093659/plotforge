@@ -4,6 +4,8 @@ import {
   FolderOpen,
   Loader2,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRight,
   type LucideIcon,
 } from "lucide-react";
@@ -37,18 +39,269 @@ export const studioUiClassNames = {
     "rounded-lg border border-canvas-200/70 bg-canvas-50 p-5 text-ink shadow-studio-panel",
   insetPanel: "rounded-lg border border-canvas-200/70 bg-canvas-100 px-3 py-3 text-ink",
   input:
-    "h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
+    "h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   textarea:
-    "w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
+    "w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   primaryButton:
-    "inline-flex h-10 items-center gap-2 rounded-md bg-violet-500 px-4 text-sm font-semibold text-canvas-50 transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-violet-500/35 disabled:text-canvas-50/45",
+    "inline-flex h-10 items-center gap-2 rounded-md bg-violet-500 px-4 text-sm font-semibold text-canvas-50 transition ease-expo hover:bg-violet-400 active:translate-y-px disabled:cursor-not-allowed disabled:bg-violet-500/35 disabled:text-canvas-50/45",
   secondaryButton:
-    "inline-flex h-9 items-center gap-2 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm font-semibold text-ink transition hover:border-canvas-400 disabled:cursor-not-allowed disabled:text-ink/30",
+    "inline-flex h-9 items-center gap-2 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm font-semibold text-ink transition ease-expo hover:border-canvas-400 active:translate-y-px disabled:cursor-not-allowed disabled:text-ink/30",
   iconButton:
-    "grid h-10 w-10 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400 hover:bg-canvas-100",
+    "grid h-10 w-10 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-violet-400 hover:bg-canvas-100 active:translate-y-px",
+  // Primary action used at the top of structured-edit views — deep aubergine
+  // ink, candlelit, with a copper hairline accent on the bottom edge so it
+  // reads as a sealed manuscript stamp rather than a flat black pill.
+  saveButton:
+    "inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 shadow-[inset_0_-1px_0_rgba(138,100,80,0.35)] transition ease-expo hover:bg-ink/90 active:translate-y-px disabled:cursor-not-allowed disabled:bg-ink/30",
   chip:
     "rounded-sm border px-2 py-1 text-xs font-semibold",
 } as const;
+
+// ---------------------------------------------------------------------------
+// Shared view primitives — consolidate the per-view duplicates
+// ---------------------------------------------------------------------------
+
+/** A cross-section form status banner shown after a save / generate call. */
+export function SectionStatusMessage({
+  section,
+  formStatus,
+  className = "",
+}: {
+  section: string;
+  formStatus: {
+    section: string;
+    tone: "success" | "error";
+    message: string;
+  } | null;
+  className?: string;
+}) {
+  if (!formStatus || formStatus.section !== section) return null;
+  const toneClass =
+    formStatus.tone === "success"
+      ? "border-sage/30 bg-sage/10 text-sage"
+      : "border-signal/30 bg-signal/10 text-signal";
+  return (
+    <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass} ${className}`}>
+      {formStatus.message}
+    </div>
+  );
+}
+
+/** Primary save action for structured-edit views (deep aubergine stamp). */
+export function SaveButton({
+  saving,
+  onSave,
+  label,
+  ariaLabel,
+  disabled,
+}: {
+  saving: boolean;
+  onSave(): void;
+  label: string;
+  ariaLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled ?? saving}
+      onClick={onSave}
+      aria-label={ariaLabel}
+      className={studioUiClassNames.saveButton}
+    >
+      {saving ? (
+        <Loader2 aria-hidden size={16} className="animate-spin" />
+      ) : null}
+      {label}
+    </button>
+  );
+}
+
+/** Small uppercase field label that sits above an input/textarea. */
+export function FieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+      {children}
+    </span>
+  );
+}
+
+export interface TextInputProps {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange(value: string): void;
+  className?: string;
+  placeholder?: string;
+}
+
+export function TextInput({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  className = "",
+  placeholder,
+}: TextInputProps) {
+  return (
+    <label className={`grid gap-1 ${className}`}>
+      <FieldLabel>{label}</FieldLabel>
+      <input
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={studioUiClassNames.input}
+      />
+    </label>
+  );
+}
+
+export interface TextareaInputProps {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange(value: string): void;
+  className?: string;
+  minHeight?: string;
+  placeholder?: string;
+}
+
+export function TextareaInput({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  className = "",
+  minHeight = "",
+  placeholder,
+}: TextareaInputProps) {
+  return (
+    <label className={`grid gap-1 ${className}`}>
+      <FieldLabel>{label}</FieldLabel>
+      <textarea
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={`${studioUiClassNames.textarea} ${minHeight}`}
+      />
+    </label>
+  );
+}
+
+export interface ViewHeaderProps {
+  /** Optional copper eyebrow label above the title (use a distinct category
+   *  word, never a copy of `title`). Omit to render title-only — avoids
+   *  duplicating the heading text the user can already see. */
+  eyebrow?: string;
+  /** Display heading title (rendered in Fraunces). */
+  title: string;
+  /** Optional muted subtitle below the title. */
+  subtitle?: string;
+  /** Optional count chip rendered after the subtitle. */
+  count?: string;
+  /** Optional right-aligned actions (save button, chips, etc.). */
+  actions?: ReactNode;
+  className?: string;
+}
+
+/**
+ * The illuminated-manuscript view header: an optional copper eyebrow, a
+ * Fraunces display title, a muted subtitle, and a hairline rule under the
+ * block. Replaces the per-view `flex justify-between h3 + p` block. The
+ * eyebrow is optional and should be a distinct category label — passing the
+ * same text as `title` duplicates the heading and is discouraged.
+ */
+export function ViewHeader({
+  eyebrow,
+  title,
+  subtitle,
+  count,
+  actions,
+  className = "",
+}: ViewHeaderProps) {
+  return (
+    <div className={className}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+          <h3 className="font-display mt-1 text-2xl font-semibold tracking-display-tight text-ink">
+            {title}
+          </h3>
+          {subtitle ? (
+            <p className="mt-1.5 max-w-2xl truncate text-sm leading-5 text-graphite-700/70">
+              {subtitle}
+              {count ? (
+                <span className="ml-2 rounded-sm border border-canvas-200/55 bg-canvas-100 px-1.5 py-0.5 text-xs font-semibold text-graphite-700/75">
+                  {count}
+                </span>
+              ) : null}
+            </p>
+          ) : null}
+        </div>
+        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      </div>
+      <div className="hairline mt-4" />
+    </div>
+  );
+}
+
+/**
+ * Teaching empty state — a dashed parchment card with a heading + hint.
+ * Replaces the per-view `EmptyX` boxes that only said "not loaded".
+ */
+export function EmptyState({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`mt-4 grid place-items-center gap-1 rounded-md border border-dashed border-ink/15 bg-ink/[0.02] px-4 py-8 text-center text-sm text-ink/55 ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Staggered-reveal wrapper. Wraps a view's root content and applies the
+ * `reveal-in` animation with a configurable delay so headings, panels, and
+ * cards fade up in sequence on view mount. Pure opacity+transform (expo
+ * easing); respects prefers-reduced-motion via the global guard in
+ * styles.css. The wrapper itself renders nothing in the box model.
+ */
+export function Reveal({
+  delay = 0,
+  as: Tag = "div",
+  className = "",
+  ariaLabel,
+  children,
+}: {
+  /** Stagger delay in milliseconds. */
+  delay?: number;
+  as?: "div" | "section";
+  className?: string;
+  /** Optional accessible name forwarded to the wrapper element. Kept as an
+   *  explicit prop so the aria contract is part of Reveal's typed surface
+   *  (not a silently-passed-through intrinsic attribute). */
+  ariaLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Tag
+      data-reveal
+      aria-label={ariaLabel}
+      className={`animate-reveal-in ${className}`}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      {children}
+    </Tag>
+  );
+}
 
 export interface StudioNavItem {
   id: string;
@@ -79,6 +332,11 @@ interface StudioShellProps {
   rightPanel: ReactNode;
   railCollapsed: boolean;
   onToggleRail(): void;
+  /** Sidebar collapsed = icon-only rail. When true the sidebar narrows to a
+   *  slim icon strip; nav buttons hide their label/sublabel and switch view
+   *  on click (no expand behavior changes for leaf items). */
+  sidebarCollapsed: boolean;
+  onToggleSidebar(): void;
   drawerOpen: boolean;
   onToggleDrawer(): void;
   onCloseDrawer(): void;
@@ -97,6 +355,8 @@ export function StudioShell({
   rightPanel,
   railCollapsed,
   onToggleRail,
+  sidebarCollapsed,
+  onToggleSidebar,
   drawerOpen,
   onToggleDrawer,
   onCloseDrawer,
@@ -105,47 +365,105 @@ export function StudioShell({
   const { t } = useStudioI18n();
   const sidebarContent = (
     <>
-      <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-md border border-violet-400/55 bg-violet-500 font-display text-base font-black tracking-display text-canvas-50">
+      <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"}`}>
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-copper-500/55 bg-violet-500 font-display text-base font-black tracking-display text-canvas-50 shadow-[inset_0_-1px_0_rgba(138,100,80,0.4)]">
           {t("brand.logo")}
         </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-tightish text-violet-600">
-            {t("brand.studio")}
-          </p>
-          <h1 className="font-display truncate text-xl font-semibold tracking-display text-ink">
-            {t("brand.creatorDesktop")}
-          </h1>
-        </div>
+        {!sidebarCollapsed ? (
+          <div className="min-w-0">
+            <p className="eyebrow">{t("brand.studio")}</p>
+            <h1 className="font-display truncate text-xl font-semibold tracking-display-tight text-ink">
+              {t("brand.creatorDesktop")}
+            </h1>
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-6 flex items-center justify-between rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-tightish text-graphite-700/70">
-            {t("shell.openProject")}
-          </p>
-          <p className="max-w-44 truncate text-sm font-semibold text-ink">
-            {projectPath}
-          </p>
-        </div>
+      {!sidebarCollapsed ? <div className="hairline mt-5" /> : <div className="mt-5" />}
+
+      {/* Collapse toggle — sits directly above the Open-Project card so the
+       * two controls read as a stacked pair (collapse chrome, then open a
+       * project). Expanded: a quiet full-width hairline button with a
+       * "Collapse sidebar" label + the panel-left glyph. Collapsed: an
+       * icon-only square, centred, matching the icon-only Open-Project
+       * button below it. */}
+      {!sidebarCollapsed ? (
         <button
           type="button"
-          title={t("shell.openProject")}
-          onClick={onOpenProject}
-          className="grid h-9 w-9 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400"
+          aria-label={t("shell.collapseSidebar")}
+          aria-expanded={!sidebarCollapsed}
+          title={t("shell.collapseSidebar")}
+          onClick={onToggleSidebar}
+          className="group mt-4 flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1.5 text-ink/65 transition ease-expo hover:border-canvas-200 hover:bg-canvas-100 hover:text-ink active:translate-y-px"
         >
-          {projectLoading ? (
-            <Loader2 aria-hidden size={18} className="animate-spin" />
-          ) : (
-            <FolderOpen aria-hidden size={18} />
-          )}
+          <span className="text-xs font-semibold uppercase tracking-eyebrow text-graphite-700/70 transition ease-expo group-hover:text-ink/80">
+            {t("shell.collapseSidebar")}
+          </span>
+          <PanelLeftClose
+            aria-hidden
+            size={16}
+            className="shrink-0 text-graphite-700/55 transition ease-expo group-hover:text-ink"
+          />
         </button>
-      </div>
+      ) : (
+        <button
+          type="button"
+          aria-label={t("shell.expandSidebar")}
+          aria-expanded={!sidebarCollapsed}
+          title={t("shell.expandSidebar")}
+          onClick={onToggleSidebar}
+          className="mt-4 grid h-9 w-9 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
+        >
+          <PanelLeftOpen aria-hidden size={18} />
+        </button>
+      )}
+
+      {!sidebarCollapsed ? (
+        <div className="mt-2 flex items-center justify-between rounded-lg border border-canvas-200 bg-graphite-850 px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-eyebrow text-graphite-700/70">
+              {t("shell.openProject")}
+            </p>
+            <p className="mt-0.5 max-w-44 truncate text-sm font-semibold text-ink">
+              {projectPath}
+            </p>
+          </div>
+          <button
+            type="button"
+            title={t("shell.openProject")}
+            onClick={onOpenProject}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
+          >
+            {projectLoading ? (
+              <Loader2 aria-hidden size={18} className="animate-spin" />
+            ) : (
+              <FolderOpen aria-hidden size={18} />
+            )}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            title={t("shell.openProject")}
+            aria-label={t("shell.openProject")}
+            onClick={onOpenProject}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
+          >
+            {projectLoading ? (
+              <Loader2 aria-hidden size={18} className="animate-spin" />
+            ) : (
+              <FolderOpen aria-hidden size={18} />
+            )}
+          </button>
+        </div>
+      )}
 
       <StudioNavTree
         items={navItems}
         expandedIds={expandedIds}
         onToggleExpand={onToggleExpand}
+        collapsed={sidebarCollapsed}
         className="mt-5"
       />
     </>
@@ -156,33 +474,36 @@ export function StudioShell({
       <div
         data-testid="studio-shell-grid"
         className={[
-          "grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto]",
+          "grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[var(--sidebar-w)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto]",
+          sidebarCollapsed
+            ? "[--sidebar-w:64px]"
+            : "[--sidebar-w:240px]",
           railCollapsed
-            ? "xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]"
-            : "xl:grid-cols-[240px_minmax(0,1fr)_360px] 2xl:grid-cols-[260px_minmax(0,1fr)_400px]",
+            ? "xl:grid-cols-[var(--sidebar-w)_minmax(0,1fr)] 2xl:grid-cols-[var(--sidebar-w)_minmax(0,1fr)]"
+            : "xl:grid-cols-[var(--sidebar-w)_minmax(0,1fr)_360px] 2xl:grid-cols-[var(--sidebar-w)_minmax(0,1fr)_400px]",
         ].join(" ")}
       >
         <aside
           aria-label={t("shell.studioNav")}
-          className="hidden min-h-0 overflow-y-auto border-r border-canvas-200 bg-graphite-900 px-3 py-4 shadow-shell-inset lg:block"
+          className="hidden min-h-0 flex-col overflow-y-auto border-r border-canvas-200 bg-graphite-900 px-3 py-4 shadow-shell-inset lg:flex"
         >
           {sidebarContent}
         </aside>
 
         <main className="paper-grain min-w-0 text-ink lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
-          <header className="grid gap-3 border-b border-canvas-200 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,auto)] lg:items-end lg:px-6 lg:py-3 xl:px-8">
+          <header className="grid gap-3 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,auto)] lg:items-end lg:px-6 lg:py-4 xl:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 aria-label={t("shell.openNav")}
                 title={t("shell.openNav")}
                 onClick={onToggleDrawer}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-accent-400 lg:hidden"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-copper-500 active:translate-y-px lg:hidden"
               >
                 <Menu aria-hidden size={18} />
               </button>
               <div className="min-w-0">
-                <h2 className="font-display text-xl font-semibold tracking-display text-ink xl:text-2xl">
+                <h2 className="font-display text-xl font-semibold tracking-display-tight text-ink xl:text-[1.625rem]">
                   {header.title}
                 </h2>
                 <p className="mt-1 max-w-3xl truncate text-sm leading-5 text-graphite-700/75">
@@ -200,18 +521,21 @@ export function StudioShell({
                     : t("shell.collapseRail")
                 }
                 aria-expanded={!railCollapsed}
+                aria-pressed={!railCollapsed}
                 title={
                   railCollapsed
                     ? t("shell.expandRail")
                     : t("shell.collapseRail")
                 }
                 onClick={onToggleRail}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
               >
                 <PanelRight aria-hidden size={18} />
               </button>
             </div>
           </header>
+
+          <div className="hairline mx-6 lg:mx-6 xl:mx-8" />
 
           <div className="px-6 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-6 xl:px-8">
             {children}
@@ -234,7 +558,7 @@ export function StudioShell({
             aria-hidden
             data-testid="drawer-overlay"
             onClick={onCloseDrawer}
-            className="absolute inset-0 bg-ink/30"
+            className="absolute inset-0 bg-ink/30 backdrop-blur-[1px]"
           />
           <aside
             aria-label={t("shell.studioNav")}
@@ -320,22 +644,25 @@ function StudioNavTree({
   items,
   expandedIds,
   onToggleExpand,
+  collapsed,
   className,
 }: {
   items: StudioNavItem[];
   expandedIds: Set<string>;
   onToggleExpand(id: string): void;
+  collapsed?: boolean;
   className: string;
 }) {
   const { t } = useStudioI18n();
   return (
-    <nav aria-label={t("shell.studioNavTree")} className={`${className} grid gap-1`}>
+    <nav aria-label={t("shell.studioNavTree")} className={`${className} grid gap-0.5`}>
       {items.map((item) => (
         <StudioNavTreeNode
           key={item.id}
           item={item}
           expanded={expandedIds.has(item.id)}
           onToggleExpand={onToggleExpand}
+          collapsed={collapsed}
         />
       ))}
     </nav>
@@ -346,29 +673,36 @@ function StudioNavTreeNode({
   item,
   expanded,
   onToggleExpand,
+  collapsed,
 }: {
   item: StudioNavItem;
   expanded: boolean;
   onToggleExpand(id: string): void;
+  collapsed?: boolean;
 }) {
   const Icon = item.icon;
   const hasChildren = (item.children?.length ?? 0) > 0;
   const selectedClass = "border-violet-400/55 bg-violet-500 text-canvas-50";
   return (
-    <div className="relative">
+    <div className="group relative">
       {item.selected ? (
         <span
           aria-hidden
           className="absolute -left-4 top-1 bottom-1 w-1 rounded-full bg-violet-500"
         />
-      ) : null}
+      ) : (
+        <span
+          aria-hidden
+          className="absolute -left-4 top-1 bottom-1 w-px origin-top scale-y-0 rounded-full bg-copper-500 transition-transform ease-expo duration-200 group-hover:scale-y-100"
+        />
+      )}
       <button
         type="button"
         aria-label={item.label}
         aria-pressed={item.selected}
         aria-expanded={hasChildren ? expanded : undefined}
         aria-controls={hasChildren ? `nav-children-${item.id}` : undefined}
-        title={item.description}
+        title={collapsed ? item.label : item.description}
         onClick={() => {
           if (hasChildren) {
             onToggleExpand(item.id);
@@ -377,25 +711,30 @@ function StudioNavTreeNode({
           }
         }}
         className={[
-          "flex min-h-12 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
+          "flex w-full items-center rounded-md border text-left transition ease-expo",
+          collapsed
+            ? "min-h-9 justify-center border-transparent px-2 py-1.5"
+            : "min-h-10 items-center gap-3 px-3 py-1.5",
           item.selected
             ? selectedClass
             : "border-transparent text-ink/75 hover:border-canvas-200 hover:bg-canvas-100 hover:text-ink",
         ].join(" ")}
       >
-        <Icon aria-hidden size={18} className="shrink-0" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{item.label}</span>
-          <span
-            className={[
-              "block truncate text-xs",
-              item.selected ? "opacity-70" : "text-graphite-700/55",
-            ].join(" ")}
-          >
-            {item.sublabel}
+        <Icon aria-hidden size={collapsed ? 20 : 18} className="shrink-0" />
+        {!collapsed ? (
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{item.label}</span>
+            <span
+              className={[
+                "block truncate text-xs",
+                item.selected ? "opacity-70" : "text-graphite-700/55",
+              ].join(" ")}
+            >
+              {item.sublabel}
+            </span>
           </span>
-        </span>
-        {hasChildren ? (
+        ) : null}
+        {!collapsed && hasChildren ? (
           expanded ? (
             <ChevronDown aria-hidden size={16} className="shrink-0 opacity-60" />
           ) : (
@@ -406,7 +745,7 @@ function StudioNavTreeNode({
       {hasChildren && expanded ? (
         <ul
           id={`nav-children-${item.id}`}
-          className="mt-1 grid gap-1 pl-9"
+          className="mt-1 grid gap-0.5 pl-9"
         >
           {item.children!.map((child) => (
             <li key={child.id}>
@@ -431,7 +770,7 @@ function StudioNavSurfaceButton({ item }: { item: StudioNavItem }) {
       title={item.description}
       onClick={item.onSelect}
       className={[
-        "flex min-h-9 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
+        "flex min-h-8 w-full items-center gap-3 rounded-md border px-3 py-1.5 text-left transition ease-expo",
         item.selected
           ? selectedClass
           : "border-transparent text-ink/75 hover:border-canvas-200 hover:bg-canvas-100 hover:text-ink",
@@ -510,7 +849,7 @@ export function ScenePreviewImage({
         src={src}
         alt=""
         onError={() => setFailed(true)}
-        className={className}
+        className={`${className} animate-scene-fade-in`}
       />
     );
   }

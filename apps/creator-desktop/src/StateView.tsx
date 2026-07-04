@@ -1,4 +1,3 @@
-import { Loader2, Save } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   ResourceDefinition,
@@ -7,6 +6,12 @@ import type {
 import type { StudioSectionId } from "./studioModel";
 import {
   Collapsible,
+  EmptyState,
+  Reveal,
+  SaveButton,
+  SectionStatusMessage,
+  TextInput,
+  ViewHeader,
   studioUiClassNames,
 } from "./studioUi";
 import {
@@ -78,30 +83,22 @@ export function StateView({
 }: StateViewProps) {
   const { t } = useStudioI18n();
   return (
-    <section className={studioUiClassNames.panel}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold">{t("state.title")}</h3>
-          <p className="mt-1 truncate text-sm text-ink/55">
-            {t("common.resources", {
-              count: stateVariablesEditDocument?.resources.length ?? 0,
-            })}
-          </p>
-        </div>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={onSave}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
-        >
-          {saving ? (
-            <Loader2 aria-hidden size={16} className="animate-spin" />
-          ) : (
-            <Save aria-hidden size={16} />
-          )}
-          {t("state.save")}
-        </button>
-      </div>
+    <Reveal as="section" className={`${studioUiClassNames.panel} grid`}>
+      <ViewHeader
+        title={t("state.title")}
+        subtitle={t("common.resources", {
+          count: stateVariablesEditDocument?.resources.length ?? 0,
+        })}
+        actions={
+          <SaveButton
+            saving={saving}
+            onSave={onSave}
+            disabled={saving}
+            label={t("state.save")}
+            ariaLabel={t("state.save")}
+          />
+        }
+      />
 
       <SectionStatusMessage section="state" formStatus={formStatus} />
 
@@ -157,9 +154,9 @@ export function StateView({
           </Collapsible>
         </div>
       ) : (
-        <EmptyState />
+        <EmptyState>{t("state.notLoaded")}</EmptyState>
       )}
-    </section>
+    </Reveal>
   );
 }
 
@@ -254,7 +251,7 @@ function ResourceCard({
     max: resource.max,
   });
   return (
-    <article className="rounded-md border border-ink/10 bg-canvas-50 p-4">
+    <article className="transition ease-expo hover:-translate-y-0.5 hover:shadow-panel-lift rounded-md border border-ink/10 bg-canvas-50 p-4">
       <Collapsible
         label={resource.label || resource.key}
         id={`resource-${resource.key}`}
@@ -371,65 +368,6 @@ function AddResourceForm({
 // ---------------------------------------------------------------------------
 // Shared small components (local to StateView)
 // ---------------------------------------------------------------------------
-
-function EmptyState() {
-  const { t } = useStudioI18n();
-  return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-4 py-6 text-center text-sm text-ink/55">
-      {t("state.notLoaded")}
-    </div>
-  );
-}
-
-function SectionStatusMessage({
-  section,
-  formStatus,
-}: {
-  section: StudioSectionId;
-  formStatus: FormStatus | null;
-}) {
-  if (!formStatus || formStatus.section !== section) {
-    return null;
-  }
-  const toneClass =
-    formStatus.tone === "success"
-      ? "border-sage/30 bg-sage/10 text-sage"
-      : "border-signal/30 bg-signal/10 text-signal";
-  return (
-    <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass}`}>
-      {formStatus.message}
-    </div>
-  );
-}
-
-function TextInput({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  className = "",
-  placeholder,
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange(value: string): void;
-  className?: string;
-  placeholder?: string;
-}): ReactNode {
-  return (
-    <label className={`grid gap-1 ${className}`}>
-      <span className="text-xs font-medium uppercase text-ink/55">{label}</span>
-      <input
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className={studioUiClassNames.input}
-      />
-    </label>
-  );
-}
 
 function NumberInput({
   label,

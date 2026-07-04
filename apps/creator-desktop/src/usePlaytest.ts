@@ -3,8 +3,10 @@ import type { StudioDataSource } from "./studioDataSource";
 import type { PlayOnceReport } from "./tauriBridge";
 import { errorMessage } from "./errorMessage";
 
-export const defaultPlaytestInput =
-  "Raise emergency taxes while auditing corrupt officials.";
+// The agent rail textarea starts empty and surfaces the i18n placeholder
+// (`agent.directPrompt`) instead of a hardcoded English directive. The
+// placeholder is the only chrome copy that should guide the creator.
+export const defaultPlaytestInput = "";
 
 export type PlaytestRunResult =
   | { succeeded: true; report: PlayOnceReport }

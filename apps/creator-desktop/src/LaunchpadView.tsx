@@ -14,7 +14,12 @@ import type { StudioMetric } from "./useStudioWorkspace";
 import type { StudioSectionId } from "./studioModel";
 import type { ProjectData } from "../../../contracts/plotforge";
 import type { ProjectCheckReport } from "./tauriBridge";
-import { StudioButton, StudioStatusChip, StudioTabs } from "./studioUi";
+import {
+  Reveal,
+  StudioButton,
+  StudioStatusChip,
+  StudioTabs,
+} from "./studioUi";
 
 // ---------------------------------------------------------------------------
 // LaunchpadViewProps
@@ -81,20 +86,18 @@ export function LaunchpadView({
   const projectTitle = projectSummary?.title ?? t("app.noProjectLoaded");
 
   return (
-    <div className="grid gap-4">
+    <Reveal as="div" className="grid gap-4">
       <section
         aria-label={t("launchpad.aria.projectOverview")}
-        className="rounded-lg border border-canvas-200/70 bg-canvas-50 p-4 text-ink shadow-studio-panel"
+        className="rounded-lg border border-canvas-200/70 bg-canvas-50 p-5 text-ink shadow-studio-panel"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase text-violet-600">
-              {t("launchpad.projectOverview")}
-            </p>
-            <h2 className="mt-1 text-xl font-semibold text-ink">
+            <p className="eyebrow">{t("launchpad.projectOverview")}</p>
+            <h2 className="font-display mt-1 text-2xl font-semibold tracking-display-tight text-ink">
               {projectTitle}
             </h2>
-            <p className="mt-1 max-w-2xl text-sm leading-5 text-graphite-700/70">
+            <p className="mt-1.5 max-w-2xl text-sm leading-5 text-graphite-700/70">
               {loadedPath || t("launchpad.noProjectLoaded")}
             </p>
           </div>
@@ -116,24 +119,26 @@ export function LaunchpadView({
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <div className="hairline mt-4" />
+
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           {metrics.map((metric) => (
             <div
               key={metric.labelKey}
-              className="rounded-md border border-canvas-200 bg-ink/5 px-3 py-2"
+              className="min-w-0"
             >
-              <p className="text-xs font-semibold uppercase text-graphite-700/55">
+              <p className="text-xs font-semibold uppercase tracking-eyebrow text-copper-500/80">
                 {t(metric.labelKey)}
               </p>
-              <p className="mt-1 text-xl font-semibold text-ink">
+              <p className="font-display mt-1 text-2xl font-semibold tracking-tightish text-ink">
                 {metric.value}
               </p>
             </div>
           ))}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <StudioButton onClick={() => onOpenSection("play")}>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StudioButton variant="primary" onClick={() => onOpenSection("play")}>
             {t("launchpad.openPlay")}
           </StudioButton>
           <StudioButton onClick={() => onOpenSection("export-kit")}>
@@ -185,7 +190,7 @@ export function LaunchpadView({
           },
         ]}
       />
-    </div>
+    </Reveal>
   );
 }
 
@@ -250,7 +255,7 @@ function NewProjectForm({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+    <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
       <form onSubmit={handleSubmit} className="grid gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-ink/55">
@@ -259,7 +264,7 @@ function NewProjectForm({
           <button
             type="submit"
             disabled={creating}
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 shadow-[inset_0_-1px_0_rgba(138,100,80,0.35)] transition ease-expo hover:bg-ink/90 active:translate-y-px disabled:cursor-not-allowed disabled:bg-ink/30"
           >
             {t("launchpad.create")}
           </button>
@@ -432,11 +437,15 @@ function BoundaryChecks({
 
   return (
     <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
-      <h3 className="font-display text-lg font-semibold tracking-display">{t("launchpad.boundaryChecks")}</h3>
-      <div className="mt-4 grid gap-3">
+      <p className="eyebrow eyebrow--copper">{t("launchpad.boundaryChecks")}</p>
+      <h3 className="font-display mt-1 text-xl font-semibold tracking-display-tight text-ink">
+        {t("launchpad.projectHealth")}
+      </h3>
+      <div className="hairline mt-3" />
+      <div className="mt-3 grid gap-2.5">
         {checks.length > 0 ? (
           checks.map((check) => (
-            <div key={check.label} className="flex items-start gap-3">
+            <div key={check.label} className="flex items-start gap-3 border-b border-ink/5 pb-2.5 last:border-b-0 last:pb-0">
               {check.ok ? (
                 <CheckCircle2
                   aria-hidden
@@ -552,8 +561,8 @@ function MetricBox({
 }) {
   return (
     <div className="rounded-md border border-ink/10 bg-canvas-100 px-3 py-2">
-      <p className="text-xs font-medium uppercase text-ink/45">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-ink">{String(value)}</p>
+      <p className="text-xs font-semibold uppercase tracking-eyebrow text-copper-500/80">{label}</p>
+      <p className="font-display mt-1 truncate text-base font-semibold tracking-tightish text-ink">{String(value)}</p>
     </div>
   );
 }

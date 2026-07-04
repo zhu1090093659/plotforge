@@ -1,9 +1,18 @@
-import { Loader2, Save } from "lucide-react";
 import type { AssetRecord, AudioVoiceCard, VisualStyleCard } from "../../../contracts/plotforge";
 import type { StudioSectionId } from "./studioModel";
 import type { AssetCatalogItem, AssetCatalog } from "./assetCatalog";
 import type { SourceFileSummary } from "./tauriBridge";
-import { Collapsible, StudioTabs, studioUiClassNames } from "./studioUi";
+import {
+  Collapsible,
+  Reveal,
+  SaveButton,
+  SectionStatusMessage,
+  StudioTabs,
+  TextInput,
+  TextareaInput,
+  ViewHeader,
+  studioUiClassNames,
+} from "./studioUi";
 import {
   PaginationControls,
   PaginatedCardGrid,
@@ -79,17 +88,15 @@ export function AssetMaintenanceView({
   );
 
   return (
-    <section className={`${studioUiClassNames.panel} !p-4`}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold">{t("assets.title")}</h3>
-          <p className="mt-1 truncate text-sm text-ink/55">
-            {assetCatalog.source === "records"
-              ? t("common.assetRecords", { count: recordCount })
-              : t("common.sceneBgFallbacks", { count: assetCatalog.items.length })}
-          </p>
-        </div>
-      </div>
+    <Reveal as="section" className={`${studioUiClassNames.panel} !p-4 grid`}>
+      <ViewHeader
+        title={t("assets.title")}
+        subtitle={
+          assetCatalog.source === "records"
+            ? t("common.assetRecords", { count: recordCount })
+            : t("common.sceneBgFallbacks", { count: assetCatalog.items.length })
+        }
+      />
 
       <SectionStatusMessage section="assets" formStatus={formStatus} />
 
@@ -191,7 +198,7 @@ export function AssetMaintenanceView({
           },
         ]}
       />
-    </section>
+    </Reveal>
   );
 }
 
@@ -223,7 +230,8 @@ function VisualBibleEditor({
         <SaveButton
           label={t("assets.saveVisualBible")}
           saving={saving}
-          onClick={onSave}
+          onSave={onSave}
+          ariaLabel={t("assets.saveVisualBible")}
         />
       </div>
       <div className="mt-3 grid gap-3">
@@ -235,7 +243,7 @@ function VisualBibleEditor({
               id={`visual-card-${card.id}-${index}`}
               defaultOpen={false}
               badge={t("assets.styleBadge")}
-              className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
+              className="transition ease-expo hover:-translate-y-0.5 hover:shadow-panel-lift rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
             >
               <div className="mt-3 grid gap-3">
                 <TextareaInput
@@ -317,7 +325,8 @@ function AudioBibleEditor({
         <SaveButton
           label={t("assets.saveAudioBible")}
           saving={saving}
-          onClick={onSave}
+          onSave={onSave}
+          ariaLabel={t("assets.saveAudioBible")}
         />
       </div>
       <div className="mt-3 grid gap-3">
@@ -329,7 +338,7 @@ function AudioBibleEditor({
               id={`audio-card-${card.id}-${index}`}
               defaultOpen={false}
               badge={t("assets.voiceBadge")}
-              className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
+              className="transition ease-expo hover:-translate-y-0.5 hover:shadow-panel-lift rounded-md border border-ink/10 bg-canvas-50 px-3 py-3"
             >
               <div className="mt-3 grid gap-3">
                 <TextInput
@@ -506,32 +515,6 @@ function AssetCatalogCard({ item }: { item: AssetCatalogItem }) {
 // Shared small components (local to AssetMaintenanceView)
 // ---------------------------------------------------------------------------
 
-function SaveButton({
-  label,
-  saving,
-  onClick,
-}: {
-  label: string;
-  saving: boolean;
-  onClick(): void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={saving}
-      onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
-    >
-      {saving ? (
-        <Loader2 aria-hidden size={16} className="animate-spin" />
-      ) : (
-        <Save aria-hidden size={16} />
-      )}
-      {label}
-    </button>
-  );
-}
-
 function MetricBox({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-md border border-ink/10 bg-canvas-50 px-3 py-2">
@@ -545,27 +528,6 @@ function EmptyPanel({ label }: { label: string }) {
   return (
     <div className="mt-4 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm text-ink/55">
       {label}
-    </div>
-  );
-}
-
-function SectionStatusMessage({
-  section,
-  formStatus,
-}: {
-  section: StudioSectionId;
-  formStatus: FormStatus | null;
-}) {
-  if (!formStatus || formStatus.section !== section) {
-    return null;
-  }
-  const toneClass =
-    formStatus.tone === "success"
-      ? "border-sage/30 bg-sage/10 text-sage"
-      : "border-signal/30 bg-signal/10 text-signal";
-  return (
-    <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${toneClass}`}>
-      {formStatus.message}
     </div>
   );
 }
@@ -588,60 +550,6 @@ function AssetField({
         <p className="truncate text-xs text-ink/75">{value}</p>
       )}
     </div>
-  );
-}
-
-function TextInput({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  className = "",
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange(value: string): void;
-  className?: string;
-}) {
-  return (
-    <label className={`grid gap-1 ${className}`}>
-      <span className="text-xs font-medium uppercase text-ink/55">{label}</span>
-      <input
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={studioUiClassNames.input}
-      />
-    </label>
-  );
-}
-
-function TextareaInput({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  className = "",
-  minHeight = "min-h-28",
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange(value: string): void;
-  className?: string;
-  minHeight?: string;
-}) {
-  return (
-    <label className={`grid gap-1 ${className}`}>
-      <span className="text-xs font-medium uppercase text-ink/55">{label}</span>
-      <textarea
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`${studioUiClassNames.textarea} ${minHeight}`}
-      />
-    </label>
   );
 }
 

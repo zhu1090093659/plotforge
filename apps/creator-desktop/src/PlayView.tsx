@@ -1,7 +1,11 @@
 import type { ProjectData } from "../../../contracts/plotforge";
 import { resolveSceneBeat, resolveScenePreviewImage } from "./scenePreview";
 import type { PlayOnceReport } from "./tauriBridge";
-import { ScenePreviewImage, StudioStatusChip } from "./studioUi";
+import {
+  Reveal,
+  ScenePreviewImage,
+  StudioStatusChip,
+} from "./studioUi";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -49,7 +53,7 @@ export function PlayView({
   const trace = report?.trace ?? null;
 
   return (
-    <section aria-label={t("play.aria.workspace")} className="grid gap-4">
+    <Reveal as="section" ariaLabel={t("play.aria.workspace")} className="grid gap-4">
       <section
         aria-label={t("play.aria.scene")}
         className="overflow-hidden rounded-lg border border-canvas-200 bg-graphite-950 text-ink shadow-studio-panel"
@@ -57,13 +61,11 @@ export function PlayView({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-canvas-200 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
+              className={`h-2.5 w-2.5 rounded-full transition ease-expo ${
                 running ? "bg-violet-400 animate-pulse" : "bg-health-400"
               }`}
             />
-            <p className="truncate text-sm font-semibold">
-              {t("play.scene")}
-            </p>
+            <p className="eyebrow">{t("play.scene")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <StudioStatusChip tone={running ? "accent" : "health"}>
@@ -81,7 +83,7 @@ export function PlayView({
           <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/25 to-graphite-950/5" />
           <div className="relative flex min-h-[clamp(220px,40vh,420px)] flex-col justify-end p-4">
             <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
-              <p className="text-xs font-semibold uppercase text-violet-600">
+              <p className="eyebrow eyebrow--copper">
                 {scene ? `${scene.title} / ${scene.location}` : loadedPath}
               </p>
               <p className="mt-2 text-base leading-7 text-ink">
@@ -94,9 +96,9 @@ export function PlayView({
                     type="button"
                     onClick={() => onChooseChoice(choice.label)}
                     disabled={running}
-                    className="flex min-h-11 items-center gap-3 rounded-md border border-violet-500/35 bg-ink/5 px-3 text-left text-ink transition hover:border-violet-500/65 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="group flex min-h-11 items-center gap-3 rounded-md border border-violet-500/35 bg-ink/5 px-3 text-left text-ink transition ease-expo hover:border-violet-500/65 hover:bg-violet-500/10 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-violet-400/60 text-xs text-violet-600">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-copper-500/55 font-mono text-xs font-semibold text-copper-500 transition ease-expo group-hover:border-copper-500 group-hover:text-copper-600">
                       {index + 1}
                     </span>
                     <span className="min-w-0 truncate text-sm">
@@ -126,10 +128,10 @@ export function PlayView({
         </div>
       </section>
 
-      <p className="text-sm text-graphite-700/65">
+      <p className="text-sm italic text-copper-600/85">
         {t("play.directHint")}
       </p>
-    </section>
+    </Reveal>
   );
 }
 
@@ -152,10 +154,10 @@ function resolveEntryScene(projectData: ProjectData | null) {
 function CanvasFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-semibold uppercase text-graphite-700/55">
+      <p className="text-xs font-semibold uppercase tracking-eyebrow text-copper-500/80">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
+      <p className="mt-1 truncate font-display text-sm font-semibold tracking-tightish text-ink">{value}</p>
     </div>
   );
 }

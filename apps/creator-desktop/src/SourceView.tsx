@@ -1,6 +1,6 @@
-import { Loader2, Save, TerminalSquare } from "lucide-react";
+import { TerminalSquare } from "lucide-react";
 import { useStudioI18n } from "./i18n";
-import { StudioPanel } from "./studioUi";
+import { Reveal, SaveButton, StudioPanel } from "./studioUi";
 import type {
   SourceFileContent,
   SourceFileSummary,
@@ -42,8 +42,9 @@ export function SourceView({
   const { t } = useStudioI18n();
 
   return (
-    <StudioPanel>
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+    <Reveal className="grid gap-4">
+      <StudioPanel>
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <SourceFileList
           sourceFiles={sourceFiles}
           selectedFile={selectedFile}
@@ -66,8 +67,9 @@ export function SourceView({
             </p>
           )}
         </div>
-      </div>
-    </StudioPanel>
+        </div>
+      </StudioPanel>
+    </Reveal>
   );
 }
 
@@ -90,7 +92,8 @@ function SourceFileList({
     <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-5 shadow-studio-panel">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-lg font-semibold tracking-display">
+          <p className="eyebrow">{t("launchpad.sourceArtifacts")}</p>
+          <h3 className="font-display mt-1 text-xl font-semibold tracking-display-tight text-ink">
             {t("launchpad.sourceArtifacts")}
           </h3>
           <p className="mt-1 text-sm text-ink/55">
@@ -101,31 +104,42 @@ function SourceFileList({
       </div>
 
       <div className="mt-4 grid gap-2 pr-1">
-        {sourceFiles.map((file) => (
-          <button
-            type="button"
-            key={file.path}
-            onClick={() => onSelectSourceFile(file)}
-            className={[
-              "flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition",
-              selectedFile?.path === file.path
-                ? "border-ink/45 bg-canvas-50"
-                : "border-ink/10 hover:border-ink/30",
-            ].join(" ")}
-          >
-            <code className="truncate text-sm text-ink/80">{file.path}</code>
-            <span
+        {sourceFiles.map((file, index) => {
+          const selected = selectedFile?.path === file.path;
+          return (
+            <button
+              type="button"
+              key={file.path}
+              onClick={() => onSelectSourceFile(file)}
               className={[
-                "shrink-0 rounded-sm px-2 py-1 text-xs font-medium",
-                file.editable
-                  ? "bg-sage/10 text-sage"
-                  : "bg-ink/5 text-ink/55",
+                "relative flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition ease-expo hover:-translate-y-0.5 hover:shadow-panel-lift",
+                selected
+                  ? "border-copper-500 bg-canvas-50"
+                  : "border-ink/10 hover:border-ink/30",
               ].join(" ")}
             >
-              {file.editable ? t("common.editable") : file.kind}
-            </span>
-          </button>
-        ))}
+              {selected ? (
+                <span aria-hidden className="absolute left-0 top-1 bottom-1 w-px bg-copper-500" />
+              ) : null}
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="min-w-6 text-right font-mono text-xs tabular-nums text-copper-500/70">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <code className="truncate text-sm text-ink/80">{file.path}</code>
+              </span>
+              <span
+                className={[
+                  "shrink-0 rounded-sm px-2 py-1 text-xs font-medium",
+                  file.editable
+                    ? "bg-sage/10 text-sage"
+                    : "bg-ink/5 text-ink/55",
+                ].join(" ")}
+              >
+                {file.editable ? t("common.editable") : file.kind}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -157,20 +171,14 @@ function SourceEditor({
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="truncate text-sm text-ink/55">{selectedFile.path}</p>
-        <button
-          type="button"
+        <p className="truncate font-mono text-xs text-copper-600">{selectedFile.path}</p>
+        <SaveButton
+          saving={saving}
+          onSave={onSave}
+          label={t("common.save")}
+          ariaLabel={t("common.save")}
           disabled={!dirty || saving}
-          onClick={onSave}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-canvas-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:bg-ink/30"
-        >
-          {saving ? (
-            <Loader2 aria-hidden size={16} className="animate-spin" />
-          ) : (
-            <Save aria-hidden size={16} />
-          )}
-          {t("common.save")}
-        </button>
+        />
       </div>
 
       {error ? (
@@ -196,7 +204,7 @@ function SourceEditor({
               : t("common.readOnly")}
           </span>
           {dirty ? (
-            <span className="text-plum">{t("common.modified")}</span>
+            <span className="text-copper-600">{t("common.modified")}</span>
           ) : null}
         </div>
       </div>

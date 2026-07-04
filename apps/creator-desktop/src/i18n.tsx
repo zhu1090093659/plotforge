@@ -32,6 +32,8 @@ const en: Record<string, string> = {
   "shell.agentRail": "Agent rail",
   "shell.collapseRail": "Collapse agent rail",
   "shell.expandRail": "Expand agent rail",
+  "shell.collapseSidebar": "Collapse sidebar",
+  "shell.expandSidebar": "Expand sidebar",
   "shell.studioNavTree": "Studio navigation tree",
   // command palette (⌘K)
   "palette.title": "Command palette",
@@ -45,7 +47,6 @@ const en: Record<string, string> = {
   "palette.refresh": "Refresh project files",
   // agent chat rail (Cursor-style right panel)
   "agent.title": "Agent",
-  "agent.runtime": "pi-Agent runtime",
   "agent.directPrompt": "Direct the agent — describe a change…",
   "agent.empty": "No turns yet. Describe a change and run a proof turn.",
   "agent.send": "Send",
@@ -708,6 +709,8 @@ const zh: Record<string, string> = {
   "shell.agentRail": "Agent 侧栏",
   "shell.collapseRail": "收起 Agent 侧栏",
   "shell.expandRail": "展开 Agent 侧栏",
+  "shell.collapseSidebar": "收起侧边栏",
+  "shell.expandSidebar": "展开侧边栏",
   "shell.studioNavTree": "Studio 导航树",
   // command palette (⌘K)
   "palette.title": "命令面板",
@@ -721,7 +724,6 @@ const zh: Record<string, string> = {
   "palette.refresh": "刷新项目文件",
   // agent chat rail (Cursor 式右侧面板)
   "agent.title": "Agent",
-  "agent.runtime": "pi-Agent 运行时",
   "agent.directPrompt": "指挥 agent — 描述一个变更…",
   "agent.empty": "尚无对话。描述一个变更并运行一个证明回合。",
   "agent.send": "发送",

@@ -17,6 +17,7 @@ import {
   ScenePreviewImage,
   Collapsible,
   CollapsibleSection,
+  Reveal,
   studioUiClassNames,
 } from "./studioUi";
 import { useStudioI18n } from "./i18n";
@@ -84,7 +85,7 @@ export function TraceDebugView({
     );
 
   return (
-    <section aria-label={t("trace.aria.workspace")} className="grid gap-4">
+    <Reveal as="section" ariaLabel={t("trace.aria.workspace")} className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-4">
           <section
@@ -93,10 +94,10 @@ export function TraceDebugView({
           >
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-canvas-200 px-4 py-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase text-health-400">
+                <p className="eyebrow eyebrow--copper">
                   {t("trace.playableProof")}
                 </p>
-                <h3 className="mt-1 text-xl font-semibold text-ink">
+                <h3 className="font-display mt-1 text-2xl font-semibold tracking-display-tight text-ink">
                   {report?.scene.title ?? t("trace.runToCreateProof")}
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-graphite-700/65">
@@ -143,9 +144,9 @@ export function TraceDebugView({
                     {(beat?.choices ?? []).slice(0, 4).map((choice, index) => (
                       <div
                         key={choice.id}
-                        className="flex min-h-11 items-center gap-3 rounded-md border border-violet-500/35 bg-ink/5 px-3 text-ink"
+                        className="flex min-h-11 items-center gap-3 rounded-md border border-violet-500/35 bg-ink/5 px-3 text-ink transition ease-expo hover:border-violet-500/60"
                       >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-violet-400/60 text-xs text-violet-600">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-copper-500/55 text-xs text-copper-500">
                           {index + 1}
                         </span>
                         <span className="min-w-0 truncate text-sm">
@@ -430,7 +431,7 @@ export function TraceDebugView({
           </div>
         </aside>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
@@ -553,10 +554,10 @@ function ProofFact({
 }) {
   return (
     <div className="min-w-0 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2">
-      <p className="text-xs font-semibold uppercase text-graphite-700/55">
+      <p className="text-xs font-semibold uppercase tracking-eyebrow text-copper-500/80">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-ink">
+      <p className="font-display mt-1 truncate text-sm font-semibold tracking-tightish text-ink">
         {value}
       </p>
     </div>
@@ -929,7 +930,7 @@ function Badge({
 }) {
   const classes = {
     completed: "border-sage/30 bg-sage/10 text-sage",
-    fallback: "border-plum/30 bg-plum/10 text-plum",
+    fallback: "border-plum-500/30 bg-plum-500/10 text-plum-500",
     error: "border-signal/30 bg-signal/10 text-signal",
     neutral: "border-ink/15 bg-ink/5 text-ink/60",
   }[tone];

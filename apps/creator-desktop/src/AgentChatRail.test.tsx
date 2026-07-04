@@ -32,7 +32,6 @@ function renderRail(overrides: Partial<Parameters<typeof AgentChatRail>[0]> = {}
         running={false}
         canSubmit={true}
         onSubmit={onSubmit}
-        runtimeName="Test runtime"
         onOpenTrace={onOpenTrace}
         evidence={<p>boundary-evidence-marker</p>}
         {...overrides}

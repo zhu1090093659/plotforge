@@ -7,7 +7,7 @@ import type {
 } from "../../../contracts/plotforge";
 import type { StaticExportReport } from "./tauriBridge";
 import type { AssetCatalog } from "./assetCatalog";
-import { Collapsible, StudioStatusChip, StudioTabs } from "./studioUi";
+import { Collapsible, Reveal, StudioStatusChip, StudioTabs } from "./studioUi";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ function PackageReadinessRow({
           "w-fit rounded-sm border px-2 py-1 text-xs font-semibold",
           ready
             ? "border-sage/30 bg-sage/10 text-sage"
-            : "border-plum/30 bg-plum/10 text-plum",
+            : "border-plum-500/30 bg-plum-500/10 text-plum-500",
         ].join(" ")}
       >
         {item.status}
@@ -165,7 +165,7 @@ function PackageReadinessRow({
         <div
           className={[
             "h-2 rounded-full",
-            ready ? "bg-sage" : "bg-plum",
+            ready ? "bg-sage" : "bg-plum-500",
           ].join(" ")}
           style={{ width: ready ? "100%" : "45%" }}
         />
@@ -201,7 +201,7 @@ function ProfileFlag({
 
 function ProofLikeLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
+    <div className="flex min-w-0 items-center justify-between gap-3 border-t border-ink/5 pt-2 first:border-t-0 first:pt-0">
       <p className="text-xs font-medium uppercase text-graphite-700/55">{label}</p>
       <p className="truncate text-xs font-semibold text-ink">{value}</p>
     </div>
@@ -480,7 +480,8 @@ export function ExportView({
   const panelClassName = "rounded-lg border border-ink/10 bg-canvas-50 p-4 text-ink shadow-studio-panel";
 
   return (
-    <section className={panelClassName}>
+    <Reveal className="grid gap-4">
+      <section className={panelClassName}>
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -636,7 +637,7 @@ export function ExportView({
                         {actionableEvidenceChecks.map((check) => (
                           <div
                             key={check.label}
-                            className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
+                            className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm border-t border-ink/5"
                           >
                             <span>{check.label}</span>
                             <span
@@ -833,12 +834,15 @@ export function ExportView({
                         aria-pressed={selected}
                         onClick={() => selectExportProfile(profile.id)}
                         className={[
-                          "rounded-md border px-3 py-3 text-left transition",
+                          "relative rounded-md border px-3 py-3 text-left transition ease-expo",
                           selected
                             ? "border-ink/45 bg-canvas-50"
-                            : "border-ink/10 hover:border-ink/30",
+                            : "border-ink/10 hover:border-ink/30 hover:-translate-y-0.5 hover:shadow-panel-lift",
                         ].join(" ")}
                       >
+                        {selected ? (
+                          <span aria-hidden className="absolute left-0 top-1 bottom-1 w-px bg-copper-500" />
+                        ) : null}
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <h4 className="truncate text-sm font-semibold">
@@ -1056,5 +1060,6 @@ export function ExportView({
         ]}
       />
     </section>
+    </Reveal>
   );
 }

@@ -127,7 +127,7 @@ export function useStudioWorkspace({
         value: String(
           checkReport?.character_count ?? projectSummary?.characterCount ?? 0,
         ),
-        tone: "border-plum/50 text-plum",
+        tone: "border-plum-500/50 text-plum-500",
       },
       {
         labelKey: "metrics.rules",

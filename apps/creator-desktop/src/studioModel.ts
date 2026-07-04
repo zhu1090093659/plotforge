@@ -34,6 +34,10 @@ export interface StudioSection {
   descriptionKey: string;
   statusKey: string;
   icon: LucideIcon;
+  /** 1-based position in the flat nav list, rendered as the copper eyebrow
+   * numeral ("01", "02", …) in the sidebar and the view header. Pure data,
+   * never localized. */
+  index: number;
 }
 
 export const studioSections: StudioSection[] = [
@@ -43,6 +47,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.home.description",
     statusKey: "status.ready",
     icon: Gauge,
+    index: 1,
   },
   {
     id: "play",
@@ -50,6 +55,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.play.description",
     statusKey: "status.ready",
     icon: Play,
+    index: 2,
   },
   {
     id: "world",
@@ -57,6 +63,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.world.description",
     statusKey: "status.next",
     icon: Map,
+    index: 3,
   },
   {
     id: "story",
@@ -64,6 +71,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.story.description",
     statusKey: "status.next",
     icon: ScrollText,
+    index: 4,
   },
   {
     id: "characters",
@@ -71,6 +79,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.characters.description",
     statusKey: "status.ready",
     icon: Users,
+    index: 5,
   },
   {
     id: "state",
@@ -78,6 +87,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.state.description",
     statusKey: "status.ready",
     icon: Boxes,
+    index: 6,
   },
   {
     id: "rules",
@@ -85,6 +95,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.rules.description",
     statusKey: "status.ready",
     icon: KeyRound,
+    index: 7,
   },
   {
     id: "assets",
@@ -92,6 +103,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.assets.description",
     statusKey: "status.ready",
     icon: Boxes,
+    index: 8,
   },
   {
     id: "trace",
@@ -99,6 +111,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.trace.description",
     statusKey: "status.ready",
     icon: Bug,
+    index: 9,
   },
   {
     id: "export-kit",
@@ -106,6 +119,7 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.exportKit.description",
     statusKey: "status.ready",
     icon: ShipWheel,
+    index: 10,
   },
   {
     id: "source-files",
@@ -113,8 +127,14 @@ export const studioSections: StudioSection[] = [
     descriptionKey: "nav.source.description",
     statusKey: "status.ready",
     icon: FileCode,
+    index: 11,
   },
 ];
+
+/** Zero-padded 2-digit numeral for the copper eyebrow ("01"…). */
+export function studioSectionNumeral(index: number): string {
+  return String(index).padStart(2, "0");
+}
 
 export function getStudioSection(id: StudioSectionId): StudioSection {
   const section = studioSections.find((candidate) => candidate.id === id);

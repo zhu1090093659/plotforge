@@ -19,10 +19,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // ---------------------------------------------------------------------------
 
 const railStorageKey = "plotforge:creator-desktop:rail-collapsed";
+const sidebarStorageKey = "plotforge:creator-desktop:sidebar-collapsed";
 
 export interface StudioRailWorkspace {
   railCollapsed: boolean;
   toggleRail(): void;
+  sidebarCollapsed: boolean;
+  toggleSidebar(): void;
 }
 
 export function useStudioRail(
@@ -31,6 +34,16 @@ export function useStudioRail(
   const [railCollapsed, setRailCollapsed] = useState<boolean>(() =>
     resolveInitialCollapsed(initialCollapsed),
   );
+  // Sidebar collapse is pure shell-UI state (icon-only rail vs full rail).
+  // Defaults to expanded so labels are visible on first run; an explicit
+  // user toggle is persisted to localStorage and wins on subsequent loads.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    const storage = storageFor(globalThis.window);
+    const stored = storage?.getItem(sidebarStorageKey);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+    return false;
+  });
 
   // Only persist an explicit user toggle — skip the very first effect run so
   // the auto-resolved default (responsive / jsdom) is not written back as if
@@ -48,11 +61,28 @@ export function useStudioRail(
     }
   }, [railCollapsed]);
 
+  // Sidebar uses the same skip-first-effect guard as the rail so the
+  // default-expanded first-run state is not persisted as a deliberate choice;
+  // only an explicit user toggle is written back to localStorage.
+  useEffect(() => {
+    if (!initialized.current) {
+      return;
+    }
+    const storage = storageFor(globalThis.window);
+    if (storage) {
+      storage.setItem(sidebarStorageKey, String(sidebarCollapsed));
+    }
+  }, [sidebarCollapsed]);
+
   const toggleRail = useCallback(() => {
     setRailCollapsed((prev) => !prev);
   }, []);
 
-  return { railCollapsed, toggleRail };
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => !prev);
+  }, []);
+
+  return { railCollapsed, toggleRail, sidebarCollapsed, toggleSidebar };
 }
 
 function resolveInitialCollapsed(

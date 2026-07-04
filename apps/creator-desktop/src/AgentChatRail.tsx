@@ -22,7 +22,6 @@ export interface AgentChatRailProps {
   running: boolean;
   canSubmit: boolean;
   onSubmit(): void;
-  runtimeName: string;
   onOpenTrace(): void;
   /** Honesty-surface evidence (boundary block); shown in the Evidence popover. */
   evidence: ReactNode;
@@ -35,7 +34,6 @@ export function AgentChatRail({
   running,
   canSubmit,
   onSubmit,
-  runtimeName,
   onOpenTrace,
   evidence,
 }: AgentChatRailProps) {
@@ -91,12 +89,9 @@ export function AgentChatRail({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header: pi-Agent identity + on-demand evidence popover */}
-      <div className="relative flex items-center justify-between gap-2 border-b border-canvas-200 px-3 py-2">
+      <div className="relative flex items-center justify-between gap-2 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <StudioStatusChip tone="agent">{t("agent.title")}</StudioStatusChip>
-          <span className="truncate text-xs text-graphite-700/65">
-            {t("agent.runtime")} · {runtimeName}
-          </span>
         </div>
         <button
           ref={toggleRef}
@@ -106,7 +101,7 @@ export function AgentChatRail({
           aria-haspopup="dialog"
           title={t("agent.evidence")}
           onClick={() => setEvidenceOpen((prev) => !prev)}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition hover:border-violet-400"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-canvas-200 bg-canvas-50 text-ink transition ease-expo hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
         >
           <ShieldQuestion aria-hidden size={16} />
         </button>
@@ -125,13 +120,19 @@ export function AgentChatRail({
             )
           : null}
       </div>
+      <div className="hairline mx-3" />
 
       {/* Conversation turns */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {turns.length === 0 ? (
-          <p className="mt-8 text-center text-sm text-ink/45">
-            {t("agent.empty")}
-          </p>
+          <div className="mt-6 grid place-items-center gap-1.5 px-4 py-8 text-center">
+            <p className="font-display text-sm font-semibold tracking-tightish text-ink">
+              {t("agent.you")} → {t("agent.agent")}
+            </p>
+            <p className="max-w-xs text-sm text-ink/45">
+              {t("agent.empty")}
+            </p>
+          </div>
         ) : (
           <ol className="grid gap-3">
             {turns.map((turn) => (
@@ -157,9 +158,10 @@ export function AgentChatRail({
       </div>
 
       {/* Input dock */}
+      <div className="hairline mx-3" />
       <form
         onSubmit={handleSubmit}
-        className="grid gap-2 border-t border-canvas-200 px-3 py-3"
+        className="grid gap-2 px-3 py-3"
       >
         <textarea
           aria-label={t("agent.directPrompt")}
@@ -168,12 +170,9 @@ export function AgentChatRail({
           placeholder={t("agent.directPrompt")}
           rows={2}
           spellCheck={false}
-          className="w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+          className="w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
         />
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-ink/45">
-            {t("agent.runtime")} · {runtimeName}
-          </span>
+        <div className="flex items-center justify-end gap-2">
           <StudioButton
             variant="primary"
             type="submit"
@@ -205,16 +204,18 @@ function TurnBubble({
   tone: "user" | "agent";
   text: string;
 }) {
+  const ruleClass =
+    tone === "user"
+      ? "border-l-2 border-l-violet-500"
+      : "border-l-2 border-l-copper-500";
   return (
     <div
       className={[
-        "rounded-md border px-3 py-2 text-sm leading-6",
-        tone === "user"
-          ? "border-violet-400/45 bg-violet-500/10 text-ink"
-          : "border-canvas-200 bg-canvas-100 text-ink/85",
+        "rounded-md border border-canvas-200 bg-canvas-100 px-3 py-2 pl-3.5 text-sm leading-6",
+        ruleClass,
       ].join(" ")}
     >
-      <p className="text-xs font-semibold uppercase tracking-tightish text-ink/55">
+      <p className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
         {role}
       </p>
       <p className="mt-1 whitespace-pre-wrap break-words">{text}</p>
@@ -241,16 +242,16 @@ function TurnResult({
 }) {
   const { report, error } = turn;
   return (
-    <div className="rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm">
+    <div className="rounded-md border border-canvas-200 border-l-2 border-l-copper-500 bg-canvas-50 px-3 py-2 pl-3.5 text-sm">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-tightish text-ink/55">
+        <p className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
           {role}
         </p>
         {report ? (
           <button
             type="button"
             onClick={onOpenTrace}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 transition ease-expo hover:text-violet-500 hover:underline"
           >
             <TerminalSquare aria-hidden size={12} />
             {openTraceLabel}
@@ -265,7 +266,7 @@ function TurnResult({
         <dl className="mt-2 grid gap-1 text-xs text-ink/70">
           <div className="flex gap-2">
             <dt className="font-semibold text-ink/55">{traceLabel}:</dt>
-            <dd className="truncate">{report.trace.id}</dd>
+            <dd className="truncate font-mono">{report.trace.id}</dd>
           </div>
           <div className="flex gap-2">
             <dt className="font-semibold text-ink/55">{sceneLabel}:</dt>
