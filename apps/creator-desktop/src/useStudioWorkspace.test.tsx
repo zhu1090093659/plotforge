@@ -451,6 +451,33 @@ function workspaceTestDataSource(
     async piAgentCapabilities() {
       return [];
     },
+    async gitCurrentBranch() {
+      return "main";
+    },
+    async gitListBranches() {
+      return [{ name: "main", is_current: true }];
+    },
+    async gitSwitchBranch(_path: string, branch: string) {
+      return { branch };
+    },
+    async listAvailableModels() {
+      return [
+        { id: "local-pi", label: "Local pi-Agent (mock)", provider: "local-mock" },
+      ];
+    },
+    async getAgentSessionConfig() {
+      return {
+        model_id: "local-pi",
+        permission_level: "ask_every_time",
+        thinking_level: "medium",
+      };
+    },
+    async setAgentSessionConfig(
+      _path: string,
+      config: { model_id: string; permission_level: string; thinking_level: string },
+    ) {
+      return config as never;
+    },
   };
 
   return { ...base, ...overrides };

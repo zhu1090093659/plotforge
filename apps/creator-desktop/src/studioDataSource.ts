@@ -1,4 +1,5 @@
 import type {
+  AgentSessionConfig,
   AiSafetyPolicy,
   AssetRecord,
   AudioBible,
@@ -7,6 +8,9 @@ import type {
   CharacterEditDocument,
   CharacterGenerationReport,
   ExportProfile,
+  GitBranchInfo,
+  GitSwitchResult,
+  ModelOption,
   PiAgentCapability,
   PiAgentRunRequest,
   PiAgentRunResult,
@@ -143,6 +147,15 @@ export interface StudioDataSource {
   ): Promise<SourceFileContent>;
   piAgentRun(request: PiAgentRunRequest): Promise<PiAgentRunResult>;
   piAgentCapabilities(): Promise<PiAgentCapability[]>;
+  gitCurrentBranch(path: string): Promise<string>;
+  gitListBranches(path: string): Promise<GitBranchInfo[]>;
+  gitSwitchBranch(path: string, branch: string): Promise<GitSwitchResult>;
+  listAvailableModels(): Promise<ModelOption[]>;
+  getAgentSessionConfig(path: string): Promise<AgentSessionConfig>;
+  setAgentSessionConfig(
+    path: string,
+    config: AgentSessionConfig,
+  ): Promise<AgentSessionConfig>;
 }
 
 export function createTauriStudioDataSource(): StudioDataSource {
@@ -218,5 +231,11 @@ function createStudioDataSource(
     writeSourceFile: bridge.writeSourceFile,
     piAgentRun: bridge.piAgentRun,
     piAgentCapabilities: bridge.piAgentCapabilities,
+    gitCurrentBranch: bridge.gitCurrentBranch,
+    gitListBranches: bridge.gitListBranches,
+    gitSwitchBranch: bridge.gitSwitchBranch,
+    listAvailableModels: bridge.listAvailableModels,
+    getAgentSessionConfig: bridge.getAgentSessionConfig,
+    setAgentSessionConfig: bridge.setAgentSessionConfig,
   };
 }

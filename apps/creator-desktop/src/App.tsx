@@ -1,10 +1,5 @@
 import { Command, Loader2, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import type {
-  ProjectCreationReport,
-  ProjectCreationRequest,
-  ProjectTemplateId,
-} from "../../../contracts/plotforge";
 import { AgentChatRail } from "./AgentChatRail";
 import { AssetMaintenanceView } from "./AssetMaintenanceView";
 import { LaunchpadView } from "./LaunchpadView";
@@ -35,13 +30,9 @@ import {
   StudioStatusChip,
   type StudioNavItem,
 } from "./studioUi";
-import {
-  defaultNewProjectPath,
-  useStudioWorkspace,
-} from "./useStudioWorkspace";
+import { useStudioWorkspace } from "./useStudioWorkspace";
 import { LanguageToggle, StudioI18nProvider, useStudioI18n } from "./i18n";
 import { useStudioRail } from "./useStudioRail";
-import { errorMessage } from "./errorMessage";
 
 export interface AppProps {
   dataSource?: StudioDataSource;
@@ -94,30 +85,11 @@ function AppContent({
     playtest,
     export: exportWorkspace,
     agent,
+    gitInfo,
+    agentConfig,
   } = useStudioWorkspace({ dataSource, initialProjectPath });
 
-  // Create project state (Launchpad-specific, kept in App)
-  const [createProjectPath, setCreateProjectPath] = useState(
-    defaultNewProjectPath(initialProjectPath),
-  );
-  const [createTemplate, setCreateTemplate] =
-    useState<ProjectTemplateId>("historical_crisis");
-  const [createConcept, setCreateConcept] = useState("");
-  const [createVisualStyle, setCreateVisualStyle] = useState("");
-  const [createVoiceEnabled, setCreateVoiceEnabled] = useState(false);
-  const [createInitialSceneRequest, setCreateInitialSceneRequest] =
-    useState("");
-  const [createForce, setCreateForce] = useState(false);
-  const [createReport, setCreateReport] =
-    useState<ProjectCreationReport | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
   const activeSectionMeta = getStudioSection(activeSection);
-
-  useEffect(() => {
-    setCreateProjectPath(defaultNewProjectPath(initialProjectPath));
-  }, [initialProjectPath]);
 
   // Global ⌘K / Ctrl-K to open the command palette.
   useEffect(() => {
@@ -157,35 +129,6 @@ function AppContent({
     }
   }
 
-  async function handleCreateProject(
-    path: string,
-    request: ProjectCreationRequest,
-    force: boolean,
-  ) {
-    if (
-      !path ||
-      !request.concept ||
-      !request.visual_style ||
-      !request.initial_scene_request
-    ) {
-      setCreateError(t("app.createError"));
-      return;
-    }
-
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const report = await dataSource.createProject(path, request, force);
-      setCreateReport(report);
-      setCreateProjectPath(report.project_path);
-      await loadProject(report.project_path);
-    } catch (source) {
-      setCreateError(errorMessage(source));
-    } finally {
-      setCreating(false);
-    }
-  }
-
   function openStudioSection(section: StudioSectionId) {
     setActiveSection(section);
     setDrawerOpen(false);
@@ -201,36 +144,7 @@ function AppContent({
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
-        return (
-          <LaunchpadView
-            projectSummary={projectSummary}
-            projectData={projectData}
-            loadedPath={loadedPath}
-            checkReport={checkReport}
-            metrics={metrics}
-            createProjectPath={createProjectPath}
-            setCreateProjectPath={setCreateProjectPath}
-            createTemplate={createTemplate}
-            setCreateTemplate={setCreateTemplate}
-            createConcept={createConcept}
-            setCreateConcept={setCreateConcept}
-            createVisualStyle={createVisualStyle}
-            setCreateVisualStyle={setCreateVisualStyle}
-            createVoiceEnabled={createVoiceEnabled}
-            setCreateVoiceEnabled={setCreateVoiceEnabled}
-            createInitialSceneRequest={createInitialSceneRequest}
-            setCreateInitialSceneRequest={setCreateInitialSceneRequest}
-            createForce={createForce}
-            setCreateForce={setCreateForce}
-            createReport={createReport}
-            creating={creating}
-            createError={createError}
-            onOpenSection={openStudioSection}
-            onCreateProject={(path, request, force) =>
-              void handleCreateProject(path, request, force)
-            }
-          />
-        );
+        return null; // Rendered full-screen outside StudioShell (see below).
       case "play":
         return (
           <PlayView
@@ -527,6 +441,37 @@ function AppContent({
 
   return (
     <>
+    {activeSection === "home" ? (
+      <div className="relative flex min-h-100dvh flex-col">
+        {/* Minimal home chrome: language toggle in the corner */}
+        <div className="absolute right-4 top-4 z-10">
+          <LanguageToggle />
+        </div>
+        <LaunchpadView
+          loadedPath={loadedPath}
+          projectDirName={deriveProjectDirName(loadedPath)}
+          currentBranch={gitInfo.currentBranch}
+          branches={gitInfo.branches}
+          switchingBranch={gitInfo.switchingBranch}
+          switchError={gitInfo.switchError}
+          onSwitchBranch={(branch) => void gitInfo.switchBranch(branch)}
+          availableModels={agentConfig.availableModels}
+          agentConfig={agentConfig.agentConfig}
+          onAgentConfigChange={agentConfig.setAgentConfig}
+          configSaveError={agentConfig.saveError}
+          input={agent.input}
+          onInputChange={agent.setInput}
+          onSubmit={async () => {
+            const result = await agent.submit();
+            if (result.succeeded) {
+              setActiveSection("trace");
+            }
+          }}
+          running={agent.running}
+          canSubmit={agent.canSubmit}
+        />
+      </div>
+    ) : (
     <StudioShell
       projectPath={loadedPath}
       projectLoading={loading}
@@ -572,6 +517,7 @@ function AppContent({
     >
       {renderActiveSection()}
     </StudioShell>
+    )}
     <StudioCommandPalette
       open={paletteOpen}
       onClose={() => setPaletteOpen(false)}
@@ -583,6 +529,18 @@ function AppContent({
     />
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Inline helpers
+// ---------------------------------------------------------------------------
+
+/** Derive the project directory basename for the home page chip. */
+function deriveProjectDirName(loadedPath: string): string {
+  if (!loadedPath) return "";
+  const trimmed = loadedPath.replace(/\/+$/, "");
+  const parts = trimmed.split("/");
+  return parts[parts.length - 1] ?? "";
 }
 
 // ---------------------------------------------------------------------------

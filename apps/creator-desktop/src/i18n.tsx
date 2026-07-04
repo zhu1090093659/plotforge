@@ -57,6 +57,40 @@ const en: Record<string, string> = {
   "agent.error": "Error",
   "agent.trace": "Trace",
   "agent.scene": "Scene",
+
+  // Home page (LaunchpadView rewrite — full-screen centered chat entry)
+  "home.aria.greeting": "Greeting",
+  "home.aria.projectDir": "Project directory",
+  "home.aria.gitBranch": "Git branch",
+  "home.aria.modelSelect": "Model",
+  "home.aria.permissionSelect": "Permission level",
+  "home.aria.thinkingSelect": "Thinking level",
+  "home.aria.send": "Send message",
+  "home.aria.errorRow": "Home page error row",
+  "home.aria.switchError": "Branch switch error",
+  "home.aria.configSaveError": "Agent config save error",
+  "home.placeholder": "Ask the pi-Agent — @ mention files, / use commands, $ use skills, # link conversations",
+  "home.send": "Send",
+  "home.branchUnknown": "(no git)",
+  "home.branchLoading": "loading…",
+  "home.branchSwitchError": "Failed to switch branch",
+  "home.configSaveError": "Failed to save agent config",
+  "home.noProject": "No project loaded",
+  "home.projectDirFallback": "Open a project",
+  "home.permissionFull": "Full access",
+  "home.permissionAsk": "Ask every time",
+  "home.permissionReadOnly": "Read only",
+  "home.thinkingHigh": "High",
+  "home.thinkingMedium": "Medium",
+  "home.thinkingLow": "Low",
+  "home.thinkingOff": "Off",
+  "home.modelLabel": "Model",
+  "home.permissionLabel": "Permission",
+  "home.thinkingLabel": "Thinking",
+  "home.greeting.morning": "Good morning — let's keep building.",
+  "home.greeting.afternoon": "Good afternoon — keep it up, alright?",
+  "home.greeting.evening": "Good evening — one more turn before rest?",
+  "home.greeting.night": "Burning the midnight oil — take care of yourself.",
   "shell.scenePreviewUnavailable": "Scene preview asset unavailable",
   "shell.scenePreviewNoBackground": "No background asset is declared for this scene.",
 
@@ -146,7 +180,7 @@ const en: Record<string, string> = {
 
   // nav sections (studioModel) — flat single-level navigation
   "nav.home.label": "Home",
-  "nav.home.description": "Project overview, health, new project",
+  "nav.home.description": "Conversation entry — run a turn, switch git branch, pick agent model",
   "nav.play.label": "Play",
   "nav.play.description": "Preview the current scene and choices",
   "nav.world.label": "World Bible",
@@ -194,41 +228,14 @@ const en: Record<string, string> = {
   "app.refreshProjectFiles": "Refresh project files",
   "app.createError": "Project path, concept, visual style, and initial scene are required.",
 
-  // LaunchpadView
-  "launchpad.secondarySurfaces": "Launchpad secondary surfaces",
+  // LaunchpadView — the home page is now a conversation-entry surface
+  // (see `home.*`). Only the SourceView-shared labels and the projectOverview
+  // label (asserted in i18n.test.tsx) remain below; the new-project /
+  // boundary-check keys were removed when LaunchpadView was rewritten.
   "launchpad.projectOverview": "Project overview",
-  "launchpad.aria.projectOverview": "Project overview",
-  "launchpad.openPlay": "Play",
-  "launchpad.openExport": "Export",
-  "launchpad.noProjectLoaded": "No project loaded",
-  "launchpad.projectLoaded": "Project loaded",
-  "launchpad.noProject": "No project",
-  "launchpad.newProject": "New Project",
-  "launchpad.projectHealth": "Project Health",
   "launchpad.sourceArtifacts": "Source Artifacts",
   "launchpad.editor": "Artifact Text Editor",
-  "launchpad.scaffold": "Folder-backed project scaffold",
-  "launchpad.create": "Create project",
-  "launchpad.template": "Template",
-  "launchpad.customStoryProject": "Custom Story Project",
-  "launchpad.visualStyle": "Visual style",
-  "launchpad.concept": "Concept",
-  "launchpad.initialScene": "Initial scene",
-  "launchpad.voiceEnabled": "Voice enabled",
-  "launchpad.overwrite": "Overwrite existing path",
-  "launchpad.creationReport": "Creation Report",
-  "launchpad.projectLabel": "Project",
-  "launchpad.files": "Files",
-  "launchpad.noProjectCreated": "No project created in this session.",
-  "launchpad.boundaryChecks": "Boundary Checks",
-  "launchpad.noBoundaryChecks": "Open a project to run boundary checks.",
-  "launchpad.boundaryChecksPending": "Boundary checks pending — run check or reload the project.",
-  "launchpad.aria.newProjectPath": "New project path",
-  "launchpad.aria.visualStyle": "Visual style",
-  "launchpad.aria.concept": "Concept",
-  "launchpad.aria.initialSceneRequest": "Initial scene request",
   "launchpad.aria.sourceEditor": "Source editor",
-  "launchpad.aria.template": "Template",
 
   // CommandCenterView
 
@@ -667,14 +674,6 @@ const en: Record<string, string> = {
   "lang.english": "English",
   "lang.chinese": "中文",
 
-  // Launchpad boundary check labels
-  "launchpad.check.project": "Project",
-  "launchpad.check.entryScene": "Entry scene",
-  "launchpad.check.scenes": "Scenes",
-  "launchpad.check.rules": "Rules",
-  "launchpad.check.characters": "Characters",
-  "launchpad.check.projectPath": "Project path",
-
   // CommandCenter metric detail
 
   // IO error pattern
@@ -734,6 +733,40 @@ const zh: Record<string, string> = {
   "agent.error": "错误",
   "agent.trace": "追踪",
   "agent.scene": "场景",
+
+  // Home page (LaunchpadView rewrite — full-screen centered chat entry)
+  "home.aria.greeting": "问候语",
+  "home.aria.projectDir": "项目目录",
+  "home.aria.gitBranch": "Git 分支",
+  "home.aria.modelSelect": "模型",
+  "home.aria.permissionSelect": "权限级别",
+  "home.aria.thinkingSelect": "思考级别",
+  "home.aria.send": "发送消息",
+  "home.aria.errorRow": "首页错误行",
+  "home.aria.switchError": "分支切换错误",
+  "home.aria.configSaveError": "智能体配置保存错误",
+  "home.placeholder": "向 pi-Agent 提问，@ 提及文件、文件夹或画板，/ 使用命令或子智能体，$ 使用技能，# 关联对话",
+  "home.send": "发送",
+  "home.branchUnknown": "(无 git)",
+  "home.branchLoading": "加载中…",
+  "home.branchSwitchError": "切换分支失败",
+  "home.configSaveError": "保存智能体配置失败",
+  "home.noProject": "未加载项目",
+  "home.projectDirFallback": "打开一个项目",
+  "home.permissionFull": "完全访问",
+  "home.permissionAsk": "每次询问",
+  "home.permissionReadOnly": "只读",
+  "home.thinkingHigh": "高",
+  "home.thinkingMedium": "中",
+  "home.thinkingLow": "低",
+  "home.thinkingOff": "关闭",
+  "home.modelLabel": "模型",
+  "home.permissionLabel": "权限",
+  "home.thinkingLabel": "思考",
+  "home.greeting.morning": "早上好呀，继续加油，好不好",
+  "home.greeting.afternoon": "下午好呀，继续加油，好不好",
+  "home.greeting.evening": "晚上好呀，再来一回合就休息，好吗",
+  "home.greeting.night": "夜深了，照顾好自己哦",
   "shell.scenePreviewUnavailable": "场景预览资产不可用",
   "shell.scenePreviewNoBackground": "此场景未声明背景资产。",
 
@@ -823,7 +856,7 @@ const zh: Record<string, string> = {
 
   // nav sections — flat single-level navigation
   "nav.home.label": "首页",
-  "nav.home.description": "项目概览、健康度、新建项目",
+  "nav.home.description": "对话入口——运行回合、切换 Git 分支、选择智能体模型",
   "nav.play.label": "演出",
   "nav.play.description": "预览当前场景和选项",
   "nav.world.label": "世界设定",
@@ -870,41 +903,14 @@ const zh: Record<string, string> = {
   "app.refreshProjectFiles": "刷新项目文件",
   "app.createError": "项目路径、概念、视觉风格和初始场景为必填项。",
 
-  // Launchpad
-  "launchpad.secondarySurfaces": "启动台次级界面",
+  // LaunchpadView — the home page is now a conversation-entry surface
+  // (see `home.*`). Only the SourceView-shared labels and the projectOverview
+  // label (asserted in i18n.test.tsx) remain below; the new-project /
+  // boundary-check keys were removed when LaunchpadView was rewritten.
   "launchpad.projectOverview": "项目概览",
-  "launchpad.aria.projectOverview": "项目概览",
-  "launchpad.openPlay": "演出",
-  "launchpad.openExport": "导出",
-  "launchpad.noProjectLoaded": "未加载项目",
-  "launchpad.projectLoaded": "项目已加载",
-  "launchpad.noProject": "无项目",
-  "launchpad.newProject": "新建项目",
-  "launchpad.projectHealth": "项目健康",
   "launchpad.sourceArtifacts": "源产物",
   "launchpad.editor": "产物文本编辑器",
-  "launchpad.scaffold": "基于文件夹的项目脚手架",
-  "launchpad.create": "创建项目",
-  "launchpad.template": "模板",
-  "launchpad.customStoryProject": "自定义故事项目",
-  "launchpad.visualStyle": "视觉风格",
-  "launchpad.concept": "概念",
-  "launchpad.initialScene": "初始场景",
-  "launchpad.voiceEnabled": "启用语音",
-  "launchpad.overwrite": "覆盖已有路径",
-  "launchpad.creationReport": "创建报告",
-  "launchpad.projectLabel": "项目",
-  "launchpad.files": "文件",
-  "launchpad.noProjectCreated": "本次会话尚未创建项目。",
-  "launchpad.boundaryChecks": "边界检查",
-  "launchpad.noBoundaryChecks": "打开项目以运行边界检查。",
-  "launchpad.boundaryChecksPending": "边界检查待处理——请运行检查或重新加载项目。",
-  "launchpad.aria.newProjectPath": "新建项目路径",
-  "launchpad.aria.visualStyle": "视觉风格",
-  "launchpad.aria.concept": "概念",
-  "launchpad.aria.initialSceneRequest": "初始场景请求",
   "launchpad.aria.sourceEditor": "源代码编辑器",
-  "launchpad.aria.template": "模板",
 
   // CommandCenter
 
@@ -1342,14 +1348,6 @@ const zh: Record<string, string> = {
   "lang.language": "语言",
   "lang.english": "English",
   "lang.chinese": "中文",
-
-  // Launchpad boundary checks
-  "launchpad.check.project": "项目",
-  "launchpad.check.entryScene": "入口场景",
-  "launchpad.check.scenes": "场景",
-  "launchpad.check.rules": "规则",
-  "launchpad.check.characters": "角色",
-  "launchpad.check.projectPath": "项目路径",
 
   // IO error
   "common.ioError": "{project}：在 {path} 发生 IO 错误：没有这个文件或目录（os error 2）",

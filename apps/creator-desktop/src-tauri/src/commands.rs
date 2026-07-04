@@ -1,11 +1,11 @@
 use plotforge_studio::{
-    AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
-    CharacterGenerationReport, ExportProfile, PiAgentCapability, PiAgentRunRequest,
-    PiAgentRunResult, PlayOnceReport, ProjectCheckReport, ProjectCreationReport,
-    ProjectCreationRequest, ProjectData, ResourceDefinition, Rule, RulesEditDocument,
-    SourceFileContent, SourceFileSummary, StateVariablesEditDocument, StaticExportReport,
-    StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError, VisualBible,
-    WorldEditDocument, WorldGenerationReport,
+    AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
+    CharacterGenerationReport, ExportProfile, GitBranchInfo, GitSwitchResult, ModelOption,
+    PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, PlayOnceReport, ProjectCheckReport,
+    ProjectCreationReport, ProjectCreationRequest, ProjectData, ResourceDefinition, Rule,
+    RulesEditDocument, SourceFileContent, SourceFileSummary, StateVariablesEditDocument,
+    StaticExportReport, StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError,
+    VisualBible, WorldEditDocument, WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -287,4 +287,40 @@ pub fn pi_agent_run(
 #[tauri::command(rename_all = "snake_case")]
 pub fn pi_agent_capabilities() -> Result<Vec<PiAgentCapability>, StudioCommandError> {
     plotforge_studio::pi_agent_capabilities()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn git_current_branch(path: String) -> Result<String, StudioCommandError> {
+    plotforge_studio::git_current_branch(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn git_list_branches(path: String) -> Result<Vec<GitBranchInfo>, StudioCommandError> {
+    plotforge_studio::git_list_branches(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn git_switch_branch(
+    path: String,
+    branch: String,
+) -> Result<GitSwitchResult, StudioCommandError> {
+    plotforge_studio::git_switch_branch(path, &branch)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_available_models() -> Result<Vec<ModelOption>, StudioCommandError> {
+    plotforge_studio::list_available_models()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_agent_session_config(path: String) -> Result<AgentSessionConfig, StudioCommandError> {
+    plotforge_studio::get_agent_session_config(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_agent_session_config(
+    path: String,
+    config: AgentSessionConfig,
+) -> Result<AgentSessionConfig, StudioCommandError> {
+    plotforge_studio::set_agent_session_config(path, &config)
 }

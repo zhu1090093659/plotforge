@@ -217,6 +217,25 @@
       ],
       "type": "string"
     },
+    "AgentSessionConfig": {
+      "additionalProperties": false,
+      "description": "The per-project persisted agent session configuration. Stored under\n`.plotforge/agent-config.json`; never carries secrets or provider\nendpoints.",
+      "properties": {
+        "model_id": {
+          "default": "local-pi",
+          "type": "string"
+        },
+        "permission_level": {
+          "$ref": "#/$defs/PermissionLevel",
+          "default": "ask_every_time"
+        },
+        "thinking_level": {
+          "$ref": "#/$defs/ThinkingLevel",
+          "default": "medium"
+        }
+      },
+      "type": "object"
+    },
     "AiProviderSummary": {
       "additionalProperties": false,
       "properties": {
@@ -1548,6 +1567,36 @@
       ],
       "type": "string"
     },
+    "GitBranchInfo": {
+      "additionalProperties": false,
+      "description": "A single local Git branch entry. `is_current` marks the checked-out branch.",
+      "properties": {
+        "is_current": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "is_current"
+      ],
+      "type": "object"
+    },
+    "GitSwitchResult": {
+      "additionalProperties": false,
+      "description": "The result of a `git checkout` switch operation: the now-current branch.",
+      "properties": {
+        "branch": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch"
+      ],
+      "type": "object"
+    },
     "HookStrategy": {
       "properties": {
         "primary_hook": {
@@ -1779,6 +1828,27 @@
       ],
       "type": "object"
     },
+    "ModelOption": {
+      "additionalProperties": false,
+      "description": "A selectable model option surfaced by `list_available_models`. `provider`\nis a descriptive label only — never an endpoint URL or credential.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "provider"
+      ],
+      "type": "object"
+    },
     "NarrativeFunction": {
       "enum": [
         "hook",
@@ -1951,6 +2021,15 @@
         "target_tension_curve"
       ],
       "type": "object"
+    },
+    "PermissionLevel": {
+      "description": "The agent permission level: how much autonomy the pi-Agent has when\nproposing/applying changes. `ReadOnly` never mutates project state;\n`AskEveryTime` pauses for explicit approval before each mutating action;\n`FullAccess` permits autonomous application of validated proposals.",
+      "enum": [
+        "full_access",
+        "ask_every_time",
+        "read_only"
+      ],
+      "type": "string"
     },
     "PiAgentCapability": {
       "additionalProperties": false,
@@ -3526,6 +3605,16 @@
       ],
       "type": "object"
     },
+    "ThinkingLevel": {
+      "description": "The agent thinking level: how much deliberation the pi-Agent invests\nbefore producing a proposal. This is a capability/descriptive knob; the\nbackend maps it to provider-side reasoning depth when a real provider is\nwired (deferred), and to a no-op marker for the local mock provider.",
+      "enum": [
+        "high",
+        "medium",
+        "low",
+        "off"
+      ],
+      "type": "string"
+    },
     "VisualBible": {
       "additionalProperties": false,
       "properties": {
@@ -3913,6 +4002,9 @@
     "agent_output_proposal": {
       "$ref": "#/$defs/AgentOutputProposal"
     },
+    "agent_session_config": {
+      "$ref": "#/$defs/AgentSessionConfig"
+    },
     "ai_safety_policy": {
       "$ref": "#/$defs/AiSafetyPolicy"
     },
@@ -3949,11 +4041,20 @@
     "generation_evidence": {
       "$ref": "#/$defs/GenerationEvidence"
     },
+    "git_branch_info": {
+      "$ref": "#/$defs/GitBranchInfo"
+    },
+    "git_switch_result": {
+      "$ref": "#/$defs/GitSwitchResult"
+    },
     "job_record": {
       "$ref": "#/$defs/JobRecord"
     },
     "media_asset_reference": {
       "$ref": "#/$defs/MediaAssetReference"
+    },
+    "model_option": {
+      "$ref": "#/$defs/ModelOption"
     },
     "pi_agent_capability": {
       "$ref": "#/$defs/PiAgentCapability"
@@ -4072,7 +4173,11 @@
     "pi_agent_capability",
     "pi_agent_descriptor",
     "pi_agent_run_request",
-    "pi_agent_run_result"
+    "pi_agent_run_result",
+    "git_branch_info",
+    "git_switch_result",
+    "model_option",
+    "agent_session_config"
   ],
   "title": "ContractRootSchemas",
   "type": "object"

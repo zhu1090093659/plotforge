@@ -23,7 +23,6 @@ import {
 } from "./testHelpers/studioDataSource";
 import type {
   AssetRecord,
-  ProjectCreationRequest,
 } from "../../../contracts/plotforge";
 import type {
   PlayOnceReport,
@@ -127,8 +126,8 @@ describe("App", () => {
     expect(getNavButton("Trace")).toBeTruthy();
     expect(getNavButton("Export")).toBeTruthy();
     expect(getNavButton("Source")).toBeTruthy();
-    // Home is the default landing section.
-    expect(getNavButton("Home").getAttribute("aria-pressed")).toBe("true");
+    // Source is the active section after waitForDefaultSourceCanvas navigates there.
+    expect(getNavButton("Source").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Agent rail")).toBeTruthy();
     expect(screen.getByLabelText("Collapse agent rail")).toBeTruthy();
   });
@@ -645,7 +644,7 @@ describe("App", () => {
     expectExportEvidenceStatus("HTTP smoke test passed", "Pending");
   });
 
-  it("opens the static export profile from the Home export CTA", async () => {
+  it("opens the static export profile from the nav tree Export button", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -653,9 +652,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
-    fireEvent.click(getNavButton("Home"));
-    const homeRegion = screen.getByRole("region", { name: /Project overview/i });
-    fireEvent.click(within(homeRegion).getByRole("button", { name: /^Export$/i }));
+    fireEvent.click(getNavButton("Export"));
 
     fireEvent.click(screen.getByRole("tab", { name: /^Profile/ }));
     expect(screen.getAllByText("static-web").length).toBeGreaterThan(0);
@@ -705,101 +702,6 @@ describe("App", () => {
       screen.getByRole("button", { name: "Export zip" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(exports).toEqual([]);
-  });
-
-  it("creates a project from wizard fields and reloads the created folder", async () => {
-    const createdProject = {
-      ...structuredClone(demoProjectData),
-      game: {
-        ...demoProjectData.game,
-        title: "Winter Regency",
-        description: "A frozen council succession crisis.",
-      },
-    };
-    let currentProject = demoProjectData;
-    const calls: Array<{
-      path: string;
-      request: ProjectCreationRequest;
-      force: boolean;
-    }> = [];
-    const openedPaths: string[] = [];
-    const dataSource = appTestDataSource({
-      async createProject(path, request, force) {
-        calls.push({ path, request, force });
-        currentProject = createdProject;
-        return {
-          project_path: path,
-          template: request.template,
-          concept: request.concept,
-          visual_style: request.visual_style,
-          voice_enabled: request.voice_enabled,
-          initial_scene_request: request.initial_scene_request,
-          files_created: [
-            "game.toml",
-            "world/world.md",
-            "story/story_bible.md",
-          ],
-          project: createdProject,
-        };
-      },
-      async openProject(path) {
-        openedPaths.push(path);
-        return currentProject;
-      },
-      async checkProject() {
-        return {
-          title: currentProject.game.title,
-          entry_scene: currentProject.game.entry_scene,
-          scene_count: currentProject.scenes.length,
-          rule_count: currentProject.rules.length,
-          character_count: currentProject.characters.length,
-        };
-      },
-    });
-
-    render(
-      <App dataSource={dataSource} initialProjectPath="/tmp/starter-project" />,
-    );
-
-    await waitForDefaultSourceCanvas();
-
-    fireEvent.click(getNavButton("Home"));
-    fireEvent.change(screen.getByLabelText("New project path"), {
-      target: { value: "/tmp/winter-regency" },
-    });
-    fireEvent.change(screen.getByLabelText("Visual style"), {
-      target: { value: "ink wash winter council" },
-    });
-    fireEvent.change(screen.getByLabelText("Concept"), {
-      target: { value: "A frozen council succession crisis." },
-    });
-    fireEvent.change(screen.getByLabelText("Initial scene request"), {
-      target: { value: "Open with a sealed imperial edict." },
-    });
-    fireEvent.click(screen.getByLabelText("Voice enabled"));
-    fireEvent.click(screen.getByLabelText("Overwrite existing path"));
-    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
-
-    await waitFor(() => {
-      expect(calls).toEqual([
-        {
-          path: "/tmp/winter-regency",
-          request: {
-            template: "historical_crisis",
-            concept: "A frozen council succession crisis.",
-            visual_style: "ink wash winter council",
-            voice_enabled: true,
-            initial_scene_request: "Open with a sealed imperial edict.",
-          },
-          force: true,
-        },
-      ]);
-    });
-    await waitFor(() => {
-      expect(screen.getAllByText("Winter Regency").length).toBeGreaterThan(0);
-    });
-    expect(screen.getAllByText("/tmp/winter-regency").length).toBeGreaterThan(0);
-    expect(openedPaths).toContain("/tmp/winter-regency");
   });
 
   it("saves structured editing forms (World/Story/Characters/State/Rules) through the data source", async () => {
@@ -1099,10 +1001,16 @@ function getNavButton(name: string) {
 }
 
 async function waitForDefaultSourceCanvas() {
-  // Home is the default landing section; waiting for the project overview
-  // heading indicates the project has loaded. Tests that need the source
-  // canvas navigate to the Source section explicitly.
-  expect(await screen.findByRole("heading", { name: "Starter Project" })).toBeTruthy();
+  // Home is the default landing section (full-screen, no StudioShell). Wait
+  // for the project directory chip — its presence means the project loaded —
+  // then navigate to the Source section via ⌘K so the StudioShell + nav tree
+  // are mounted for `getNavButton` lookups.
+  expect(
+    await screen.findByLabelText(/项目目录|Project directory/i),
+  ).toBeTruthy();
+  fireEvent.keyDown(window, { key: "k", metaKey: true });
+  const sourceAction = await screen.findByRole("button", { name: /^Source$/i });
+  fireEvent.click(sourceAction);
 }
 
 function expectExportEvidenceStatus(label: string, status: string) {
@@ -1331,6 +1239,33 @@ function appTestDataSource(
     },
     async piAgentCapabilities() {
       return [];
+    },
+    async gitCurrentBranch() {
+      return "main";
+    },
+    async gitListBranches() {
+      return [{ name: "main", is_current: true }];
+    },
+    async gitSwitchBranch(_path: string, branch: string) {
+      return { branch };
+    },
+    async listAvailableModels() {
+      return [
+        { id: "local-pi", label: "Local pi-Agent (mock)", provider: "local-mock" },
+      ];
+    },
+    async getAgentSessionConfig() {
+      return {
+        model_id: "local-pi",
+        permission_level: "ask_every_time",
+        thinking_level: "medium",
+      };
+    },
+    async setAgentSessionConfig(
+      _path: string,
+      config: { model_id: string; permission_level: string; thinking_level: string },
+    ) {
+      return config as never;
     },
   };
 

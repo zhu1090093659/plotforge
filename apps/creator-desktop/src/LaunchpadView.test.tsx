@@ -1,11 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LaunchpadView } from "./LaunchpadView";
-import { demoProjectData } from "./demoStudioData";
-import { summarizeProject } from "./projectSummary";
-import type { ProjectCreationRequest, ProjectTemplateId } from "../../../contracts/plotforge";
-import type { ProjectCheckReport } from "./tauriBridge";
 import { StudioI18nProvider } from "./i18n";
+import type {
+  AgentSessionConfig,
+  GitBranchInfo,
+  ModelOption,
+} from "../../../contracts/plotforge";
 
 afterEach(() => {
   if (typeof window.localStorage?.removeItem === "function") {
@@ -14,43 +15,43 @@ afterEach(() => {
   cleanup();
 });
 
-// Minimal props builder so tests don't need to repeat everything
-function baseProps(overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {}) {
-  const checkReport: ProjectCheckReport = {
-    title: "Starter Project",
-    entry_scene: "opening-scene",
-    scene_count: 2,
-    rule_count: 3,
-    character_count: 4,
-  };
+const defaultModels: ModelOption[] = [
+  { id: "local-pi", label: "Local pi-Agent (mock)", provider: "local-mock" },
+  { id: "glm-5.2", label: "GLM 5.2", provider: "zai" },
+];
 
+const defaultConfig: AgentSessionConfig = {
+  model_id: "local-pi",
+  permission_level: "ask_every_time",
+  thinking_level: "medium",
+};
+
+const defaultBranches: GitBranchInfo[] = [
+  { name: "main", is_current: true },
+  { name: "feature/x", is_current: false },
+];
+
+// Minimal props builder for the new home page shape.
+function baseProps(
+  overrides: Partial<Parameters<typeof LaunchpadView>[0]> = {},
+) {
   return {
-    projectSummary: summarizeProject(demoProjectData),
-    projectData: demoProjectData,
     loadedPath: "/tmp/starter-project",
-    checkReport,
-    metrics: [
-      { labelKey: "metrics.scenes", value: "2", tone: "border-sage/50 text-sage" },
-    ],
-    createProjectPath: "/tmp/new-project",
-    setCreateProjectPath: vi.fn(),
-    createTemplate: "historical_crisis" as ProjectTemplateId,
-    setCreateTemplate: vi.fn(),
-    createConcept: "",
-    setCreateConcept: vi.fn(),
-    createVisualStyle: "",
-    setCreateVisualStyle: vi.fn(),
-    createVoiceEnabled: false,
-    setCreateVoiceEnabled: vi.fn(),
-    createInitialSceneRequest: "",
-    setCreateInitialSceneRequest: vi.fn(),
-    createForce: false,
-    setCreateForce: vi.fn(),
-    createReport: null,
-    creating: false,
-    createError: null,
-    onOpenSection: vi.fn(),
-    onCreateProject: vi.fn(),
+    projectDirName: "starter-project",
+    currentBranch: "main" as string | null,
+    branches: defaultBranches,
+    switchingBranch: false,
+    switchError: null,
+    onSwitchBranch: vi.fn(),
+    availableModels: defaultModels,
+    agentConfig: defaultConfig,
+    onAgentConfigChange: vi.fn(),
+    configSaveError: null,
+    input: "",
+    onInputChange: vi.fn(),
+    onSubmit: vi.fn(),
+    running: false,
+    canSubmit: false,
     ...overrides,
   };
 }
@@ -64,113 +65,153 @@ function renderLaunchpad(overrides: Partial<Parameters<typeof LaunchpadView>[0]>
 }
 
 describe("LaunchpadView", () => {
-  it("renders the project overview region with title and metrics", () => {
+  it("renders the brand mark and a greeting", () => {
     renderLaunchpad();
+
+    // Greeting is one of the four time-based keys; assert by role.
+    expect(screen.getByLabelText(/问候语|Greeting/i)).toBeTruthy();
+  });
+
+  it("shows the project directory name chip", () => {
+    renderLaunchpad();
+
+    expect(screen.getByLabelText(/项目目录|Project directory/i)).toBeTruthy();
+    expect(screen.getByText("starter-project")).toBeTruthy();
+  });
+
+  it("shows the current git branch in the chip", () => {
+    renderLaunchpad();
+
+    expect(screen.getByLabelText(/Git 分支|Git branch/i)).toBeTruthy();
+    expect(screen.getByText("main")).toBeTruthy();
+  });
+
+  it("renders the conversation textarea with the localized placeholder", () => {
+    renderLaunchpad();
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toBeTruthy();
+    expect(textarea.tagName).toBe("TEXTAREA");
+  });
+
+  it("opens the branch dropdown and lists local branches", () => {
+    renderLaunchpad();
+
+    const branchButton = screen.getByLabelText(/Git 分支|Git branch/i);
+    fireEvent.click(branchButton);
+
+    // Both branch names should be visible in the menu.
+    expect(screen.getByText("feature/x")).toBeTruthy();
+  });
+
+  it("calls onSwitchBranch when a non-current branch is clicked", () => {
+    const onSwitchBranch = vi.fn();
+    renderLaunchpad({ onSwitchBranch });
+
+    fireEvent.click(screen.getByLabelText(/Git 分支|Git branch/i));
+    fireEvent.click(screen.getByText("feature/x"));
+
+    expect(onSwitchBranch).toHaveBeenCalledWith("feature/x");
+  });
+
+  it("calls onSubmit when the send button is clicked with non-empty input", () => {
+    const onSubmit = vi.fn();
+    renderLaunchpad({ input: "Continue the scene", canSubmit: true, onSubmit });
+
+    fireEvent.click(screen.getByLabelText(/发送消息|Send message/i));
+
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
+  it("disables the send button when canSubmit is false", () => {
+    renderLaunchpad({ canSubmit: false });
 
     expect(
-      screen.getByRole("region", { name: /Project overview/i }),
-    ).toBeTruthy();
-    expect(screen.getByText("Starter Project")).toBeTruthy();
-    expect(screen.getByText("/tmp/starter-project")).toBeTruthy();
-    expect(screen.getByText("Project loaded")).toBeTruthy();
-    // Metric renders.
-    expect(screen.getByText("2")).toBeTruthy();
+      screen.getByLabelText(/发送消息|Send message/i),
+    ).toHaveProperty("disabled", true);
   });
 
-  it("shows the New Project form fields by default (first tab)", () => {
+  it("calls onAgentConfigChange when the model selector changes", () => {
+    const onAgentConfigChange = vi.fn();
+    renderLaunchpad({ onAgentConfigChange });
+
+    const modelSelect = screen.getByLabelText(/模型|Model/i);
+    fireEvent.change(modelSelect, { target: { value: "glm-5.2" } });
+
+    expect(onAgentConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({ model_id: "glm-5.2" }),
+    );
+  });
+
+  it("calls onAgentConfigChange when the permission selector changes", () => {
+    const onAgentConfigChange = vi.fn();
+    renderLaunchpad({ onAgentConfigChange });
+
+    const permissionSelect = screen.getByLabelText(/权限级别|Permission level/i);
+    fireEvent.change(permissionSelect, { target: { value: "full_access" } });
+
+    expect(onAgentConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({ permission_level: "full_access" }),
+    );
+  });
+
+  it("calls onAgentConfigChange when the thinking selector changes", () => {
+    const onAgentConfigChange = vi.fn();
+    renderLaunchpad({ onAgentConfigChange });
+
+    const thinkingSelect = screen.getByLabelText(/思考级别|Thinking level/i);
+    fireEvent.change(thinkingSelect, { target: { value: "high" } });
+
+    expect(onAgentConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({ thinking_level: "high" }),
+    );
+  });
+
+  it("renders the no-git state when currentBranch is null", () => {
+    renderLaunchpad({ currentBranch: null, branches: [] });
+
+    // The chip should render a "(no git)"/"(无 git)" label.
+    expect(screen.getByText(/无 git|no git/i)).toBeTruthy();
+  });
+
+  it("does not render the error row when there are no errors", () => {
     renderLaunchpad();
-
-    expect(screen.getByLabelText("New project path")).toBeTruthy();
-    expect(screen.getByLabelText("Visual style")).toBeTruthy();
-    expect(screen.getByLabelText("Concept")).toBeTruthy();
-    expect(screen.getByLabelText("Initial scene request")).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "Voice enabled" })).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "Overwrite existing path" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
+    // No `role="alert"` region should be present.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("exposes the New Project and Project Health tabs", () => {
-    renderLaunchpad();
+  it("surfaces switchError so a failed branch switch is never silent", () => {
+    renderLaunchpad({ switchError: "dirty working tree" });
 
-    expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /Project Health/i })).toBeTruthy();
+    const errorRow = screen.getByRole("alert");
+    expect(errorRow).toBeTruthy();
+    // The localized "Failed to switch branch" prefix is present, followed by
+    // the backend-supplied message — so the user can see *why* the switch
+    // failed, not just *that* it failed.
+    const switchErr = screen.getByLabelText(/分支切换错误|Branch switch error/i);
+    expect(switchErr.textContent).toMatch(/dirty working tree/);
   });
 
-  it("calls onCreateProject when the create form is submitted", async () => {
-    const onCreateProject = vi.fn();
+  it("surfaces configSaveError so a failed agent-config persist is never silent", () => {
+    renderLaunchpad({ configSaveError: "read-only filesystem" });
+
+    const errorRow = screen.getByRole("alert");
+    expect(errorRow).toBeTruthy();
+    const saveErr = screen.getByLabelText(
+      /智能体配置保存错误|Agent config save error/i,
+    );
+    expect(saveErr.textContent).toMatch(/read-only filesystem/);
+  });
+
+  it("renders both errors together when both are present", () => {
     renderLaunchpad({
-      onCreateProject,
-      createProjectPath: "/tmp/my-game",
-      createConcept: "A frozen council crisis.",
-      createVisualStyle: "ink wash",
-      createInitialSceneRequest: "Open with a sealed edict.",
+      switchError: "branch missing",
+      configSaveError: "disk full",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
-
-    await waitFor(() => {
-      expect(onCreateProject).toHaveBeenCalledWith(
-        "/tmp/my-game",
-        expect.objectContaining({
-          concept: "A frozen council crisis.",
-          visual_style: "ink wash",
-          initial_scene_request: "Open with a sealed edict.",
-        }),
-        false,
-      );
-    });
-  });
-
-  it("shows real boundary checks from checkReport, not hardcoded pass", () => {
-    const checkReport: ProjectCheckReport = {
-      title: "My Project",
-      entry_scene: "opening-scene",
-      scene_count: 3,
-      rule_count: 5,
-      character_count: 2,
-    };
-    renderLaunchpad({ checkReport });
-
-    fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
-
-    expect(screen.getByText("Boundary Checks")).toBeTruthy();
-    expect(screen.getByText("My Project")).toBeTruthy();
-    expect(screen.getAllByText("opening-scene").length).toBeGreaterThan(0);
-    expect(screen.getByText("3")).toBeTruthy(); // scene_count
-    expect(screen.getByText("5")).toBeTruthy(); // rule_count
-  });
-
-  it("shows the no-project boundary-check state when no project is loaded", () => {
-    renderLaunchpad({ checkReport: null, projectData: null, loadedPath: "" });
-
-    fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
-
-    expect(screen.getByText("Boundary Checks")).toBeTruthy();
-    expect(screen.getByText("Open a project to run boundary checks.")).toBeTruthy();
-  });
-
-  it("shows a pending boundary-check state when a project is loaded but no checkReport is available", () => {
-    renderLaunchpad({ checkReport: null });
-
-    fireEvent.click(screen.getByRole("tab", { name: /Project Health/ }));
-
-    expect(screen.getByText("Boundary Checks")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Boundary checks pending — run check or reload the project.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByText("Open a project to run boundary checks.")).toBeNull();
-  });
-
-  it("calls onOpenSection when the Open Play / Open Export buttons are clicked", () => {
-    const onOpenSection = vi.fn();
-    renderLaunchpad({ onOpenSection });
-
-    fireEvent.click(screen.getByRole("button", { name: /^Play$/i }));
-    expect(onOpenSection).toHaveBeenCalledWith("play");
-
-    fireEvent.click(screen.getByRole("button", { name: /^Export$/i }));
-    expect(onOpenSection).toHaveBeenCalledWith("export-kit");
+    const errorRow = screen.getByRole("alert");
+    expect(errorRow).toBeTruthy();
+    expect(errorRow.textContent).toMatch(/branch missing/);
+    expect(errorRow.textContent).toMatch(/disk full/);
   });
 });

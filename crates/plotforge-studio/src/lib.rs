@@ -3,21 +3,23 @@ use std::{
     fs,
     path::Component,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use plotforge_export::{export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 pub use plotforge_schema::{
-    AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
-    AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft, CharacterEditDocument,
-    CharacterGenerationReport, CharacterGenerationRequest, Condition, Effect, ExportProfile,
+    AgentSessionConfig, AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure,
+    AiUsageManifest, AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft,
+    CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Condition,
+    Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ModelOption, PermissionLevel,
     PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, ProjectCreationReport,
     ProjectCreationRequest, ProjectData, ProjectTemplateId, ResourceDefinition, Rule, RuleDraft,
     RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene, StateVariablesEditDocument,
     SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, VisualBible, WorkshopDraftVisibility,
-    WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument,
-    WorldGenerationReport, WorldGenerationRequest,
+    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, VisualBible,
+    WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
+    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
 };
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
@@ -225,6 +227,233 @@ pub fn pi_agent_run(request: PiAgentRunRequest) -> StudioCommandResult<PiAgentRu
 /// agent execution, network model calls, or platform outcomes.
 pub fn pi_agent_capabilities() -> StudioCommandResult<Vec<PiAgentCapability>> {
     Ok(plotforge_agent::pi_agent_capabilities())
+}
+
+// ---------------------------------------------------------------------------
+// Git workspace integration.
+//
+// These commands shell out to the local `git` binary against the loaded
+// project directory. They are read/switch-only — no push/pull/remote/fetch
+// surface is exposed. A project directory that is not a git repository returns
+// an explicit `not_a_git_repo` error (never a silent empty fallback).
+// ---------------------------------------------------------------------------
+
+/// The error code returned when a path is not inside a git work tree.
+pub const GIT_NOT_A_REPO_CODE: &str = "not_a_git_repo";
+
+/// Return the directory basename of a loaded project path. Used by the home
+/// page to label the project chip without exposing the full filesystem path.
+pub fn git_project_dir_name(path: impl AsRef<Path>) -> StudioCommandResult<String> {
+    let path = path.as_ref();
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(name)
+}
+
+/// Return the current git branch name for a project directory.
+///
+/// Returns an explicit `not_a_git_repo` error when the path is not a git
+/// work tree (never a silent empty-string fallback).
+pub fn git_current_branch(path: impl AsRef<Path>) -> StudioCommandResult<String> {
+    let path = path.as_ref();
+    ensure_git_repo(path)?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .map_err(|source| command_error("git_current_branch", path, source))?;
+    if !output.status.success() {
+        return Err(StudioCommandError {
+            code: "git_current_branch".into(),
+            message: format!(
+                "{}: git rev-parse failed: {}",
+                path.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// List local branches for a project directory. Returns `GitBranchInfo` with
+/// `is_current` marking the checked-out branch. Returns an explicit
+/// `not_a_git_repo` error when the path is not a git work tree.
+pub fn git_list_branches(path: impl AsRef<Path>) -> StudioCommandResult<Vec<GitBranchInfo>> {
+    let path = path.as_ref();
+    ensure_git_repo(path)?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["branch", "--list", "--format=%(refname:short)%09%(HEAD)"])
+        .output()
+        .map_err(|source| command_error("git_list_branches", path, source))?;
+    if !output.status.success() {
+        return Err(StudioCommandError {
+            code: "git_list_branches".into(),
+            message: format!(
+                "{}: git branch --list failed: {}",
+                path.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        });
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut branches = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (name, head_marker) = line.split_once('\t').unwrap_or((line, ""));
+        branches.push(GitBranchInfo {
+            name: name.to_string(),
+            is_current: head_marker.trim() == "*",
+        });
+    }
+    Ok(branches)
+}
+
+/// Switch the project directory to a local branch. Returns the new current
+/// branch. Returns an explicit `not_a_git_repo` error when the path is not a
+/// git work tree.
+pub fn git_switch_branch(
+    path: impl AsRef<Path>,
+    branch: &str,
+) -> StudioCommandResult<GitSwitchResult> {
+    let path = path.as_ref();
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Err(StudioCommandError {
+            code: "git_switch_branch".into(),
+            message: format!("{}: branch name is required", path.display()),
+        });
+    }
+    // Reject option-shaped branch names so a caller cannot smuggle a git option
+    // (e.g. `--force`, `-b newbranch`, `--pathspec-from-file=…`) through the
+    // IPC surface. `Command` is shell-less so this is not shell injection — it
+    // is argument injection via git's own option parser. A real branch name
+    // never starts with `-`, so this single check is the full defense: with a
+    // `-`-prefixed name rejected, the remaining argument is unambiguously a
+    // ref for `git checkout <branch>`. (We deliberately do NOT insert `--`
+    // after `checkout`: that would make git treat the branch as a pathspec,
+    // breaking legitimate switches.) Validated before `ensure_git_repo` so
+    // this is a pure-input guard that does not depend on the git binary.
+    if branch.starts_with('-') {
+        return Err(StudioCommandError {
+            code: "git_switch_branch".into(),
+            message: format!(
+                "{}: invalid branch name {:?}: branch names may not start with '-'",
+                path.display(),
+                branch,
+            ),
+        });
+    }
+    ensure_git_repo(path)?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["checkout", branch])
+        .output()
+        .map_err(|source| command_error("git_switch_branch", path, source))?;
+    if !output.status.success() {
+        return Err(StudioCommandError {
+            code: "git_switch_branch".into(),
+            message: format!(
+                "{}: git checkout {} failed: {}",
+                path.display(),
+                branch,
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        });
+    }
+    Ok(GitSwitchResult {
+        branch: branch.to_string(),
+    })
+}
+
+fn ensure_git_repo(path: &Path) -> StudioCommandResult<()> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map_err(|source| command_error("git_check_repo", path, source))?;
+    if !output.status.success() {
+        return Err(StudioCommandError {
+            code: GIT_NOT_A_REPO_CODE.into(),
+            message: format!("{}: not a git work tree", path.display()),
+        });
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Agent session configuration.
+//
+// `AgentSessionConfig` is persisted per-project under
+// `.plotforge/agent-config.json`. It is a redaction-safe capability surface:
+// model_id, permission_level, thinking_level only — never credentials,
+// endpoints, or raw provider responses. Real provider routing enforcement is
+// deferred (per AGENTS.md) but the config + persistence + interface contract
+// are wired now so the UI can drive them.
+// ---------------------------------------------------------------------------
+
+/// The list of model options the studio can surface to the UI. Hardcoded for
+/// now (real provider catalog wiring is deferred); the local mock pi-Agent is
+/// always the first option so a fresh project has a working default.
+pub fn list_available_models() -> StudioCommandResult<Vec<ModelOption>> {
+    Ok(vec![
+        ModelOption {
+            id: "local-pi".into(),
+            label: "Local pi-Agent (mock)".into(),
+            provider: "local-mock".into(),
+        },
+        ModelOption {
+            id: "glm-5.2".into(),
+            label: "GLM 5.2".into(),
+            provider: "zai".into(),
+        },
+    ])
+}
+
+/// Read the per-project agent session config. Returns defaults when no config
+/// file exists yet (never an error for a fresh project).
+pub fn get_agent_session_config(path: impl AsRef<Path>) -> StudioCommandResult<AgentSessionConfig> {
+    let path = path.as_ref();
+    let config_path = path.join(".plotforge").join("agent-config.json");
+    if !config_path.exists() {
+        return Ok(AgentSessionConfig::default());
+    }
+    let content = fs::read_to_string(&config_path)
+        .map_err(|source| command_error("get_agent_session_config", path, source))?;
+    serde_json::from_str::<AgentSessionConfig>(&content).map_err(|source| StudioCommandError {
+        code: "get_agent_session_config".into(),
+        message: format!("{}: invalid agent-config.json: {source}", path.display()),
+    })
+}
+
+/// Persist the per-project agent session config under
+/// `.plotforge/agent-config.json`. The `.plotforge` directory is created if
+/// missing.
+pub fn set_agent_session_config(
+    path: impl AsRef<Path>,
+    config: &AgentSessionConfig,
+) -> StudioCommandResult<AgentSessionConfig> {
+    let path = path.as_ref();
+    let plotforge_dir = path.join(".plotforge");
+    let config_path = plotforge_dir.join("agent-config.json");
+    fs::create_dir_all(&plotforge_dir)
+        .map_err(|source| command_error("set_agent_session_config", path, source))?;
+    let content = serde_json::to_string_pretty(config).map_err(|source| StudioCommandError {
+        code: "set_agent_session_config".into(),
+        message: format!("{}: failed to serialize config: {source}", path.display()),
+    })?;
+    fs::write(&config_path, content)
+        .map_err(|source| command_error("set_agent_session_config", path, source))?;
+    Ok(config.clone())
 }
 
 pub fn validate_workshop_package(
@@ -1006,24 +1235,29 @@ mod tests {
 
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
-        AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, ResourceDefinition,
-        Rule, RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
-        WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
-        create_character_from_draft, create_project, create_resource, create_rule,
-        create_rule_from_draft, delete_workshop_library_item, export_static_project,
+        AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, GIT_NOT_A_REPO_CODE,
+        ResourceDefinition, Rule, RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility,
+        WorkshopItemPackage, WorkshopPackageFile, block_workshop_library_item, check_project,
+        create_character, create_character_from_draft, create_project, create_resource,
+        create_rule, create_rule_from_draft, delete_workshop_library_item, export_static_project,
         export_static_project_zip, generate_character, generate_story_craft,
-        generate_world_expansion, import_workshop_library_package, list_asset_records,
-        list_export_profiles, list_source_files, list_workshop_library, load_workshop_library_item,
-        open_project, pi_agent_capabilities, pi_agent_run, play_once_project,
-        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
-        play_once_project_with_save, read_ai_safety_policy, read_character_edit_document,
-        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
-        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
-        report_workshop_library_item, update_ai_safety_policy, update_story_craft_edit_document,
+        generate_world_expansion, get_agent_session_config, git_current_branch, git_list_branches,
+        git_project_dir_name, git_switch_branch, import_workshop_library_package,
+        list_asset_records, list_available_models, list_export_profiles, list_source_files,
+        list_workshop_library, load_workshop_library_item, open_project, pi_agent_capabilities,
+        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
+        play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
+        read_character_edit_document, read_rules_edit_document, read_source_file,
+        read_state_variables_edit_document, read_story_craft_edit_document,
+        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
+        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
         update_world_edit_document, validate_workshop_package, write_source_file,
         write_steam_submission_kit, write_workshop_publish_draft,
     };
-    use plotforge_schema::{PiAgentRunRequest, contains_secret_marker_text};
+    use plotforge_schema::{
+        AgentSessionConfig, PermissionLevel, PiAgentRunRequest, ThinkingLevel,
+        contains_secret_marker_text,
+    };
 
     #[test]
     fn pi_agent_run_returns_local_pi_marker() {
@@ -2261,5 +2495,205 @@ mod tests {
             .expect_err("duplicate rule id should fail");
 
         assert_eq!(error.code, "create_rule_from_draft");
+    }
+
+    // -----------------------------------------------------------------------
+    // Git workspace integration tests.
+    //
+    // These tests require the `git` binary on PATH. They are skipped (not
+    // failed) when git is unavailable so CI environments without git do not
+    // break. They use `tempfile` + `git init` to build an isolated repo.
+    // -----------------------------------------------------------------------
+
+    fn git_available() -> bool {
+        std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn init_temp_repo() -> tempfile::TempDir {
+        let dir = tempdir().expect("temp dir");
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["init", "-b", "main"])
+            .output()
+            .expect("git init");
+        // Required for git checkout to work in CI without a configured user.
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.email", "test@plotforge.local"])
+            .output()
+            .expect("git config user.email");
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.name", "PlotForge Test"])
+            .output()
+            .expect("git config user.name");
+        dir
+    }
+
+    fn commit_initial(path: &Path) {
+        fs::write(path.join("README.md"), "starter\n").expect("write readme");
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(["add", "."])
+            .output()
+            .expect("git add");
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(["commit", "-m", "initial"])
+            .output()
+            .expect("git commit");
+    }
+
+    #[test]
+    fn git_project_dir_name_returns_basename() {
+        let dir = tempdir().expect("temp dir");
+        let name = git_project_dir_name(dir.path()).expect("dir name");
+        assert_eq!(name, dir.path().file_name().unwrap().to_string_lossy());
+    }
+
+    #[test]
+    fn git_current_branch_returns_main_for_fresh_repo() {
+        if !git_available() {
+            return;
+        }
+        let dir = init_temp_repo();
+        commit_initial(dir.path());
+        let branch = git_current_branch(dir.path()).expect("current branch");
+        assert_eq!(branch, "main");
+    }
+
+    #[test]
+    fn git_current_branch_errors_for_non_repo() {
+        if !git_available() {
+            return;
+        }
+        let dir = tempdir().expect("temp dir");
+        let error = git_current_branch(dir.path()).expect_err("non-repo should error");
+        assert_eq!(error.code, GIT_NOT_A_REPO_CODE);
+    }
+
+    #[test]
+    fn git_list_branches_marks_current() {
+        if !git_available() {
+            return;
+        }
+        let dir = init_temp_repo();
+        commit_initial(dir.path());
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["branch", "feature/x"])
+            .output()
+            .expect("git branch feature/x");
+        let branches = git_list_branches(dir.path()).expect("list branches");
+        assert_eq!(branches.len(), 2);
+        let current = branches.iter().find(|b| b.is_current).expect("has current");
+        assert_eq!(current.name, "main");
+        let other = branches
+            .iter()
+            .find(|b| b.name == "feature/x")
+            .expect("has feature");
+        assert!(!other.is_current);
+    }
+
+    #[test]
+    fn git_switch_branch_changes_current() {
+        if !git_available() {
+            return;
+        }
+        let dir = init_temp_repo();
+        commit_initial(dir.path());
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["branch", "feature/x"])
+            .output()
+            .expect("git branch feature/x");
+        let result = git_switch_branch(dir.path(), "feature/x").expect("switch branch");
+        assert_eq!(result.branch, "feature/x");
+        let current = git_current_branch(dir.path()).expect("current after switch");
+        assert_eq!(current, "feature/x");
+    }
+
+    #[test]
+    fn git_switch_branch_rejects_option_shaped_name() {
+        // Regression: an option-shaped branch name (e.g. "--force") must be
+        // rejected before `git checkout` is invoked, so a caller cannot
+        // smuggle a git option through the IPC surface. This does not require
+        // the `git` binary — the validation runs unconditionally.
+        let dir = tempdir().expect("temp dir");
+        for bad in ["--force", "-b", "--help", "-q"] {
+            let error = git_switch_branch(dir.path(), bad).expect_err("option-shaped name");
+            assert_eq!(
+                error.code, "git_switch_branch",
+                "option-shaped name {bad:?} should be rejected with git_switch_branch code"
+            );
+            assert!(
+                error.message.contains("may not start with '-'"),
+                "error should explain the rejection: {}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn git_switch_branch_rejects_empty_name_without_git() {
+        // Empty-name validation runs before the git binary is invoked, so this
+        // test passes even when git is absent on PATH.
+        let dir = tempdir().expect("temp dir");
+        for bad in ["", "   ", "\t"] {
+            let error = git_switch_branch(dir.path(), bad).expect_err("empty name");
+            assert_eq!(error.code, "git_switch_branch");
+            assert!(error.message.contains("branch name is required"));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Agent session config tests.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn list_available_models_includes_local_pi_default() {
+        let models = list_available_models().expect("list models");
+        assert!(!models.is_empty());
+        assert_eq!(models[0].id, "local-pi");
+    }
+
+    #[test]
+    fn get_agent_session_config_returns_defaults_for_fresh_project() {
+        let dir = tempdir().expect("temp dir");
+        let config = get_agent_session_config(dir.path()).expect("default config");
+        assert_eq!(config, AgentSessionConfig::default());
+    }
+
+    #[test]
+    fn set_then_get_agent_session_config_roundtrips() {
+        let dir = tempdir().expect("temp dir");
+        let config = AgentSessionConfig {
+            model_id: "glm-5.2".into(),
+            permission_level: PermissionLevel::FullAccess,
+            thinking_level: ThinkingLevel::High,
+        };
+        let persisted = set_agent_session_config(dir.path(), &config).expect("persist config");
+        assert_eq!(persisted, config);
+        let loaded = get_agent_session_config(dir.path()).expect("load config");
+        assert_eq!(loaded, config);
+        // The config file must live under .plotforge (never next to source).
+        let config_path = dir.path().join(".plotforge").join("agent-config.json");
+        assert!(config_path.exists());
+        let content = fs::read_to_string(&config_path).expect("read config file");
+        // Redaction safety: no secret markers or credential fields.
+        assert!(!content.contains("api_key"));
+        assert!(!content.contains("endpoint"));
+        assert!(content.contains("glm-5.2"));
     }
 }

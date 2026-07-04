@@ -179,6 +179,7 @@ describe("creator desktop i18n", () => {
       "fallback",
       "files",
       "grain",
+      "git",
       "harvest",
       "index",
       "initial",

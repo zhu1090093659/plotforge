@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentSessionConfig,
   AiSafetyPolicy,
   AssetRecord,
   AudioBible,
@@ -8,6 +9,9 @@ import type {
   CharacterEditDocument,
   CharacterGenerationReport,
   ExportProfile,
+  GitBranchInfo,
+  GitSwitchResult,
+  ModelOption,
   PiAgentCapability,
   PiAgentRunRequest,
   PiAgentRunResult,
@@ -70,6 +74,12 @@ export const studioCommandNames = {
   writeSourceFile: "write_source_file",
   piAgentRun: "pi_agent_run",
   piAgentCapabilities: "pi_agent_capabilities",
+  gitCurrentBranch: "git_current_branch",
+  gitListBranches: "git_list_branches",
+  gitSwitchBranch: "git_switch_branch",
+  listAvailableModels: "list_available_models",
+  getAgentSessionConfig: "get_agent_session_config",
+  setAgentSessionConfig: "set_agent_session_config",
 } as const;
 
 export interface StudioCommandError {
@@ -493,6 +503,43 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
     piAgentCapabilities(): Promise<PiAgentCapability[]> {
       return invokeCommand<PiAgentCapability[]>(
         studioCommandNames.piAgentCapabilities,
+      );
+    },
+    gitCurrentBranch(path: string): Promise<string> {
+      return invokeCommand<string>(studioCommandNames.gitCurrentBranch, {
+        path,
+      });
+    },
+    gitListBranches(path: string): Promise<GitBranchInfo[]> {
+      return invokeCommand<GitBranchInfo[]>(studioCommandNames.gitListBranches, {
+        path,
+      });
+    },
+    gitSwitchBranch(
+      path: string,
+      branch: string,
+    ): Promise<GitSwitchResult> {
+      return invokeCommand<GitSwitchResult>(studioCommandNames.gitSwitchBranch, {
+        path,
+        branch,
+      });
+    },
+    listAvailableModels(): Promise<ModelOption[]> {
+      return invokeCommand<ModelOption[]>(studioCommandNames.listAvailableModels);
+    },
+    getAgentSessionConfig(path: string): Promise<AgentSessionConfig> {
+      return invokeCommand<AgentSessionConfig>(
+        studioCommandNames.getAgentSessionConfig,
+        { path },
+      );
+    },
+    setAgentSessionConfig(
+      path: string,
+      config: AgentSessionConfig,
+    ): Promise<AgentSessionConfig> {
+      return invokeCommand<AgentSessionConfig>(
+        studioCommandNames.setAgentSessionConfig,
+        { path, config },
       );
     },
   };

@@ -24,6 +24,8 @@ import {
   useAgentConversation,
   type AgentConversationWorkspace,
 } from "./useAgentConversation";
+import { useGitInfo, type GitInfoWorkspace } from "./useGitInfo";
+import { useAgentConfig, type AgentConfigWorkspace } from "./useAgentConfig";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,8 @@ export interface StudioWorkspace {
   playtest: PlaytestWorkspace;
   export: ExportWorkspace;
   agent: AgentConversationWorkspace;
+  gitInfo: GitInfoWorkspace;
+  agentConfig: AgentConfigWorkspace;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +170,14 @@ export function useStudioWorkspace({
   const exportWorkspace = useExport({ dataSource, initialProjectPath });
 
   const agent = useAgentConversation(playtest, loadedPath);
+
+  // Git + agent-config sub-hooks. The git hook refreshes the branch list on
+  // path change; on a successful branch switch we reload the project so the
+  // editor/source/trace views reflect the new work tree.
+  const gitInfo = useGitInfo(dataSource, loadedPath, () => {
+    void loadProject(loadedPath);
+  });
+  const agentConfig = useAgentConfig(dataSource, loadedPath);
 
   // Core operations --------------------------------------------------------
 
@@ -358,6 +370,8 @@ export function useStudioWorkspace({
     playtest,
     export: exportWorkspace,
     agent,
+    gitInfo,
+    agentConfig,
   };
 }
 
@@ -375,15 +389,4 @@ function attachBibles(
     visual_bible: visualBible,
     audio_bible: audioBible,
   };
-}
-
-export function defaultNewProjectPath(projectPath: string) {
-  if (!projectPath.trim()) {
-    return "plotforge-project";
-  }
-  return `${trimTrailingSlashes(projectPath)}-new`;
-}
-
-function trimTrailingSlashes(path: string) {
-  return path.replace(/\/+$/, "") || ".";
 }

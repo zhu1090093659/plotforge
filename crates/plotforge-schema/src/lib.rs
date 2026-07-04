@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 15;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 16;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -15,6 +15,98 @@ pub const DESKTOP_RUNTIME_DRAFT_FILE: &str = "desktop-runtime-draft.json";
 
 pub mod pi_agent;
 pub use pi_agent::*;
+
+// ---------------------------------------------------------------------------
+// Git workspace integration contracts.
+//
+// These describe the local Git workspace surface exposed by
+// `plotforge-studio` for the Creator Desktop home page: the current branch,
+// the local branch list, and switch operations. They are capability/descriptive
+// only — they never carry credentials, remote URLs, or push/pull state.
+// ---------------------------------------------------------------------------
+
+/// A single local Git branch entry. `is_current` marks the checked-out branch.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub is_current: bool,
+}
+
+/// The result of a `git checkout` switch operation: the now-current branch.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GitSwitchResult {
+    pub branch: String,
+}
+
+// ---------------------------------------------------------------------------
+// Agent session configuration contracts.
+//
+// `AgentSessionConfig` is the per-project persisted agent session preference
+// (model id, permission level, thinking level). It is a redaction-safe
+// capability/descriptive surface — it never carries provider credentials,
+// endpoints, or raw provider responses. Real provider routing enforcement is
+// wired through `plotforge-studio`/`plotforge-agent` and remains local-only.
+// ---------------------------------------------------------------------------
+
+/// The agent permission level: how much autonomy the pi-Agent has when
+/// proposing/applying changes. `ReadOnly` never mutates project state;
+/// `AskEveryTime` pauses for explicit approval before each mutating action;
+/// `FullAccess` permits autonomous application of validated proposals.
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionLevel {
+    FullAccess,
+    #[default]
+    AskEveryTime,
+    ReadOnly,
+}
+
+/// The agent thinking level: how much deliberation the pi-Agent invests
+/// before producing a proposal. This is a capability/descriptive knob; the
+/// backend maps it to provider-side reasoning depth when a real provider is
+/// wired (deferred), and to a no-op marker for the local mock provider.
+#[derive(Clone, Debug, JsonSchema, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingLevel {
+    High,
+    #[default]
+    Medium,
+    Low,
+    Off,
+}
+
+/// A selectable model option surfaced by `list_available_models`. `provider`
+/// is a descriptive label only — never an endpoint URL or credential.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelOption {
+    pub id: String,
+    pub label: String,
+    pub provider: String,
+}
+
+/// The per-project persisted agent session configuration. Stored under
+/// `.plotforge/agent-config.json`; never carries secrets or provider
+/// endpoints.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct AgentSessionConfig {
+    pub model_id: String,
+    pub permission_level: PermissionLevel,
+    pub thinking_level: ThinkingLevel,
+}
+
+impl Default for AgentSessionConfig {
+    fn default() -> Self {
+        Self {
+            model_id: "local-pi".into(),
+            permission_level: PermissionLevel::default(),
+            thinking_level: ThinkingLevel::default(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GameProject {
@@ -1758,6 +1850,10 @@ pub struct ContractRootSchemas {
     pub pi_agent_descriptor: PiAgentDescriptor,
     pub pi_agent_run_request: PiAgentRunRequest,
     pub pi_agent_run_result: PiAgentRunResult,
+    pub git_branch_info: GitBranchInfo,
+    pub git_switch_result: GitSwitchResult,
+    pub model_option: ModelOption,
+    pub agent_session_config: AgentSessionConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -1931,7 +2027,13 @@ export interface PiAgentCapability { id: string; label: string; status: string; 
 export interface PiAgentDescriptor { agent_id: string; is_local_pi: boolean; capabilities: PiAgentCapability[]; }
 export interface PiAgentRunRequest { agent_id: string; run_seed: number; prompt_summary: string; prompt_hash: string; }
 export interface PiAgentRunResult { descriptor: PiAgentDescriptor; reproducibility: ReproducibilityMetadata; trace_id?: string | null; evidence_summary: string; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; }
+export interface GitBranchInfo { name: string; is_current: boolean; }
+export interface GitSwitchResult { branch: string; }
+export type PermissionLevel = "full_access" | "ask_every_time" | "read_only";
+export type ThinkingLevel = "high" | "medium" | "low" | "off";
+export interface ModelOption { id: string; label: string; provider: string; }
+export interface AgentSessionConfig { model_id: string; permission_level: PermissionLevel; thinking_level: ThinkingLevel; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; }
 "#,
     );
     output
@@ -1963,6 +2065,79 @@ pub fn validate_contract_bundle(bundle: &ContractBundle) -> Result<(), ContractV
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn git_branch_info_roundtrips_json() {
+        let branch = GitBranchInfo {
+            name: "main".into(),
+            is_current: true,
+        };
+        let encoded = serde_json::to_string_pretty(&branch).expect("serialize branch");
+        let decoded: GitBranchInfo = serde_json::from_str(&encoded).expect("deserialize branch");
+        assert_eq!(decoded, branch);
+    }
+
+    #[test]
+    fn git_switch_result_roundtrips_json() {
+        let result = GitSwitchResult {
+            branch: "feature/x".into(),
+        };
+        let encoded = serde_json::to_string_pretty(&result).expect("serialize switch");
+        let decoded: GitSwitchResult = serde_json::from_str(&encoded).expect("deserialize switch");
+        assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn permission_level_default_is_ask_every_time() {
+        assert_eq!(PermissionLevel::default(), PermissionLevel::AskEveryTime);
+        let encoded = serde_json::to_string(&PermissionLevel::FullAccess).unwrap();
+        assert_eq!(encoded, "\"full_access\"");
+        let decoded: PermissionLevel = serde_json::from_str("\"read_only\"").unwrap();
+        assert_eq!(decoded, PermissionLevel::ReadOnly);
+    }
+
+    #[test]
+    fn thinking_level_default_is_medium() {
+        assert_eq!(ThinkingLevel::default(), ThinkingLevel::Medium);
+        let encoded = serde_json::to_string(&ThinkingLevel::High).unwrap();
+        assert_eq!(encoded, "\"high\"");
+        let decoded: ThinkingLevel = serde_json::from_str("\"off\"").unwrap();
+        assert_eq!(decoded, ThinkingLevel::Off);
+    }
+
+    #[test]
+    fn model_option_roundtrips_json() {
+        let model = ModelOption {
+            id: "local-pi".into(),
+            label: "Local pi-Agent (mock)".into(),
+            provider: "local-mock".into(),
+        };
+        let encoded = serde_json::to_string_pretty(&model).expect("serialize model");
+        let decoded: ModelOption = serde_json::from_str(&encoded).expect("deserialize model");
+        assert_eq!(decoded, model);
+    }
+
+    #[test]
+    fn agent_session_config_default_and_roundtrip() {
+        let config = AgentSessionConfig::default();
+        assert_eq!(config.model_id, "local-pi");
+        assert_eq!(config.permission_level, PermissionLevel::AskEveryTime);
+        assert_eq!(config.thinking_level, ThinkingLevel::Medium);
+        let encoded = serde_json::to_string_pretty(&config).expect("serialize config");
+        let decoded: AgentSessionConfig =
+            serde_json::from_str(&encoded).expect("deserialize config");
+        assert_eq!(decoded, config);
+    }
+
+    #[test]
+    fn agent_session_config_rejects_unknown_fields() {
+        let config = AgentSessionConfig::default();
+        let mut value = serde_json::to_value(&config).expect("config value");
+        value["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<AgentSessionConfig>(value)
+            .expect_err("unknown field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
 
     #[test]
     fn game_project_roundtrips_json() {
