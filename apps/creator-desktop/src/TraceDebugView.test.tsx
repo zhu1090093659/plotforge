@@ -48,6 +48,9 @@ describe("TraceDebugView", () => {
     expect(screen.getAllByText("trace-001").length).toBeGreaterThan(0);
     expect(screen.getByText("Run seed")).toBeTruthy();
     expect(screen.getAllByText("7").length).toBeGreaterThan(0);
+    // Run Result Summary is collapsed by default; expand it to verify the
+    // prompt-version reproducibility field rendered inside Run Evidence.
+    fireEvent.click(screen.getByText("Run Result Summary"));
     expect(
       screen.getAllByText("plotforge-local-mock-prompt-v1").length,
     ).toBeGreaterThan(0);
@@ -68,7 +71,7 @@ describe("TraceDebugView", () => {
     );
   });
 
-  it("renders Run Result Summary open by default with state delta and run evidence", () => {
+  it("renders Run Result Summary collapsed by default, expanding to state delta and run evidence", () => {
     const report = demoPlayOnceReport("continue");
 
     renderView(
@@ -78,8 +81,11 @@ describe("TraceDebugView", () => {
       />,
     );
 
-    // Run Result Summary is default open — its content is visible
+    // Run Result Summary is collapsed by default — its content is hidden
     expect(screen.getByText("Run Result Summary")).toBeTruthy();
+    expect(screen.queryByText("State Delta")).toBeNull();
+    // Expand it to verify the run-evidence content
+    fireEvent.click(screen.getByText("Run Result Summary"));
     expect(screen.getByText("State Delta")).toBeTruthy();
     expect(screen.getByText("Run Evidence")).toBeTruthy();
     expect(screen.getByText("Selected choice")).toBeTruthy();

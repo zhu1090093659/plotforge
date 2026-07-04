@@ -10,6 +10,11 @@ import {
   Collapsible,
   studioUiClassNames,
 } from "./studioUi";
+import {
+  PaginationControls,
+  PaginatedCardGrid,
+  usePagination,
+} from "./pagination";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -100,16 +105,10 @@ export function CharactersView({
 
       {characterEditDocument ? (
         <div className="mt-3 grid gap-3">
-          <div className="grid gap-3 lg:grid-cols-2">
-            {characterEditDocument.characters.map((character, index) => (
-              <CharacterCard
-                key={`${character.id}:${index}`}
-                character={character}
-                index={index}
-                onUpdate={(patch) => onUpdateCharacter(index, patch)}
-              />
-            ))}
-          </div>
+          <CharacterCardGrid
+            characters={characterEditDocument.characters}
+            onUpdateCharacter={onUpdateCharacter}
+          />
 
           <Collapsible
             label={t("characters.addCharacter")}
@@ -172,6 +171,65 @@ export function CharactersView({
 }
 
 // ---------------------------------------------------------------------------
+// CharacterCardGrid — paginated character list.
+//
+// Keeps the original array index stable across pages so `onUpdateCharacter`
+// patches the correct character even when the visible slice is a later page.
+// ---------------------------------------------------------------------------
+
+function CharacterCardGrid({
+  characters,
+  onUpdateCharacter,
+}: {
+  characters: Character[];
+  onUpdateCharacter(index: number, patch: Partial<Character>): void;
+}) {
+  const { t } = useStudioI18n();
+  const indexed = characters.map((character, index) => ({ character, index }));
+  const {
+    query,
+    setQuery,
+    page,
+    setPage,
+    totalPages,
+    filteredCount,
+    visible,
+    needsControls,
+  } = usePagination(indexed, {
+    filter: ({ character }, q) =>
+      [character.id, character.name, character.role]
+        .filter(Boolean)
+        .some((field) => field.toLowerCase().includes(q.toLowerCase())),
+  });
+  return (
+    <PaginatedCardGrid
+      controls={
+        <PaginationControls
+          needsControls={needsControls}
+          query={query}
+          setQuery={setQuery}
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+          filteredCount={filteredCount}
+          searchAriaLabel={t("pagination.aria.searchCharacters")}
+          searchPlaceholder={t("pagination.searchCharacters")}
+        />
+      }
+    >
+      {visible.map(({ character, index }) => (
+        <CharacterCard
+          key={`${character.id}:${index}`}
+          character={character}
+          index={index}
+          onUpdate={(patch) => onUpdateCharacter(index, patch)}
+        />
+      ))}
+    </PaginatedCardGrid>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CharacterCard — collapsed summary with expandable detail edit
 // ---------------------------------------------------------------------------
 
@@ -224,7 +282,7 @@ function CharacterCard({
                   .filter(Boolean),
               })
             }
-            minHeight="min-h-24"
+            minHeight="min-h-20"
           />
           <TextareaInput
             label={t("characters.visualCard")}
@@ -232,7 +290,7 @@ function CharacterCard({
             placeholder={t("characters.placeholder.visualCardExisting")}
             value={character.visual_card}
             onChange={(value) => onUpdate({ visual_card: value })}
-            minHeight="min-h-24"
+            minHeight="min-h-20"
           />
           <TextareaInput
             label={t("characters.voiceCard")}
@@ -240,7 +298,7 @@ function CharacterCard({
             placeholder={t("characters.placeholder.voiceCardExisting")}
             value={character.voice_card}
             onChange={(value) => onUpdate({ voice_card: value })}
-            minHeight="min-h-24"
+            minHeight="min-h-20"
           />
           {character.portrait_request ? (
             <div className="sm:col-span-2 rounded-md border border-ink/10 bg-canvas-50 px-3 py-2 text-sm">

@@ -81,17 +81,17 @@ export function LaunchpadView({
   const projectTitle = projectSummary?.title ?? t("app.noProjectLoaded");
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       <section
         aria-label={t("launchpad.aria.projectOverview")}
-        className="rounded-lg border border-canvas-200/70 bg-canvas-50 p-5 text-ink shadow-studio-panel"
+        className="rounded-lg border border-canvas-200/70 bg-canvas-50 p-4 text-ink shadow-studio-panel"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase text-violet-600">
               {t("launchpad.projectOverview")}
             </p>
-            <h2 className="mt-1 text-2xl font-semibold text-ink">
+            <h2 className="mt-1 text-xl font-semibold text-ink">
               {projectTitle}
             </h2>
             <p className="mt-1 max-w-2xl text-sm leading-5 text-graphite-700/70">
@@ -116,7 +116,7 @@ export function LaunchpadView({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
           {metrics.map((metric) => (
             <div
               key={metric.labelKey}
@@ -132,7 +132,7 @@ export function LaunchpadView({
           ))}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <StudioButton onClick={() => onOpenSection("play")}>
             {t("launchpad.openPlay")}
           </StudioButton>
@@ -144,7 +144,7 @@ export function LaunchpadView({
 
       <StudioTabs
         ariaLabel={t("launchpad.secondarySurfaces")}
-        className="mt-1"
+        className="mt-0"
         items={[
           {
             id: "new-project",
@@ -250,8 +250,8 @@ function NewProjectForm({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-      <form onSubmit={handleSubmit} className="grid gap-4">
+    <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+      <form onSubmit={handleSubmit} className="grid gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-ink/55">
             {t("launchpad.scaffold")}
@@ -299,14 +299,12 @@ function NewProjectForm({
             ariaLabel={t("launchpad.aria.concept")}
             value={createConcept}
             onChange={setCreateConcept}
-            className="lg:col-span-2"
           />
           <LaunchpadTextareaInput
             label={t("launchpad.initialScene")}
             ariaLabel={t("launchpad.aria.initialSceneRequest")}
             value={createInitialSceneRequest}
             onChange={setCreateInitialSceneRequest}
-            className="lg:col-span-2"
           />
         </div>
 
@@ -330,7 +328,7 @@ function NewProjectForm({
         ) : null}
       </form>
 
-      <section className="rounded-md border border-canvas-200/55 bg-canvas-50 p-4 shadow-studio-panel">
+      <section className="self-start rounded-md border border-canvas-200/55 bg-canvas-50 p-4 shadow-studio-panel">
         <h4 className="text-xs font-semibold uppercase tracking-tightish text-ink/55">
           {t("launchpad.creationReport")}
         </h4>
@@ -517,7 +515,7 @@ function LaunchpadTextareaInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-20 w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+        className="min-h-16 w-full resize-none rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
       />
     </label>
   );

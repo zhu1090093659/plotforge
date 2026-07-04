@@ -9,6 +9,11 @@ import {
   Collapsible,
   studioUiClassNames,
 } from "./studioUi";
+import {
+  PaginationControls,
+  PaginatedCardGrid,
+  usePagination,
+} from "./pagination";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -102,24 +107,12 @@ export function StateView({
 
       {stateVariablesEditDocument ? (
         <div className="mt-3 grid gap-3">
-          <div className="grid gap-3 lg:grid-cols-2">
-            {stateVariablesEditDocument.resources.map((resource, index) => (
-              <ResourceCard
-                key={`${resource.key}:${index}`}
-                resource={resource}
-                index={index}
-                initialWorldValue={
-                  stateVariablesEditDocument.initial_world_state.resources[
-                    resource.key
-                  ] ?? resource.initial
-                }
-                onUpdate={(patch) => onUpdateResource(index, patch)}
-                onUpdateInitialWorldValue={(value) =>
-                  onUpdateInitialWorldResource(resource.key, value)
-                }
-              />
-            ))}
-          </div>
+          <ResourceCardGrid
+            resources={stateVariablesEditDocument.resources}
+            initialWorldState={stateVariablesEditDocument.initial_world_state.resources}
+            onUpdateResource={onUpdateResource}
+            onUpdateInitialWorldResource={onUpdateInitialWorldResource}
+          />
 
           <Collapsible
             label={t("state.initialStoryState")}
@@ -167,6 +160,72 @@ export function StateView({
         <EmptyState />
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ResourceCardGrid — paginated resource list (original index preserved).
+// ---------------------------------------------------------------------------
+
+function ResourceCardGrid({
+  resources,
+  initialWorldState,
+  onUpdateResource,
+  onUpdateInitialWorldResource,
+}: {
+  resources: ResourceDefinition[];
+  initialWorldState: Record<string, number>;
+  onUpdateResource(index: number, patch: Partial<ResourceDefinition>): void;
+  onUpdateInitialWorldResource(key: string, value: number): void;
+}) {
+  const { t } = useStudioI18n();
+  const indexed = resources.map((resource, index) => ({ resource, index }));
+  const {
+    query,
+    setQuery,
+    page,
+    setPage,
+    totalPages,
+    filteredCount,
+    visible,
+    needsControls,
+  } = usePagination(indexed, {
+    filter: ({ resource }, q) =>
+      [resource.key, resource.label].filter(Boolean).some((field) =>
+        field.toLowerCase().includes(q.toLowerCase()),
+      ),
+  });
+  return (
+    <PaginatedCardGrid
+      controls={
+        <PaginationControls
+          needsControls={needsControls}
+          query={query}
+          setQuery={setQuery}
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+          filteredCount={filteredCount}
+          searchAriaLabel={t("pagination.aria.searchResources")}
+          searchPlaceholder={t("pagination.searchResources")}
+        />
+      }
+    >
+      {visible.map(({ resource, index }) => (
+        <ResourceCard
+          key={`${resource.key}:${index}`}
+          resource={resource}
+          index={index}
+          initialWorldValue={
+            initialWorldState[resource.key] ?? resource.initial
+          }
+          onUpdate={(patch) => onUpdateResource(index, patch)}
+          onUpdateInitialWorldValue={(value) =>
+            onUpdateInitialWorldResource(resource.key, value)
+          }
+        />
+      ))}
+    </PaginatedCardGrid>
   );
 }
 

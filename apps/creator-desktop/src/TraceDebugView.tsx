@@ -122,14 +122,14 @@ export function TraceDebugView({
               </div>
             </div>
 
-            <div className="relative min-h-[260px] overflow-hidden bg-graphite-900">
+            <div className="relative min-h-[clamp(200px,35vh,380px)] overflow-hidden bg-graphite-900">
               <ScenePreviewImage
                 src={sceneImage}
                 assetPath={report?.scene.background_asset ?? null}
                 className="absolute inset-0 h-full w-full object-cover opacity-60"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/35 to-graphite-950/10" />
-              <div className="relative flex min-h-[260px] flex-col justify-end p-4">
+              <div className="relative flex min-h-[clamp(200px,35vh,380px)] flex-col justify-end p-4">
                 <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
                   <p className="text-xs font-semibold uppercase text-violet-600">
                     {report
@@ -183,7 +183,7 @@ export function TraceDebugView({
 
           <Collapsible
             label={t("trace.runResultSummary")}
-            defaultOpen
+            defaultOpen={false}
             badge={report?.delta_summary.length}
           >
             <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_0.9fr]">
@@ -276,57 +276,57 @@ export function TraceDebugView({
               {t("trace.runToInspectTrace")}
             </div>
           )}
-        </div>
 
-        <Collapsible
-          label={t("trace.advancedSnapshotControls")}
-          defaultOpen={false}
-          id="trace-snapshot-controls"
-          className="rounded-md border border-canvas-200 bg-canvas-50 p-3"
-        >
-          <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
-            <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium uppercase text-ink/45">
-                {t("trace.saveId")}
-              </span>
-              <input
-                aria-label={t("trace.aria.playtestSaveId")}
-                value={saveId}
-                onChange={(event) => onSaveIdChange?.(event.target.value)}
-                className={studioUiClassNames.input}
-              />
-            </label>
-            <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium uppercase text-ink/45">
-                {t("trace.restoreId")}
-              </span>
-              <input
-                aria-label={t("trace.aria.playtestRestoreId")}
-                value={restoreId}
-                disabled={restoreLatest}
-                onChange={(event) => onRestoreIdChange?.(event.target.value)}
-                className={`${studioUiClassNames.input} disabled:cursor-not-allowed disabled:bg-ink/5 disabled:text-ink/35`}
-              />
-            </label>
-            <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-ink/10 px-3 text-sm font-medium text-ink/70">
-              <input
-                type="checkbox"
-                aria-label={t("trace.aria.restoreLatestSave")}
-                checked={restoreLatest}
-                onChange={(event) => onRestoreLatestChange?.(event.target.checked)}
-                className="h-4 w-4 accent-ink"
-              />
-              {t("trace.restoreLatest")}
-            </label>
-          </div>
-          <p className="mt-3 text-xs text-ink/55">
-            {t("trace.snapshotHint")}
-          </p>
-        </Collapsible>
+          <Collapsible
+            label={t("trace.advancedSnapshotControls")}
+            defaultOpen={false}
+            id="trace-snapshot-controls"
+            className="rounded-md border border-canvas-200 bg-canvas-50 p-3"
+          >
+            <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+              <label className="grid min-w-0 gap-1">
+                <span className="text-xs font-medium uppercase text-ink/45">
+                  {t("trace.saveId")}
+                </span>
+                <input
+                  aria-label={t("trace.aria.playtestSaveId")}
+                  value={saveId}
+                  onChange={(event) => onSaveIdChange?.(event.target.value)}
+                  className={studioUiClassNames.input}
+                />
+              </label>
+              <label className="grid min-w-0 gap-1">
+                <span className="text-xs font-medium uppercase text-ink/45">
+                  {t("trace.restoreId")}
+                </span>
+                <input
+                  aria-label={t("trace.aria.playtestRestoreId")}
+                  value={restoreId}
+                  disabled={restoreLatest}
+                  onChange={(event) => onRestoreIdChange?.(event.target.value)}
+                  className={`${studioUiClassNames.input} disabled:cursor-not-allowed disabled:bg-ink/5 disabled:text-ink/35`}
+                />
+              </label>
+              <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-ink/10 px-3 text-sm font-medium text-ink/70">
+                <input
+                  type="checkbox"
+                  aria-label={t("trace.aria.restoreLatestSave")}
+                  checked={restoreLatest}
+                  onChange={(event) => onRestoreLatestChange?.(event.target.checked)}
+                  className="h-4 w-4 accent-ink"
+                />
+                {t("trace.restoreLatest")}
+              </label>
+            </div>
+            <p className="mt-3 text-xs text-ink/55">
+              {t("trace.snapshotHint")}
+            </p>
+          </Collapsible>
+        </div>
 
         <aside
           aria-label={t("trace.aria.proofEvidencePanel")}
-          className="grid content-start gap-4 rounded-lg border border-canvas-200 bg-graphite-950 p-4 text-ink shadow-studio-panel"
+          className="grid content-start gap-4 rounded-lg border border-canvas-200 bg-graphite-950 p-4 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1"
         >
           <div className="flex items-start justify-between gap-3">
             <div>

@@ -114,7 +114,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryCraftDocument({ story_bible_markdown: value })
               }
-              minHeight="min-h-32"
+                minHeight="min-h-24"
             />
             <TextareaInput
               label={t("story.styleGuide")}
@@ -123,7 +123,7 @@ export function StoryView({
               onChange={(value) =>
                 onUpdateStoryCraftDocument({ style_guide_markdown: value })
               }
-              minHeight="min-h-32"
+                minHeight="min-h-24"
             />
           </div>
 

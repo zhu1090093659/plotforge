@@ -258,7 +258,7 @@ function TextareaInput({
   value,
   onChange,
   className = "",
-  minHeight = "min-h-40",
+  minHeight = "min-h-28",
 }: {
   label: string;
   ariaLabel: string;
@@ -274,7 +274,7 @@ function TextareaInput({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 ${minHeight}`}
+        className={`w-full resize-none rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 ${minHeight}`}
       />
     </label>
   );
@@ -530,7 +530,7 @@ export function ExportView({
             children: (
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
                 {/* Build Profile + Evidence & Boundaries (left) */}
-                <aside className="grid max-h-[620px] content-start gap-3 overflow-y-auto rounded-lg border border-ink/10 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1">
+                <aside className="grid content-start gap-3 rounded-lg border border-ink/10 bg-graphite-950 p-3 text-ink shadow-studio-panel lg:col-start-2 lg:row-start-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase text-violet-600">
@@ -550,128 +550,135 @@ export function ExportView({
                     {selectedExportProfile?.intent ?? t("export.selectProfilePrompt")}
                   </p>
 
-                  <ExportEvidenceCard
-                    title={t("export.aiUsageManifest")}
-                    badge={aiSafetyPolicy ? t("export.included") : t("common.pending")}
-                  >
-                    <p className="text-sm leading-6 text-graphite-700/70">
-                      {aiSafetyPolicy?.moderation_policy ?? t("export.aiUsageAfterPolicy")}
-                    </p>
-                  </ExportEvidenceCard>
-
-                  <ExportEvidenceCard
-                    title={t("export.contentWarnings")}
-                    badge={aiSafetyPolicy ? t("export.included") : t("common.pending")}
-                  >
-                    <div className="grid gap-2">
-                      {(aiSafetyPolicy?.content_kinds ?? ["text"]).map((kind) => (
-                        <div
-                          key={kind}
-                          className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
-                        >
-                          <span className="capitalize text-ink">{kind}</span>
-                          <span className="text-graphite-700/60">
-                            {t("export.creatorReview")}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </ExportEvidenceCard>
-
-                  <ExportEvidenceCard
-                    title={t("export.redactionRules")}
-                    badge={t("common.on")}
-                  >
-                    <div className="grid gap-2 text-sm text-graphite-700/70">
-                      {[
-                        t("export.stripProviderConfig"),
-                        t("export.removePrivateTraces"),
-                        t("export.removeRawResponses"),
-                        t("export.removeSecretMarkers"),
-                      ].map((rule) => (
-                        <div key={rule} className="flex items-center justify-between gap-3">
-                          <span>{rule}</span>
-                          <span className="font-semibold text-health-400">
-                            {t("common.on")}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </ExportEvidenceCard>
-
-                  <ExportEvidenceCard title={t("export.assetWhitelist")} badge="Local">
-                    <p className="text-sm leading-6 text-graphite-700/70">
-                      {t("export.allowReferencedAssets")}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {[".png", ".jpg", ".webp", ".ogg", ".mp3", ".json", ".md"].map(
-                        (extension) => (
-                          <span
-                            key={extension}
-                            className="rounded-sm border border-canvas-200 bg-ink/5 px-2 py-1 text-xs font-semibold text-graphite-700/70"
-                          >
-                            {extension}
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  </ExportEvidenceCard>
-
-                  {/* Boundary checks summary (merged from right aside) */}
-                  <div className="mt-1">
-                    <p className="text-xs font-semibold uppercase text-health-400">
-                      {t("export.evidenceBoundaries")}
-                    </p>
-                    <p className="mt-1 text-sm text-graphite-700/70">
-                      {t("export.localExportPackageOnly")}
-                    </p>
-                  </div>
-                  <div className="grid gap-2">
-                    {actionableEvidenceChecks.map((check) => (
-                      <div
-                        key={check.label}
-                        className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
-                      >
-                        <span>{check.label}</span>
-                        <span
-                          className={[
-                            "font-semibold",
-                            evidenceStatusClassName(check.status),
-                          ].join(" ")}
-                        >
-                          {evidenceStatusLabel(check.status, t)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Technical details (permanently pending checks) — collapsed by default */}
                   <Collapsible
-                    label={t("export.technicalDetails")}
+                    label={t("export.advancedEvidence")}
                     defaultOpen={false}
-                    badge={technicalEvidenceChecks.length}
                     className="mt-1"
                   >
-                    <div className="mt-2 grid gap-2">
-                      {technicalEvidenceChecks.map((check) => (
-                        <div
-                          key={check.label}
-                          className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
-                        >
-                          <span>{check.label}</span>
-                          <span
-                            className={[
-                              "font-semibold",
-                              evidenceStatusClassName(check.status),
-                            ].join(" ")}
-                          >
-                            {evidenceStatusLabel(check.status, t)}
-                          </span>
+                    <div className="mt-2 grid gap-3">
+                      <ExportEvidenceCard
+                        title={t("export.aiUsageManifest")}
+                        badge={aiSafetyPolicy ? t("export.included") : t("common.pending")}
+                      >
+                        <p className="text-sm leading-6 text-graphite-700/70">
+                          {aiSafetyPolicy?.moderation_policy ?? t("export.aiUsageAfterPolicy")}
+                        </p>
+                      </ExportEvidenceCard>
+
+                      <ExportEvidenceCard
+                        title={t("export.contentWarnings")}
+                        badge={aiSafetyPolicy ? t("export.included") : t("common.pending")}
+                      >
+                        <div className="grid gap-2">
+                          {(aiSafetyPolicy?.content_kinds ?? ["text"]).map((kind) => (
+                            <div
+                              key={kind}
+                              className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
+                            >
+                              <span className="capitalize text-ink">{kind}</span>
+                              <span className="text-graphite-700/60">
+                                {t("export.creatorReview")}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                      <p className="mt-1 text-xs text-graphite-700/55">
-                        {t("export.technicalChecksPending")}
-                      </p>
+                      </ExportEvidenceCard>
+
+                      <ExportEvidenceCard
+                        title={t("export.redactionRules")}
+                        badge={t("common.on")}
+                      >
+                        <div className="grid gap-2 text-sm text-graphite-700/70">
+                          {[
+                            t("export.stripProviderConfig"),
+                            t("export.removePrivateTraces"),
+                            t("export.removeRawResponses"),
+                            t("export.removeSecretMarkers"),
+                          ].map((rule) => (
+                            <div key={rule} className="flex items-center justify-between gap-3">
+                              <span>{rule}</span>
+                              <span className="font-semibold text-health-400">
+                                {t("common.on")}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </ExportEvidenceCard>
+
+                      <ExportEvidenceCard title={t("export.assetWhitelist")} badge="Local">
+                        <p className="text-sm leading-6 text-graphite-700/70">
+                          {t("export.allowReferencedAssets")}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {[".png", ".jpg", ".webp", ".ogg", ".mp3", ".json", ".md"].map(
+                            (extension) => (
+                              <span
+                                key={extension}
+                                className="rounded-sm border border-canvas-200 bg-ink/5 px-2 py-1 text-xs font-semibold text-graphite-700/70"
+                              >
+                                {extension}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      </ExportEvidenceCard>
+
+                      {/* Boundary checks summary (merged from right aside) */}
+                      <div className="mt-1">
+                        <p className="text-xs font-semibold uppercase text-health-400">
+                          {t("export.evidenceBoundaries")}
+                        </p>
+                        <p className="mt-1 text-sm text-graphite-700/70">
+                          {t("export.localExportPackageOnly")}
+                        </p>
+                      </div>
+                      <div className="grid gap-2">
+                        {actionableEvidenceChecks.map((check) => (
+                          <div
+                            key={check.label}
+                            className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
+                          >
+                            <span>{check.label}</span>
+                            <span
+                              className={[
+                                "font-semibold",
+                                evidenceStatusClassName(check.status),
+                              ].join(" ")}
+                            >
+                              {evidenceStatusLabel(check.status, t)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Technical details (permanently pending checks) */}
+                      <Collapsible
+                        label={t("export.technicalDetails")}
+                        defaultOpen={false}
+                        badge={technicalEvidenceChecks.length}
+                      >
+                        <div className="mt-2 grid gap-2">
+                          {technicalEvidenceChecks.map((check) => (
+                            <div
+                              key={check.label}
+                              className="flex items-center justify-between gap-3 rounded-md border border-canvas-200 bg-ink/5 px-3 py-2 text-sm"
+                            >
+                              <span>{check.label}</span>
+                              <span
+                                className={[
+                                  "font-semibold",
+                                  evidenceStatusClassName(check.status),
+                                ].join(" ")}
+                              >
+                                {evidenceStatusLabel(check.status, t)}
+                              </span>
+                            </div>
+                          ))}
+                          <p className="mt-1 text-xs text-graphite-700/55">
+                            {t("export.technicalChecksPending")}
+                          </p>
+                        </div>
+                      </Collapsible>
                     </div>
                   </Collapsible>
 

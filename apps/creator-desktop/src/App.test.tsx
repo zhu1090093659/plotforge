@@ -34,6 +34,7 @@ import type {
 afterEach(() => {
   if (typeof window.localStorage?.removeItem === "function") {
     window.localStorage.removeItem("plotforge:creator-desktop:locale");
+    window.localStorage.removeItem("plotforge:creator-desktop:rail-collapsed");
   }
   cleanup();
 });
@@ -87,6 +88,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
+    fireEvent.click(getNavButton("Source"));
     expect(screen.getAllByText("world/world.md").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /world\/world\.md/ }));
     expect(await screen.findByDisplayValue(/The city is under pressure/)).toBeTruthy();
@@ -125,8 +127,8 @@ describe("App", () => {
     expect(getNavButton("Trace")).toBeTruthy();
     expect(getNavButton("Export")).toBeTruthy();
     expect(getNavButton("Source")).toBeTruthy();
-    // Source is the default landing section.
-    expect(getNavButton("Source").getAttribute("aria-pressed")).toBe("true");
+    // Home is the default landing section.
+    expect(getNavButton("Home").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Agent rail")).toBeTruthy();
     expect(screen.getByLabelText("Collapse agent rail")).toBeTruthy();
   });
@@ -390,6 +392,9 @@ describe("App", () => {
     });
     expect(screen.getAllByText("trace-fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Fallback").length).toBeGreaterThan(0);
+    // provider_timeout error lives inside the Run Result Summary (collapsed by
+    // default); expand it to verify the error is rendered.
+    fireEvent.click(screen.getByText("Run Result Summary"));
     expect(screen.getAllByText("provider_timeout").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText("Technical Details"));
@@ -534,6 +539,9 @@ describe("App", () => {
         },
       ]);
     });
+    // The snapshot path renders inside Run Evidence (Run Result Summary),
+    // which is collapsed by default — expand it before looking up the path.
+    fireEvent.click(screen.getByText("Run Result Summary"));
     await screen.findByText("/tmp/starter-project/saves/save-after-army.runtime_snapshot.json");
 
     // Second turn: restore-latest + new save id.
@@ -627,6 +635,9 @@ describe("App", () => {
     ).toBeGreaterThan(0);
     expect(screen.getByText("matched")).toBeTruthy();
     expect(screen.getByText("pending explicit package hash")).toBeTruthy();
+    // Actionable evidence checks + Technical Details are nested under the
+    // Advanced Evidence collapsible on the Package tab.
+    fireEvent.click(screen.getByRole("button", { name: /Advanced Evidence/ }));
     expectExportEvidenceStatus("All referenced assets copied", "Pass");
     fireEvent.click(screen.getByRole("button", { name: /Technical Details/ }));
     expectExportEvidenceStatus("No raw responses", "Pending");
@@ -1088,7 +1099,10 @@ function getNavButton(name: string) {
 }
 
 async function waitForDefaultSourceCanvas() {
-  expect(await screen.findAllByText("world/world.md")).toBeTruthy();
+  // Home is the default landing section; waiting for the project overview
+  // heading indicates the project has loaded. Tests that need the source
+  // canvas navigate to the Source section explicitly.
+  expect(await screen.findByRole("heading", { name: "Starter Project" })).toBeTruthy();
 }
 
 function expectExportEvidenceStatus(label: string, status: string) {

@@ -565,6 +565,7 @@ const en: Record<string, string> = {
   "export.evidenceBoundaries": "Evidence & Boundaries",
   "export.localExportPackageOnly": "Local export package only",
   "export.technicalDetails": "Technical Details",
+  "export.advancedEvidence": "Advanced Evidence",
   "export.technicalChecksPending": "These checks remain pending until a separate smoke test is run after export.",
   "export.packageInformation": "Package Information",
   "export.profile": "Profile",
@@ -677,6 +678,23 @@ const en: Record<string, string> = {
 
   // IO error pattern
   "common.ioError": "{project}: io error at {path}: No such file or directory (os error 2)",
+
+  // pagination (collection views: Characters, Rules, State, Assets)
+  "pagination.pageGroup": "Page navigation",
+  "pagination.prev": "Prev",
+  "pagination.next": "Next",
+  "pagination.pageOf": "Page {page} of {total}",
+  "pagination.filteredCount": "{count} matches",
+  "pagination.searchCharacters": "Search characters…",
+  "pagination.aria.searchCharacters": "Search characters",
+  "pagination.searchRules": "Search rules…",
+  "pagination.aria.searchRules": "Search rules",
+  "pagination.searchResources": "Search resources…",
+  "pagination.aria.searchResources": "Search resources",
+  "pagination.searchAssets": "Search assets…",
+  "pagination.aria.searchAssets": "Search assets",
+  "pagination.searchSourceFiles": "Search source files…",
+  "pagination.aria.searchSourceFiles": "Search source files",
 };
 
 const zh: Record<string, string> = {
@@ -1222,6 +1240,7 @@ const zh: Record<string, string> = {
   "export.evidenceBoundaries": "证据与边界",
   "export.localExportPackageOnly": "仅本地导出包",
   "export.technicalDetails": "技术详情",
+  "export.advancedEvidence": "高级证据",
   "export.technicalChecksPending": "这些检查在导出后运行独立冒烟测试前将保持待处理状态。",
   "export.packageInformation": "包信息",
   "export.profile": "配置",
@@ -1332,6 +1351,23 @@ const zh: Record<string, string> = {
 
   // IO error
   "common.ioError": "{project}：在 {path} 发生 IO 错误：没有这个文件或目录（os error 2）",
+
+  // 分页（集合视图：角色、规则、状态、资产）
+  "pagination.pageGroup": "分页导航",
+  "pagination.prev": "上一页",
+  "pagination.next": "下一页",
+  "pagination.pageOf": "第 {page} / {total} 页",
+  "pagination.filteredCount": "{count} 条匹配",
+  "pagination.searchCharacters": "搜索角色…",
+  "pagination.aria.searchCharacters": "搜索角色",
+  "pagination.searchRules": "搜索规则…",
+  "pagination.aria.searchRules": "搜索规则",
+  "pagination.searchResources": "搜索资源…",
+  "pagination.aria.searchResources": "搜索资源",
+  "pagination.searchAssets": "搜索资产…",
+  "pagination.aria.searchAssets": "搜索资产",
+  "pagination.searchSourceFiles": "搜索源文件…",
+  "pagination.aria.searchSourceFiles": "搜索源文件",
 };
 
 // ---------------------------------------------------------------------------

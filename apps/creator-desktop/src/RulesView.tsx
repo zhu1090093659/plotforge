@@ -11,6 +11,11 @@ import {
   Collapsible,
   studioUiClassNames,
 } from "./studioUi";
+import {
+  PaginationControls,
+  PaginatedCardGrid,
+  usePagination,
+} from "./pagination";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -90,16 +95,10 @@ export function RulesView({
 
       {rulesEditDocument ? (
         <div className="mt-3 grid gap-3">
-          <div className="grid gap-3 lg:grid-cols-2">
-            {rulesEditDocument.rules.map((rule, index) => (
-              <RuleCard
-                key={`${rule.id}:${index}`}
-                rule={rule}
-                index={index}
-                onUpdate={(patch) => onUpdateRule(index, patch)}
-              />
-            ))}
-          </div>
+          <RuleCardGrid
+            rules={rulesEditDocument.rules}
+            onUpdateRule={onUpdateRule}
+          />
 
           <Collapsible
             label={t("rules.addRule")}
@@ -119,6 +118,62 @@ export function RulesView({
         <EmptyRules />
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RuleCardGrid — paginated rule list (original index preserved for updates).
+// ---------------------------------------------------------------------------
+
+function RuleCardGrid({
+  rules,
+  onUpdateRule,
+}: {
+  rules: Rule[];
+  onUpdateRule(index: number, patch: Partial<Rule>): void;
+}) {
+  const { t } = useStudioI18n();
+  const indexed = rules.map((rule, index) => ({ rule, index }));
+  const {
+    query,
+    setQuery,
+    page,
+    setPage,
+    totalPages,
+    filteredCount,
+    visible,
+    needsControls,
+  } = usePagination(indexed, {
+    filter: ({ rule }, q) =>
+      [rule.id, rule.action_type].filter(Boolean).some((field) =>
+        field.toLowerCase().includes(q.toLowerCase()),
+      ),
+  });
+  return (
+    <PaginatedCardGrid
+      controls={
+        <PaginationControls
+          needsControls={needsControls}
+          query={query}
+          setQuery={setQuery}
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+          filteredCount={filteredCount}
+          searchAriaLabel={t("pagination.aria.searchRules")}
+          searchPlaceholder={t("pagination.searchRules")}
+        />
+      }
+    >
+      {visible.map(({ rule, index }) => (
+        <RuleCard
+          key={`${rule.id}:${index}`}
+          rule={rule}
+          index={index}
+          onUpdate={(patch) => onUpdateRule(index, patch)}
+        />
+      ))}
+    </PaginatedCardGrid>
   );
 }
 

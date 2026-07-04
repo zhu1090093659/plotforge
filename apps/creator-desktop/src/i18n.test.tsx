@@ -196,6 +196,7 @@ describe("creator desktop i18n", () => {
       "path",
       "play",
       "plotforge",
+      "page",
       "project",
       "provider",
       "resource",

@@ -84,6 +84,8 @@ describe("LaunchpadView", () => {
     expect(screen.getByLabelText("Visual style")).toBeTruthy();
     expect(screen.getByLabelText("Concept")).toBeTruthy();
     expect(screen.getByLabelText("Initial scene request")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Voice enabled" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Overwrite existing path" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /New Project/i })).toBeTruthy();
   });
 

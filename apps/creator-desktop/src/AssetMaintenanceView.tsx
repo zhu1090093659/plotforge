@@ -4,6 +4,11 @@ import type { StudioSectionId } from "./studioModel";
 import type { AssetCatalogItem, AssetCatalog } from "./assetCatalog";
 import type { SourceFileSummary } from "./tauriBridge";
 import { Collapsible, StudioTabs, studioUiClassNames } from "./studioUi";
+import {
+  PaginationControls,
+  PaginatedCardGrid,
+  usePagination,
+} from "./pagination";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -137,15 +142,7 @@ export function AssetMaintenanceView({
                     value={audioBible?.voice_cards.length ?? 0}
                   />
                 </div>
-                <div className="grid content-start gap-3 md:grid-cols-2">
-                  {assetCatalog.items.length > 0 ? (
-                    assetCatalog.items.map((item) => (
-                      <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />
-                    ))
-                  ) : (
-                    <EmptyPanel label={t("assets.noAssetRecords")} />
-                  )}
-                </div>
+                <AssetCatalogList items={assetCatalog.items} />
               </div>
             ),
           },
@@ -246,7 +243,7 @@ function VisualBibleEditor({
                   ariaLabel={t("assets.aria.visualStylePromptN", { index: index + 1 })}
                   value={card.prompt}
                   onChange={(value) => onUpdateCard(index, { prompt: value })}
-                  minHeight="min-h-28"
+                   minHeight="min-h-24"
                 />
                 <div className="grid gap-3 sm:grid-cols-3">
                   <TextareaInput
@@ -256,7 +253,7 @@ function VisualBibleEditor({
                     onChange={(value) =>
                       onUpdateCard(index, { palette: linesToList(value) })
                     }
-                    minHeight="min-h-24"
+                    minHeight="min-h-20"
                   />
                   <TextareaInput
                     label={t("assets.tags")}
@@ -265,7 +262,7 @@ function VisualBibleEditor({
                     onChange={(value) =>
                       onUpdateCard(index, { tags: linesToList(value) })
                     }
-                    minHeight="min-h-24"
+                    minHeight="min-h-20"
                   />
                   <TextareaInput
                     label={t("assets.referenceAssets")}
@@ -276,7 +273,7 @@ function VisualBibleEditor({
                         reference_asset_ids: linesToList(value),
                       })
                     }
-                    minHeight="min-h-24"
+                    minHeight="min-h-20"
                   />
                 </div>
               </div>
@@ -365,7 +362,7 @@ function AudioBibleEditor({
                     onChange={(value) =>
                       onUpdateCard(index, { tags: linesToList(value) })
                     }
-                    minHeight="min-h-24"
+                    minHeight="min-h-20"
                   />
                   <TextareaInput
                     label={t("assets.referenceAssets")}
@@ -376,7 +373,7 @@ function AudioBibleEditor({
                         reference_asset_ids: linesToList(value),
                       })
                     }
-                    minHeight="min-h-24"
+                    minHeight="min-h-20"
                   />
                 </div>
               </div>
@@ -389,6 +386,57 @@ function AudioBibleEditor({
         )}
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AssetCatalogList — paginated asset catalog (search by id / path).
+// ---------------------------------------------------------------------------
+
+function AssetCatalogList({ items }: { items: AssetCatalogItem[] }) {
+  const { t } = useStudioI18n();
+  const {
+    query,
+    setQuery,
+    page,
+    setPage,
+    totalPages,
+    filteredCount,
+    visible,
+    needsControls,
+  } = usePagination(items, {
+    filter: (item, q) => {
+      const field =
+        item.source === "record"
+          ? `${item.record.id} ${item.record.project_path}`
+          : item.path;
+      return field.toLowerCase().includes(q.toLowerCase());
+    },
+  });
+  return (
+    <PaginatedCardGrid
+      controls={
+        <PaginationControls
+          needsControls={needsControls}
+          query={query}
+          setQuery={setQuery}
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+          filteredCount={filteredCount}
+          searchAriaLabel={t("pagination.aria.searchAssets")}
+          searchPlaceholder={t("pagination.searchAssets")}
+        />
+      }
+    >
+      {visible.length > 0 ? (
+        visible.map((item) => (
+          <AssetCatalogCard key={assetCatalogItemKey(item)} item={item} />
+        ))
+      ) : (
+        <EmptyPanel label={t("assets.noAssetRecords")} />
+      )}
+    </PaginatedCardGrid>
   );
 }
 
@@ -575,7 +623,7 @@ function TextareaInput({
   value,
   onChange,
   className = "",
-  minHeight = "min-h-40",
+  minHeight = "min-h-28",
 }: {
   label: string;
   ariaLabel: string;

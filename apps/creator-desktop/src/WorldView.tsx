@@ -86,7 +86,7 @@ export function WorldView({
               onChange={(value) =>
                 onUpdateWorldDocument({ world_bible_markdown: value })
               }
-              minHeight="min-h-40"
+              minHeight="min-h-28"
             />
             <div className="grid gap-3">
               <TextareaInput
@@ -96,7 +96,7 @@ export function WorldView({
                 onChange={(value) =>
                   onUpdateWorldDocument({ canon_markdown: value })
                 }
-                minHeight="min-h-28"
+                minHeight="min-h-20"
               />
               <TextareaInput
                 label={t("world.forbiddenFacts")}
@@ -105,7 +105,7 @@ export function WorldView({
                 onChange={(value) =>
                   onUpdateWorldDocument({ forbidden_facts: linesToList(value) })
                 }
-                minHeight="min-h-28"
+                minHeight="min-h-20"
               />
             </div>
           </div>

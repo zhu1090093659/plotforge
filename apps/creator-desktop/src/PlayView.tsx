@@ -72,14 +72,14 @@ export function PlayView({
           </div>
         </div>
 
-        <div className="relative min-h-[320px] overflow-hidden bg-graphite-900">
+        <div className="relative min-h-[clamp(220px,40vh,420px)] overflow-hidden bg-graphite-900">
           <ScenePreviewImage
             src={sceneImage}
             assetPath={scene?.background_asset ?? null}
             className="absolute inset-0 h-full w-full object-cover opacity-70"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-graphite-950 via-graphite-950/25 to-graphite-950/5" />
-          <div className="relative flex min-h-[320px] flex-col justify-end p-4">
+          <div className="relative flex min-h-[clamp(220px,40vh,420px)] flex-col justify-end p-4">
             <div className="mx-auto w-full max-w-3xl rounded-lg border border-violet-500/40 bg-graphite-950/90 px-4 py-4 shadow-studio-panel">
               <p className="text-xs font-semibold uppercase text-violet-600">
                 {scene ? `${scene.title} / ${scene.location}` : loadedPath}

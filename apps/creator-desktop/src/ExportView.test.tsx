@@ -184,6 +184,9 @@ describe("ExportView", () => {
 
   it("shows Technical Details section collapsed with permanently-pending checks hidden by default", () => {
     renderView();
+    // Technical Details lives inside the Advanced Evidence collapsible; expand
+    // it first to reach the nested Technical Details toggle.
+    fireEvent.click(screen.getByRole("button", { name: /Advanced Evidence/ }));
     const toggleButton = screen.getByRole("button", {
       name: /Technical Details/,
     });
@@ -198,8 +201,12 @@ describe("ExportView", () => {
     expect(screen.getByText("No secret markers")).toBeTruthy();
   });
 
-  it("shows actionable evidence checks always visible", () => {
+  it("shows actionable evidence checks inside the Advanced Evidence section", () => {
     renderView();
+    // Actionable evidence checks are grouped under Advanced Evidence (collapsed
+    // by default to keep the Package tab within the viewport).
+    expect(screen.queryByText("No provider configuration")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Advanced Evidence/ }));
     expect(screen.getByText("No provider configuration")).toBeTruthy();
     expect(screen.getByText("No private traces")).toBeTruthy();
     expect(screen.getByText("All referenced assets copied")).toBeTruthy();
@@ -267,7 +274,8 @@ describe("ExportView", () => {
       notices: [],
     };
     renderView({ aiSafetyPolicy });
-    // Content Warnings card lives on the default Package tab.
+    // Content Warnings card lives under Advanced Evidence on the Package tab.
+    fireEvent.click(screen.getByRole("button", { name: /Advanced Evidence/ }));
     expect(screen.getByText("Content Warnings")).toBeTruthy();
     // The content kinds should be listed with "creator review" annotations.
     expect(screen.getAllByText("creator review").length).toBeGreaterThan(0);

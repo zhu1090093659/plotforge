@@ -39,7 +39,7 @@ export const studioUiClassNames = {
   input:
     "h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   textarea:
-    "w-full resize-y rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
+    "w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30",
   primaryButton:
     "inline-flex h-10 items-center gap-2 rounded-md bg-violet-500 px-4 text-sm font-semibold text-canvas-50 transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-violet-500/35 disabled:text-canvas-50/45",
   secondaryButton:
@@ -170,7 +170,7 @@ export function StudioShell({
         </aside>
 
         <main className="paper-grain min-w-0 text-ink lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
-          <header className="grid gap-3 border-b border-canvas-200 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(420px,auto)] lg:items-end lg:px-6 lg:py-3 xl:px-8">
+          <header className="grid gap-3 border-b border-canvas-200 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,auto)] lg:items-end lg:px-6 lg:py-3 xl:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"

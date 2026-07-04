@@ -100,7 +100,7 @@ function SourceFileList({
         <TerminalSquare aria-hidden className="text-signal" size={22} />
       </div>
 
-      <div className="mt-4 grid max-h-80 gap-2 overflow-auto pr-1">
+      <div className="mt-4 grid gap-2 pr-1">
         {sourceFiles.map((file) => (
           <button
             type="button"
@@ -186,7 +186,7 @@ function SourceEditor({
           readOnly={!selectedFile.editable}
           onChange={(event) => setEditorContent(event.target.value)}
           spellCheck={false}
-          className="min-h-72 w-full resize-y rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 read-only:bg-ink/5"
+          className="min-h-[40vh] max-h-[60vh] w-full resize-none rounded-md border border-canvas-200/70 bg-canvas-50 px-3 py-3 font-mono text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 read-only:bg-ink/5"
         />
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium uppercase text-ink/55">
           <span>{selectedFile.kind}</span>

@@ -62,7 +62,7 @@ function AppContent({
 }: AppProps) {
   const { t } = useStudioI18n();
   const [activeSection, setActiveSection] =
-    useState<StudioSectionId>("source-files");
+    useState<StudioSectionId>("home");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const rail = useStudioRail();

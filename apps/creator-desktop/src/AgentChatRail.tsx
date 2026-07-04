@@ -168,7 +168,7 @@ export function AgentChatRail({
           placeholder={t("agent.directPrompt")}
           rows={2}
           spellCheck={false}
-          className="w-full resize-y rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+          className="w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
         />
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-ink/45">
