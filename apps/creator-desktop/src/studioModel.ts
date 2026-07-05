@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Bot,
   Boxes,
   Bug,
   FileCode,
@@ -24,6 +25,7 @@ export const studioSectionIds = [
   "trace",
   "export-kit",
   "source-files",
+  "agent",
 ] as const;
 
 export type StudioSectionId = (typeof studioSectionIds)[number];
@@ -128,6 +130,14 @@ export const studioSections: StudioSection[] = [
     statusKey: "status.ready",
     icon: FileCode,
     index: 11,
+  },
+  {
+    id: "agent",
+    labelKey: "nav.agent.label",
+    descriptionKey: "nav.agent.description",
+    statusKey: "status.ready",
+    icon: Bot,
+    index: 12,
   },
 ];
 

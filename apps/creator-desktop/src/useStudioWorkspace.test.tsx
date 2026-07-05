@@ -8,6 +8,10 @@ import {
 import { StudioI18nProvider } from "./i18n";
 import type { StudioDataSource } from "./studioDataSource";
 import type {
+  ProviderEntry,
+  PromptTemplate,
+} from "../../../contracts/plotforge";
+import type {
   SourceFileContent,
   SourceFileSummary,
 } from "./tauriBridge";
@@ -470,6 +474,7 @@ function workspaceTestDataSource(
         model_id: "local-pi",
         permission_level: "ask_every_time",
         thinking_level: "medium",
+        enabled_skills: [],
       };
     },
     async setAgentSessionConfig(
@@ -477,6 +482,77 @@ function workspaceTestDataSource(
       config: { model_id: string; permission_level: string; thinking_level: string },
     ) {
       return config as never;
+    },
+    async piAgentApplyRun() {
+      throw new Error("piAgentApplyRun not supported in test fixture");
+    },
+    async listProviders() {
+      return [];
+    },
+    async upsertProvider(_entry: ProviderEntry) {
+      return _entry;
+    },
+    async deleteProvider(id: string) {
+      return {
+        id,
+        kind: "openai_compatible" as const,
+        label: "",
+        endpoint_url: "",
+        model: "",
+        credential_env_var: "",
+        enabled: false,
+      };
+    },
+    async testProviderConnection(_id: string) {
+      return { ok: true, message: "" };
+    },
+    async listUserPromptTemplates() {
+      return [];
+    },
+    async listProjectPromptTemplates(_projectPath: string) {
+      return [];
+    },
+    async upsertUserPromptTemplate(template: PromptTemplate) {
+      return template;
+    },
+    async upsertProjectPromptTemplate(_projectPath: string, template: PromptTemplate) {
+      return template;
+    },
+    async deleteUserPromptTemplate(_id: string) {
+      return;
+    },
+    async deleteProjectPromptTemplate(_projectPath: string, _id: string) {
+      return;
+    },
+    async listSkills() {
+      return [];
+    },
+    async refreshSkillIndex() {
+      return { version: "1", skills: [], scanned_at: "" };
+    },
+    async importSkill(skillId: string) {
+      return {
+        id: skillId,
+        name: "",
+        description: "",
+        source: { origin: "plot_forge_user" as const, root_path: "", rel_path: "" },
+        interface: null,
+        body_path: "",
+        scripts: [],
+        references: [],
+        assets: [],
+      };
+    },
+    async readSkillBody(_skillId: string) {
+      return "";
+    },
+    async enableSkillForProject(_projectPath: string, _skillId: string, _enabled: boolean) {
+      return {
+        model_id: "local-pi",
+        permission_level: "ask_every_time",
+        thinking_level: "medium",
+        enabled_skills: [],
+      } as never;
     },
   };
 

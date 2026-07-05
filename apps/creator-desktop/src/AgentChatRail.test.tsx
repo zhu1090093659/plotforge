@@ -16,6 +16,8 @@ function makeTurn(intent: string, withError = false): AgentTurn {
     intent,
     report,
     error: withError ? "provider_timeout" : null,
+    errorCode: withError ? "pi_agent_provider_timeout" : null,
+    errorEnvVar: null,
   };
 }
 
@@ -63,6 +65,42 @@ describe("AgentChatRail", () => {
     // An error turn has no report, so the per-turn "Open trace" button must
     // not render (it is gated on `report` being truthy).
     expect(screen.queryByRole("button", { name: "Open trace" })).toBeNull();
+  });
+
+  // R1: a turn with `errorCode = pi_agent_missing_credential` and an env-var
+  // name must render the friendly, code-specific i18n message (naming the
+  // env var) instead of the raw redacted error string. The raw message is
+  // kept as a detail line so the user can still see the provider's redacted
+  // text.
+  it("renders the friendly missing-credential message naming the env var", () => {
+    const turn: AgentTurn = {
+      id: "turn-cred",
+      intent: "run a turn",
+      report: null,
+      error: "missing provider credential in env var `OPENAI_API_KEY`",
+      errorCode: "pi_agent_missing_credential",
+      errorEnvVar: "OPENAI_API_KEY",
+    };
+    renderRail({ turns: [turn] });
+    // The friendly message names the env var. The raw redacted error is also
+    // rendered as a detail line, so match the friendly prefix specifically.
+    expect(
+      screen.getByText(/Set the env var OPENAI_API_KEY in your shell/),
+    ).toBeTruthy();
+  });
+
+  // R1: a timeout turn renders the friendly provider-timeout message.
+  it("renders the friendly provider-timeout message for a timeout error code", () => {
+    const turn: AgentTurn = {
+      id: "turn-timeout",
+      intent: "run a turn",
+      report: null,
+      error: "text provider timed out",
+      errorCode: "pi_agent_provider_timeout",
+      errorEnvVar: null,
+    };
+    renderRail({ turns: [turn] });
+    expect(screen.getByText(/Provider timed out/)).toBeTruthy();
   });
 
   it("calls onSubmit when the Send button is clicked", () => {

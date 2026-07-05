@@ -10,7 +10,11 @@ plotforge-job.workspace = true
 plotforge-media.workspace = true
 plotforge-schema.workspace = true
 plotforge-storycraft.workspace = true
+dirs.workspace = true
+reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 

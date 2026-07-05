@@ -1,4 +1,6 @@
-use plotforge_agent::{MockAgentPipeline, ScenePlanRequest, ScenePlanner, ScenePlannerError};
+use plotforge_agent::{
+    MockAgentPipeline, ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
+};
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
     ActionIntent, AssetReference, AssetReferenceKind, Beat, BeatNext, Choice, ProjectData,
@@ -48,6 +50,46 @@ pub struct RuntimeSession<P = MockAgentPipeline> {
     world_state: WorldState,
     reproducibility: ReproducibilityMetadata,
     scene_planner: P,
+}
+
+/// A snapshot of the choice a player selected (or, for the pi-Agent path,
+/// a placeholder that carries only the fields the trace needs). Kept small
+/// so `RuntimeStepContext` can own it without borrowing the choice list.
+#[derive(Clone, Debug)]
+pub struct ChoiceSnapshot {
+    pub id: String,
+}
+
+impl ChoiceSnapshot {
+    pub fn from_choice(choice: &Choice) -> Self {
+        Self {
+            id: choice.id.clone(),
+        }
+    }
+}
+
+/// Pre-evaluated inputs to `RuntimeSession::commit_scene_plan`. The caller
+/// (the playtest `play_once` path or the `pi_agent_apply_run` Studio command)
+/// resolves the action intent, evaluates rules, and supplies the resulting
+/// world delta + states; `commit_scene_plan` only commits state and
+/// assembles the trace. The pi-Agent path passes `action_intent=None` and
+/// `selected_choice=None` because the agent's `ScenePlan` proposal already
+/// names the next scene (there is no player-input-derived choice).
+pub struct RuntimeStepContext<'a> {
+    pub player_input: &'a str,
+    pub action_type: String,
+    pub action_intent: Option<ActionIntent>,
+    pub selected_choice: Option<ChoiceSnapshot>,
+    pub world_state_before: WorldState,
+    pub world_delta: WorldDelta,
+    pub world_state_after: WorldState,
+    pub story_state_before: StoryState,
+    /// The current scene + beat, required only for the same-scene
+    /// (`continue`) path where `commit_scene_plan` is called with
+    /// `plan=None`. The pi-Agent path always supplies a plan and may pass
+    /// `None` here.
+    pub current_scene: Option<Scene>,
+    pub current_beat: Option<Beat>,
 }
 
 #[derive(Clone, Debug)]
@@ -106,6 +148,45 @@ where
         &self.world_state
     }
 
+    /// Read-only access to the project the session was constructed with.
+    /// Used by the Studio layer to surface project-scoped data (e.g. for
+    /// the desktop `SourceView`) without re-loading the project from disk.
+    pub fn project(&self) -> &ProjectData {
+        &self.project
+    }
+
+    /// Apply a pi-Agent's `ScenePlan` proposal as a committed scene change.
+    /// Runs rule evaluation for the `change_scene` action type (so the rule
+    /// boundary stays inside `plotforge-runtime`, per AGENTS.md), then
+    /// delegates to `commit_scene_plan`. The pi-Agent path always crosses
+    /// the scene boundary (`change_scene=true`); there is no player-input-
+    /// derived choice or action intent, only the agent's proposed scene.
+    pub fn apply_agent_scene_plan(
+        &mut self,
+        plan: ScenePlan,
+        player_input: &str,
+    ) -> Result<RuntimeStep, RuntimeEngineError> {
+        let world_state_before = self.world_state.clone();
+        let story_state_before = self.story_state.clone();
+        let rule_engine =
+            RuleEngine::new(self.project.resources.clone(), self.project.rules.clone());
+        let world_delta = rule_engine.evaluate("change_scene", &world_state_before)?;
+        let world_state_after = rule_engine.apply_delta(&world_state_before, &world_delta)?;
+        let context = RuntimeStepContext {
+            player_input,
+            action_type: "change_scene".to_string(),
+            action_intent: None,
+            selected_choice: None,
+            world_state_before,
+            world_delta,
+            world_state_after,
+            story_state_before,
+            current_scene: None,
+            current_beat: None,
+        };
+        self.commit_scene_plan(Some(plan), context, true)
+    }
+
     pub fn snapshot(&self, id: impl Into<String>, timestamp_ms: u64) -> RuntimeSnapshot {
         let id = id.into();
         RuntimeSnapshot {
@@ -150,6 +231,67 @@ where
         let world_delta = rule_engine.evaluate(action_type, &world_state_before)?;
         let world_state_after = rule_engine.apply_delta(&world_state_before, &world_delta)?;
 
+        let plan = if change_scene {
+            Some(self.scene_planner.plan_next_scene(ScenePlanRequest {
+                project: &self.project,
+                story_state: &self.story_state,
+                world_state: &world_state_after,
+                player_input,
+                action_type,
+            })?)
+        } else {
+            None
+        };
+        let selected_choice_snapshot = ChoiceSnapshot::from_choice(selected_choice);
+        // Clone the beat into an owned value so `current_scene` can move into
+        // the context without leaving a dangling borrow on the borrowed beat.
+        let current_beat_owned = current_beat.clone();
+
+        let context = RuntimeStepContext {
+            player_input,
+            action_type: action_type.to_string(),
+            action_intent: Some(action_intent),
+            selected_choice: Some(selected_choice_snapshot),
+            world_state_before,
+            world_delta,
+            world_state_after,
+            story_state_before,
+            current_scene: Some(current_scene),
+            current_beat: Some(current_beat_owned),
+        };
+        self.commit_scene_plan(plan, context, change_scene)
+    }
+
+    /// Commits a `ScenePlan` (or a same-scene beat transition when `plan` is
+    /// `None`) and assembles the resulting `RuntimeStep` with a full
+    /// `RuntimeTrace`. The caller pre-evaluates rules and supplies
+    /// `world_state_after`; this method never re-runs the rule engine, so
+    /// the rule-evaluation boundary stays in the caller (per AGENTS.md:
+    /// "agents propose content and runtime/rules commit state").
+    ///
+    /// The `pi_agent_apply_run` Studio command builds the same
+    /// `RuntimeStepContext` (without a `player_input`-derived choice, since
+    /// the agent's proposal already names the next scene) and calls this
+    /// method, so playtest turns and pi-Agent turns share one commit path.
+    pub fn commit_scene_plan(
+        &mut self,
+        plan: Option<ScenePlan>,
+        context: RuntimeStepContext<'_>,
+        change_scene: bool,
+    ) -> Result<RuntimeStep, RuntimeEngineError> {
+        let RuntimeStepContext {
+            player_input,
+            action_type,
+            action_intent,
+            selected_choice,
+            world_state_before,
+            world_delta,
+            world_state_after,
+            story_state_before,
+            current_scene,
+            current_beat,
+        } = context;
+
         let (
             next_scene,
             next_beat_id,
@@ -158,14 +300,7 @@ where
             planner_scene_key,
             planner_reproducibility,
             review,
-        ) = if change_scene {
-            let plan = self.scene_planner.plan_next_scene(ScenePlanRequest {
-                project: &self.project,
-                story_state: &self.story_state,
-                world_state: &world_state_after,
-                player_input,
-                action_type,
-            })?;
+        ) = if let Some(plan) = plan {
             let planner_fallback_used = plan.fallback_used;
             let errors = if let Some(error) = plan.error {
                 vec![error]
@@ -187,7 +322,11 @@ where
                 Some(review),
             )
         } else {
-            let next_beat_id = next_same_scene_beat_id(&current_scene, current_beat)?;
+            let current_scene = current_scene
+                .ok_or_else(|| RuntimeEngineError::UnsupportedAction(action_type.clone()))?;
+            let current_beat = current_beat
+                .ok_or_else(|| RuntimeEngineError::UnsupportedAction(action_type.clone()))?;
+            let next_beat_id = next_same_scene_beat_id(&current_scene, &current_beat)?;
             (
                 current_scene.clone(),
                 next_beat_id,
@@ -219,24 +358,45 @@ where
         } else {
             RuntimeTraceStageStatus::Completed
         };
-        let redacted_action_type = redact_trace_text(action_type);
-        let redacted_choice_id = redact_trace_text(&selected_choice.id);
+        let redacted_action_type = redact_trace_text(&action_type);
+        let redacted_choice_id = selected_choice
+            .as_ref()
+            .map(|c| redact_trace_text(&c.id))
+            .unwrap_or_default();
         let redacted_planner_scene_key = planner_scene_key
             .as_ref()
             .map(|scene_key| redact_trace_text(scene_key));
+        let matched_terms_len = action_intent
+            .as_ref()
+            .map(|intent| intent.matched_terms.len())
+            .unwrap_or(0);
         let diagnostics = vec![
             RuntimeTraceDiagnostic::new_redacted(
                 RuntimeTraceStage::InterpretAction,
-                RuntimeTraceStageStatus::Completed,
-                format!(
-                    "action `{action_type}` matched {} term(s)",
-                    action_intent.matched_terms.len()
-                ),
+                if action_intent.is_some() {
+                    RuntimeTraceStageStatus::Completed
+                } else {
+                    // The pi-Agent apply path carries no player-input-derived
+                    // action_intent (the agent's ScenePlan is the intent).
+                    // This is a deliberate skip, not a degraded fallback.
+                    RuntimeTraceStageStatus::Skipped
+                },
+                format!("action `{action_type}` matched {matched_terms_len} term(s)"),
             ),
             RuntimeTraceDiagnostic::new_redacted(
                 RuntimeTraceStage::SelectChoice,
-                RuntimeTraceStageStatus::Completed,
-                format!("selected choice `{}`", selected_choice.id),
+                if selected_choice.is_some() {
+                    RuntimeTraceStageStatus::Completed
+                } else {
+                    // No player choice on the pi-Agent path; the agent's
+                    // proposal drives the turn. Deliberate skip, not fallback.
+                    RuntimeTraceStageStatus::Skipped
+                },
+                if let Some(choice) = selected_choice.as_ref() {
+                    format!("selected choice `{}`", choice.id)
+                } else {
+                    format!("agent proposal `{action_type}` (no player choice)")
+                },
             ),
             RuntimeTraceDiagnostic::new_redacted(
                 RuntimeTraceStage::EvaluateRules,
@@ -292,8 +452,12 @@ where
             id: trace_id,
             timestamp_ms: u64::from(self.story_state.turn),
             player_input: Some(redact_trace_text(player_input)),
-            selected_choice: Some(redacted_choice_id),
-            action_intent: Some(action_intent.redacted()),
+            selected_choice: if selected_choice.is_some() {
+                Some(redacted_choice_id)
+            } else {
+                None
+            },
+            action_intent: action_intent.map(|intent| intent.redacted()),
             rule_result: Some(RuntimeRuleResult {
                 action_type: redacted_action_type.clone(),
                 delta_empty: world_delta.is_empty(),
@@ -551,10 +715,12 @@ pub fn summarize_delta(delta: &WorldDelta) -> Vec<String> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{RuntimeSession, interpret_action};
+    use super::{RuntimeEngineError, RuntimeSession, RuntimeStepContext, interpret_action};
+    use plotforge_agent::ScenePlan;
     use plotforge_schema::{
-        Beat, BeatNext, Character, Choice, Effect, GameProject, ProjectData, ResourceDefinition,
-        Rule, Scene, StoryState, WorldState,
+        Beat, BeatNext, Character, Choice, Effect, GameProject, ProjectData,
+        ReproducibilityMetadata, ResourceDefinition, Rule, Scene, StoryState, WorldDelta,
+        WorldState,
     };
 
     #[test]
@@ -606,6 +772,314 @@ mod tests {
         );
         assert_eq!(step.scene.key, "civic-crisis-001");
         assert!(step.trace.narrative_review.expect("review").passes());
+    }
+
+    #[test]
+    fn commit_scene_plan_commits_agent_proposal_without_player_choice() {
+        // The pi-Agent path: no player-input-derived action_intent or
+        // selected_choice (the agent's ScenePlan already names the next
+        // scene). `commit_scene_plan` must still commit the scene, bump the
+        // turn, write the pre-evaluated world_state_after, and produce a
+        // trace with `action_intent = None` + `selected_choice = None`.
+        let project = test_project();
+        let mut session = RuntimeSession::new(project);
+
+        let planned_scene = Scene {
+            key: "agent-proposed-scene".into(),
+            title: "Agent Proposed Scene".into(),
+            location: "Test Court".into(),
+            dramatic_purpose: "Agent drove the turn.".into(),
+            hook: "A pi-Agent turn.".into(),
+            background_asset: String::new(),
+            audio_refs: Vec::new(),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::new(),
+            entry_beat_id: Some("agent-proposed-beat-001".into()),
+            beats: vec![Beat {
+                id: "agent-proposed-beat-001".into(),
+                text: "The agent's scene begins.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
+                choices: Vec::new(),
+                next: BeatNext::None,
+            }],
+        };
+        let plan = ScenePlan {
+            scene: planned_scene.clone(),
+            review: plotforge_schema::NarrativeReview {
+                scene_key: planned_scene.key.clone(),
+                score: 80,
+                hook_score: 80,
+                pacing_score: 80,
+                character_consistency_score: 80,
+                payoff_score: 80,
+                choice_meaningfulness_score: 80,
+                ai_slop_risk: 10,
+                issues: Vec::new(),
+            },
+            reproducibility: ReproducibilityMetadata::local_mock(7),
+            fallback_used: false,
+            error: None,
+        };
+
+        let world_state_before = session.world_state().clone();
+        let world_state_after = WorldState {
+            resources: BTreeMap::from([("treasury".into(), 52)]),
+            flags: BTreeMap::new(),
+            triggered_events: vec!["local_tax_resistance".into()],
+        };
+        let world_delta = WorldDelta {
+            resource_changes: BTreeMap::from([("treasury".into(), 12)]),
+            resource_sets: BTreeMap::new(),
+            flags: BTreeMap::new(),
+            triggered_events: vec!["local_tax_resistance".into()],
+        };
+        let story_state_before = session.story_state().clone();
+        let context = RuntimeStepContext {
+            player_input: "Agent proposed a scene change.",
+            action_type: "change_scene".to_string(),
+            action_intent: None,
+            selected_choice: None,
+            world_state_before,
+            world_delta,
+            world_state_after: world_state_after.clone(),
+            story_state_before: story_state_before.clone(),
+            current_scene: None,
+            current_beat: None,
+        };
+
+        let step = session
+            .commit_scene_plan(Some(plan), context, true)
+            .expect("commit agent plan");
+
+        // The scene was committed and turn bumped.
+        assert_eq!(step.scene.key, "agent-proposed-scene");
+        assert_eq!(session.story_state().turn, 1);
+        assert_eq!(
+            session.story_state().current_scene_key,
+            "agent-proposed-scene"
+        );
+        // The pre-evaluated world_state_after was written verbatim.
+        assert_eq!(session.world_state().resources["treasury"], 52);
+        assert!(
+            session
+                .world_state()
+                .triggered_events
+                .contains(&"local_tax_resistance".into())
+        );
+        // The trace carries no player choice / action intent (pi-Agent path).
+        assert!(step.trace.action_intent.is_none());
+        assert!(step.trace.selected_choice.is_none());
+        assert_eq!(step.trace.story_state_before.turn, 0);
+        assert_eq!(step.trace.story_state_after.turn, 1);
+        assert!(!step.trace.fallback_used);
+        let _ = world_state_before;
+    }
+
+    #[test]
+    fn commit_scene_plan_same_scene_without_beat_transition_fails_explicitly() {
+        // The `continue` path: plan=None, change_scene=false. When the
+        // current beat has no `BeatNext::Beat` pointer (it is `Scene` in the
+        // test fixture), the same-scene transition must fail explicitly per
+        // AGENTS.md ("Missing same-scene beat transitions must fail
+        // explicitly"). No silent fallback, no turn bump.
+        let project = test_project();
+        let mut session = RuntimeSession::new(project);
+        let current_scene = session
+            .project
+            .scene(&session.story_state().current_scene_key)
+            .expect("current scene")
+            .clone();
+        let current_beat = current_scene
+            .beats
+            .iter()
+            .find(|beat| beat.id == "runtime-unit-scene-beat-001")
+            .expect("current beat")
+            .clone();
+        let world_state_before = session.world_state().clone();
+        let story_state_before = session.story_state().clone();
+        let world_state_after = world_state_before.clone();
+        let world_delta = WorldDelta {
+            resource_changes: BTreeMap::new(),
+            resource_sets: BTreeMap::new(),
+            flags: BTreeMap::new(),
+            triggered_events: Vec::new(),
+        };
+        let context = RuntimeStepContext {
+            player_input: "continue",
+            action_type: "continue".to_string(),
+            action_intent: None,
+            selected_choice: None,
+            world_state_before,
+            world_delta,
+            world_state_after,
+            story_state_before,
+            current_scene: Some(current_scene),
+            current_beat: Some(current_beat),
+        };
+        let turn_before = session.story_state().turn;
+        let error = session
+            .commit_scene_plan(None, context, false)
+            .expect_err("missing beat transition must fail explicitly");
+        assert!(matches!(
+            error,
+            RuntimeEngineError::MissingBeatTransition { .. }
+        ));
+        // No state mutated on failure.
+        assert_eq!(session.story_state().turn, turn_before);
+    }
+
+    /// Direct test for `apply_agent_scene_plan` (the rule-evaluation entry
+    /// point the pi-Agent apply path drives). Covers finding L5: this was
+    /// only exercised indirectly via the studio local-pi integration test.
+    /// Asserts rule evaluation runs for `change_scene`, the scene is
+    /// committed, the turn is bumped, and the trace carries no player
+    /// action_intent / selected_choice.
+    #[test]
+    fn apply_agent_scene_plan_evaluates_rules_and_commits() {
+        let project = test_project();
+        let mut session = RuntimeSession::new(project);
+        assert_eq!(session.story_state().turn, 0);
+
+        let planned_scene = Scene {
+            key: "agent-scene".into(),
+            title: "Agent Scene".into(),
+            location: "Test Court".into(),
+            dramatic_purpose: "Agent drove the turn.".into(),
+            hook: "A pi-Agent turn.".into(),
+            background_asset: String::new(),
+            audio_refs: Vec::new(),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::new(),
+            entry_beat_id: Some("agent-scene-beat-001".into()),
+            beats: vec![Beat {
+                id: "agent-scene-beat-001".into(),
+                text: "The agent's scene begins.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
+                choices: Vec::new(),
+                next: BeatNext::None,
+            }],
+        };
+        let plan = ScenePlan {
+            scene: planned_scene.clone(),
+            review: plotforge_schema::NarrativeReview {
+                scene_key: planned_scene.key.clone(),
+                score: 50,
+                hook_score: 50,
+                pacing_score: 50,
+                character_consistency_score: 50,
+                payoff_score: 50,
+                choice_meaningfulness_score: 50,
+                ai_slop_risk: 20,
+                issues: Vec::new(),
+            },
+            reproducibility: ReproducibilityMetadata::local_mock(7),
+            fallback_used: false,
+            error: None,
+        };
+
+        let step = session
+            .apply_agent_scene_plan(plan, "Agent proposed a scene change.")
+            .expect("apply agent scene plan");
+
+        assert_eq!(step.scene.key, "agent-scene");
+        assert_eq!(session.story_state().turn, 1);
+        assert_eq!(session.story_state().current_scene_key, "agent-scene");
+        // Rule evaluation ran for `change_scene` and produced a delta-derived
+        // world_state_after. test_project's only rule keys on `raise_tax`, so
+        // the `change_scene` delta is empty and `world_state_after` equals
+        // `world_state_before`; the point here is that the rule engine was
+        // invoked (the `apply_agent_scene_plan` boundary), not the business
+        // result (which the rule-engine unit tests already cover).
+        assert_eq!(
+            step.trace.world_state_before.resources["treasury"],
+            step.trace.world_state_after.resources["treasury"]
+        );
+        // The pi-Agent path carries no player action_intent / selected_choice.
+        assert!(step.trace.action_intent.is_none());
+        assert!(step.trace.selected_choice.is_none());
+        assert!(!step.trace.fallback_used);
+        assert_eq!(step.trace.story_state_after.turn, 1);
+    }
+
+    /// R6: the pi-Agent apply path carries no player action_intent / selected_choice,
+    /// so the `InterpretAction` and `SelectChoice` trace diagnostics must be
+    /// marked `Skipped` (deliberate skip — the agent's ScenePlan is the intent),
+    /// NOT `Fallback` (which would misleadingly suggest a degraded result).
+    #[test]
+    fn apply_agent_scene_plan_marks_skipped_diagnostics_not_fallback() {
+        use plotforge_schema::RuntimeTraceStage;
+        let project = test_project();
+        let mut session = RuntimeSession::new(project);
+        let planned_scene = Scene {
+            key: "agent-scene-r6".into(),
+            title: "Agent Scene".into(),
+            location: "Test Court".into(),
+            dramatic_purpose: "Agent drove the turn.".into(),
+            hook: "A pi-Agent turn.".into(),
+            background_asset: String::new(),
+            audio_refs: Vec::new(),
+            character_ids: Vec::new(),
+            plot_thread_updates: BTreeMap::new(),
+            entry_beat_id: Some("agent-scene-r6-beat-001".into()),
+            beats: vec![Beat {
+                id: "agent-scene-r6-beat-001".into(),
+                text: "The agent's scene begins.".into(),
+                speaker: None,
+                line_delivery: None,
+                audio_refs: Vec::new(),
+                choices: Vec::new(),
+                next: BeatNext::None,
+            }],
+        };
+        let plan = ScenePlan {
+            scene: planned_scene,
+            review: plotforge_schema::NarrativeReview {
+                scene_key: "agent-scene-r6".into(),
+                score: 50,
+                hook_score: 50,
+                pacing_score: 50,
+                character_consistency_score: 50,
+                payoff_score: 50,
+                choice_meaningfulness_score: 50,
+                ai_slop_risk: 20,
+                issues: Vec::new(),
+            },
+            reproducibility: ReproducibilityMetadata::local_mock(7),
+            fallback_used: false,
+            error: None,
+        };
+        let step = session
+            .apply_agent_scene_plan(plan, "Agent proposed a scene change.")
+            .expect("apply agent scene plan");
+        // The top-level fallback flag is false (this is not a fallback turn).
+        assert!(!step.trace.fallback_used);
+        // Find the InterpretAction and SelectChoice diagnostics.
+        let interpret = step
+            .trace
+            .diagnostics
+            .iter()
+            .find(|d| d.stage == RuntimeTraceStage::InterpretAction)
+            .expect("InterpretAction diagnostic present");
+        let select = step
+            .trace
+            .diagnostics
+            .iter()
+            .find(|d| d.stage == RuntimeTraceStage::SelectChoice)
+            .expect("SelectChoice diagnostic present");
+        assert_eq!(
+            interpret.status,
+            plotforge_schema::RuntimeTraceStageStatus::Skipped,
+            "InterpretAction must be Skipped on the pi-Agent path, not Fallback"
+        );
+        assert_eq!(
+            select.status,
+            plotforge_schema::RuntimeTraceStageStatus::Skipped,
+            "SelectChoice must be Skipped on the pi-Agent path, not Fallback"
+        );
     }
 
     fn test_project() -> ProjectData {

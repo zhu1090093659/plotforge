@@ -23,6 +23,7 @@ const defaultAgentConfig: AgentSessionConfig = {
   model_id: "local-pi",
   permission_level: "ask_every_time",
   thinking_level: "medium",
+  enabled_skills: [],
 };
 
 export interface AgentConfigWorkspace {

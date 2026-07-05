@@ -7,23 +7,28 @@ use std::{
 };
 
 use plotforge_export::{export_static_web, export_static_web_zip};
-use plotforge_runtime::{RuntimeSession, summarize_delta};
+use plotforge_runtime::{RuntimeSession, RuntimeStep, summarize_delta};
 pub use plotforge_schema::{
     AgentSessionConfig, AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure,
     AiUsageManifest, AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Condition,
     Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ModelOption, PermissionLevel,
-    PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, ProjectCreationReport,
-    ProjectCreationRequest, ProjectData, ProjectTemplateId, ResourceDefinition, Rule, RuleDraft,
-    RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene, StateVariablesEditDocument,
-    SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, VisualBible,
-    WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
-    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
+    PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
+    PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
+    ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry,
+    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
+    SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin, SkillSource,
+    StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
+    VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
+    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
+    redact_trace_text,
 };
 use plotforge_storage::{
-    create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
-    validate_project, validate_runtime_snapshot_id, write_runtime_snapshot, write_trace,
+    create_project_from_request, load_project, read_latest_runtime_snapshot,
+    read_project_prompt_templates, read_runtime_snapshot, read_user_prompt_templates,
+    validate_project, validate_runtime_snapshot_id, write_project_prompt_templates,
+    write_runtime_snapshot, write_trace, write_user_prompt_templates,
 };
 use serde::Serialize;
 
@@ -229,6 +234,505 @@ pub fn pi_agent_capabilities() -> StudioCommandResult<Vec<PiAgentCapability>> {
     Ok(plotforge_agent::pi_agent_capabilities())
 }
 
+/// Run the pi-Agent against a project, generate a `ScenePlan` proposal via
+/// the configured provider, evaluate rules, commit the proposal as a runtime
+/// state change, and return the resulting scene + trace. This is the
+/// "describe a change / run a turn" path the desktop `AgentChatRail` drives
+/// when a real provider is configured; when `model_id == "local-pi"` it falls
+/// back to the deterministic mock provider.
+///
+/// Failure modes are explicit (never silent):
+/// - `pi_agent_missing_credential`: the provider's `credential_env_var`
+///   names an env var that is missing or empty.
+/// - `pi_agent_provider_timeout`: the HTTP call timed out.
+/// - `pi_agent_unsupported_payload`: the provider returned a payload kind
+///   other than `scene_plan` (only scene plans are committable today).
+pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
+    let project_path = Path::new(&request.project_path);
+    let project = load_project(project_path)
+        .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
+    let agent_config = get_agent_session_config(project_path)?;
+    let model_id = agent_config.model_id.as_str();
+
+    // Resolve the provider. `local-pi` keeps the deterministic mock; any
+    // other model id must resolve to a registered, enabled provider entry.
+    // Both branches yield `Box<dyn TextModelProvider>` so the agent facade
+    // receives a single type-erased provider regardless of whether the
+    // registry picked a strict or optional credential resolver.
+    let provider: Box<dyn plotforge_agent::TextModelProvider> =
+        if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+            Box::new(plotforge_agent::FakeTextModelProvider::local_pi())
+                as Box<dyn plotforge_agent::TextModelProvider>
+        } else {
+            let registry =
+                plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+                    code: "pi_agent_apply_registry".into(),
+                    message: source.to_string(),
+                })?;
+            let entry = plotforge_agent::resolve_provider_for_model(model_id, &registry)
+                .ok_or_else(|| StudioCommandError {
+                    code: "pi_agent_apply_no_provider".into(),
+                    message: format!("no enabled provider registered for model id `{model_id}`"),
+                })?;
+            plotforge_agent::build_text_provider(entry).map_err(|source| StudioCommandError {
+                code: "pi_agent_apply_build".into(),
+                message: source.to_string(),
+            })?
+        };
+    let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
+
+    // Build the redaction-safe run request the pi-Agent expects. The prompt
+    // summary carries the player input (local-only); the hash anchors the
+    // reproducibility identity.
+    let run_request = PiAgentRunRequest {
+        agent_id: request.agent_id.clone(),
+        run_seed: request.run_seed,
+        prompt_summary: request.player_input.clone(),
+        prompt_hash: format!(
+            "sha256:{}",
+            plotforge_agent::stable_sha256_hash(&request.player_input)
+        ),
+    };
+    let (run_result, envelope) =
+        agent
+            .run_with_envelope(run_request)
+            .map_err(|error| StudioCommandError {
+                code: match &error {
+                    plotforge_agent::PiAgentError::Provider { code, .. } => {
+                        if code.contains("missing_credential") {
+                            "pi_agent_missing_credential".into()
+                        } else if code.contains("timeout") {
+                            "pi_agent_provider_timeout".into()
+                        } else {
+                            "pi_agent_apply_run".into()
+                        }
+                    }
+                    _ => "pi_agent_apply_run".into(),
+                },
+                message: error.to_string(),
+            })?;
+
+    // Extract the ScenePlan payload. Other payload kinds are not committable
+    // today; surface an explicit error rather than silently skipping.
+    let plan = match envelope.proposal.output {
+        plotforge_schema::AgentProposalPayload::ScenePlan(plan) => plan,
+        other => {
+            return Err(StudioCommandError {
+                code: "pi_agent_unsupported_payload".into(),
+                message: format!(
+                    "pi-Agent returned a {} payload; only scene_plan is committable",
+                    plotforge_agent::payload_kind(&other)
+                ),
+            });
+        }
+    };
+
+    // Build a ScenePlan in the shape RuntimeSession expects (it wraps the
+    // schema's ScenePlanProposal into a plotforge_agent::ScenePlan).
+    let scene_plan =
+        plotforge_agent::ScenePlan::from_proposal(&plan, envelope.reproducibility.clone())
+            .map_err(|source| StudioCommandError {
+                code: "pi_agent_apply_scene_assembly".into(),
+                message: source.to_string(),
+            })?;
+    let scene_key = scene_plan.scene.key.clone();
+
+    // Construct the runtime session (optionally from a snapshot for the
+    // restore path) and apply the agent's scene plan. The rule-evaluation
+    // boundary stays inside `plotforge-runtime` (per AGENTS.md: agents
+    // propose, runtime/rules commit).
+    let mut session = if let Some(restore_id) = request.restore_id.as_deref() {
+        validate_runtime_snapshot_id(restore_id)
+            .map_err(|source| command_error("pi_agent_apply_restore_id", project_path, source))?;
+        let snapshot = read_runtime_snapshot(project_path, restore_id).map_err(|source| {
+            command_error("pi_agent_apply_restore_snapshot", project_path, source)
+        })?;
+        RuntimeSession::from_snapshot(project, snapshot).map_err(|source| {
+            command_error("pi_agent_apply_restore_runtime", project_path, source)
+        })?
+    } else {
+        RuntimeSession::new(project)
+    };
+
+    let step = session
+        .apply_agent_scene_plan(scene_plan, &request.player_input)
+        .map_err(|source| command_error("pi_agent_apply_commit", project_path, source))?;
+
+    let save_id = request.save_id.as_deref();
+    if let Some(save_id) = save_id {
+        validate_runtime_snapshot_id(save_id)
+            .map_err(|source| command_error("pi_agent_apply_save_id", project_path, source))?;
+    }
+    let report = assemble_play_once_report(project_path, step, save_id, &session)?;
+
+    Ok(PiAgentApplyResult {
+        run: run_result,
+        scene_key,
+        scene: report.scene.clone(),
+        trace: report.trace.clone(),
+        trace_path: report.trace_path.clone(),
+        // Forward the delta summary the report already computes so the rail
+        // and TraceDebugView render the "State deltas" count chip from the
+        // same value `play_once_project*` produces — no TypeScript
+        // re-implementation of `summarize_delta`.
+        delta_summary: report.delta_summary.clone(),
+        snapshot: report.snapshot.clone(),
+        snapshot_path: report.snapshot_path.clone(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Provider registry, prompt template, and skill library commands.
+//
+// These commands read/write user-global config (`~/.plotforge/providers.json`,
+// `~/.plotforge/prompts.json`, `~/.plotforge/skill-index.json`) and the
+// project-scoped prompt store (`<project>/.plotforge/prompts.json`). They
+// never carry credentials, raw provider responses, or secret markers.
+// ---------------------------------------------------------------------------
+
+/// Lists every registered provider entry from the user-global registry.
+/// An absent registry returns an empty list (fresh install).
+pub fn list_providers() -> StudioCommandResult<Vec<ProviderEntry>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_providers".into(),
+            message: source.to_string(),
+        })?;
+    Ok(registry.providers)
+}
+
+/// Adds or updates (by `id`) a provider entry in the user-global registry.
+pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntry> {
+    // Validate the entry before it is persisted. This catches credential
+    // strings embedded in `endpoint_url` (e.g. `?key=sk-realkey`), malformed
+    // `credential_env_var` charset, and other config errors at write time
+    // rather than letting them slip into `~/.plotforge/providers.json` and
+    // only surface at the next provider call.
+    let config = plotforge_agent::TextProviderConfig {
+        enabled: entry.enabled,
+        provider: entry.label.clone(),
+        model: entry.model.clone(),
+        endpoint_url: Some(entry.endpoint_url.clone()),
+        credential_env_var: entry.credential_env_var.clone(),
+    };
+    config.validate().map_err(|error| StudioCommandError {
+        code: "upsert_provider_invalid".into(),
+        message: error.to_string(),
+    })?;
+    let mut registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "upsert_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    if let Some(existing) = registry.providers.iter_mut().find(|p| p.id == entry.id) {
+        *existing = entry.clone();
+    } else {
+        registry.providers.push(entry.clone());
+    }
+    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
+        code: "upsert_provider_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(entry)
+}
+
+/// Removes a provider entry by id. Returns the removed entry, or an explicit
+/// `provider_not_found` error if no entry matches.
+pub fn delete_provider(id: String) -> StudioCommandResult<ProviderEntry> {
+    let mut registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "delete_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    let position = registry
+        .providers
+        .iter()
+        .position(|p| p.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "provider_not_found".into(),
+            message: format!("no provider with id `{id}`"),
+        })?;
+    let removed = registry.providers.remove(position);
+    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
+        code: "delete_provider_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(removed)
+}
+
+/// The result of a `test_provider_connection` ping: ok/failed + a
+/// redaction-safe message. No provider response body is stored.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ProviderTestResult {
+    pub ok: bool,
+    pub message: String,
+}
+
+/// Sends a minimal ping to a registered provider to verify the endpoint and
+/// credential are usable. No response body is stored; only an ok/failed flag
+/// plus a redaction-safe message. This is a real HTTP call — local-only,
+/// user-initiated, never enters traces, projects, or export packages.
+pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestResult> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "test_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    let entry = registry
+        .providers
+        .iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "provider_not_found".into(),
+            message: format!("no provider with id `{id}`"),
+        })?;
+    let built =
+        plotforge_agent::build_text_provider(entry).map_err(|source| StudioCommandError {
+            code: "test_provider_build".into(),
+            message: source.to_string(),
+        })?;
+    // Reconstruct the config to derive the provider_config_hash the request
+    // carries. `built` is a type-erased `Box<dyn TextModelProvider>` (the
+    // registry may pick a strict or optional credential resolver), so the
+    // concrete `ConfiguredTextModelProvider::config()` is not reachable here;
+    // the hash is derived from the same non-secret fields either way.
+    let probe_config = plotforge_agent::TextProviderConfig {
+        enabled: entry.enabled,
+        provider: entry.label.clone(),
+        model: entry.model.clone(),
+        endpoint_url: Some(entry.endpoint_url.clone()),
+        credential_env_var: entry.credential_env_var.clone(),
+    };
+    // Issue a tiny completion to verify the credential + endpoint resolve.
+    // The request body is a benign probe; the response is discarded.
+    let request = plotforge_agent::TextModelRequest {
+        call_id: "connection-test".into(),
+        agent: plotforge_schema::AgentRole::ScenePlanner,
+        scene_key: "connection-test".into(),
+        run_seed: 0,
+        prompt_version: "plotforge-connection-test".into(),
+        model_version: entry.model.clone(),
+        provider_config_hash: probe_config.provider_config_hash(),
+        prompt: "{\"probe\": true}".into(),
+    };
+    match built.complete(&request) {
+        Ok(_) => Ok(ProviderTestResult {
+            ok: true,
+            message: "provider responded to the probe request".into(),
+        }),
+        Err(error) => Ok(ProviderTestResult {
+            ok: false,
+            // R8: defence-in-depth. The provider error message is already
+            // redacted at the HTTP/adapter layer, but apply `redact_trace_text`
+            // again before surfacing it to the UI so a credential embedded in
+            // an error-body field name (or any token the inner layer's marker
+            // list missed) is still scrubbed before the user sees it.
+            message: redact_trace_text(&error.message),
+        }),
+    }
+}
+
+/// Lists user-global prompt templates from `~/.plotforge/prompts.json`.
+pub fn list_user_prompt_templates() -> StudioCommandResult<Vec<PromptTemplate>> {
+    read_user_prompt_templates().map_err(|source| StudioCommandError {
+        code: "list_user_prompt_templates".into(),
+        message: source.to_string(),
+    })
+}
+
+/// Lists project-scoped prompt templates from `<project>/.plotforge/prompts.json`.
+pub fn list_project_prompt_templates(
+    project_path: impl AsRef<Path>,
+) -> StudioCommandResult<Vec<PromptTemplate>> {
+    let project_path = project_path.as_ref();
+    read_project_prompt_templates(project_path).map_err(|source| StudioCommandError {
+        code: "list_project_prompt_templates".into(),
+        message: source.to_string(),
+    })
+}
+
+/// Adds or updates (by `id`) a user-global prompt template.
+pub fn upsert_user_prompt_template(
+    template: PromptTemplate,
+) -> StudioCommandResult<PromptTemplate> {
+    let mut templates = read_user_prompt_templates().map_err(|source| StudioCommandError {
+        code: "upsert_user_prompt_template_load".into(),
+        message: source.to_string(),
+    })?;
+    if let Some(existing) = templates.iter_mut().find(|t| t.id == template.id) {
+        *existing = template.clone();
+    } else {
+        templates.push(template.clone());
+    }
+    write_user_prompt_templates(&templates).map_err(|source| StudioCommandError {
+        code: "upsert_user_prompt_template_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(template)
+}
+
+/// Adds or updates (by `id`) a project-scoped prompt template.
+pub fn upsert_project_prompt_template(
+    project_path: impl AsRef<Path>,
+    template: PromptTemplate,
+) -> StudioCommandResult<PromptTemplate> {
+    let project_path = project_path.as_ref();
+    let mut templates =
+        read_project_prompt_templates(project_path).map_err(|source| StudioCommandError {
+            code: "upsert_project_prompt_template_load".into(),
+            message: source.to_string(),
+        })?;
+    if let Some(existing) = templates.iter_mut().find(|t| t.id == template.id) {
+        *existing = template.clone();
+    } else {
+        templates.push(template.clone());
+    }
+    write_project_prompt_templates(project_path, &templates).map_err(|source| {
+        StudioCommandError {
+            code: "upsert_project_prompt_template_write".into(),
+            message: source.to_string(),
+        }
+    })?;
+    Ok(template)
+}
+
+/// Removes a user-global prompt template by id.
+pub fn delete_user_prompt_template(id: String) -> StudioCommandResult<()> {
+    let mut templates = read_user_prompt_templates().map_err(|source| StudioCommandError {
+        code: "delete_user_prompt_template_load".into(),
+        message: source.to_string(),
+    })?;
+    let before = templates.len();
+    templates.retain(|t| t.id != id);
+    if templates.len() == before {
+        return Err(StudioCommandError {
+            code: "prompt_template_not_found".into(),
+            message: format!("no user prompt template with id `{id}`"),
+        });
+    }
+    write_user_prompt_templates(&templates).map_err(|source| StudioCommandError {
+        code: "delete_user_prompt_template_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(())
+}
+
+/// Removes a project-scoped prompt template by id.
+pub fn delete_project_prompt_template(
+    project_path: impl AsRef<Path>,
+    id: String,
+) -> StudioCommandResult<()> {
+    let project_path = project_path.as_ref();
+    let mut templates =
+        read_project_prompt_templates(project_path).map_err(|source| StudioCommandError {
+            code: "delete_project_prompt_template_load".into(),
+            message: source.to_string(),
+        })?;
+    let before = templates.len();
+    templates.retain(|t| t.id != id);
+    if templates.len() == before {
+        return Err(StudioCommandError {
+            code: "prompt_template_not_found".into(),
+            message: format!("no project prompt template with id `{id}`"),
+        });
+    }
+    write_project_prompt_templates(project_path, &templates).map_err(|source| {
+        StudioCommandError {
+            code: "delete_project_prompt_template_write".into(),
+            message: source.to_string(),
+        }
+    })?;
+    Ok(())
+}
+
+/// Lists every discovered skill from the cached index. Returns an empty list
+/// when no cache exists yet — opening the Agent view does NOT trigger a
+/// synchronous scan of all external skill roots (which can be O(roots ×
+/// skills × files) filesystem I/O on a Tauri worker thread). The user opts
+/// into a scan via `refresh_skill_index` (the "Refresh" button in the Skills
+/// tab). `import_skill` lazily scans when the cache is missing because the
+/// import action already implies the user wants the freshest skill set.
+pub fn list_skills() -> StudioCommandResult<Vec<SkillManifest>> {
+    let index = plotforge_agent::read_cached_skill_index().unwrap_or_else(SkillIndex::empty);
+    Ok(index.skills)
+}
+
+/// Forces a full re-scan of all skill roots and writes the fresh index.
+pub fn refresh_skill_index() -> StudioCommandResult<SkillIndex> {
+    let index = plotforge_agent::scan_all_skills();
+    plotforge_agent::write_skill_index(&index).map_err(|source| StudioCommandError {
+        code: "refresh_skill_index".into(),
+        message: source.to_string(),
+    })?;
+    Ok(index)
+}
+
+/// Copies an external skill (by id) into the user's own
+/// `~/.plotforge/skills/<name>/` library.
+pub fn import_skill(skill_id: String) -> StudioCommandResult<SkillManifest> {
+    let index = if let Some(cached) = plotforge_agent::read_cached_skill_index() {
+        cached
+    } else {
+        plotforge_agent::scan_all_skills()
+    };
+    let manifest = index
+        .skills
+        .iter()
+        .find(|s| s.id == skill_id || s.name == skill_id)
+        .ok_or_else(|| StudioCommandError {
+            code: "skill_not_found".into(),
+            message: format!("no skill with id `{skill_id}` in the index"),
+        })?
+        .clone();
+    plotforge_agent::import_external_skill(&manifest).map_err(|source| StudioCommandError {
+        code: "import_skill".into(),
+        message: source.to_string(),
+    })?;
+    Ok(manifest)
+}
+
+/// Loads the body (Markdown) of a skill on demand, for prompt injection or
+/// UI preview.
+pub fn read_skill_body(skill_id: String) -> StudioCommandResult<String> {
+    let index = if let Some(cached) = plotforge_agent::read_cached_skill_index() {
+        cached
+    } else {
+        plotforge_agent::scan_all_skills()
+    };
+    let manifest = index
+        .skills
+        .iter()
+        .find(|s| s.id == skill_id || s.name == skill_id)
+        .ok_or_else(|| StudioCommandError {
+            code: "skill_not_found".into(),
+            message: format!("no skill with id `{skill_id}` in the index"),
+        })?
+        .clone();
+    plotforge_agent::load_skill_body(&manifest).map_err(|source| StudioCommandError {
+        code: "read_skill_body".into(),
+        message: source.to_string(),
+    })
+}
+
+/// Toggles whether a skill is enabled for a project (persisted in
+/// `AgentSessionConfig.enabled_skills`).
+pub fn enable_skill_for_project(
+    project_path: impl AsRef<Path>,
+    skill_id: String,
+    enabled: bool,
+) -> StudioCommandResult<AgentSessionConfig> {
+    let project_path = project_path.as_ref();
+    let mut config = get_agent_session_config(project_path)?;
+    if enabled {
+        if !config.enabled_skills.contains(&skill_id) {
+            config.enabled_skills.push(skill_id);
+        }
+    } else {
+        config.enabled_skills.retain(|s| s != &skill_id);
+    }
+    set_agent_session_config(project_path, &config)
+}
+
 // ---------------------------------------------------------------------------
 // Git workspace integration.
 //
@@ -402,21 +906,41 @@ fn ensure_git_repo(path: &Path) -> StudioCommandResult<()> {
 // ---------------------------------------------------------------------------
 
 /// The list of model options the studio can surface to the UI. Hardcoded for
-/// now (real provider catalog wiring is deferred); the local mock pi-Agent is
-/// always the first option so a fresh project has a working default.
+/// Lists the model options available for selection. The local mock pi-Agent
+/// is always the first option (offline default); every enabled entry in the
+/// user-global provider registry is then surfaced as a selectable model. The
+/// `provider` field is a descriptive label (the provider kind), never an
+/// endpoint URL or credential.
 pub fn list_available_models() -> StudioCommandResult<Vec<ModelOption>> {
-    Ok(vec![
-        ModelOption {
-            id: "local-pi".into(),
-            label: "Local pi-Agent (mock)".into(),
-            provider: "local-mock".into(),
-        },
-        ModelOption {
-            id: "glm-5.2".into(),
-            label: "GLM 5.2".into(),
-            provider: "zai".into(),
-        },
-    ])
+    let mut options = vec![ModelOption {
+        id: plotforge_agent::LOCAL_PI_MODEL_ID.into(),
+        label: "Local pi-Agent (mock)".into(),
+        provider: "local-mock".into(),
+    }];
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_available_models".into(),
+            message: source.to_string(),
+        })?;
+    for entry in registry.providers.iter().filter(|p| p.enabled) {
+        options.push(ModelOption {
+            id: entry.id.clone(),
+            label: entry.label.clone(),
+            provider: provider_kind_label(entry.kind),
+        });
+    }
+    Ok(options)
+}
+
+/// Maps a `ProviderKind` to a short, descriptive label for the `ModelOption`
+/// `provider` field. The label is for display only — never an endpoint or
+/// credential.
+fn provider_kind_label(kind: ProviderKind) -> String {
+    match kind {
+        ProviderKind::OpenAiCompatible => "openai_compatible".into(),
+        ProviderKind::OpenAiResponses => "openai_responses".into(),
+        ProviderKind::AnthropicMessages => "anthropic_messages".into(),
+    }
 }
 
 /// Read the per-project agent session config. Returns defaults when no config
@@ -874,6 +1398,21 @@ fn play_once_session(
     let step = session
         .play_once(player_input)
         .map_err(|source| command_error("play_once_runtime", path, source))?;
+    assemble_play_once_report(path, step, save_id, session)
+}
+
+/// Assembles a `PlayOnceReport` from a committed `RuntimeStep`: writes the
+/// trace, optionally writes a runtime snapshot when `save_id` is set, and
+/// returns the report shape the desktop `AgentChatRail` / `PlayView`
+/// render. Shared by the playtest path (`play_once_session`) and the
+/// pi-Agent path (`pi_agent_apply_run`) so both surfaces produce
+/// identically-shaped reports.
+fn assemble_play_once_report(
+    path: &Path,
+    step: RuntimeStep,
+    save_id: Option<&str>,
+    session: &RuntimeSession,
+) -> StudioCommandResult<PlayOnceReport> {
     let trace_path = write_trace(path, &step.trace)
         .map_err(|source| command_error("play_once_trace", path, source))?;
     let (snapshot, snapshot_path) = if let Some(save_id) = save_id {
@@ -1236,26 +1775,30 @@ mod tests {
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
         AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, GIT_NOT_A_REPO_CODE,
-        ResourceDefinition, Rule, RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility,
-        WorkshopItemPackage, WorkshopPackageFile, block_workshop_library_item, check_project,
-        create_character, create_character_from_draft, create_project, create_resource,
-        create_rule, create_rule_from_draft, delete_workshop_library_item, export_static_project,
+        PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ResourceDefinition, Rule,
+        RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
+        WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
+        create_character_from_draft, create_project, create_resource, create_rule,
+        create_rule_from_draft, delete_project_prompt_template, delete_provider,
+        delete_workshop_library_item, enable_skill_for_project, export_static_project,
         export_static_project_zip, generate_character, generate_story_craft,
         generate_world_expansion, get_agent_session_config, git_current_branch, git_list_branches,
         git_project_dir_name, git_switch_branch, import_workshop_library_package,
-        list_asset_records, list_available_models, list_export_profiles, list_source_files,
-        list_workshop_library, load_workshop_library_item, open_project, pi_agent_capabilities,
+        list_asset_records, list_available_models, list_export_profiles,
+        list_project_prompt_templates, list_providers, list_source_files, list_workshop_library,
+        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
         pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
         play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
         read_character_edit_document, read_rules_edit_document, read_source_file,
         read_state_variables_edit_document, read_story_craft_edit_document,
         read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
         set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, validate_workshop_package, write_source_file,
-        write_steam_submission_kit, write_workshop_publish_draft,
+        update_world_edit_document, upsert_project_prompt_template, upsert_provider,
+        validate_workshop_package, write_source_file, write_steam_submission_kit,
+        write_workshop_publish_draft,
     };
     use plotforge_schema::{
-        AgentSessionConfig, PermissionLevel, PiAgentRunRequest, ThinkingLevel,
+        AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
         contains_secret_marker_text,
     };
 
@@ -2168,6 +2711,179 @@ mod tests {
         create_project(project_path, sample_creation_request(), false).expect("create project");
     }
 
+    #[test]
+    fn pi_agent_apply_run_commits_local_pi_scene_plan_to_runtime() {
+        // End-to-end: a fresh project + local-pi model id (the default) +
+        // a `pi_agent_apply_run` call must commit the agent's ScenePlan
+        // proposal as a runtime state change and return a
+        // `PiAgentApplyResult` carrying the committed scene + trace.
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("agent-apply");
+        create_starter_project(&project_path);
+
+        // Default agent config has model_id="local-pi", so no provider
+        // registry is consulted; the deterministic mock provider is used.
+        let request = PiAgentApplyRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 9,
+            project_path: project_path.display().to_string(),
+            player_input: "Take the witness stand.".into(),
+            save_id: None,
+            restore_id: None,
+        };
+        let result = pi_agent_apply_run(request).expect("pi-agent apply run");
+
+        // The result carries the committed scene + trace + redaction-safe
+        // pi-Agent evidence envelope.
+        assert!(!result.scene_key.is_empty());
+        assert_eq!(result.scene.key, result.scene_key);
+        assert!(!result.trace.id.is_empty());
+        assert!(result.run.descriptor.is_local_pi);
+        assert!(
+            result
+                .run
+                .trace_id
+                .as_ref()
+                .expect("trace evidence id")
+                .starts_with("pi-agent-evidence-")
+        );
+        // The trace file was written under the project's traces dir.
+        assert!(result.trace_path.contains("traces"));
+        // No raw provider responses leaked into the result.
+        let serialized = serde_json::to_string(&result).expect("serialize result");
+        assert!(!serialized.contains("raw_provider_response"));
+        assert!(!serialized.contains("sk-"));
+        assert!(!serialized.contains("api_key"));
+        // Finding L3: `PiAgentApplyResult` must carry `delta_summary` so the
+        // rail and TraceDebugView render the "State deltas" chip without
+        // re-implementing `summarize_delta` in TypeScript. The local-pi mock
+        // commits a change_scene plan; the delta summary may be empty (the
+        // starter project's rules may not key on change_scene), but the
+        // field must be present and forward the same value the report carries.
+        let _ = &result.delta_summary;
+    }
+
+    #[test]
+    fn list_providers_succeeds_without_credential_leak() {
+        // The user-global registry is absent on a fresh machine; the loader
+        // returns an empty registry, never an error. Every entry must carry
+        // no credential value (only env-var names).
+        let providers = list_providers().expect("list providers");
+        for entry in &providers {
+            assert!(!entry.id.is_empty());
+            assert!(!entry.credential_env_var.contains("sk-"));
+        }
+    }
+
+    #[test]
+    fn enable_skill_for_project_persists_enabled_skills() {
+        // Finding H4: `enable_skill_for_project` must update the persisted
+        // `AgentSessionConfig.enabled_skills` and echo the new config back.
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("skill-project");
+        create_starter_project(&project_path);
+
+        let updated =
+            enable_skill_for_project(project_path.clone(), "frontend-design".into(), true)
+                .expect("enable skill");
+        assert!(
+            updated
+                .enabled_skills
+                .iter()
+                .any(|id| id == "frontend-design"),
+            "skill must appear in enabled_skills after enabling: {updated:?}"
+        );
+
+        // Toggling off removes it.
+        let disabled = enable_skill_for_project(project_path, "frontend-design".into(), false)
+            .expect("disable skill");
+        assert!(
+            !disabled
+                .enabled_skills
+                .iter()
+                .any(|id| id == "frontend-design"),
+            "skill must be removed from enabled_skills after disabling: {disabled:?}"
+        );
+    }
+
+    #[test]
+    fn project_prompt_templates_roundtrip_via_studio_commands() {
+        // Finding H4: project-scoped prompt CRUD roundtrips through the
+        // studio command layer (the writer is pre-scanned for secret markers
+        // and the result stays under <project>/.plotforge/prompts.json).
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("prompt-project");
+        create_starter_project(&project_path);
+
+        // Empty initially.
+        let initial = list_project_prompt_templates(project_path.clone()).expect("list initial");
+        assert!(initial.is_empty());
+
+        // Upsert a project-scoped template (avoid the user-global upsert here
+        // so this test never touches the real ~/.plotforge/prompts.json).
+        let project_template = upsert_project_prompt_template(
+            project_path.clone(),
+            PromptTemplate {
+                id: "project-scene-planner".into(),
+                label: "Project scene planner".into(),
+                scope: PromptScope::Project,
+                body_markdown: "# Project prompt\nPlan a scene here.".into(),
+                default_role_hint: None,
+            },
+        )
+        .expect("upsert project");
+        assert_eq!(project_template.id, "project-scene-planner");
+
+        // The project list now contains the project-scoped template.
+        let after_upsert =
+            list_project_prompt_templates(project_path.clone()).expect("list after upsert");
+        assert_eq!(after_upsert.len(), 1);
+        assert_eq!(after_upsert[0].id, "project-scene-planner");
+
+        // The project store was written under .plotforge/.
+        let prompts_file = project_path.join(".plotforge").join("prompts.json");
+        assert!(prompts_file.exists(), "project prompt store must exist");
+
+        // Delete the project template; the list returns to empty.
+        delete_project_prompt_template(project_path, "project-scene-planner".into())
+            .expect("delete project template");
+    }
+
+    #[test]
+    fn upsert_provider_rejects_credential_in_endpoint_query_string() {
+        // Finding L4-studio: the write path must validate the entry before
+        // persisting so a `?key=sk-realkey` URL never lands in the registry.
+        // We assert the validation runs (returns the explicit error code);
+        // the actual registry write is not asserted here because the studio
+        // layer reads the real user-global `~/.plotforge/providers.json` (no
+        // path override). The CLI smoke test suite covers the hermetic
+        // round-trip; the agent-layer `url_has_query_credential` unit test
+        // covers the detector in isolation.
+        let entry = ProviderEntry {
+            id: "bad".into(),
+            kind: ProviderKind::OpenAiCompatible,
+            label: "Bad".into(),
+            endpoint_url: "https://host/v1?key=sk-realkey".into(),
+            model: "m".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+        };
+        let error = upsert_provider(entry).expect_err("query-string credential rejected");
+        assert_eq!(error.code, "upsert_provider_invalid");
+        assert!(error.message.contains("credential"));
+    }
+
+    #[test]
+    fn delete_provider_reports_missing_id_explicitly() {
+        // Finding H4: `delete_provider` must surface `provider_not_found`
+        // for an unknown id (no silent fallback / no panic). The id here is
+        // guaranteed absent from any registry (test or real) because it is
+        // a long random sentinel.
+        let error = delete_provider("pf-review-sentinel-not-registered-9f3c7a".into())
+            .expect_err("missing provider must error");
+        assert_eq!(error.code, "provider_not_found");
+    }
+
     fn sample_character(id: &str) -> Character {
         Character {
             id: id.into(),
@@ -2682,6 +3398,7 @@ mod tests {
             model_id: "glm-5.2".into(),
             permission_level: PermissionLevel::FullAccess,
             thinking_level: ThinkingLevel::High,
+            enabled_skills: Vec::new(),
         };
         let persisted = set_agent_session_config(dir.path(), &config).expect("persist config");
         assert_eq!(persisted, config);

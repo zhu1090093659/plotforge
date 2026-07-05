@@ -1,11 +1,13 @@
 use plotforge_studio::{
     AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
     CharacterGenerationReport, ExportProfile, GitBranchInfo, GitSwitchResult, ModelOption,
-    PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, PlayOnceReport, ProjectCheckReport,
-    ProjectCreationReport, ProjectCreationRequest, ProjectData, ResourceDefinition, Rule,
-    RulesEditDocument, SourceFileContent, SourceFileSummary, StateVariablesEditDocument,
-    StaticExportReport, StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError,
-    VisualBible, WorldEditDocument, WorldGenerationReport,
+    PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
+    PiAgentRunResult, PlayOnceReport, ProjectCheckReport, ProjectCreationReport,
+    ProjectCreationRequest, ProjectData, ProviderEntry, ProviderTestResult, PromptTemplate,
+    ResourceDefinition, Rule, RulesEditDocument, SkillIndex, SkillManifest, SourceFileContent,
+    SourceFileSummary, StateVariablesEditDocument, StaticExportReport, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StudioCommandError, VisualBible, WorldEditDocument,
+    WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -323,4 +325,100 @@ pub fn set_agent_session_config(
     config: AgentSessionConfig,
 ) -> Result<AgentSessionConfig, StudioCommandError> {
     plotforge_studio::set_agent_session_config(path, &config)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn pi_agent_apply_run(
+    request: PiAgentApplyRequest,
+) -> Result<PiAgentApplyResult, StudioCommandError> {
+    plotforge_studio::pi_agent_apply_run(request)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_providers() -> Result<Vec<ProviderEntry>, StudioCommandError> {
+    plotforge_studio::list_providers()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upsert_provider(entry: ProviderEntry) -> Result<ProviderEntry, StudioCommandError> {
+    plotforge_studio::upsert_provider(entry)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_provider(id: String) -> Result<ProviderEntry, StudioCommandError> {
+    plotforge_studio::delete_provider(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn test_provider_connection(id: String) -> Result<ProviderTestResult, StudioCommandError> {
+    plotforge_studio::test_provider_connection(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_user_prompt_templates() -> Result<Vec<PromptTemplate>, StudioCommandError> {
+    plotforge_studio::list_user_prompt_templates()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_project_prompt_templates(
+    project_path: String,
+) -> Result<Vec<PromptTemplate>, StudioCommandError> {
+    plotforge_studio::list_project_prompt_templates(project_path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upsert_user_prompt_template(
+    template: PromptTemplate,
+) -> Result<PromptTemplate, StudioCommandError> {
+    plotforge_studio::upsert_user_prompt_template(template)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upsert_project_prompt_template(
+    project_path: String,
+    template: PromptTemplate,
+) -> Result<PromptTemplate, StudioCommandError> {
+    plotforge_studio::upsert_project_prompt_template(project_path, template)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_user_prompt_template(id: String) -> Result<(), StudioCommandError> {
+    plotforge_studio::delete_user_prompt_template(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_project_prompt_template(
+    project_path: String,
+    id: String,
+) -> Result<(), StudioCommandError> {
+    plotforge_studio::delete_project_prompt_template(project_path, id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_skills() -> Result<Vec<SkillManifest>, StudioCommandError> {
+    plotforge_studio::list_skills()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn refresh_skill_index() -> Result<SkillIndex, StudioCommandError> {
+    plotforge_studio::refresh_skill_index()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn import_skill(skill_id: String) -> Result<SkillManifest, StudioCommandError> {
+    plotforge_studio::import_skill(skill_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_skill_body(skill_id: String) -> Result<String, StudioCommandError> {
+    plotforge_studio::read_skill_body(skill_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn enable_skill_for_project(
+    project_path: String,
+    skill_id: String,
+    enabled: bool,
+) -> Result<AgentSessionConfig, StudioCommandError> {
+    plotforge_studio::enable_skill_for_project(project_path, skill_id, enabled)
 }

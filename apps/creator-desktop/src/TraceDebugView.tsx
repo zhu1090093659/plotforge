@@ -818,7 +818,13 @@ function DiagnosticList({
             className="border-t border-ink/10 pt-2 text-sm"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={diagnostic.status}>
+              <Badge
+                tone={
+                  diagnostic.status === "skipped"
+                    ? "neutral"
+                    : diagnostic.status
+                }
+              >
                 {diagnostic.status}
               </Badge>
               <code className="text-xs text-ink/55">

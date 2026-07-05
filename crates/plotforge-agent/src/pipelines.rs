@@ -97,7 +97,7 @@ where
             message,
         }
     })?;
-    let envelope =
+    let mut envelope =
         serde_json::from_str::<AgentOutputEnvelope>(&repaired_json).map_err(|error| {
             ProviderPipelineError::InvalidJson {
                 agent: agent.clone(),
@@ -110,7 +110,15 @@ where
             message,
         }
     })?;
-    ensure_matching_reproducibility(&reproducibility, &envelope.reproducibility, agent.clone())?;
+    // The runtime owns reproducibility identity. Real providers cannot know
+    // the locally-derived `run_seed`, `prompt_version`, `model_version`, or
+    // `provider_config_hash`, so requiring them to echo those values would
+    // reject every real model response. Instead we overwrite the envelope's
+    // reproducibility block with the locally-expected values and validate
+    // only the structural fields (contract/schema version, agent, non-empty
+    // reproducibility) via `validate_agent_output_envelope`. The pi-Agent
+    // facade extends this ownership to `trace_id` (see `pi_agent.rs`).
+    envelope.reproducibility = reproducibility.clone();
     validate_agent_output_proposal(&envelope.proposal).map_err(|error| {
         ProviderPipelineError::Validation {
             agent,
@@ -184,25 +192,6 @@ pub(crate) fn repair_json_text(raw_json: &str) -> Result<String, String> {
         }
     }
     Err("unable to repair provider JSON envelope".into())
-}
-
-pub(crate) fn ensure_matching_reproducibility(
-    expected: &ReproducibilityMetadata,
-    actual: &ReproducibilityMetadata,
-    agent: AgentRole,
-) -> Result<(), ProviderPipelineError> {
-    if expected.run_seed != actual.run_seed
-        || expected.prompt_version != actual.prompt_version
-        || expected.model_version != actual.model_version
-        || expected.provider_config_hash != actual.provider_config_hash
-    {
-        return Err(ProviderPipelineError::Validation {
-            agent,
-            message: "provider outputs used inconsistent reproducibility metadata".into(),
-        });
-    }
-
-    Ok(())
 }
 
 pub fn generate_world_expansion(

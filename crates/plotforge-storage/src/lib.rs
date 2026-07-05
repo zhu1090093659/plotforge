@@ -11,13 +11,13 @@ use plotforge_schema::{
     Condition, Effect, EmotionalArcPoint, GameProject, GenerationEvidence, GenerationStatus,
     HookStrategy, MAX_REFERENCE_STRUCTURE_NOTE_CHARS, MAX_REFERENCE_SUMMARY_CHARS,
     MediaAssetReference, PacingProfile, PlotThread, ProjectCreationReport, ProjectCreationRequest,
-    ProjectData, ProjectTemplateId, ReferenceAnalysis, ReferenceModule, ReferenceRights,
-    ReferenceSource, ReferenceSourceType, ResourceDefinition, Rule, RulesEditDocument,
-    RuntimeSnapshot, Scene, Severity, StateVariablesEditDocument, StoryCraftBible,
-    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest,
-    StoryCraftState, StoryPromise, StoryPromiseStatus, StoryState, VisualBible, VisualStyleCard,
-    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, WorldState,
-    contains_secret_marker_text,
+    ProjectData, ProjectTemplateId, PromptTemplate, PromptTemplateFile, ReferenceAnalysis,
+    ReferenceModule, ReferenceRights, ReferenceSource, ReferenceSourceType, ResourceDefinition,
+    Rule, RulesEditDocument, RuntimeSnapshot, Scene, Severity, StateVariablesEditDocument,
+    StoryCraftBible, StoryCraftEditDocument, StoryCraftGenerationReport,
+    StoryCraftGenerationRequest, StoryCraftState, StoryPromise, StoryPromiseStatus, StoryState,
+    VisualBible, VisualStyleCard, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
+    WorldState, contains_secret_marker_text,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
@@ -91,6 +91,12 @@ pub enum StorageError {
     },
     #[error("reference compliance error at {path}: {reason}")]
     ReferenceCompliance { path: PathBuf, reason: String },
+    #[error(
+        "could not resolve a user config directory for prompt templates (no HOME and no platform config dir)"
+    )]
+    MissingPromptTemplateHome,
+    #[error("prompt template body contained a secret marker at {path}")]
+    SecretMarker { path: PathBuf },
 }
 
 pub const MAX_REFERENCE_RAW_TEXT_BYTES: u64 = 4096;
@@ -560,6 +566,118 @@ pub fn update_audio_bible(
 ) -> Result<AudioBible, StorageError> {
     write_toml(&project_path.as_ref().join(AUDIO_BIBLE_PATH), &audio_bible)?;
     Ok(audio_bible)
+}
+
+// ---------------------------------------------------------------------------
+// Prompt template stores.
+//
+// Prompt templates are split into a user-global library
+// (`~/.plotforge/prompts.json`, shared across projects) and an optional
+// per-project store (`<project>/.plotforge/prompts.json`). The project store
+// lives under `.plotforge/`, which the export allowlist and the workshop
+// denylist both block, so project-scoped templates never enter an export
+// package. Bodies are scanned for secret markers before they are written.
+// ---------------------------------------------------------------------------
+
+const PROJECT_PROMPTS_PATH: &str = ".plotforge/prompts.json";
+
+fn user_prompts_path() -> Result<PathBuf, StorageError> {
+    let dir = dirs::config_dir()
+        .map(|dir| dir.join("plotforge"))
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".plotforge"))
+        })
+        .ok_or(StorageError::MissingPromptTemplateHome)?;
+    Ok(dir.join("prompts.json"))
+}
+
+/// Reads the user-global prompt template library. A missing file returns an
+/// empty list (not an error) so a fresh install starts with no templates.
+pub fn read_user_prompt_templates() -> Result<Vec<PromptTemplate>, StorageError> {
+    let path = user_prompts_path()?;
+    read_user_prompt_templates_from(&path)
+}
+
+/// Same as `read_user_prompt_templates` but reads from an explicit `path`.
+/// Used by tests to keep the user library hermetic.
+pub fn read_user_prompt_templates_from(path: &Path) -> Result<Vec<PromptTemplate>, StorageError> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let file: PromptTemplateFile = read_json(path)?;
+    Ok(file.templates)
+}
+
+/// Writes the user-global prompt template library, creating the parent
+/// directory if needed. Bodies are scanned for secret markers before write.
+pub fn write_user_prompt_templates(templates: &[PromptTemplate]) -> Result<(), StorageError> {
+    let path = user_prompts_path()?;
+    write_user_prompt_templates_to(&path, templates)
+}
+
+/// Same as `write_user_prompt_templates` but writes to an explicit `path`.
+/// Used by tests to keep the user library hermetic and to exercise the
+/// positive write/roundtrip path without env mutation.
+pub fn write_user_prompt_templates_to(
+    path: &Path,
+    templates: &[PromptTemplate],
+) -> Result<(), StorageError> {
+    for template in templates {
+        if contains_secret_marker_text(&template.body_markdown) {
+            return Err(StorageError::SecretMarker {
+                path: PathBuf::from(format!("prompt:{}/body", template.id)),
+            });
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_io(parent)?;
+    }
+    write_json(
+        path,
+        &PromptTemplateFile {
+            templates: templates.to_vec(),
+        },
+    )
+}
+
+/// Reads the per-project prompt template store. A missing file returns an
+/// empty list; the store is opt-in.
+pub fn read_project_prompt_templates(
+    project_path: impl AsRef<Path>,
+) -> Result<Vec<PromptTemplate>, StorageError> {
+    let path = project_path.as_ref().join(PROJECT_PROMPTS_PATH);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let file: PromptTemplateFile = read_json(&path)?;
+    Ok(file.templates)
+}
+
+/// Writes the per-project prompt template store under `.plotforge/`,
+/// creating the directory if needed. Bodies are scanned for secret markers.
+pub fn write_project_prompt_templates(
+    project_path: impl AsRef<Path>,
+    templates: &[PromptTemplate],
+) -> Result<(), StorageError> {
+    for template in templates {
+        if contains_secret_marker_text(&template.body_markdown) {
+            return Err(StorageError::SecretMarker {
+                path: PathBuf::from(format!("prompt:{}/body", template.id)),
+            });
+        }
+    }
+    let project_path = project_path.as_ref();
+    let plotforge_dir = project_path.join(".plotforge");
+    fs::create_dir_all(&plotforge_dir).map_io(&plotforge_dir)?;
+    let path = plotforge_dir.join("prompts.json");
+    write_json(
+        &path,
+        &PromptTemplateFile {
+            templates: templates.to_vec(),
+        },
+    )
 }
 
 pub fn list_asset_records(

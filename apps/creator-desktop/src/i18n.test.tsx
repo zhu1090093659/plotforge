@@ -220,6 +220,21 @@ describe("creator desktop i18n", () => {
       "add",
       // Language name kept verbatim (it names the English language itself)
       "English",
+      // Agent settings: provider / model format brand & protocol names
+      "OpenAI",
+      "Anthropic",
+      "Claude",
+      "Codex",
+      "ZCode",
+      "API",
+      "URL",
+      "Chat",
+      "Completions",
+      "Responses",
+      "Messages",
+      "shell",
+      "envVar",
+      "code",
     ]);
     const leaks: Array<[string, string]> = [];
     for (const [key, value] of Object.entries(zhDictionary)) {

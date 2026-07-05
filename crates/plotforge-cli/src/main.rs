@@ -506,6 +506,70 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
                 &content,
             ))?)
         }
+        "pi_agent_apply_run" => print_studio_json(studio_result(
+            plotforge_studio::pi_agent_apply_run(studio_arg(&payload, "request")?),
+        )?),
+        "list_providers" => print_studio_json(studio_result(plotforge_studio::list_providers())?),
+        "upsert_provider" => print_studio_json(studio_result(plotforge_studio::upsert_provider(
+            studio_arg(&payload, "entry")?,
+        ))?),
+        "delete_provider" => print_studio_json(studio_result(plotforge_studio::delete_provider(
+            studio_arg::<String>(&payload, "id")?,
+        ))?),
+        "test_provider_connection" => print_studio_json(studio_result(
+            plotforge_studio::test_provider_connection(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "list_user_prompt_templates" => print_studio_json(studio_result(
+            plotforge_studio::list_user_prompt_templates(),
+        )?),
+        "list_project_prompt_templates" => print_studio_json(studio_result(
+            plotforge_studio::list_project_prompt_templates(studio_arg::<PathBuf>(
+                &payload, "path",
+            )?),
+        )?),
+        "upsert_user_prompt_template" => print_studio_json(studio_result(
+            plotforge_studio::upsert_user_prompt_template(studio_arg(&payload, "template")?),
+        )?),
+        "upsert_project_prompt_template" => {
+            let template = studio_arg(&payload, "template")?;
+            print_studio_json(studio_result(
+                plotforge_studio::upsert_project_prompt_template(
+                    studio_arg::<PathBuf>(&payload, "path")?,
+                    template,
+                ),
+            )?)
+        }
+        "delete_user_prompt_template" => print_studio_json(studio_result(
+            plotforge_studio::delete_user_prompt_template(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "delete_project_prompt_template" => {
+            let id: String = studio_arg(&payload, "id")?;
+            print_studio_json(studio_result(
+                plotforge_studio::delete_project_prompt_template(
+                    studio_arg::<PathBuf>(&payload, "path")?,
+                    id,
+                ),
+            )?)
+        }
+        "list_skills" => print_studio_json(studio_result(plotforge_studio::list_skills())?),
+        "refresh_skill_index" => {
+            print_studio_json(studio_result(plotforge_studio::refresh_skill_index())?)
+        }
+        "import_skill" => print_studio_json(studio_result(plotforge_studio::import_skill(
+            studio_arg::<String>(&payload, "skill_id")?,
+        ))?),
+        "read_skill_body" => print_studio_json(studio_result(plotforge_studio::read_skill_body(
+            studio_arg::<String>(&payload, "skill_id")?,
+        ))?),
+        "enable_skill_for_project" => {
+            let skill_id: String = studio_arg(&payload, "skill_id")?;
+            let enabled: bool = studio_arg(&payload, "enabled")?;
+            print_studio_json(studio_result(plotforge_studio::enable_skill_for_project(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                skill_id,
+                enabled,
+            ))?)
+        }
         other => anyhow::bail!("unknown studio command `{other}`"),
     }
 }

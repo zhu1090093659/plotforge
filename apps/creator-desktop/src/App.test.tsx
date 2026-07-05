@@ -23,12 +23,39 @@ import {
 } from "./testHelpers/studioDataSource";
 import type {
   AssetRecord,
+  PiAgentApplyResult,
+  ProviderEntry,
+  PromptTemplate,
 } from "../../../contracts/plotforge";
 import type {
   PlayOnceReport,
   SourceFileContent,
   SourceFileSummary,
 } from "./tauriBridge";
+
+/** Build a `PiAgentApplyResult` from a `PlayOnceReport` so the rail's
+ * `piAgentApplyRun` mock returns the same scene/trace the test asserts on. */
+function applyResultFromReport(report: PlayOnceReport): PiAgentApplyResult {
+  return {
+    run: {
+      descriptor: {
+        agent_id: "local-pi",
+        is_local_pi: true,
+        capabilities: [],
+      },
+      reproducibility: demoReproducibilityMetadata,
+      trace_id: "pi-agent-evidence-test",
+      evidence_summary: "",
+    },
+    scene_key: report.scene.key,
+    scene: report.scene,
+    trace: report.trace,
+    trace_path: report.trace_path,
+    snapshot: report.snapshot,
+    snapshot_path: report.snapshot_path,
+    delta_summary: report.delta_summary,
+  };
+}
 
 afterEach(() => {
   if (typeof window.localStorage?.removeItem === "function") {
@@ -107,7 +134,7 @@ describe("App", () => {
     });
   });
 
-  it("exposes the flat nav (Home, Play, World, Story, Characters, State, Rules, Assets, Trace, Export, Source)", async () => {
+  it("exposes the flat nav (Home, Play, World, Story, Characters, State, Rules, Assets, Trace, Export, Source, Agent)", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -126,6 +153,11 @@ describe("App", () => {
     expect(getNavButton("Trace")).toBeTruthy();
     expect(getNavButton("Export")).toBeTruthy();
     expect(getNavButton("Source")).toBeTruthy();
+    // Agent is sidebar item #12 — its label is the EN value of
+    // `nav.agent.label`. Assert it is reachable as a nav button by accessible
+    // name so a future regression that drops the Agent section from the flat
+    // nav fails loudly.
+    expect(getNavButton("Agent")).toBeTruthy();
     // Source is the active section after waitForDefaultSourceCanvas navigates there.
     expect(getNavButton("Source").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Agent rail")).toBeTruthy();
@@ -369,6 +401,9 @@ describe("App", () => {
       async playOnceProject() {
         return fallbackReport;
       },
+      async piAgentApplyRun() {
+        return applyResultFromReport(fallbackReport);
+      },
     });
 
     render(
@@ -441,6 +476,10 @@ describe("App", () => {
         seenInputs.push(playerInput);
         return report;
       },
+      async piAgentApplyRun(request) {
+        seenInputs.push(request.player_input);
+        return applyResultFromReport(report);
+      },
     });
 
     render(
@@ -473,36 +512,24 @@ describe("App", () => {
   });
 
   it("runs playtest with explicit and latest runtime snapshot controls", async () => {
-    const calls: Array<
-      | {
-          method: "snapshot";
-          path: string;
-          playerInput: string;
-          snapshotId: string;
-          saveId: string | null;
-        }
-      | {
-          method: "latest";
-          path: string;
-          playerInput: string;
-          saveId: string | null;
-        }
-    > = [];
+    const calls: Array<{
+      playerInput: string;
+      saveId: string | null;
+      restoreId: string | null;
+    }> = [];
     const dataSource = appTestDataSource({
-      async playOnceProjectFromSnapshot(path, playerInput, snapshotId, saveId = null) {
-        calls.push({ method: "snapshot", path, playerInput, snapshotId, saveId });
-        return playOnceReportWithSnapshot(
-          playerInput,
-          saveId ?? snapshotId,
-          `/tmp/starter-project/saves/${saveId ?? snapshotId}.runtime_snapshot.json`,
-        );
-      },
-      async playOnceProjectFromLatestSnapshot(path, playerInput, saveId = null) {
-        calls.push({ method: "latest", path, playerInput, saveId });
-        return playOnceReportWithSnapshot(
-          playerInput,
-          saveId ?? "latest",
-          `/tmp/starter-project/saves/${saveId ?? "latest"}.runtime_snapshot.json`,
+      async piAgentApplyRun(request) {
+        calls.push({
+          playerInput: request.player_input,
+          saveId: request.save_id ?? null,
+          restoreId: request.restore_id ?? null,
+        });
+        return applyResultFromReport(
+          playOnceReportWithSnapshot(
+            request.player_input,
+            request.save_id ?? request.restore_id ?? "latest",
+            `/tmp/starter-project/saves/${request.save_id ?? request.restore_id ?? "latest"}.runtime_snapshot.json`,
+          ),
         );
       },
     });
@@ -530,11 +557,9 @@ describe("App", () => {
     await waitFor(() => {
       expect(calls).toEqual([
         {
-          method: "snapshot",
-          path: "/tmp/starter-project",
           playerInput: "pay the army",
-          snapshotId: "save-before-army",
           saveId: "save-after-army",
+          restoreId: "save-before-army",
         },
       ]);
     });
@@ -557,17 +582,14 @@ describe("App", () => {
     await waitFor(() => {
       expect(calls).toEqual([
         {
-          method: "snapshot",
-          path: "/tmp/starter-project",
           playerInput: "pay the army",
-          snapshotId: "save-before-army",
           saveId: "save-after-army",
+          restoreId: "save-before-army",
         },
         {
-          method: "latest",
-          path: "/tmp/starter-project",
           playerInput: "raise emergency taxes",
           saveId: "save-after-tax",
+          restoreId: null,
         },
       ]);
     });
@@ -1259,6 +1281,7 @@ function appTestDataSource(
         model_id: "local-pi",
         permission_level: "ask_every_time",
         thinking_level: "medium",
+        enabled_skills: [],
       };
     },
     async setAgentSessionConfig(
@@ -1266,6 +1289,79 @@ function appTestDataSource(
       config: { model_id: string; permission_level: string; thinking_level: string },
     ) {
       return config as never;
+    },
+    async piAgentApplyRun(_request) {
+      // The rail now drives pi_agent_apply_run; return a PiAgentApplyResult
+      // built from the same demo report shape the TurnResult renders.
+      return applyResultFromReport(demoPlayOnceReport("agent turn"));
+    },
+    async listProviders() {
+      return [];
+    },
+    async upsertProvider(_entry: ProviderEntry) {
+      return _entry;
+    },
+    async deleteProvider(id: string) {
+      return {
+        id,
+        kind: "openai_compatible" as const,
+        label: "",
+        endpoint_url: "",
+        model: "",
+        credential_env_var: "",
+        enabled: false,
+      };
+    },
+    async testProviderConnection(_id: string) {
+      return { ok: true, message: "" };
+    },
+    async listUserPromptTemplates() {
+      return [];
+    },
+    async listProjectPromptTemplates(_projectPath: string) {
+      return [];
+    },
+    async upsertUserPromptTemplate(template: PromptTemplate) {
+      return template;
+    },
+    async upsertProjectPromptTemplate(_projectPath: string, template: PromptTemplate) {
+      return template;
+    },
+    async deleteUserPromptTemplate(_id: string) {
+      return;
+    },
+    async deleteProjectPromptTemplate(_projectPath: string, _id: string) {
+      return;
+    },
+    async listSkills() {
+      return [];
+    },
+    async refreshSkillIndex() {
+      return { version: "1", skills: [], scanned_at: "" };
+    },
+    async importSkill(skillId: string) {
+      return {
+        id: skillId,
+        name: "",
+        description: "",
+        source: { origin: "plot_forge_user" as const, root_path: "", rel_path: "" },
+        interface: null,
+        body_path: "",
+        scripts: [],
+        references: [],
+        assets: [],
+      };
+    },
+    async readSkillBody(_skillId: string) {
+      return "";
+    },
+    async enableSkillForProject(_projectPath: string, _skillId: string, _enabled: boolean) {
+      return {
+        model_id: "local-pi",
+        permission_level: "ask_every_time",
+        thinking_level: "medium",
+        enabled_skills: [],
+      } as never;
     },
   };
 

@@ -517,6 +517,478 @@ fn cli_studio_pi_agent_capabilities_lists_wired_capability() {
     assert!(!stdout.contains("OPENAI_API_KEY"));
 }
 
+// ---------------------------------------------------------------------------
+// Black-box smoke tests for the studio command groups added when the agent
+// configuration, provider registry, prompt template, and skill library
+// commands were wired into the CLI dispatcher. Per AGENTS.md these are split
+// by command group so a failure in one group does not block the rest, and
+// each asserts "call succeeded + output shape" (exit code, JSON parses,
+// expected field present) — not the business results already covered by the
+// Rust unit tests in `plotforge-studio` / `plotforge-agent` /
+// `plotforge-storage`.
+//
+// User-global state (`~/.plotforge/providers.json`, `~/.plotforge/prompts.json`,
+// `~/.plotforge/skill-index.json`, and the external skill scan roots) is
+// redirected to a temp `HOME` via `cli_with_home` so these tests never touch
+// the real `~/.plotforge/`. See `cli_with_home` for the redirect rationale.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cli_studio_pi_agent_apply_run_commits_local_pi_scene_plan() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
+
+    // The default per-project agent config has model_id="local-pi", so the
+    // pi-Agent falls back to the deterministic mock provider (no network, no
+    // credential). The request carries the project path + player input; the
+    // CLI parses `request` out of the JSON payload and delegates to
+    // `pi_agent_apply_run`.
+    let result = run_with_stdin(
+        ["studio", "pi_agent_apply_run"],
+        &serde_json::json!({
+            "request": {
+                "agent_id": "pi-agent-local",
+                "run_seed": 7,
+                "project_path": project.to_string_lossy(),
+                "player_input": "continue",
+            }
+        })
+        .to_string(),
+    )
+    .assert_success_contains("\"is_local_pi\":true")
+    .stdout_json();
+
+    // Shape only: the envelope echoes the committed scene + trace alongside the
+    // redaction-safe pi-Agent run evidence. Business correctness of the
+    // committed beat/turn lives in `plotforge-runtime` unit tests.
+    assert_eq!(result["run"]["descriptor"]["agent_id"], "pi-agent-local");
+    assert_eq!(result["run"]["descriptor"]["is_local_pi"], true);
+    assert!(
+        result["scene_key"].as_str().is_some_and(|s| !s.is_empty()),
+        "scene_key must be present and non-empty"
+    );
+    assert!(
+        result["scene"]["key"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
+        "scene.key must be present and non-empty"
+    );
+    assert!(
+        result["trace"]["id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
+        "trace.id must be present and non-empty"
+    );
+    assert!(
+        result["trace_path"].as_str().is_some_and(|s| !s.is_empty()),
+        "trace_path must be present and non-empty"
+    );
+    // The committed trace must be written under the temp project (never the
+    // real home), proving the dispatch wired the storage layer end to end.
+    assert!(project.join("traces/latest.json").is_file());
+
+    // Redaction safety: no secret markers leak into the serialized envelope.
+    let raw = run_with_stdin(
+        ["studio", "pi_agent_apply_run"],
+        &serde_json::json!({
+            "request": {
+                "agent_id": "pi-agent-local",
+                "run_seed": 7,
+                "project_path": project.to_string_lossy(),
+                "player_input": "continue",
+            }
+        })
+        .to_string(),
+    );
+    let stdout = String::from_utf8_lossy(&raw.output.stdout);
+    assert!(!stdout.contains("raw_provider_response"));
+    assert!(!stdout.contains("api_key"));
+    assert!(!stdout.contains("sk-"));
+    assert!(!stdout.contains("OPENAI_API_KEY"));
+}
+
+#[test]
+fn cli_studio_lists_providers_on_fresh_home() {
+    // `list_providers` reads the user-global registry. A fresh install has no
+    // `providers.json`, so the list must be an empty JSON array (not an error).
+    // Running against a temp HOME keeps the real registry untouched.
+    let home = hermetic_home();
+    let providers = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(
+        providers.is_array(),
+        "list_providers must return a JSON array"
+    );
+    assert!(
+        providers.as_array().unwrap().is_empty(),
+        "fresh home must have no providers"
+    );
+}
+
+#[test]
+fn cli_studio_provider_crud_round_trip_against_temp_home() {
+    // upsert/delete/test_provider_connection all mutate the user-global
+    // registry. Pointing HOME at a temp dir keeps every write under that temp
+    // dir, so the real `~/.plotforge/providers.json` is never touched. The
+    // provider is created `enabled: false` so `test_provider_connection` never
+    // issues a real HTTP call — it returns a redaction-safe `ok: false`
+    // envelope instead, keeping the smoke test offline and deterministic.
+    let home = hermetic_home();
+
+    let entry = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-smoke-prov",
+                "kind": "openai_compatible",
+                "label": "CLI Smoke Provider",
+                "endpoint_url": "https://example.invalid/v1",
+                "model": "cli-smoke-model",
+                "credential_env_var": "CLI_SMOKE_UNUSED_KEY",
+                "enabled": false,
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert_eq!(entry["id"], "cli-smoke-prov");
+    assert_eq!(entry["enabled"], false);
+
+    let listed = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    let list = listed.as_array().expect("providers list");
+    assert_eq!(list.len(), 1, "upserted provider must appear in the list");
+    assert_eq!(list[0]["id"], "cli-smoke-prov");
+
+    // test_provider_connection against a disabled provider returns a
+    // redaction-safe `ok: false` without making any network call, so exit 0 +
+    // JSON shape is the right smoke assertion.
+    let test = run_with_stdin_home(
+        &home.home,
+        ["studio", "test_provider_connection"],
+        &serde_json::json!({ "id": "cli-smoke-prov" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(test["ok"], false);
+    assert!(
+        test["message"].as_str().is_some_and(|s| !s.is_empty()),
+        "test_provider_connection must carry a redaction-safe message"
+    );
+
+    let removed = run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_provider"],
+        &serde_json::json!({ "id": "cli-smoke-prov" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(removed["id"], "cli-smoke-prov");
+
+    let after_delete = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(
+        after_delete.as_array().unwrap().is_empty(),
+        "registry must be empty after delete"
+    );
+}
+
+#[test]
+fn cli_studio_delete_provider_reports_missing_id_explicitly() {
+    // Per AGENTS.md "no silent fallback": deleting an unknown id must surface
+    // an explicit `provider_not_found` error rather than no-op. Asserting the
+    // error path here confirms the dispatch surfaces studio errors (exit
+    // non-zero + code in stderr) without a real registry fixture.
+    let home = hermetic_home();
+    let output = run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_provider"],
+        &serde_json::json!({ "id": "does-not-exist" }).to_string(),
+    );
+    assert!(!output.output.status.success(), "expected non-zero exit");
+    let stderr = String::from_utf8_lossy(&output.output.stderr);
+    assert!(
+        stderr.contains("provider_not_found"),
+        "expected provider_not_found error, got: {stderr}"
+    );
+}
+
+#[test]
+fn cli_studio_prompt_templates_user_and_project_round_trip() {
+    // User-global templates live at `~/.plotforge/prompts.json`; project
+    // templates live at `<project>/.plotforge/prompts.json`. Redirecting HOME
+    // keeps the user-global store hermetic; the project store stays under the
+    // temp project dir. Both round-trip upsert -> list -> delete.
+    let home = hermetic_home();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
+
+    // User-global store starts empty.
+    let user_before = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_user_prompt_templates"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(
+        user_before.as_array().unwrap().is_empty(),
+        "fresh home must have no user prompt templates"
+    );
+
+    // Upsert a user-global template; the persisted store lands under the temp
+    // home, never the real `~/.plotforge/prompts.json`.
+    let upserted = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_user_prompt_template"],
+        &serde_json::json!({
+            "template": {
+                "id": "cli-smoke-pacing",
+                "label": "CLI Smoke Pacing",
+                "scope": "user",
+                "body_markdown": "Prefer concrete beats over exposition dumps.",
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert_eq!(upserted["id"], "cli-smoke-pacing");
+    assert_eq!(upserted["scope"], "user");
+
+    let user_after = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_user_prompt_templates"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    let user_list = user_after.as_array().expect("user templates list");
+    assert_eq!(user_list.len(), 1);
+    assert_eq!(user_list[0]["id"], "cli-smoke-pacing");
+
+    // Project-scoped store: list starts empty, upsert writes under the temp
+    // project's `.plotforge/prompts.json`, delete removes it.
+    let proj_before = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_project_prompt_templates"],
+        &serde_json::json!({ "path": project.to_string_lossy() }).to_string(),
+    )
+    .stdout_json();
+    assert!(
+        proj_before.as_array().unwrap().is_empty(),
+        "fresh project must have no project prompt templates"
+    );
+
+    let proj_upserted = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_project_prompt_template"],
+        &serde_json::json!({
+            "path": project.to_string_lossy(),
+            "template": {
+                "id": "cli-smoke-proj-pacing",
+                "label": "CLI Smoke Project Pacing",
+                "scope": "project",
+                "body_markdown": "Keep project pacing tight.",
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert_eq!(proj_upserted["id"], "cli-smoke-proj-pacing");
+    assert_eq!(proj_upserted["scope"], "project");
+
+    let proj_after = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_project_prompt_templates"],
+        &serde_json::json!({ "path": project.to_string_lossy() }).to_string(),
+    )
+    .stdout_json();
+    let proj_list = proj_after.as_array().expect("project templates list");
+    assert_eq!(proj_list.len(), 1);
+    assert_eq!(proj_list[0]["id"], "cli-smoke-proj-pacing");
+    // The project store must land under the temp project, never the home dir.
+    assert!(project.join(".plotforge/prompts.json").is_file());
+
+    // Delete both and confirm the lists go back to empty.
+    run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_user_prompt_template"],
+        &serde_json::json!({ "id": "cli-smoke-pacing" }).to_string(),
+    )
+    .stdout_json();
+    let user_final = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_user_prompt_templates"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(user_final.as_array().unwrap().is_empty());
+
+    run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_project_prompt_template"],
+        &serde_json::json!({
+            "path": project.to_string_lossy(),
+            "id": "cli-smoke-proj-pacing"
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    let proj_final = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_project_prompt_templates"],
+        &serde_json::json!({ "path": project.to_string_lossy() }).to_string(),
+    )
+    .stdout_json();
+    assert!(proj_final.as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_studio_skills_list_refresh_and_read_body_dispatch() {
+    // The skill index lives at `~/.plotforge/skill-index.json` and the external
+    // scan roots resolve from `HOME`. A temp HOME with no skill folders yields
+    // an empty (but well-formed) index, so `list_skills` / `refresh_skill_index`
+    // exercise the dispatch + JSON shape without needing a committed skill
+    // fixture. `refresh_skill_index` returns the full `SkillIndex` envelope;
+    // `list_skills` returns just the `skills` array.
+    let home = hermetic_home();
+
+    let skills_before = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_skills"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(
+        skills_before.is_array(),
+        "list_skills must return a JSON array"
+    );
+
+    let index = run_with_stdin_home(
+        &home.home,
+        ["studio", "refresh_skill_index"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    // SkillIndex envelope shape: { version, skills[], scanned_at }.
+    assert!(
+        index["version"].as_str().is_some_and(|s| !s.is_empty()),
+        "refresh_skill_index must return a versioned index"
+    );
+    assert!(index["skills"].is_array(), "index.skills must be an array");
+    assert!(
+        index["scanned_at"].as_str().is_some_and(|s| !s.is_empty()),
+        "refresh_skill_index must stamp a scanned_at timestamp"
+    );
+
+    // After a refresh the cache file must exist under the temp home so a
+    // subsequent `list_skills` reads from the cache (not a re-scan).
+    let skills_after = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_skills"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(skills_after.is_array());
+    assert_eq!(skills_after.as_array().unwrap().len(), 0);
+
+    // import_skill / read_skill_body mutate the user library and need a real
+    // skill on disk for a happy path; with an empty index they must surface an
+    // explicit `skill_not_found` error (no silent fallback). Asserting the
+    // error path confirms the dispatch is wired without a fixture.
+    let import_err = run_with_stdin_home(
+        &home.home,
+        ["studio", "import_skill"],
+        &serde_json::json!({ "skill_id": "nonexistent" }).to_string(),
+    );
+    assert!(!import_err.output.status.success());
+    let stderr = String::from_utf8_lossy(&import_err.output.stderr);
+    assert!(
+        stderr.contains("skill_not_found"),
+        "expected skill_not_found error, got: {stderr}"
+    );
+
+    let body_err = run_with_stdin_home(
+        &home.home,
+        ["studio", "read_skill_body"],
+        &serde_json::json!({ "skill_id": "nonexistent" }).to_string(),
+    );
+    assert!(!body_err.output.status.success());
+    let stderr = String::from_utf8_lossy(&body_err.output.stderr);
+    assert!(
+        stderr.contains("skill_not_found"),
+        "expected skill_not_found error, got: {stderr}"
+    );
+}
+
+#[test]
+fn cli_studio_enable_skill_for_project_persists_under_temp_project() {
+    // enable_skill_for_project writes the per-project agent config under
+    // `<project>/.plotforge/agent-config.json` — it never touches the
+    // user-global registry, so only the temp project dir is exercised. The
+    // HOME override is still applied for consistency / isolation.
+    let home = hermetic_home();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = check_project_path(&temp);
+    create_starter_project(&project).assert_success_contains("created project Starter Project");
+
+    let enabled = run_with_stdin_home(
+        &home.home,
+        ["studio", "enable_skill_for_project"],
+        &serde_json::json!({
+            "path": project.to_string_lossy(),
+            "skill_id": "cli-smoke-skill",
+            "enabled": true,
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    // Shape only: the persisted AgentSessionConfig echoes back with the skill
+    // id added to enabled_skills. Business validation of the config lives in
+    // `plotforge-studio` unit tests.
+    assert_eq!(enabled["model_id"], "local-pi");
+    assert!(
+        enabled["enabled_skills"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|v| v == "cli-smoke-skill")),
+        "enabled_skills must contain the toggled skill id"
+    );
+    assert!(
+        project.join(".plotforge/agent-config.json").is_file(),
+        "agent config must be written under the temp project"
+    );
+
+    // Toggling back off must remove the id.
+    let disabled = run_with_stdin_home(
+        &home.home,
+        ["studio", "enable_skill_for_project"],
+        &serde_json::json!({
+            "path": project.to_string_lossy(),
+            "skill_id": "cli-smoke-skill",
+            "enabled": false,
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert!(
+        disabled["enabled_skills"]
+            .as_array()
+            .is_some_and(|s| !s.iter().any(|v| v == "cli-smoke-skill")),
+        "enabled_skills must not contain the disabled skill id"
+    );
+}
+
 #[test]
 fn cli_new_project_rejects_secret_markers() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -752,6 +1224,65 @@ where
         .expect("write stdin");
     let output = child.wait_with_output().expect("wait command");
     CommandOutput { output }
+}
+
+/// Build a CLI `Command` that resolves the user-global PlotForge config
+/// directory (`~/.plotforge/providers.json`, `~/.plotforge/prompts.json`,
+/// `~/.plotforge/skill-index.json`, and the external skill scan roots) against
+/// a temp `HOME` instead of the real user home. This is the hermetic test hook
+/// for the studio commands that read/write user-global state: the binary
+/// already links `dirs::config_dir()`, which on macOS resolves to
+/// `$HOME/Library/Application Support` and on Linux to `$HOME/.config`, both of
+/// which honor an overridden `HOME`. The external skill roots (`~/.claude`,
+/// `~/.codex`, ...) likewise resolve from `HOME`. With `HOME` pointed at a
+/// fresh temp dir, none of these paths exist, so the commands see a clean
+/// install and any writes land under the temp dir (never the real
+/// `~/.plotforge/`). This keeps provider/prompt/skill upsert + delete tests
+/// hermetic and safe to run on a developer's real machine.
+fn cli_with_home(home: &std::path::Path) -> Command {
+    let mut cmd = cli();
+    cmd.env("HOME", home);
+    cmd
+}
+
+fn run_with_stdin_home<I, S>(home: &std::path::Path, args: I, stdin: &str) -> CommandOutput
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut child = cli_with_home(home)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn command");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(stdin.as_bytes())
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait command");
+    CommandOutput { output }
+}
+
+/// A fresh temp `HOME` paired with its owning tempdir so the directory lives
+/// as long as the test needs it. The `home` path is what gets passed to the
+/// CLI subprocess; the `temp` field is intentionally never read — its only
+/// job is to keep the temp dir (and therefore `home`) alive until the struct
+/// drops at the end of the test.
+struct HermeticHome {
+    #[allow(dead_code)]
+    temp: tempfile::TempDir,
+    home: std::path::PathBuf,
+}
+
+fn hermetic_home() -> HermeticHome {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let home = temp.path().join("pfhome");
+    fs::create_dir_all(&home).expect("create temp home");
+    HermeticHome { temp, home }
 }
 
 fn check_project_path(temp: &tempfile::TempDir) -> std::path::PathBuf {

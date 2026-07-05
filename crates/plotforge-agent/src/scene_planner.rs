@@ -17,10 +17,7 @@ use plotforge_schema::{
 };
 use plotforge_storycraft::review_scene;
 
-use crate::pipelines::{
-    ProviderPipelineError, ensure_matching_reproducibility, repair_json_text,
-    validate_agent_output_envelope,
-};
+use crate::pipelines::{ProviderPipelineError, repair_json_text, validate_agent_output_envelope};
 use crate::providers_image::{ImageProvider, SceneImagePipeline, SceneImageRequest};
 use crate::providers_text::{TextModelProvider, TextModelRequest};
 use crate::shared::payload_kind;
@@ -42,6 +39,67 @@ pub struct ScenePlan {
     pub reproducibility: ReproducibilityMetadata,
     pub fallback_used: bool,
     pub error: Option<RuntimeError>,
+}
+
+impl ScenePlan {
+    /// Assembles a `ScenePlan` from a pi-Agent `ScenePlanProposal` envelope.
+    /// The proposal carries the scene skeleton (key, title, location,
+    /// dramatic purpose, hook, cast, entry beat id, background asset); this
+    /// constructor seeds a single entry beat with `BeatNext::None` so the
+    /// runtime has a committable scene. The narrative review is a neutral
+    /// pass/fail baseline (the pi-Agent surface does not yet produce a
+    /// `ReviewProposal`; that is deferred). Reproducibility is carried
+    /// through from the envelope.
+    pub fn from_proposal(
+        proposal: &plotforge_schema::ScenePlanProposal,
+        reproducibility: ReproducibilityMetadata,
+    ) -> Result<Self, ScenePlannerError> {
+        let beat_id = if proposal.entry_beat_id.trim().is_empty() {
+            format!("{}-beat-001", proposal.scene_key)
+        } else {
+            proposal.entry_beat_id.clone()
+        };
+        let beat = Beat {
+            id: beat_id.clone(),
+            text: proposal.scene_summary.clone(),
+            speaker: None,
+            line_delivery: None,
+            audio_refs: Vec::new(),
+            choices: Vec::new(),
+            next: BeatNext::None,
+        };
+        let scene = Scene {
+            key: proposal.scene_key.clone(),
+            title: proposal.title.clone(),
+            location: proposal.location.clone(),
+            dramatic_purpose: proposal.dramatic_purpose.clone(),
+            hook: proposal.hook.clone(),
+            background_asset: proposal.background_asset.clone().unwrap_or_default(),
+            audio_refs: Vec::new(),
+            character_ids: proposal.cast.clone(),
+            plot_thread_updates: BTreeMap::new(),
+            beats: vec![beat],
+            entry_beat_id: Some(beat_id),
+        };
+        let review = NarrativeReview {
+            scene_key: scene.key.clone(),
+            score: 50,
+            hook_score: 50,
+            pacing_score: 50,
+            character_consistency_score: 50,
+            payoff_score: 50,
+            choice_meaningfulness_score: 50,
+            ai_slop_risk: 20,
+            issues: Vec::new(),
+        };
+        Ok(Self {
+            scene,
+            review,
+            reproducibility,
+            fallback_used: false,
+            error: None,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -327,11 +385,6 @@ where
         }
     };
     let beat_output = complete_agent_output(provider, AgentRole::BeatWriter, request, scene_key)?;
-    ensure_matching_reproducibility(
-        &scene_plan_output.reproducibility,
-        &beat_output.reproducibility,
-        AgentRole::BeatWriter,
-    )?;
     let beat_drafts = match beat_output.proposal.output {
         AgentProposalPayload::BeatDrafts(beat_drafts) => *beat_drafts,
         output => {
@@ -342,11 +395,6 @@ where
         }
     };
     let review_output = complete_agent_output(provider, AgentRole::PlotDoctor, request, scene_key)?;
-    ensure_matching_reproducibility(
-        &scene_plan_output.reproducibility,
-        &review_output.reproducibility,
-        AgentRole::PlotDoctor,
-    )?;
     let review = match review_output.proposal.output {
         AgentProposalPayload::Review(review) => *review,
         output => {
@@ -413,7 +461,7 @@ where
             message,
         }
     })?;
-    let envelope =
+    let mut envelope =
         serde_json::from_str::<AgentOutputEnvelope>(&repaired_json).map_err(|error| {
             ProviderPipelineError::InvalidJson {
                 agent: agent.clone(),
@@ -426,7 +474,11 @@ where
             message,
         }
     })?;
-    ensure_matching_reproducibility(&reproducibility, &envelope.reproducibility, agent.clone())?;
+    // The runtime owns reproducibility identity — overwrite the envelope's
+    // reproducibility block with the locally-expected values so real provider
+    // responses (which cannot echo these values) still validate. See
+    // `complete_text_agent_output` for the rationale.
+    envelope.reproducibility = reproducibility.clone();
     validate_agent_output_proposal(&envelope.proposal).map_err(|error| {
         ProviderPipelineError::Validation {
             agent,

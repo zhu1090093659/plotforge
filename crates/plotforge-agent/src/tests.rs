@@ -1281,6 +1281,43 @@ fn text_provider_config() -> TextProviderConfig {
     )
 }
 
+/// Regression for the Low finding (L4): an `endpoint_url` carrying a
+/// credential in its query string must be rejected by
+/// `TextProviderConfig::validate` so it is never persisted to the registry
+/// or used as the request URL. The secret-marker scanner only flags `sk-`
+/// as a token-prefix, so a `?key=sk-realkey` query string can slip through
+/// unless `validate` checks the query string explicitly.
+#[test]
+fn text_provider_config_rejects_credential_in_endpoint_query_string() {
+    let mut config = TextProviderConfig::openai_compatible(
+        "openai",
+        "gpt-test",
+        "https://host/v1?key=sk-realkey",
+        "OPENAI_API_KEY",
+    );
+    let error = config
+        .validate()
+        .expect_err("query-string credential rejected");
+    let _ = error;
+    // A plain URL with no credential query param must still validate.
+    config.endpoint_url = Some("https://host/v1".into());
+    config.validate().expect("plain endpoint validates");
+}
+
+/// `url_has_query_credential` must catch the common credential-bearing query
+/// keys and ignore non-credential query params.
+#[test]
+fn url_has_query_credential_detects_credential_keys() {
+    use crate::providers_text::url_has_query_credential;
+    assert!(url_has_query_credential("https://host/v1?key=sk-x"));
+    assert!(url_has_query_credential("https://host/v1?api_key=x"));
+    assert!(url_has_query_credential("https://host/v1?access_token=t"));
+    assert!(url_has_query_credential("https://host/v1?a=1&token=secret"));
+    // Non-credential query params are allowed.
+    assert!(!url_has_query_credential("https://host/v1?model=gpt"));
+    assert!(!url_has_query_credential("https://host/v1"));
+}
+
 fn scene_image_request() -> SceneImageRequest {
     SceneImageRequest {
         scene_key: "scene-one".into(),

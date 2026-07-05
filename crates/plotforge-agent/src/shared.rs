@@ -22,7 +22,7 @@ pub(crate) const TEXT_PROMPT_VERSION: &str = "plotforge-agent-text-prompt-v1";
 pub(crate) const FAKE_TEXT_MODEL_VERSION: &str = "fake-text-model-v1";
 pub(crate) const FAKE_TEXT_PROVIDER_CONFIG_HASH: &str = "sha256:fake-text-provider-config-v1";
 
-pub(crate) fn payload_kind(output: &AgentProposalPayload) -> &'static str {
+pub fn payload_kind(output: &AgentProposalPayload) -> &'static str {
     match output {
         AgentProposalPayload::WorldExpansion(_) => "world_expansion",
         AgentProposalPayload::StoryCraftPlan(_) => "story_craft_plan",
@@ -37,7 +37,7 @@ pub(crate) fn stable_prompt_hash(prompt: &str) -> String {
     stable_sha256_hash(prompt)
 }
 
-pub(crate) fn stable_sha256_hash(value: &str) -> String {
+pub fn stable_sha256_hash(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }

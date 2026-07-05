@@ -11,16 +11,22 @@ import type {
   GitBranchInfo,
   GitSwitchResult,
   ModelOption,
+  PiAgentApplyRequest,
+  PiAgentApplyResult,
   PiAgentCapability,
   PiAgentRunRequest,
   PiAgentRunResult,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
+  ProviderEntry,
+  PromptTemplate,
   ResourceDefinition,
   Rule,
   RuleDraft,
   RulesEditDocument,
+  SkillIndex,
+  SkillManifest,
   StateVariablesEditDocument,
   StoryCraftEditDocument,
   StoryCraftGenerationReport,
@@ -34,6 +40,7 @@ import {
   studioBridge,
   type PlayOnceReport,
   type ProjectCheckReport,
+  type ProviderTestResult,
   type StaticExportReport,
   type SourceFileContent,
   type SourceFileSummary,
@@ -156,6 +163,29 @@ export interface StudioDataSource {
     path: string,
     config: AgentSessionConfig,
   ): Promise<AgentSessionConfig>;
+  piAgentApplyRun(request: PiAgentApplyRequest): Promise<PiAgentApplyResult>;
+  listProviders(): Promise<ProviderEntry[]>;
+  upsertProvider(entry: ProviderEntry): Promise<ProviderEntry>;
+  deleteProvider(id: string): Promise<ProviderEntry>;
+  testProviderConnection(id: string): Promise<ProviderTestResult>;
+  listUserPromptTemplates(): Promise<PromptTemplate[]>;
+  listProjectPromptTemplates(projectPath: string): Promise<PromptTemplate[]>;
+  upsertUserPromptTemplate(template: PromptTemplate): Promise<PromptTemplate>;
+  upsertProjectPromptTemplate(
+    projectPath: string,
+    template: PromptTemplate,
+  ): Promise<PromptTemplate>;
+  deleteUserPromptTemplate(id: string): Promise<void>;
+  deleteProjectPromptTemplate(projectPath: string, id: string): Promise<void>;
+  listSkills(): Promise<SkillManifest[]>;
+  refreshSkillIndex(): Promise<SkillIndex>;
+  importSkill(skillId: string): Promise<SkillManifest>;
+  readSkillBody(skillId: string): Promise<string>;
+  enableSkillForProject(
+    projectPath: string,
+    skillId: string,
+    enabled: boolean,
+  ): Promise<AgentSessionConfig>;
 }
 
 export function createTauriStudioDataSource(): StudioDataSource {
@@ -237,5 +267,21 @@ function createStudioDataSource(
     listAvailableModels: bridge.listAvailableModels,
     getAgentSessionConfig: bridge.getAgentSessionConfig,
     setAgentSessionConfig: bridge.setAgentSessionConfig,
+    piAgentApplyRun: bridge.piAgentApplyRun,
+    listProviders: bridge.listProviders,
+    upsertProvider: bridge.upsertProvider,
+    deleteProvider: bridge.deleteProvider,
+    testProviderConnection: bridge.testProviderConnection,
+    listUserPromptTemplates: bridge.listUserPromptTemplates,
+    listProjectPromptTemplates: bridge.listProjectPromptTemplates,
+    upsertUserPromptTemplate: bridge.upsertUserPromptTemplate,
+    upsertProjectPromptTemplate: bridge.upsertProjectPromptTemplate,
+    deleteUserPromptTemplate: bridge.deleteUserPromptTemplate,
+    deleteProjectPromptTemplate: bridge.deleteProjectPromptTemplate,
+    listSkills: bridge.listSkills,
+    refreshSkillIndex: bridge.refreshSkillIndex,
+    importSkill: bridge.importSkill,
+    readSkillBody: bridge.readSkillBody,
+    enableSkillForProject: bridge.enableSkillForProject,
   };
 }

@@ -10,11 +10,14 @@
 
 mod pi_agent;
 mod pipelines;
+mod providers_http;
 mod providers_image;
 mod providers_text;
 mod providers_tts;
+mod registry;
 mod scene_planner;
 mod shared;
+mod skills;
 mod validation;
 
 // Re-export the public API so downstream consumers (and the crate's own
@@ -26,6 +29,7 @@ pub use pipelines::{
     generate_story_craft_with_provider, generate_world_expansion,
     generate_world_expansion_with_provider,
 };
+pub use providers_http::{AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient};
 pub use providers_image::{
     FakeImageProvider, ImageGenerationRequest, ImageGenerationResponse, ImageProvider,
     ImageProviderError, ImageProviderErrorKind, SceneImagePipeline, SceneImagePipelineError,
@@ -41,9 +45,22 @@ pub use providers_tts::{
     FakeTtsProvider, TtsPipeline, TtsPipelineError, TtsPipelineResult, TtsProvider,
     TtsProviderError, TtsProviderErrorKind, TtsProviderOutput, TtsRequest, TtsTarget,
 };
+pub use registry::{
+    LOCAL_PI_MODEL_ID, OptionalEnvCredentialResolver, ProviderBuildError, ProviderRegistryError,
+    build_provider_client, build_text_provider, load_provider_registry,
+    load_provider_registry_from, local_pi_provider, provider_registry_path,
+    resolve_provider_for_model, user_config_dir, write_provider_registry,
+    write_provider_registry_to,
+};
 pub use scene_planner::{
     ImageProviderAgentPipeline, MockAgentPipeline, ProviderAgentPipeline, ScenePlan,
     ScenePlanRequest, ScenePlanner, ScenePlannerError,
+};
+pub use skills::{
+    SkillError, discover_skill_roots, import_external_skill, import_external_skill_to,
+    load_skill_body, parse_skill_frontmatter, parse_skill_interface, plot_forge_user_dir,
+    read_cached_skill_index, read_skill_index_from, scan_all_skills, scan_skill, skill_index_path,
+    write_skill_index, write_skill_index_to,
 };
 pub use validation::{
     AgentProposalValidationError, scene_from_proposals, validate_agent_output_proposal,
@@ -57,7 +74,13 @@ pub use validation::{
 // helper through stable `crate::` paths. These do not widen the public API.
 pub(crate) use pipelines::complete_text_agent_output;
 pub(crate) use plotforge_schema::contains_secret_marker_text;
-pub(crate) use shared::payload_kind;
+
+/// Public re-export of the payload-kind helper so the Studio layer can name
+/// an envelope's payload kind in redaction-safe error messages.
+pub use shared::payload_kind;
+/// Public re-export of the stable sha256 helper so the Studio layer can
+/// derive redaction-safe prompt hashes without re-implementing the hash.
+pub use shared::stable_sha256_hash;
 
 // Private binding so the inline test module's `use super::{fake_success_response}`
 // keeps resolving after the helper moved to the text provider module. Tests are

@@ -1,6 +1,7 @@
 import { Command, Loader2, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentChatRail } from "./AgentChatRail";
+import { AgentView } from "./AgentView";
 import { AssetMaintenanceView } from "./AssetMaintenanceView";
 import { LaunchpadView } from "./LaunchpadView";
 import { CharactersView } from "./CharactersView";
@@ -110,7 +111,15 @@ function AppContent({
   }
 
   async function runPlaytest() {
-    const result = await playtest.runPlaytest(loadedPath);
+    // R7: the command palette's "Run Proof" now drives the same
+    // `pi_agent_apply_run` path as the `AgentChatRail` (via
+    // `agent.submit()`), so both "run a turn" entry points commit through
+    // the pi-Agent and produce a chat turn. The old `playtest.runPlaytest`
+    // (which drove `play_once_project*`) is intentionally not used here so
+    // the two entry points do not diverge. AGENTS.md still names the rail
+    // as the single "describe a change / run a turn" entry point; the
+    // palette action is a keyboard shortcut onto the same path.
+    const result = await agent.submit();
     if (result.succeeded) {
       setActiveSection("trace");
     }
@@ -331,6 +340,16 @@ function AppContent({
             error={error}
             onSelectSourceFile={(file) => void selectSourceFile(file)}
             onSaveSelectedFile={() => void saveSelectedFile()}
+          />
+        );
+      case "agent":
+        return (
+          <AgentView
+            dataSource={dataSource}
+            loadedPath={loadedPath}
+            agentConfig={agentConfig.agentConfig}
+            onAgentConfigChange={agentConfig.setAgentConfig}
+            configSaveError={agentConfig.saveError}
           />
         );
     }

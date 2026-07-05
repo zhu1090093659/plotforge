@@ -223,6 +223,66 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
 }
 
 #[test]
+fn export_excludes_project_prompt_templates_and_skills_under_plotforge() {
+    // Project-scoped prompt templates and skills live under `.plotforge/`,
+    // which the export allowlist omits and the workshop denylist blocks.
+    // This test guards against a regression that would leak them into an
+    // export package. It also confirms a secret marker in a prompt body is
+    // never persisted to the export (the storage writer rejects it before
+    // write, but export is the defence-in-depth gate).
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let output_dir = temp.path().join("export");
+    create_starter_project(&project_path);
+    fs::create_dir_all(project_path.join(".plotforge")).expect("plotforge dir");
+    fs::write(
+        project_path.join(".plotforge").join("prompts.json"),
+        r#"{"templates":[{"id":"leaky","label":"Leaky","scope":"project","body_markdown":"benign"}]}"#,
+    )
+    .expect("write project prompts");
+    fs::create_dir_all(
+        project_path
+            .join(".plotforge")
+            .join("skills")
+            .join("my-skill"),
+    )
+    .expect("skills dir");
+    fs::write(
+        project_path
+            .join(".plotforge")
+            .join("skills")
+            .join("my-skill")
+            .join("SKILL.md"),
+        "---\nname: my-skill\ndescription: A skill.\n---\nbody\n",
+    )
+    .expect("write skill");
+
+    let report = export_static_web(&project_path, &output_dir).expect("export");
+
+    assert!(!output_dir.join(".plotforge").join("prompts.json").exists());
+    assert!(
+        !output_dir
+            .join(".plotforge")
+            .join("skills")
+            .join("my-skill")
+            .join("SKILL.md")
+            .exists()
+    );
+    // The audit allowlist never admits anything under `.plotforge/`.
+    assert_eq!(
+        report
+            .audit
+            .files_found
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        expected_export_files().into_iter().collect::<BTreeSet<_>>()
+    );
+    let exported_manifest = fs::read_to_string(output_dir.join("game.json")).expect("manifest");
+    assert!(!exported_manifest.contains("my-skill"));
+    assert!(!exported_manifest.contains("Leaky"));
+}
+
+#[test]
 fn export_copies_only_referenced_media_registry_assets() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project_path = temp.path().join("project");

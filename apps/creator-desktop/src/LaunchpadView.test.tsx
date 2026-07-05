@@ -24,6 +24,7 @@ const defaultConfig: AgentSessionConfig = {
   model_id: "local-pi",
   permission_level: "ask_every_time",
   thinking_level: "medium",
+  enabled_skills: [],
 };
 
 const defaultBranches: GitBranchInfo[] = [

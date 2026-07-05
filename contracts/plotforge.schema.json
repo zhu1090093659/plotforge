@@ -219,8 +219,15 @@
     },
     "AgentSessionConfig": {
       "additionalProperties": false,
-      "description": "The per-project persisted agent session configuration. Stored under\n`.plotforge/agent-config.json`; never carries secrets or provider\nendpoints.",
+      "description": "The per-project persisted agent configuration. Stored under\n`.plotforge/agent-config.json`; never carries secrets or provider\nendpoints. `enabled_skills` lists the skill ids (frontmatter `name`) the\npi-Agent should splice into its system prompt for this project; an empty\nlist means no skills are active.",
       "properties": {
+        "enabled_skills": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "model_id": {
           "default": "local-pi",
           "type": "string"
@@ -2031,6 +2038,98 @@
       ],
       "type": "string"
     },
+    "PiAgentApplyRequest": {
+      "additionalProperties": false,
+      "description": "A request to run the pi-Agent and commit its proposal as a runtime state\nchange. Unlike `PiAgentRunRequest` (redaction-safe, evidence-only), this\nrequest carries the project path and the player's verbatim input because\nthe Studio layer must load the project, run rule evaluation, and commit\nthe agent's `ScenePlan` payload into runtime state. The request stays\nlocal-only: it is never serialized into traces, export packages, or\ncontract bundles beyond this schema definition.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "player_input": {
+          "type": "string"
+        },
+        "project_path": {
+          "type": "string"
+        },
+        "restore_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_seed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "save_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "agent_id",
+        "run_seed",
+        "project_path",
+        "player_input"
+      ],
+      "type": "object"
+    },
+    "PiAgentApplyResult": {
+      "additionalProperties": false,
+      "description": "The result of a `pi_agent_apply_run`: the redaction-safe pi-Agent evidence\nenvelope plus the runtime-visible outcome (committed scene + trace + optional\nsnapshot). This embeds the same shape `AgentChatRail` renders for a playtest\nturn (`scene` + `trace`), so the rail can drive `pi_agent_apply_run` without\na separate `PlayOnceReport` (which lives in the Studio layer, not in\nschema). `trace_path` and `snapshot_path` are absolute paths written by the\nStudio layer; they never enter export packages.",
+      "properties": {
+        "delta_summary": {
+          "default": [],
+          "description": "The same `delta_summary` list `PlayOnceReport` carries, so the rail\nand `TraceDebugView` can render the \"State deltas\" count chip and\nsummary without re-implementing `summarize_delta` in TypeScript\n(forbidden by AGENTS.md). Populated by the Studio layer from\n`summarize_delta(&trace.world_state_delta)`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "run": {
+          "$ref": "#/$defs/PiAgentRunResult"
+        },
+        "scene": {
+          "$ref": "#/$defs/Scene"
+        },
+        "scene_key": {
+          "type": "string"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace": {
+          "$ref": "#/$defs/RuntimeTrace"
+        },
+        "trace_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "run",
+        "scene_key",
+        "scene",
+        "trace",
+        "trace_path"
+      ],
+      "type": "object"
+    },
     "PiAgentCapability": {
       "additionalProperties": false,
       "description": "A single pi-Agent capability.\n\n`status` is a descriptive label (\"wired\" or \"not-implemented\") rather than\na typed enum so the contract stays forward-compatible with new capability\nstates introduced by future phases without a schema breaking change.",
@@ -2378,6 +2477,123 @@
         "historical_crisis"
       ],
       "type": "string"
+    },
+    "PromptScope": {
+      "description": "The scope a prompt template lives in. `User` templates are shared across\nevery project on this machine; `Project` templates are private to one\nproject's `.plotforge/prompts.json`.",
+      "enum": [
+        "user",
+        "project"
+      ],
+      "type": "string"
+    },
+    "PromptTemplate": {
+      "additionalProperties": false,
+      "description": "A reusable prompt template. `body_markdown` is the prompt body the\npi-Agent splices into its system prompt; it must not contain secret\nmarkers (the export layer scans for them).",
+      "properties": {
+        "body_markdown": {
+          "type": "string"
+        },
+        "default_role_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/PromptScope"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "scope",
+        "body_markdown"
+      ],
+      "type": "object"
+    },
+    "PromptTemplateFile": {
+      "additionalProperties": false,
+      "description": "The persisted file shape for both user-global and project-scoped prompt\ntemplate stores.",
+      "properties": {
+        "templates": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PromptTemplate"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ProviderEntry": {
+      "additionalProperties": false,
+      "description": "A single registered provider entry. `credential_env_var` names the shell\nenvironment variable that holds the credential; the value itself is never\nserialized here, in traces, or in any project source.",
+      "properties": {
+        "credential_env_var": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "endpoint_url": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ProviderKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "endpoint_url",
+        "model",
+        "credential_env_var",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "ProviderKind": {
+      "description": "The HTTP API format a provider speaks. Drives which HTTP client the agent\ncrate constructs; never carried as an endpoint URL or credential. The\n`OpenAi*` variants use explicit `rename` attributes so the contract spells\nthem `openai_*` (matching the OpenAI brand) rather than the default\nsnake_case `open_ai_*`.",
+      "enum": [
+        "openai_compatible",
+        "openai_responses",
+        "anthropic_messages"
+      ],
+      "type": "string"
+    },
+    "ProviderRegistry": {
+      "additionalProperties": false,
+      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.",
+      "properties": {
+        "providers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProviderEntry"
+          },
+          "type": "array"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
     },
     "ReferenceAnalysis": {
       "additionalProperties": false,
@@ -2977,12 +3193,25 @@
       "type": "string"
     },
     "RuntimeTraceStageStatus": {
-      "enum": [
-        "completed",
-        "fallback",
-        "error"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "completed",
+            "error"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "fallback",
+          "description": "The stage ran but produced a degraded result (e.g. a planner\nfallback scene because the requested scene was missing).",
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "description": "The stage was deliberately skipped because this turn's path does not\nuse it. For the pi-Agent apply path, `InterpretAction` and\n`SelectChoice` are skipped because the agent's `ScenePlan` carries\nthe intent directly — there is no player-input interpretation or\nchoice selection. This is distinct from `Fallback` (a degraded\nresult) and from `Completed` (the stage ran successfully).",
+          "type": "string"
+        }
+      ]
     },
     "Scene": {
       "properties": {
@@ -3112,6 +3341,204 @@
         "error"
       ],
       "type": "string"
+    },
+    "SkillFrontmatter": {
+      "description": "The parsed YAML frontmatter of a `SKILL.md`. Parsing is deliberately\nlenient: external skills may carry `version`, `license`, `references`, or\nother fields we do not yet recognize; those are retained in `metadata`\nrather than rejected.",
+      "properties": {
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SkillIndex": {
+      "additionalProperties": false,
+      "description": "The persisted scan cache at `~/.plotforge/skill-index.json`. `scanned_at`\nis an ISO-8601 timestamp; the agent crate refreshes the cache lazily when\nit is missing or stale.",
+      "properties": {
+        "scanned_at": {
+          "default": "",
+          "type": "string"
+        },
+        "skills": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkillManifest"
+          },
+          "type": "array"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SkillInterface": {
+      "description": "The `interface` block of an `agents/openai.yaml`, surfaced as UI metadata\nfor skill chips and lists. All fields are optional; missing skills fall\nback to the frontmatter `name`/`description`.",
+      "properties": {
+        "brand_color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "default_prompt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon_large": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon_small": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "short_description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SkillManifest": {
+      "additionalProperties": false,
+      "description": "The metadata snapshot for one discovered skill. Only paths and frontmatter\nare stored — the body and bundled resources are loaded on demand by the\nagent crate. `id` is the frontmatter `name` (the canonical skill id).",
+      "properties": {
+        "assets": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "body_path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "interface": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillInterface"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scripts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SkillSource"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "source",
+        "body_path"
+      ],
+      "type": "object"
+    },
+    "SkillOrigin": {
+      "anyOf": [
+        {
+          "enum": [
+            "plot_forge_user",
+            "plot_forge_project",
+            "claude_code",
+            "codex",
+            "z_code",
+            "cursor",
+            "copilot",
+            "hanako",
+            "open_claw",
+            "workbuddy",
+            "redbox"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "Which external agent ecosystem a skill was discovered from. `PlotForgeUser`\nis the user's own `~/.plotforge/skills/` library; `PlotForgeProject` is a\nproject-local skills directory. The other variants name external agent\nroots that PlotForge auto-discovers but never mutates. `Other` is an\nuntagged escape hatch so new external roots can be carried without a\nschema-breaking change; it serializes as a plain string."
+    },
+    "SkillSource": {
+      "additionalProperties": false,
+      "description": "Where a skill lives on disk. `root_path` is the scanned root (e.g.\n`~/.claude/skills`); `rel_path` is the skill folder relative to that\nroot (e.g. `my-skill`).",
+      "properties": {
+        "origin": {
+          "$ref": "#/$defs/SkillOrigin"
+        },
+        "rel_path": {
+          "type": "string"
+        },
+        "root_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "origin",
+        "root_path",
+        "rel_path"
+      ],
+      "type": "object"
     },
     "StateVariablesEditDocument": {
       "additionalProperties": false,
@@ -4056,6 +4483,12 @@
     "model_option": {
       "$ref": "#/$defs/ModelOption"
     },
+    "pi_agent_apply_request": {
+      "$ref": "#/$defs/PiAgentApplyRequest"
+    },
+    "pi_agent_apply_result": {
+      "$ref": "#/$defs/PiAgentApplyResult"
+    },
     "pi_agent_capability": {
       "$ref": "#/$defs/PiAgentCapability"
     },
@@ -4077,6 +4510,24 @@
     "project_data": {
       "$ref": "#/$defs/ProjectData"
     },
+    "prompt_scope": {
+      "$ref": "#/$defs/PromptScope"
+    },
+    "prompt_template": {
+      "$ref": "#/$defs/PromptTemplate"
+    },
+    "prompt_template_file": {
+      "$ref": "#/$defs/PromptTemplateFile"
+    },
+    "provider_entry": {
+      "$ref": "#/$defs/ProviderEntry"
+    },
+    "provider_kind": {
+      "$ref": "#/$defs/ProviderKind"
+    },
+    "provider_registry": {
+      "$ref": "#/$defs/ProviderRegistry"
+    },
     "reference_analysis": {
       "$ref": "#/$defs/ReferenceAnalysis"
     },
@@ -4094,6 +4545,24 @@
     },
     "runtime_trace": {
       "$ref": "#/$defs/RuntimeTrace"
+    },
+    "skill_frontmatter": {
+      "$ref": "#/$defs/SkillFrontmatter"
+    },
+    "skill_index": {
+      "$ref": "#/$defs/SkillIndex"
+    },
+    "skill_interface": {
+      "$ref": "#/$defs/SkillInterface"
+    },
+    "skill_manifest": {
+      "$ref": "#/$defs/SkillManifest"
+    },
+    "skill_origin": {
+      "$ref": "#/$defs/SkillOrigin"
+    },
+    "skill_source": {
+      "$ref": "#/$defs/SkillSource"
     },
     "state_variables_edit_document": {
       "$ref": "#/$defs/StateVariablesEditDocument"
@@ -4177,7 +4646,21 @@
     "git_branch_info",
     "git_switch_result",
     "model_option",
-    "agent_session_config"
+    "agent_session_config",
+    "provider_kind",
+    "provider_entry",
+    "provider_registry",
+    "prompt_scope",
+    "prompt_template",
+    "prompt_template_file",
+    "skill_origin",
+    "skill_source",
+    "skill_frontmatter",
+    "skill_interface",
+    "skill_manifest",
+    "skill_index",
+    "pi_agent_apply_request",
+    "pi_agent_apply_result"
   ],
   "title": "ContractRootSchemas",
   "type": "object"

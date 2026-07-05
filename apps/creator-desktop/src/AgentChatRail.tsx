@@ -150,6 +150,12 @@ export function AgentChatRail({
                   traceLabel={t("agent.trace")}
                   sceneLabel={t("agent.scene")}
                   errorLabel={t("agent.error")}
+                  // Friendly, code-specific i18n messages. When `errorCode`
+                  // is null the rail falls back to the generic `agent.error`
+                  // label + the raw redacted message (R1).
+                  missingCredentialLabel={t("agent.apply.missingCredential")}
+                  providerTimeoutLabel={t("agent.apply.providerTimeout")}
+                  failedLabel={t("agent.apply.failed")}
                 />
               </li>
             ))}
@@ -231,6 +237,9 @@ function TurnResult({
   traceLabel,
   sceneLabel,
   errorLabel,
+  missingCredentialLabel,
+  providerTimeoutLabel,
+  failedLabel,
 }: {
   role: string;
   turn: AgentTurn;
@@ -239,8 +248,25 @@ function TurnResult({
   traceLabel: string;
   sceneLabel: string;
   errorLabel: string;
+  missingCredentialLabel: string;
+  providerTimeoutLabel: string;
+  failedLabel: string;
 }) {
-  const { report, error } = turn;
+  const { report, error, errorCode, errorEnvVar } = turn;
+  // Render a friendly, code-specific message when `errorCode` is set. The
+  // raw redacted `error` is shown as a detail line so the user can still
+  // see the provider's redacted message (R1 — `errorCode` is no longer dead
+  // UI state).
+  const friendlyMessage = (() => {
+    if (!errorCode) return null;
+    if (errorCode === "pi_agent_missing_credential") {
+      return errorEnvVar
+        ? missingCredentialLabel.replace("{envVar}", errorEnvVar)
+        : missingCredentialLabel.replace("{envVar}", "");
+    }
+    if (errorCode === "pi_agent_provider_timeout") return providerTimeoutLabel;
+    return failedLabel;
+  })();
   return (
     <div className="rounded-md border border-canvas-200 border-l-2 border-l-copper-500 bg-canvas-50 px-3 py-2 pl-3.5 text-sm">
       <div className="flex items-center justify-between gap-2">
@@ -259,9 +285,15 @@ function TurnResult({
         ) : null}
       </div>
       {error ? (
-        <p className="mt-2 rounded-md border border-signal/20 bg-signal/10 px-2 py-1 text-xs text-signal">
-          {errorLabel}: {error}
-        </p>
+        <div className="mt-2 rounded-md border border-signal/20 bg-signal/10 px-2 py-1 text-xs text-signal">
+          <p>
+            <span className="font-semibold">{errorLabel}:</span>{" "}
+            {friendlyMessage ?? error}
+          </p>
+          {friendlyMessage ? (
+            <p className="mt-0.5 opacity-80">{error}</p>
+          ) : null}
+        </div>
       ) : report ? (
         <dl className="mt-2 grid gap-1 text-xs text-ink/70">
           <div className="flex gap-2">

@@ -26,6 +26,7 @@ repository = "https://github.com/zhu1090093659/plotforge"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 dialoguer = "0.11"
+dirs = "5"
 plotforge-agent = { path = "crates/plotforge-agent" }
 plotforge-export = { path = "crates/plotforge-export" }
 plotforge-job = { path = "crates/plotforge-job" }
@@ -37,9 +38,11 @@ plotforge-studio = { path = "crates/plotforge-studio" }
 plotforge-storage = { path = "crates/plotforge-storage" }
 plotforge-storycraft = { path = "crates/plotforge-storycraft" }
 plotforge-workshop = { path = "crates/plotforge-workshop" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 schemars = "1.2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_yaml = "0.9"
 sha2 = "0.10"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 tempfile = "3.10"

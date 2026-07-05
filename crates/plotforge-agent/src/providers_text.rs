@@ -144,6 +144,17 @@ impl TextProviderConfig {
                     reason: "must start with http:// or https://".into(),
                 });
             }
+            // Reject credentials embedded in the URL query string (e.g.
+            // `https://host/v1?key=sk-realkey`). The secret-marker scanner
+            // only flags `sk-` as a token-prefix and a few `api_key`/`token=`
+            // substrings, so a `?key=...` query string can slip through. A
+            // provider endpoint must never carry a credential in the URL.
+            if url_has_query_credential(endpoint_url) {
+                return Err(TextProviderConfigError::InvalidField {
+                    field: "endpoint_url",
+                    reason: "must not carry credentials in the query string".into(),
+                });
+            }
         }
         if self.credential_env_var.trim().is_empty() {
             return Err(TextProviderConfigError::InvalidField {
@@ -206,6 +217,27 @@ fn require_safe_config_field(
     }
 
     Ok(())
+}
+
+/// Returns true when `url` carries a query string with a credential-looking
+/// key. Used by `TextProviderConfig::validate` to reject endpoint URLs like
+/// `https://host/v1?key=sk-realkey` before they are persisted to the registry
+/// or used as the request URL. The credential must always come through the
+/// `credential_env_var` name + env resolver, never embedded in the URL.
+pub(crate) fn url_has_query_credential(url: &str) -> bool {
+    let Some(query_start) = url.find('?') else {
+        return false;
+    };
+    for pair in url[query_start + 1..].split('&') {
+        let key = pair.split('=').next().unwrap_or("").to_lowercase();
+        if matches!(
+            key.as_str(),
+            "key" | "api_key" | "apikey" | "access_token" | "secret" | "token" | "auth"
+        ) {
+            return true;
+        }
+    }
+    false
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -295,6 +327,19 @@ pub trait TextModelClient {
         &self,
         request: TextModelClientRequest<'_>,
     ) -> Result<TextModelResponse, TextModelProviderError>;
+}
+
+/// Blanket impl so a boxed `dyn TextModelClient` can be plugged into a
+/// `ConfiguredTextModelProvider<Box<dyn TextModelClient>, _>`. The box
+/// delegates to the inner client. This lets the registry hand back a
+/// type-erased client without the caller knowing the concrete HTTP shape.
+impl TextModelClient for Box<dyn TextModelClient> {
+    fn complete(
+        &self,
+        request: TextModelClientRequest<'_>,
+    ) -> Result<TextModelResponse, TextModelProviderError> {
+        (**self).complete(request)
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -32,6 +32,7 @@ The current repository contains the MVP foundation:
 - A static no-network player package under `apps/player-web/static`.
 - Local export profiles, AI usage disclosure files, package hashes, and Steam Submission Kit drafts.
 - A local-only Workshop package schema and validator.
+- A real in-app Agent configuration surface: the `AgentView` (sidebar item #12) wires model providers (OpenAI-compatible / OpenAI Responses / Anthropic Messages), per-project model settings, prompt templates (user-global + project-scoped), and a Skills library that auto-discovers Claude Code / Codex `SKILL.md` folders from external agent roots. The right-side `AgentChatRail` drives `pi_agent_apply_run` to generate a scene proposal via the configured provider and commit it through the runtime/rules boundary.
 
 Real model providers, real media providers, Steamworks upload, hosted sharing, and paid Workshop flows are still deferred. The current AI path is a mock/planned-provider foundation. That boundary is intentional.
 

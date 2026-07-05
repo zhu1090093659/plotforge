@@ -47,7 +47,23 @@ pub fn run() {
             commands::git_switch_branch,
             commands::list_available_models,
             commands::get_agent_session_config,
-            commands::set_agent_session_config
+            commands::set_agent_session_config,
+            commands::pi_agent_apply_run,
+            commands::list_providers,
+            commands::upsert_provider,
+            commands::delete_provider,
+            commands::test_provider_connection,
+            commands::list_user_prompt_templates,
+            commands::list_project_prompt_templates,
+            commands::upsert_user_prompt_template,
+            commands::upsert_project_prompt_template,
+            commands::delete_user_prompt_template,
+            commands::delete_project_prompt_template,
+            commands::list_skills,
+            commands::refresh_skill_index,
+            commands::import_skill,
+            commands::read_skill_body,
+            commands::enable_skill_for_project
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlotForge Studio");

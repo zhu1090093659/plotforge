@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 16;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 17;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -15,6 +15,13 @@ pub const DESKTOP_RUNTIME_DRAFT_FILE: &str = "desktop-runtime-draft.json";
 
 pub mod pi_agent;
 pub use pi_agent::*;
+
+pub mod provider;
+pub use provider::*;
+pub mod prompt_template;
+pub use prompt_template::*;
+pub mod skill;
+pub use skill::*;
 
 // ---------------------------------------------------------------------------
 // Git workspace integration contracts.
@@ -87,15 +94,19 @@ pub struct ModelOption {
     pub provider: String,
 }
 
-/// The per-project persisted agent session configuration. Stored under
+/// The per-project persisted agent configuration. Stored under
 /// `.plotforge/agent-config.json`; never carries secrets or provider
-/// endpoints.
+/// endpoints. `enabled_skills` lists the skill ids (frontmatter `name`) the
+/// pi-Agent should splice into its system prompt for this project; an empty
+/// list means no skills are active.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, default)]
 pub struct AgentSessionConfig {
     pub model_id: String,
     pub permission_level: PermissionLevel,
     pub thinking_level: ThinkingLevel,
+    #[serde(default)]
+    pub enabled_skills: Vec<String>,
 }
 
 impl Default for AgentSessionConfig {
@@ -104,6 +115,7 @@ impl Default for AgentSessionConfig {
             model_id: "local-pi".into(),
             permission_level: PermissionLevel::default(),
             thinking_level: ThinkingLevel::default(),
+            enabled_skills: Vec::new(),
         }
     }
 }
@@ -1219,7 +1231,16 @@ pub enum RuntimeTraceStage {
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeTraceStageStatus {
     Completed,
+    /// The stage ran but produced a degraded result (e.g. a planner
+    /// fallback scene because the requested scene was missing).
     Fallback,
+    /// The stage was deliberately skipped because this turn's path does not
+    /// use it. For the pi-Agent apply path, `InterpretAction` and
+    /// `SelectChoice` are skipped because the agent's `ScenePlan` carries
+    /// the intent directly — there is no player-input interpretation or
+    /// choice selection. This is distinct from `Fallback` (a degraded
+    /// result) and from `Completed` (the stage ran successfully).
+    Skipped,
     Error,
 }
 
@@ -1854,6 +1875,20 @@ pub struct ContractRootSchemas {
     pub git_switch_result: GitSwitchResult,
     pub model_option: ModelOption,
     pub agent_session_config: AgentSessionConfig,
+    pub provider_kind: ProviderKind,
+    pub provider_entry: ProviderEntry,
+    pub provider_registry: ProviderRegistry,
+    pub prompt_scope: PromptScope,
+    pub prompt_template: PromptTemplate,
+    pub prompt_template_file: PromptTemplateFile,
+    pub skill_origin: SkillOrigin,
+    pub skill_source: SkillSource,
+    pub skill_frontmatter: SkillFrontmatter,
+    pub skill_interface: SkillInterface,
+    pub skill_manifest: SkillManifest,
+    pub skill_index: SkillIndex,
+    pub pi_agent_apply_request: PiAgentApplyRequest,
+    pub pi_agent_apply_result: PiAgentApplyResult,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -2010,7 +2045,7 @@ export interface RuntimePlannerResult { requested_action_type: string; scene_key
 export interface RuntimeMediaReference { reference: AssetReference; project_path: string; }
 export interface RuntimeTraceDiagnostic { stage: RuntimeTraceStage; status: RuntimeTraceStageStatus; message: string; }
 export type RuntimeTraceStage = "interpret_action" | "select_choice" | "evaluate_rules" | "plan_scene" | "commit_state";
-export type RuntimeTraceStageStatus = "completed" | "fallback" | "error";
+export type RuntimeTraceStageStatus = "completed" | "fallback" | "skipped" | "error";
 export interface RuntimeTrace { id: string; timestamp_ms: number; reproducibility: ReproducibilityMetadata; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
 export interface RuntimeSnapshot { id: string; timestamp_ms: number; reproducibility: ReproducibilityMetadata; project_id: string; project_version: string; story_state: StoryState; world_state: WorldState; scenes: Scene[]; }
 
@@ -2032,8 +2067,22 @@ export interface GitSwitchResult { branch: string; }
 export type PermissionLevel = "full_access" | "ask_every_time" | "read_only";
 export type ThinkingLevel = "high" | "medium" | "low" | "off";
 export interface ModelOption { id: string; label: string; provider: string; }
-export interface AgentSessionConfig { model_id: string; permission_level: PermissionLevel; thinking_level: ThinkingLevel; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; }
+export interface AgentSessionConfig { model_id: string; permission_level: PermissionLevel; thinking_level: ThinkingLevel; enabled_skills: string[]; }
+export type ProviderKind = "openai_compatible" | "openai_responses" | "anthropic_messages";
+export interface ProviderEntry { id: string; kind: ProviderKind; label: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; }
+export interface ProviderRegistry { version: string; providers: ProviderEntry[]; }
+export type PromptScope = "user" | "project";
+export interface PromptTemplate { id: string; label: string; scope: PromptScope; body_markdown: string; default_role_hint?: string | null; }
+export interface PromptTemplateFile { templates: PromptTemplate[]; }
+export type SkillOrigin = "plot_forge_user" | "plot_forge_project" | "claude_code" | "codex" | "z_code" | "cursor" | "copilot" | "hanako" | "open_claw" | "workbuddy" | "redbox" | (string & {});
+export interface SkillSource { origin: SkillOrigin; root_path: string; rel_path: string; }
+export interface SkillFrontmatter { name: string; description: string; version?: string | null; metadata?: Record<string, string> | null; }
+export interface SkillInterface { display_name?: string | null; short_description?: string | null; default_prompt?: string | null; icon_small?: string | null; icon_large?: string | null; brand_color?: string | null; }
+export interface SkillManifest { id: string; name: string; description: string; source: SkillSource; interface?: SkillInterface | null; body_path: string; scripts: string[]; references: string[]; assets: string[]; }
+export interface SkillIndex { version: string; skills: SkillManifest[]; scanned_at: string; }
+export interface PiAgentApplyRequest { agent_id: string; run_seed: number; project_path: string; player_input: string; save_id?: string | null; restore_id?: string | null; }
+export interface PiAgentApplyResult { run: PiAgentRunResult; scene_key: string; scene: Scene; trace: RuntimeTrace; trace_path: string; delta_summary: string[]; snapshot?: RuntimeSnapshot | null; snapshot_path?: string | null; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; provider_kind: ProviderKind; provider_entry: ProviderEntry; provider_registry: ProviderRegistry; prompt_scope: PromptScope; prompt_template: PromptTemplate; prompt_template_file: PromptTemplateFile; skill_origin: SkillOrigin; skill_source: SkillSource; skill_frontmatter: SkillFrontmatter; skill_interface: SkillInterface; skill_manifest: SkillManifest; skill_index: SkillIndex; pi_agent_apply_request: PiAgentApplyRequest; pi_agent_apply_result: PiAgentApplyResult; }
 "#,
     );
     output
@@ -2127,6 +2176,25 @@ mod tests {
         let decoded: AgentSessionConfig =
             serde_json::from_str(&encoded).expect("deserialize config");
         assert_eq!(decoded, config);
+    }
+
+    // R3: the default roundtrip only covers an empty `enabled_skills`. A
+    // populated vec catches a `skip_serializing_if` regression that would
+    // drop a non-empty list.
+    #[test]
+    fn agent_session_config_roundtrips_populated_enabled_skills() {
+        let config = AgentSessionConfig {
+            model_id: "local-pi".into(),
+            permission_level: PermissionLevel::AskEveryTime,
+            thinking_level: ThinkingLevel::Medium,
+            enabled_skills: vec!["frontend-design".into(), "officecli".into()],
+        };
+        let encoded = serde_json::to_string_pretty(&config).expect("serialize config");
+        let decoded: AgentSessionConfig =
+            serde_json::from_str(&encoded).expect("deserialize config");
+        assert_eq!(decoded, config);
+        assert_eq!(decoded.enabled_skills, config.enabled_skills);
+        assert_eq!(decoded.enabled_skills.len(), 2);
     }
 
     #[test]

@@ -169,8 +169,6 @@ export function useStudioWorkspace({
 
   const exportWorkspace = useExport({ dataSource, initialProjectPath });
 
-  const agent = useAgentConversation(playtest, loadedPath);
-
   // Git + agent-config sub-hooks. The git hook refreshes the branch list on
   // path change; on a successful branch switch we reload the project so the
   // editor/source/trace views reflect the new work tree.
@@ -178,6 +176,12 @@ export function useStudioWorkspace({
     void loadProject(loadedPath);
   });
   const agentConfig = useAgentConfig(dataSource, loadedPath);
+
+  // The agent conversation now drives `pi_agent_apply_run` (not the playtest
+  // play_once path), so it needs the data source + the persisted agent
+  // config (for the model id) + the playtest workspace (for snapshot control
+  // state and the shared input box).
+  const agent = useAgentConversation(playtest, loadedPath, dataSource, agentConfig.agentConfig);
 
   // Core operations --------------------------------------------------------
 

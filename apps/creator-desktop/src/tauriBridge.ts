@@ -12,12 +12,17 @@ import type {
   GitBranchInfo,
   GitSwitchResult,
   ModelOption,
+  PiAgentApplyRequest,
+  PiAgentApplyResult,
   PiAgentCapability,
   PiAgentRunRequest,
   PiAgentRunResult,
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
+  ProviderEntry,
+  ProviderKind,
+  PromptTemplate,
   ResourceDefinition,
   Rule,
   RuleDraft,
@@ -25,6 +30,8 @@ import type {
   RuntimeTrace,
   RuntimeSnapshot,
   Scene,
+  SkillIndex,
+  SkillManifest,
   StateVariablesEditDocument,
   StoryCraftEditDocument,
   StoryCraftGenerationReport,
@@ -80,10 +87,31 @@ export const studioCommandNames = {
   listAvailableModels: "list_available_models",
   getAgentSessionConfig: "get_agent_session_config",
   setAgentSessionConfig: "set_agent_session_config",
+  piAgentApplyRun: "pi_agent_apply_run",
+  listProviders: "list_providers",
+  upsertProvider: "upsert_provider",
+  deleteProvider: "delete_provider",
+  testProviderConnection: "test_provider_connection",
+  listUserPromptTemplates: "list_user_prompt_templates",
+  listProjectPromptTemplates: "list_project_prompt_templates",
+  upsertUserPromptTemplate: "upsert_user_prompt_template",
+  upsertProjectPromptTemplate: "upsert_project_prompt_template",
+  deleteUserPromptTemplate: "delete_user_prompt_template",
+  deleteProjectPromptTemplate: "delete_project_prompt_template",
+  listSkills: "list_skills",
+  refreshSkillIndex: "refresh_skill_index",
+  importSkill: "import_skill",
+  readSkillBody: "read_skill_body",
+  enableSkillForProject: "enable_skill_for_project",
 } as const;
 
 export interface StudioCommandError {
   code: string;
+  message: string;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
   message: string;
 }
 
@@ -540,6 +568,97 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<AgentSessionConfig>(
         studioCommandNames.setAgentSessionConfig,
         { path, config },
+      );
+    },
+    piAgentApplyRun(request: PiAgentApplyRequest): Promise<PiAgentApplyResult> {
+      return invokeCommand<PiAgentApplyResult>(
+        studioCommandNames.piAgentApplyRun,
+        { request },
+      );
+    },
+    listProviders(): Promise<ProviderEntry[]> {
+      return invokeCommand<ProviderEntry[]>(studioCommandNames.listProviders);
+    },
+    upsertProvider(entry: ProviderEntry): Promise<ProviderEntry> {
+      return invokeCommand<ProviderEntry>(studioCommandNames.upsertProvider, {
+        entry,
+      });
+    },
+    deleteProvider(id: string): Promise<ProviderEntry> {
+      return invokeCommand<ProviderEntry>(studioCommandNames.deleteProvider, {
+        id,
+      });
+    },
+    testProviderConnection(id: string): Promise<ProviderTestResult> {
+      return invokeCommand<ProviderTestResult>(
+        studioCommandNames.testProviderConnection,
+        { id },
+      );
+    },
+    listUserPromptTemplates(): Promise<PromptTemplate[]> {
+      return invokeCommand<PromptTemplate[]>(
+        studioCommandNames.listUserPromptTemplates,
+      );
+    },
+    listProjectPromptTemplates(projectPath: string): Promise<PromptTemplate[]> {
+      return invokeCommand<PromptTemplate[]>(
+        studioCommandNames.listProjectPromptTemplates,
+        { project_path: projectPath },
+      );
+    },
+    upsertUserPromptTemplate(template: PromptTemplate): Promise<PromptTemplate> {
+      return invokeCommand<PromptTemplate>(
+        studioCommandNames.upsertUserPromptTemplate,
+        { template },
+      );
+    },
+    upsertProjectPromptTemplate(
+      projectPath: string,
+      template: PromptTemplate,
+    ): Promise<PromptTemplate> {
+      return invokeCommand<PromptTemplate>(
+        studioCommandNames.upsertProjectPromptTemplate,
+        { project_path: projectPath, template },
+      );
+    },
+    deleteUserPromptTemplate(id: string): Promise<void> {
+      return invokeCommand<void>(studioCommandNames.deleteUserPromptTemplate, {
+        id,
+      });
+    },
+    deleteProjectPromptTemplate(
+      projectPath: string,
+      id: string,
+    ): Promise<void> {
+      return invokeCommand<void>(
+        studioCommandNames.deleteProjectPromptTemplate,
+        { project_path: projectPath, id },
+      );
+    },
+    listSkills(): Promise<SkillManifest[]> {
+      return invokeCommand<SkillManifest[]>(studioCommandNames.listSkills);
+    },
+    refreshSkillIndex(): Promise<SkillIndex> {
+      return invokeCommand<SkillIndex>(studioCommandNames.refreshSkillIndex);
+    },
+    importSkill(skillId: string): Promise<SkillManifest> {
+      return invokeCommand<SkillManifest>(studioCommandNames.importSkill, {
+        skill_id: skillId,
+      });
+    },
+    readSkillBody(skillId: string): Promise<string> {
+      return invokeCommand<string>(studioCommandNames.readSkillBody, {
+        skill_id: skillId,
+      });
+    },
+    enableSkillForProject(
+      projectPath: string,
+      skillId: string,
+      enabled: boolean,
+    ): Promise<AgentSessionConfig> {
+      return invokeCommand<AgentSessionConfig>(
+        studioCommandNames.enableSkillForProject,
+        { project_path: projectPath, skill_id: skillId, enabled },
       );
     },
   };

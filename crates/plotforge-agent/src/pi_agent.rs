@@ -16,7 +16,8 @@
 //! existing symbols.
 
 use plotforge_schema::{
-    AgentRole, PiAgentCapability, PiAgentDescriptor, PiAgentRunRequest, PiAgentRunResult,
+    AgentOutputEnvelope, AgentRole, PiAgentCapability, PiAgentDescriptor, PiAgentRunRequest,
+    PiAgentRunResult,
 };
 
 use crate::{TextModelProvider, complete_text_agent_output, contains_secret_marker_text};
@@ -45,6 +46,11 @@ pub enum PiAgentError {
     /// `code` and `message` are redacted before being stored here.
     #[error("pi-agent provider failure: {code}: {message}")]
     Provider { code: String, message: String },
+    /// The validated envelope carried a payload kind the caller cannot commit
+    /// (e.g. a world-expansion payload where a scene plan was expected). The
+    /// `kind` is the redaction-safe payload kind string, not the payload body.
+    #[error("pi-agent envelope carried unsupported payload kind `{kind}`")]
+    UnsupportedPayloadKind { kind: String },
 }
 
 /// The pi-Agent facade. Holds a boxed `TextModelProvider` so it can wrap any
@@ -70,6 +76,20 @@ impl PiAgent {
     /// carrying reproducibility metadata and a redacted evidence summary.
     /// No raw provider response is ever stored in the result.
     pub fn run(&self, request: PiAgentRunRequest) -> Result<PiAgentRunResult, PiAgentError> {
+        let (result, _envelope) = self.run_with_envelope(request)?;
+        Ok(result)
+    }
+
+    /// Run the pi-Agent and return both the redaction-safe `PiAgentRunResult`
+    /// and the validated `AgentOutputEnvelope`. The envelope carries the
+    /// proposal payload (e.g. a `ScenePlan`) that a runtime commit path can
+    /// apply; `run` discards it. This is the path `pi_agent_apply_run` uses
+    /// so the Studio layer can commit the agent's proposal as a state change
+    /// without re-running the provider.
+    pub fn run_with_envelope(
+        &self,
+        request: PiAgentRunRequest,
+    ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
         // The facade's identity is anchored to `self.agent_id`; the request's
         // `agent_id` must agree with it. A mismatch is an explicit error so the
         // caller never silently observes identity rooted at the facade id while
@@ -112,12 +132,15 @@ impl PiAgent {
         // The pi-Agent facade owns the trace-evidence identity for its results:
         // it derives a deterministic, redaction-safe id from `agent_id:run_seed`
         // and unconditionally overwrites any provider-supplied `trace_id`. This
-        // is intentional (not a silent fallback): providers may carry their own
-        // trace ids through `ensure_matching_reproducibility` (which deliberately
-        // excludes `trace_id` from comparison), but the pi-Agent surface is the
-        // authoritative trace identity for downstream consumers, and a provider
-        // id would otherwise leak into `result.reproducibility.trace_id` and
-        // `result.trace_id` without the facade's deterministic contract.
+        // is intentional (not a silent fallback): the shared
+        // `complete_text_agent_output` pipeline already overwrites the
+        // reproducibility block (`run_seed`, `prompt_version`, `model_version`,
+        // `provider_config_hash`) with the locally-expected values so real
+        // provider responses validate, but it leaves `trace_id` to the caller.
+        // The pi-Agent surface is the authoritative trace identity for
+        // downstream consumers, and a provider id would otherwise leak into
+        // `result.reproducibility.trace_id` and `result.trace_id` without the
+        // facade's deterministic contract.
         let trace_evidence_id = format!(
             "pi-agent-evidence-{}",
             crate::shared::stable_sha256_hash(&format!("{}:{}", self.agent_id, request.run_seed))
@@ -139,12 +162,13 @@ impl PiAgent {
             reproducibility.provider_config_hash,
         );
 
-        Ok(PiAgentRunResult {
+        let result = PiAgentRunResult {
             descriptor,
             reproducibility,
             trace_id,
             evidence_summary,
-        })
+        };
+        Ok((result, envelope))
     }
 }
 
@@ -195,12 +219,16 @@ pub fn pi_agent_capabilities() -> Vec<PiAgentCapability> {
 #[cfg(test)]
 mod tests {
     use plotforge_schema::{
-        CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, PiAgentCapability, ReproducibilityMetadata,
+        AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, CONTRACT_SCHEMA_VERSION,
+        CONTRACT_VERSION, PiAgentCapability, ReproducibilityMetadata, ScenePlanProposal,
         contains_secret_marker_text,
     };
 
     use super::*;
-    use crate::{FakeTextModelProvider, TextModelProvider};
+    use crate::{
+        ConfiguredTextModelProvider, FakeTextModelProvider, TextModelClient,
+        TextModelClientRequest, TextModelProvider, TextModelResponse, TextProviderConfig,
+    };
 
     #[test]
     fn pi_agent_runs_local_mock_provider() {
@@ -529,6 +557,112 @@ mod tests {
                 } if facade == "pi-agent-local" && request == "pi-agent-other"
             ),
             "expected AgentIdMismatch, got {error:?}"
+        );
+    }
+
+    /// A stub `TextModelClient` that mimics a real HTTP provider: it returns an
+    /// `AgentOutputEnvelope` JSON whose reproducibility fields are deliberately
+    /// *wrong* (the values a remote model would echo — empty/garbage — not the
+    /// locally-derived ones). This proves the runtime-owns-reproducibility fix
+    /// for the Critical finding (C1): a real provider response now validates
+    /// instead of being rejected by `ensure_matching_reproducibility`.
+    struct StubHttpProviderClient;
+
+    impl TextModelClient for StubHttpProviderClient {
+        fn complete(
+            &self,
+            request: TextModelClientRequest<'_>,
+        ) -> Result<TextModelResponse, crate::TextModelProviderError> {
+            // Build a valid ScenePlan proposal. The reproducibility block
+            // echoes intentionally-wrong values to simulate a remote model
+            // that cannot know the locally-derived identity.
+            let proposal = AgentOutputProposal {
+                id: format!("{}-scene-plan", request.request.call_id),
+                agent: request.request.agent.clone(),
+                output: AgentProposalPayload::ScenePlan(Box::new(ScenePlanProposal {
+                    scene_key: request.request.scene_key.clone(),
+                    title: "Stub Provider Scene".into(),
+                    location: "Test Hall".into(),
+                    scene_summary: "A stub provider proposes a scene.".into(),
+                    dramatic_purpose: "Prove real providers can validate.".into(),
+                    hook: "The stub returns an envelope with wrong reproducibility.".into(),
+                    emotional_goal: None,
+                    cast: Vec::new(),
+                    entry_beat_id: format!("{}-beat-001", request.request.scene_key),
+                    background_asset: None,
+                })),
+            };
+            let envelope = AgentOutputEnvelope {
+                id: format!("{}-envelope", proposal.id),
+                contract_version: CONTRACT_VERSION.into(),
+                schema_version: CONTRACT_SCHEMA_VERSION,
+                agent: proposal.agent.clone(),
+                reproducibility: ReproducibilityMetadata {
+                    run_seed: 999_999,                                    // wrong
+                    prompt_version: "remote-model-prompt-v7".into(),      // wrong
+                    model_version: "remote-model-v7".into(),              // wrong
+                    provider_config_hash: "sha256:remote-unknown".into(), // wrong
+                    trace_id: Some("provider-supplied-trace-abc".into()),
+                    snapshot_id: None,
+                },
+                proposal,
+            };
+            let json = serde_json::to_string(&envelope).expect("serialize stub envelope");
+            Ok(TextModelResponse::json(json))
+        }
+    }
+
+    /// Regression test for the Critical reproducibility finding (C1): a
+    /// `ConfiguredTextModelProvider` wrapping a stub HTTP client that returns
+    /// wrong reproducibility metadata must still drive a successful
+    /// `run_with_envelope` because the runtime owns reproducibility identity.
+    #[test]
+    fn pi_agent_run_with_envelope_validates_real_provider_output() {
+        let config = TextProviderConfig::openai_compatible(
+            "stub-provider",
+            "stub-model",
+            "https://example.invalid/v1",
+            "PLOTFORGE_TEST_STUB_KEY",
+        );
+        let provider = ConfiguredTextModelProvider::new(
+            config,
+            StubHttpProviderClient,
+            crate::OptionalEnvCredentialResolver,
+        );
+        let agent = PiAgent::new(Box::new(provider), "pi-agent-local");
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:abc".into(),
+        };
+
+        let (result, envelope) = agent
+            .run_with_envelope(request)
+            .expect("real-provider envelope must validate after the reproducibility fix");
+        // The facade overwrites reproducibility with locally-derived values,
+        // not the wrong values the stub supplied.
+        assert_eq!(result.reproducibility.run_seed, 7);
+        assert_ne!(
+            result.reproducibility.prompt_version, "remote-model-prompt-v7",
+            "facade must overwrite the provider's prompt_version"
+        );
+        assert_ne!(
+            result.reproducibility.provider_config_hash, "sha256:remote-unknown",
+            "facade must overwrite the provider's config hash"
+        );
+        // The provider-supplied trace id must be overwritten by the facade's
+        // deterministic id.
+        assert_ne!(
+            result.reproducibility.trace_id.as_deref(),
+            Some("provider-supplied-trace-abc"),
+            "facade must overwrite the provider's trace_id"
+        );
+        // The validated proposal must be a ScenePlan (the payload the apply
+        // path commits).
+        assert!(
+            matches!(envelope.proposal.output, AgentProposalPayload::ScenePlan(_)),
+            "envelope must carry a ScenePlan payload for the apply path"
         );
     }
 }
