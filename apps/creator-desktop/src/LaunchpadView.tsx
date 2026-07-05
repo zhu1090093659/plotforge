@@ -1,12 +1,13 @@
 import {
+  Brain,
   ChevronDown,
+  Cpu,
   Folder,
   GitBranch,
   Loader2,
   Plus,
   Send,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
@@ -99,8 +100,11 @@ export function LaunchpadView({
         {/* Brand mark */}
         <PlotForgeBrandMark />
 
-        {/* Greeting */}
+        {/* Greeting — a time-of-day display line with a quiet copper eyebrow
+            above it. The eyebrow anchors the greeting to the brand voice
+            ("Studio · Conversation entry") without restating the greeting. */}
         <div className="grid place-items-center gap-1.5 text-center">
+          <p className="eyebrow eyebrow--copper">{t("home.eyebrow")}</p>
           <p
             aria-label={t("home.aria.greeting")}
             className="font-display text-2xl font-semibold tracking-display-tight text-ink sm:text-3xl"
@@ -151,24 +155,32 @@ export function LaunchpadView({
             </div>
           )}
 
-          {/* Input */}
+          {/* Input — a deliberate compose surface, not a search box. `rows={3}`
+              keeps it inviting for a single director-intent turn; `min-h-[5rem]`
+              guarantees a touch of breathing room even when the user types
+              past the row count, while the tighter vertical padding keeps it
+              reading as a focused one-line entry rather than an essay box. */}
           <textarea
             aria-label={t("home.placeholder")}
             value={input}
             onChange={(event) => onInputChange(event.target.value)}
             placeholder={t("home.placeholder")}
-            rows={4}
+            rows={3}
             spellCheck={false}
-            className="w-full resize-none rounded-xl border border-canvas-200/70 bg-canvas-50 px-4 py-3 text-base leading-7 text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+            className="min-h-[5rem] w-full resize-none rounded-xl border border-canvas-200/70 bg-canvas-50 px-4 py-2.5 text-base leading-6 text-ink outline-none transition ease-expo placeholder:text-ink/35 focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
           />
 
-          {/* Bottom toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Bottom toolbar — a hairline separates it from the compose area so
+              it reads as a distinct dock (selectors + send), not a continuation
+              of the textarea. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-canvas-200/55 pt-3">
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                aria-label={t("home.placeholder")}
-                className="grid h-9 w-9 place-items-center rounded-lg border border-canvas-200/70 bg-canvas-50 text-ink/70 transition ease-expo hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
+                disabled
+                aria-label={t("home.aria.attach")}
+                title={t("home.aria.attachTooltip")}
+                className="grid h-9 w-9 place-items-center rounded-lg border border-canvas-200/70 bg-canvas-50 text-ink/40 transition ease-expo disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-canvas-200/70 disabled:hover:bg-canvas-50 disabled:active:translate-y-0 hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
               >
                 <Plus aria-hidden size={18} />
               </button>
@@ -224,16 +236,25 @@ function pickGreetingKey(date: Date): string {
 }
 
 // ---------------------------------------------------------------------------
-// Brand mark — the abstract PlotForge "Z" shape
+// Brand mark — the PlotForge "PF" monogram.
+//
+// Matches the sidebar's `t("brand.logo")` seal (a violet-ink box with a
+// copper hairline under the glyph) but scaled up for the home display so it
+// reads as a wax-seal manuscript mark, not a generic app icon. We keep a
+// Fraunces black-weight "PF" rather than a lucide glyph so the home mark is
+// unmistakably the PlotForge brand, not interchangeable sparkle decoration.
 // ---------------------------------------------------------------------------
 
 function PlotForgeBrandMark() {
+  const { t } = useStudioI18n();
   return (
     <div
-      className="grid h-16 w-16 place-items-center rounded-2xl bg-ink text-canvas-50 shadow-studio-panel"
       aria-hidden
+      className="grid h-16 w-16 place-items-center rounded-2xl bg-ink text-canvas-50 shadow-[0_18px_48px_rgba(90,70,130,0.18),inset_0_-1px_0_rgba(138,100,80,0.4)]"
     >
-      <Sparkles size={32} strokeWidth={1.5} />
+      <span className="font-display text-2xl font-black tracking-display-tight">
+        {t("brand.logo")}
+      </span>
     </div>
   );
 }
@@ -375,6 +396,7 @@ function ModelSelect({
   const { t } = useStudioI18n();
   return (
     <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-canvas-200/70 bg-canvas-50 pl-2.5 pr-1.5 text-sm text-ink/80">
+      <Cpu aria-hidden size={15} className="text-copper-500" />
       <span className="sr-only">{t("home.aria.modelSelect")}</span>
       <select
         aria-label={t("home.aria.modelSelect")}
@@ -443,6 +465,7 @@ function ThinkingSelect({
   };
   return (
     <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-canvas-200/70 bg-canvas-50 pl-2.5 pr-1.5 text-sm text-ink/80">
+      <Brain aria-hidden size={15} className="text-copper-500" />
       <span className="sr-only">{t("home.aria.thinkingSelect")}</span>
       <select
         aria-label={t("home.aria.thinkingSelect")}

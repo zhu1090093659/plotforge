@@ -180,6 +180,16 @@ describe("LaunchpadView", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("renders the attach-context button as disabled (affordance not yet wired)", () => {
+    renderLaunchpad();
+
+    // The attach button announces an "Attach context (coming soon)" label so
+    // the dead control is not mistaken for a working action.
+    const attach = screen.getByLabelText(/附加上下文|Attach context/i);
+    expect(attach).toBeTruthy();
+    expect(attach).toHaveProperty("disabled", true);
+  });
+
   it("surfaces switchError so a failed branch switch is never silent", () => {
     renderLaunchpad({ switchError: "dirty working tree" });
 
