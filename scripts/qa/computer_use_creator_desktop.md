@@ -45,6 +45,26 @@ npm --workspace @plotforge/creator-desktop run dev -- --host 127.0.0.1
 7. Inspect browser console output. Any uncaught error, failed Vite asset, or blank page fails the smoke.
 8. Repeat at a narrow mobile viewport, for example 390 x 844, and verify `Command Center`, `Agent Mesh`, `Playable Proof`, `Trace Debug`, and `Export Package` remain reachable without text overlap blocking the primary controls.
 
+## MCP Server Management Smoke (Phase 6)
+
+This smoke verifies the real MCP server management surface in Settings → MCP tab. It is local-only and must not become a CI dependency.
+
+1. Navigate to Settings (sidebar item #12) → MCP tab.
+2. Verify the real server management surface renders (not the old "coming in a future release" placeholder):
+   - An `Add server` button is visible.
+   - The empty state `No MCP servers registered. Add a server to begin.` is shown when no servers are registered.
+3. Click `Add server`, fill the form:
+   - Server id: `local-fs-smoke`
+   - Label: `Smoke FS`
+   - Transport: `Stdio`
+   - Command: a real or stub MCP server binary (e.g. `npx -y @modelcontextprotocol/server-memory`).
+   - Credential env var: `MCP_SMOKE_TOKEN` (the input must be a plain text field, never a password field).
+4. Save the entry. Verify it appears in the server list with the stdio transport kind badge.
+5. Click `Test connection`. Verify a `McpServerTestResult` renders (ok/failed + tools count). A failed connection (binary not found) must surface an explicit error, not a silent no-op.
+6. Toggle `Enable for this project` on. Verify the toggle persists (reload the project; the toggle remains on).
+7. Open the tool list (collapsible under the server row after a successful test). Verify tool names + descriptions render. Click `Invoke` on a tool; verify a redacted `McpToolCallResult` renders (no raw tool bodies or secret markers).
+8. Run a turn via the Agent Chat Rail (`describe a change / run a turn`) with the MCP server enabled. Verify the turn completes and the Evidence popover carries `mcp_tool_call_hash` (redaction-safe) — no raw tool arguments or results leak into the trace.
+
 ## Evidence
 
 Record the URL, viewport, clicked command, visible trace id, proof section, trace section, Agent Mesh backend boundary, export package boundary, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
