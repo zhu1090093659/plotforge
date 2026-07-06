@@ -24,6 +24,16 @@ pub use plotforge_schema::{
     WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
     redact_trace_text,
 };
+// MCP client surface (Phase 5): the registry IO + blocking façade live in
+// `plotforge-mcp`; the schema types (`McpServerEntry`, `McpToolManifest`,
+// …) are re-exported through it. These are used by the 7 MCP Studio commands
+// below. Credentials are referenced indirectly by env-var name only; the
+// registry never enters project source, contracts, traces, or exports.
+use plotforge_mcp::{
+    McpServerEntry, McpServerTestResult, McpToolCallRequest, McpToolCallResult, McpToolClient,
+    McpToolManifest, McpToolRegistry, build_mcp_client, load_mcp_registry, resolve_mcp_server,
+    validate_server_entry, write_mcp_registry,
+};
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot,
     read_project_prompt_templates, read_runtime_snapshot, read_user_prompt_templates,
@@ -604,6 +614,198 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
             message: redact_trace_text(&error.message),
         }),
     }
+}
+
+// ---------------------------------------------------------------------------
+// MCP server registry + tool-call commands (Phase 5, P5.1).
+//
+// These commands read/write the user-global MCP registry
+// (`~/.plotforge/mcp.json`, the third member of the providers/skills/prompts
+// family) and invoke tools through the blocking `McpToolClient` façade. They
+// never carry credentials, raw tool bodies, or secret markers — only
+// redaction-safe summaries. The registry never enters project source,
+// contracts, traces, or export packages (AGENTS.md MCP carve-out).
+// ---------------------------------------------------------------------------
+
+/// Lists every registered MCP server entry from the user-global registry.
+/// An absent registry returns an empty list (fresh install).
+pub fn list_mcp_servers() -> StudioCommandResult<Vec<McpServerEntry>> {
+    let registry = load_mcp_registry().map_err(|source| StudioCommandError {
+        code: "list_mcp_servers".into(),
+        message: source.to_string(),
+    })?;
+    Ok(registry.servers)
+}
+
+/// Adds or updates (by `id`) a MCP server entry in the user-global registry.
+/// Validates the entry (path-traversal + secret-marker scan) before it is
+/// persisted, mirroring `upsert_provider`'s pre-write validation.
+pub fn upsert_mcp_server(entry: McpServerEntry) -> StudioCommandResult<McpServerEntry> {
+    // Validate the entry before persistence. `validate_server_entry` scans
+    // for secret markers in `endpoint_url`/`env` values and rejects path
+    // traversal in stdio `command`/`args` (mirrors `upsert_provider`'s
+    // `config.validate()` call).
+    validate_server_entry(&entry).map_err(|source| StudioCommandError {
+        code: "upsert_mcp_server_invalid".into(),
+        message: source.to_string(),
+    })?;
+    let mut registry = load_mcp_registry().map_err(|source| StudioCommandError {
+        code: "upsert_mcp_server_load".into(),
+        message: source.to_string(),
+    })?;
+    if let Some(existing) = registry.servers.iter_mut().find(|s| s.id == entry.id) {
+        *existing = entry.clone();
+    } else {
+        registry.servers.push(entry.clone());
+    }
+    write_mcp_registry(&registry).map_err(|source| StudioCommandError {
+        code: "upsert_mcp_server_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(entry)
+}
+
+/// Removes a MCP server entry by id. Returns the removed entry, or an
+/// explicit `mcp_server_not_found` error if no entry matches.
+pub fn delete_mcp_server(id: String) -> StudioCommandResult<McpServerEntry> {
+    let mut registry = load_mcp_registry().map_err(|source| StudioCommandError {
+        code: "delete_mcp_server_load".into(),
+        message: source.to_string(),
+    })?;
+    let position = registry
+        .servers
+        .iter()
+        .position(|s| s.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "mcp_server_not_found".into(),
+            message: format!("no MCP server with id `{id}`"),
+        })?;
+    let removed = registry.servers.remove(position);
+    write_mcp_registry(&registry).map_err(|source| StudioCommandError {
+        code: "delete_mcp_server_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(removed)
+}
+
+/// Sends a minimal probe to a registered MCP server to verify the transport
+/// and handshake work. Spawns/connects, then `initialize`, then `tools/list`,
+/// returning a redaction-safe `McpServerTestResult` (ok flag, message,
+/// tools_count). No raw tool bodies or credential values are stored. This is
+/// a real local subprocess/HTTP call — user-initiated, never enters traces,
+/// projects, or export packages.
+pub fn test_mcp_server(id: String) -> StudioCommandResult<McpServerTestResult> {
+    let registry = load_mcp_registry().map_err(|source| StudioCommandError {
+        code: "test_mcp_server_load".into(),
+        message: source.to_string(),
+    })?;
+    let entry = resolve_mcp_server(&id, &registry).ok_or_else(|| StudioCommandError {
+        code: "mcp_server_not_found".into(),
+        message: format!("no MCP server with id `{id}`"),
+    })?;
+    if !entry.enabled {
+        return Ok(McpServerTestResult {
+            ok: false,
+            message: redact_trace_text(&format!(
+                "MCP server `{}` is disabled in the registry",
+                entry.id
+            )),
+            tools_count: 0,
+        });
+    }
+    // Build the transport (spawn stdio child / open SSE/HTTP connection).
+    let mut transport = build_mcp_client(entry).map_err(|source| StudioCommandError {
+        code: "test_mcp_server_build".into(),
+        message: redact_trace_text(&source.to_string()),
+    })?;
+    // Initialize + list tools. Failures surface as explicit errors with a
+    // redaction-safe message; no silent fallback.
+    let test_result = match transport.initialize() {
+        Ok(_info) => match transport.list_tools() {
+            Ok(tools) => McpServerTestResult {
+                ok: true,
+                message: redact_trace_text(&format!(
+                    "MCP server `{}` responded; {} tool(s) available",
+                    entry.id,
+                    tools.len()
+                )),
+                tools_count: tools.len() as u32,
+            },
+            Err(error) => McpServerTestResult {
+                ok: false,
+                message: redact_trace_text(&format!(
+                    "MCP server `{}` list_tools failed: {error}",
+                    entry.id
+                )),
+                tools_count: 0,
+            },
+        },
+        Err(error) => McpServerTestResult {
+            ok: false,
+            message: redact_trace_text(&format!(
+                "MCP server `{}` initialize failed: {error}",
+                entry.id
+            )),
+            tools_count: 0,
+        },
+    };
+    transport.close();
+    Ok(test_result)
+}
+
+/// Lists the tools a MCP server exposes (via `tools/list`). Returns
+/// redaction-safe `McpToolManifest` entries; no tool bodies or credentials.
+pub fn list_mcp_tools(server_id: String) -> StudioCommandResult<Vec<McpToolManifest>> {
+    let registry = load_mcp_registry().map_err(|source| StudioCommandError {
+        code: "list_mcp_tools_load".into(),
+        message: source.to_string(),
+    })?;
+    let client = McpToolRegistry::from_registry(registry);
+    client
+        .list_tools(&server_id)
+        .map_err(|source| StudioCommandError {
+            code: "list_mcp_tools".into(),
+            message: redact_trace_text(&source.to_string()),
+        })
+}
+
+/// Invokes a MCP tool. Takes a `McpToolCallRequest` (server_id + tool_name +
+/// arguments), returns a redacted `McpToolCallResult`. The transport layer
+/// applies `contains_secret_marker_text` to args + results before return;
+/// this command applies `redact_trace_text` to any error message as
+/// defence-in-depth. No raw tool bodies enter traces or project source.
+pub fn invoke_mcp_tool(request: McpToolCallRequest) -> StudioCommandResult<McpToolCallResult> {
+    let registry = load_mcp_registry().map_err(|source| StudioCommandError {
+        code: "invoke_mcp_tool_load".into(),
+        message: source.to_string(),
+    })?;
+    let client = McpToolRegistry::from_registry(registry);
+    client
+        .invoke_tool(request)
+        .map_err(|source| StudioCommandError {
+            code: "invoke_mcp_tool".into(),
+            message: redact_trace_text(&source.to_string()),
+        })
+}
+
+/// Enables or disables a MCP server for a project by writing its id to
+/// `AgentSessionConfig.enabled_mcp_servers`. Mirrors
+/// `enable_skill_for_project` (persisted through `set_agent_session_config`).
+pub fn enable_mcp_server_for_project(
+    project_path: impl AsRef<Path>,
+    server_id: String,
+    enabled: bool,
+) -> StudioCommandResult<AgentSessionConfig> {
+    let project_path = project_path.as_ref();
+    let mut config = get_agent_session_config(project_path)?;
+    if enabled {
+        if !config.enabled_mcp_servers.contains(&server_id) {
+            config.enabled_mcp_servers.push(server_id);
+        }
+    } else {
+        config.enabled_mcp_servers.retain(|s| s != &server_id);
+    }
+    set_agent_session_config(project_path, &config)
 }
 
 /// Lists user-global prompt templates from `~/.plotforge/prompts.json`.
@@ -1853,12 +2055,12 @@ mod tests {
         RuleDraft, SteamSubmissionKitRequest, WorkshopDraftVisibility, WorkshopItemPackage,
         WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
         create_character_from_draft, create_project, create_resource, create_rule,
-        create_rule_from_draft, delete_project_prompt_template, delete_provider,
-        delete_workshop_library_item, enable_skill_for_project, export_static_project,
-        export_static_project_zip, generate_character, generate_story_craft,
+        create_rule_from_draft, delete_mcp_server, delete_project_prompt_template, delete_provider,
+        delete_workshop_library_item, enable_mcp_server_for_project, enable_skill_for_project,
+        export_static_project, export_static_project_zip, generate_character, generate_story_craft,
         generate_world_expansion, get_agent_session_config, git_current_branch, git_list_branches,
         git_project_dir_name, git_switch_branch, import_workshop_library_package,
-        list_asset_records, list_available_models, list_export_profiles,
+        list_asset_records, list_available_models, list_export_profiles, list_mcp_servers,
         list_project_prompt_templates, list_providers, list_source_files, list_workshop_library,
         load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
         pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
@@ -2932,6 +3134,73 @@ mod tests {
                 .any(|id| id == "frontend-design"),
             "skill must be removed from enabled_skills after disabling: {disabled:?}"
         );
+    }
+
+    /// P5.1: `list_mcp_servers` returns an empty list on a fresh machine
+    /// (no `~/.plotforge/mcp.json`). An absent registry is never an error.
+    #[test]
+    fn list_mcp_servers_returns_empty_on_fresh_machine() {
+        let servers = list_mcp_servers().expect("list MCP servers");
+        // On a fresh machine the registry is absent → empty list. (If a
+        // real user-global registry exists on the test host, this asserts
+        // no credential values leak through the list surface.)
+        for entry in &servers {
+            assert!(!entry.id.is_empty());
+            assert!(!entry.credential_env_var.contains("sk-"));
+        }
+    }
+
+    /// P5.1: `enable_mcp_server_for_project` persists the server id to
+    /// `AgentSessionConfig.enabled_mcp_servers` and survives a config reload,
+    /// mirroring `enable_skill_for_project`. Toggling off removes it.
+    #[test]
+    fn enable_mcp_server_for_project_persists_enabled_mcp_servers() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("mcp-project");
+        create_starter_project(&project_path);
+
+        let updated = enable_mcp_server_for_project(project_path.clone(), "local-fs".into(), true)
+            .expect("enable MCP server");
+        assert!(
+            updated
+                .enabled_mcp_servers
+                .iter()
+                .any(|id| id == "local-fs"),
+            "server must appear in enabled_mcp_servers after enabling: {updated:?}"
+        );
+
+        // The persisted config must survive a reload (read from disk).
+        let reloaded = get_agent_session_config(&project_path).expect("reload config");
+        assert!(
+            reloaded
+                .enabled_mcp_servers
+                .iter()
+                .any(|id| id == "local-fs"),
+            "enabled_mcp_servers must survive a config reload"
+        );
+
+        // Toggling off removes it.
+        let disabled = enable_mcp_server_for_project(project_path, "local-fs".into(), false)
+            .expect("disable MCP server");
+        assert!(
+            !disabled
+                .enabled_mcp_servers
+                .iter()
+                .any(|id| id == "local-fs"),
+            "server must be removed from enabled_mcp_servers after disabling: {disabled:?}"
+        );
+    }
+
+    /// P5.1: `delete_mcp_server` surfaces an explicit `mcp_server_not_found`
+    /// error when no entry matches the id — never a silent no-op.
+    #[test]
+    fn delete_mcp_server_surfaces_not_found_error() {
+        let error = delete_mcp_server("definitely-absent-server-id".into())
+            .expect_err("absent server must surface an error");
+        assert_eq!(error.code, "mcp_server_not_found");
+        assert!(error.message.contains("definitely-absent-server-id"));
+        // No secret markers leak through the error.
+        assert!(!error.message.contains("sk-"));
     }
 
     #[test]
