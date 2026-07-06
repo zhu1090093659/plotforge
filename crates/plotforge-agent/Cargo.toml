@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 plotforge-job.workspace = true
 plotforge-media.workspace = true
+plotforge-mcp.workspace = true
 plotforge-schema.workspace = true
 plotforge-storycraft.workspace = true
 dirs.workspace = true

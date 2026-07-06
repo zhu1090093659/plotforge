@@ -219,8 +219,15 @@
     },
     "AgentSessionConfig": {
       "additionalProperties": false,
-      "description": "The per-project persisted agent configuration. Stored under\n`.plotforge/agent-config.json`; never carries secrets or provider\nendpoints. `enabled_skills` lists the skill ids (frontmatter `name`) the\npi-Agent should splice into its system prompt for this project; an empty\nlist means no skills are active.",
+      "description": "The per-project persisted agent configuration. Stored under\n`.plotforge/agent-config.json`; never carries secrets or provider\nendpoints. `enabled_skills` lists the skill ids (frontmatter `name`) the\npi-Agent should splice into its system prompt for this project; an empty\nlist means no skills are active. `enabled_mcp_servers` lists the MCP server\nids (from the user-global `~/.plotforge/mcp.json` registry) whose tools the\npi-Agent may invoke during a run for this project; an empty list means MCP\ntool-use is disabled and the agent behaves exactly as the pre-Phase-B\none-shot path.",
       "properties": {
+        "enabled_mcp_servers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "enabled_skills": {
           "default": [],
           "items": {
@@ -1799,6 +1806,294 @@
         "timed_out"
       ],
       "type": "string"
+    },
+    "McpServerEntry": {
+      "additionalProperties": false,
+      "description": "A single registered MCP server entry. `credential_env_var` names the shell\nenvironment variable that holds the credential (used for SSE/HTTP bearer\nor header auth); the value itself is never serialized here, in traces, or\nin any project source. For stdio servers with no network auth, this field\nmay be empty.",
+      "properties": {
+        "credential_env_var": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/McpTransportKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "transport_config": {
+          "$ref": "#/$defs/McpTransportConfig"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "transport_config",
+        "credential_env_var",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "McpServerRegistry": {
+      "additionalProperties": false,
+      "description": "The persisted registry file (`~/.plotforge/mcp.json`). An empty registry\nis the default for fresh installs; MCP server wiring is opt-in.",
+      "properties": {
+        "servers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/McpServerEntry"
+          },
+          "type": "array"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "McpServerTestResult": {
+      "additionalProperties": false,
+      "description": "The result of a `test_mcp_server` Studio command. Mirrors\n`ProviderTestResult { ok, message }` plus a `tools_count` so the UI can\nshow how many tools the server exposed during the probe. The `message`\nfield is redaction-safe (`redact_trace_text` applied by the Studio layer).",
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "tools_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "message",
+        "tools_count"
+      ],
+      "type": "object"
+    },
+    "McpToolCallRequest": {
+      "additionalProperties": false,
+      "description": "A request to invoke a MCP tool on a specific server. `arguments` is a\nJSON value matching the tool's `input_schema`; it is validated at invoke\ntime, not at schema-deserialize time.",
+      "properties": {
+        "arguments": true,
+        "server_id": {
+          "type": "string"
+        },
+        "tool_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_id",
+        "tool_name",
+        "arguments"
+      ],
+      "type": "object"
+    },
+    "McpToolCallResult": {
+      "additionalProperties": false,
+      "description": "The result of a MCP tool call. `ok` is true when the server returned a\nsuccessful `tools/call` response; `is_error` mirrors the MCP spec's\n`isError` flag (a tool may return content with `is_error=true` to signal\na tool-level error without a transport failure). The `content` blocks\nare redaction-safe summaries only — raw tool bodies never enter traces.",
+      "properties": {
+        "content": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/McpToolContentBlock"
+          },
+          "type": "array"
+        },
+        "is_error": {
+          "default": false,
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    },
+    "McpToolContentBlock": {
+      "description": "A content block returned by a MCP tool call. Mirrors the MCP spec's\n`content` array shape: text, image, or embedded resource. Tagged enum so\nthe on-wire JSON carries the block kind.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "const": "text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "data": {
+              "type": "string"
+            },
+            "mime_type": {
+              "default": "",
+              "type": "string"
+            },
+            "type": {
+              "const": "image",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "resource": true,
+            "type": {
+              "const": "resource",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "resource"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "McpToolManifest": {
+      "additionalProperties": false,
+      "description": "A tool manifest discovered from a MCP server via `tools/list`. The\n`input_schema` is a JSON Schema describing the tool's arguments; it is\nstored as a `serde_json::Value` to avoid a hard dependency on a specific\nJSON-Schema crate version in this schema crate.",
+      "properties": {
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "input_schema": {
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "McpTransportConfig": {
+      "description": "Transport-specific configuration for a MCP server entry. Tagged enum so\nthe on-disk JSON carries the transport kind alongside its config.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "stdio transport: spawn a local subprocess with `command` + `args` +\n`env`, speaking JSON-RPC over stdin/stdout.",
+          "properties": {
+            "args": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "command": {
+              "type": "string"
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
+            },
+            "kind": {
+              "const": "stdio",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "command"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "SSE transport: connect to an HTTP `endpoint_url` and consume\n`text/event-stream` frames as JSON-RPC.",
+          "properties": {
+            "endpoint_url": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "sse",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoint_url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "HTTP transport: POST JSON-RPC to an `endpoint_url` (request/response,\nno streaming).",
+          "properties": {
+            "endpoint_url": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "http",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoint_url"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "McpTransportKind": {
+      "description": "The transport a MCP server speaks. Drives which transport client the\n`plotforge-mcp` crate constructs; never carried as a credential.",
+      "oneOf": [
+        {
+          "const": "stdio",
+          "description": "Local subprocess speaking JSON-RPC over stdin/stdout (line-delimited).",
+          "type": "string"
+        },
+        {
+          "const": "sse",
+          "description": "Server-Sent Events streaming transport (HTTP `text/event-stream`).",
+          "type": "string"
+        },
+        {
+          "const": "http",
+          "description": "Plain HTTP request/response JSON-RPC (no streaming).",
+          "type": "string"
+        }
+      ]
     },
     "MediaAssetReference": {
       "additionalProperties": false,
@@ -4477,6 +4772,33 @@
     "job_record": {
       "$ref": "#/$defs/JobRecord"
     },
+    "mcp_server_entry": {
+      "$ref": "#/$defs/McpServerEntry"
+    },
+    "mcp_server_registry": {
+      "$ref": "#/$defs/McpServerRegistry"
+    },
+    "mcp_server_test_result": {
+      "$ref": "#/$defs/McpServerTestResult"
+    },
+    "mcp_tool_call_request": {
+      "$ref": "#/$defs/McpToolCallRequest"
+    },
+    "mcp_tool_call_result": {
+      "$ref": "#/$defs/McpToolCallResult"
+    },
+    "mcp_tool_content_block": {
+      "$ref": "#/$defs/McpToolContentBlock"
+    },
+    "mcp_tool_manifest": {
+      "$ref": "#/$defs/McpToolManifest"
+    },
+    "mcp_transport_config": {
+      "$ref": "#/$defs/McpTransportConfig"
+    },
+    "mcp_transport_kind": {
+      "$ref": "#/$defs/McpTransportKind"
+    },
     "media_asset_reference": {
       "$ref": "#/$defs/MediaAssetReference"
     },
@@ -4659,6 +4981,15 @@
     "skill_interface",
     "skill_manifest",
     "skill_index",
+    "mcp_transport_kind",
+    "mcp_transport_config",
+    "mcp_server_entry",
+    "mcp_server_registry",
+    "mcp_tool_manifest",
+    "mcp_tool_call_request",
+    "mcp_tool_call_result",
+    "mcp_tool_content_block",
+    "mcp_server_test_result",
     "pi_agent_apply_request",
     "pi_agent_apply_result"
   ],

@@ -3399,6 +3399,7 @@ mod tests {
             permission_level: PermissionLevel::FullAccess,
             thinking_level: ThinkingLevel::High,
             enabled_skills: Vec::new(),
+            enabled_mcp_servers: Vec::new(),
         };
         let persisted = set_agent_session_config(dir.path(), &config).expect("persist config");
         assert_eq!(persisted, config);

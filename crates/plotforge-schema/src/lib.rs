@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 17;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 18;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -16,6 +16,8 @@ pub const DESKTOP_RUNTIME_DRAFT_FILE: &str = "desktop-runtime-draft.json";
 pub mod pi_agent;
 pub use pi_agent::*;
 
+pub mod mcp;
+pub use mcp::*;
 pub mod provider;
 pub use provider::*;
 pub mod prompt_template;
@@ -98,7 +100,11 @@ pub struct ModelOption {
 /// `.plotforge/agent-config.json`; never carries secrets or provider
 /// endpoints. `enabled_skills` lists the skill ids (frontmatter `name`) the
 /// pi-Agent should splice into its system prompt for this project; an empty
-/// list means no skills are active.
+/// list means no skills are active. `enabled_mcp_servers` lists the MCP server
+/// ids (from the user-global `~/.plotforge/mcp.json` registry) whose tools the
+/// pi-Agent may invoke during a run for this project; an empty list means MCP
+/// tool-use is disabled and the agent behaves exactly as the pre-Phase-B
+/// one-shot path.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, default)]
 pub struct AgentSessionConfig {
@@ -107,6 +113,8 @@ pub struct AgentSessionConfig {
     pub thinking_level: ThinkingLevel,
     #[serde(default)]
     pub enabled_skills: Vec<String>,
+    #[serde(default)]
+    pub enabled_mcp_servers: Vec<String>,
 }
 
 impl Default for AgentSessionConfig {
@@ -116,6 +124,7 @@ impl Default for AgentSessionConfig {
             permission_level: PermissionLevel::default(),
             thinking_level: ThinkingLevel::default(),
             enabled_skills: Vec::new(),
+            enabled_mcp_servers: Vec::new(),
         }
     }
 }
@@ -1887,6 +1896,15 @@ pub struct ContractRootSchemas {
     pub skill_interface: SkillInterface,
     pub skill_manifest: SkillManifest,
     pub skill_index: SkillIndex,
+    pub mcp_transport_kind: McpTransportKind,
+    pub mcp_transport_config: McpTransportConfig,
+    pub mcp_server_entry: McpServerEntry,
+    pub mcp_server_registry: McpServerRegistry,
+    pub mcp_tool_manifest: McpToolManifest,
+    pub mcp_tool_call_request: McpToolCallRequest,
+    pub mcp_tool_call_result: McpToolCallResult,
+    pub mcp_tool_content_block: McpToolContentBlock,
+    pub mcp_server_test_result: McpServerTestResult,
     pub pi_agent_apply_request: PiAgentApplyRequest,
     pub pi_agent_apply_result: PiAgentApplyResult,
 }
@@ -2067,7 +2085,7 @@ export interface GitSwitchResult { branch: string; }
 export type PermissionLevel = "full_access" | "ask_every_time" | "read_only";
 export type ThinkingLevel = "high" | "medium" | "low" | "off";
 export interface ModelOption { id: string; label: string; provider: string; }
-export interface AgentSessionConfig { model_id: string; permission_level: PermissionLevel; thinking_level: ThinkingLevel; enabled_skills: string[]; }
+export interface AgentSessionConfig { model_id: string; permission_level: PermissionLevel; thinking_level: ThinkingLevel; enabled_skills: string[]; enabled_mcp_servers: string[]; }
 export type ProviderKind = "openai_compatible" | "openai_responses" | "anthropic_messages";
 export interface ProviderEntry { id: string; kind: ProviderKind; label: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; }
 export interface ProviderRegistry { version: string; providers: ProviderEntry[]; }
@@ -2080,9 +2098,24 @@ export interface SkillFrontmatter { name: string; description: string; version?:
 export interface SkillInterface { display_name?: string | null; short_description?: string | null; default_prompt?: string | null; icon_small?: string | null; icon_large?: string | null; brand_color?: string | null; }
 export interface SkillManifest { id: string; name: string; description: string; source: SkillSource; interface?: SkillInterface | null; body_path: string; scripts: string[]; references: string[]; assets: string[]; }
 export interface SkillIndex { version: string; skills: SkillManifest[]; scanned_at: string; }
+export type McpTransportKind = "stdio" | "sse" | "http";
+export type McpTransportConfig =
+  | { kind: "stdio"; command: string; args: string[]; env: Record<string, string> }
+  | { kind: "sse"; endpoint_url: string }
+  | { kind: "http"; endpoint_url: string };
+export interface McpServerEntry { id: string; kind: McpTransportKind; label: string; transport_config: McpTransportConfig; credential_env_var: string; enabled: boolean; }
+export interface McpServerRegistry { version: string; servers: McpServerEntry[]; }
+export interface McpToolManifest { name: string; description: string; input_schema: unknown; }
+export interface McpToolCallRequest { server_id: string; tool_name: string; arguments: unknown; }
+export type McpToolContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mime_type: string }
+  | { type: "resource"; resource: unknown };
+export interface McpToolCallResult { ok: boolean; content: McpToolContentBlock[]; is_error: boolean; }
+export interface McpServerTestResult { ok: boolean; message: string; tools_count: number; }
 export interface PiAgentApplyRequest { agent_id: string; run_seed: number; project_path: string; player_input: string; save_id?: string | null; restore_id?: string | null; }
 export interface PiAgentApplyResult { run: PiAgentRunResult; scene_key: string; scene: Scene; trace: RuntimeTrace; trace_path: string; delta_summary: string[]; snapshot?: RuntimeSnapshot | null; snapshot_path?: string | null; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; provider_kind: ProviderKind; provider_entry: ProviderEntry; provider_registry: ProviderRegistry; prompt_scope: PromptScope; prompt_template: PromptTemplate; prompt_template_file: PromptTemplateFile; skill_origin: SkillOrigin; skill_source: SkillSource; skill_frontmatter: SkillFrontmatter; skill_interface: SkillInterface; skill_manifest: SkillManifest; skill_index: SkillIndex; pi_agent_apply_request: PiAgentApplyRequest; pi_agent_apply_result: PiAgentApplyResult; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; provider_kind: ProviderKind; provider_entry: ProviderEntry; provider_registry: ProviderRegistry; prompt_scope: PromptScope; prompt_template: PromptTemplate; prompt_template_file: PromptTemplateFile; skill_origin: SkillOrigin; skill_source: SkillSource; skill_frontmatter: SkillFrontmatter; skill_interface: SkillInterface; skill_manifest: SkillManifest; skill_index: SkillIndex; mcp_transport_kind: McpTransportKind; mcp_transport_config: McpTransportConfig; mcp_server_entry: McpServerEntry; mcp_server_registry: McpServerRegistry; mcp_tool_manifest: McpToolManifest; mcp_tool_call_request: McpToolCallRequest; mcp_tool_call_result: McpToolCallResult; mcp_tool_content_block: McpToolContentBlock; mcp_server_test_result: McpServerTestResult; pi_agent_apply_request: PiAgentApplyRequest; pi_agent_apply_result: PiAgentApplyResult; }
 "#,
     );
     output
@@ -2188,6 +2221,7 @@ mod tests {
             permission_level: PermissionLevel::AskEveryTime,
             thinking_level: ThinkingLevel::Medium,
             enabled_skills: vec!["frontend-design".into(), "officecli".into()],
+            enabled_mcp_servers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&config).expect("serialize config");
         let decoded: AgentSessionConfig =
@@ -2195,6 +2229,43 @@ mod tests {
         assert_eq!(decoded, config);
         assert_eq!(decoded.enabled_skills, config.enabled_skills);
         assert_eq!(decoded.enabled_skills.len(), 2);
+    }
+
+    // P1.3 back-compat: a pre-Phase-B `.plotforge/agent-config.json` written
+    // before `enabled_mcp_servers` existed must still deserialize — the new
+    // field defaults to an empty vec so old configs load cleanly.
+    #[test]
+    fn agent_session_config_loads_old_json_without_enabled_mcp_servers() {
+        let old_json = r#"{
+            "model_id": "local-pi",
+            "permission_level": "ask_every_time",
+            "thinking_level": "medium",
+            "enabled_skills": ["frontend-design"]
+        }"#;
+        let decoded: AgentSessionConfig = serde_json::from_str(old_json)
+            .expect("old config without enabled_mcp_servers must deserialize");
+        assert_eq!(decoded.model_id, "local-pi");
+        assert_eq!(decoded.enabled_skills, vec!["frontend-design".to_string()]);
+        assert!(
+            decoded.enabled_mcp_servers.is_empty(),
+            "missing enabled_mcp_servers defaults to empty"
+        );
+    }
+
+    #[test]
+    fn agent_session_config_roundtrips_populated_enabled_mcp_servers() {
+        let config = AgentSessionConfig {
+            model_id: "local-pi".into(),
+            permission_level: PermissionLevel::AskEveryTime,
+            thinking_level: ThinkingLevel::Medium,
+            enabled_skills: Vec::new(),
+            enabled_mcp_servers: vec!["local-fs".into(), "remote-sse".into()],
+        };
+        let encoded = serde_json::to_string_pretty(&config).expect("serialize config");
+        let decoded: AgentSessionConfig =
+            serde_json::from_str(&encoded).expect("deserialize config");
+        assert_eq!(decoded, config);
+        assert_eq!(decoded.enabled_mcp_servers.len(), 2);
     }
 
     #[test]

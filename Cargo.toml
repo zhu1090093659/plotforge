@@ -5,6 +5,7 @@ members = [
   "crates/plotforge-export",
   "crates/plotforge-job",
   "crates/plotforge-media",
+  "crates/plotforge-mcp",
   "crates/plotforge-rule",
   "crates/plotforge-runtime",
   "crates/plotforge-schema",
@@ -31,6 +32,7 @@ plotforge-agent = { path = "crates/plotforge-agent" }
 plotforge-export = { path = "crates/plotforge-export" }
 plotforge-job = { path = "crates/plotforge-job" }
 plotforge-media = { path = "crates/plotforge-media" }
+plotforge-mcp = { path = "crates/plotforge-mcp" }
 plotforge-rule = { path = "crates/plotforge-rule" }
 plotforge-runtime = { path = "crates/plotforge-runtime" }
 plotforge-schema = { path = "crates/plotforge-schema" }
@@ -47,5 +49,6 @@ sha2 = "0.10"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 tempfile = "3.10"
 thiserror = "2.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "time"] }
 toml = "0.9"
 zip = { version = "4.6.1", default-features = false }

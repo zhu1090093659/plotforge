@@ -1,21 +1,17 @@
 [package]
-name = "plotforge-studio"
+name = "plotforge-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-plotforge-agent.workspace = true
-plotforge-export.workspace = true
-plotforge-mcp.workspace = true
-plotforge-runtime.workspace = true
+dirs.workspace = true
 plotforge-schema.workspace = true
-plotforge-storage.workspace = true
-plotforge-workshop.workspace = true
-serde.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
