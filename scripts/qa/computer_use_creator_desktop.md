@@ -62,12 +62,12 @@ This smoke verifies the real MCP server management surface in Settings → MCP t
 4. Save the entry. Verify it appears in the server list with the stdio transport kind badge.
 5. Click `Test connection`. Verify a `McpServerTestResult` renders (ok/failed + tools count). A failed connection (binary not found) must surface an explicit error, not a silent no-op.
 6. Toggle `Enable for this project` on. Verify the toggle persists (reload the project; the toggle remains on).
-7. Open the tool list (collapsible under the server row after a successful test). Verify tool names + descriptions render. Click `Invoke` on a tool; verify a redacted `McpToolCallResult` renders (no raw tool bodies or secret markers).
-8. Run a turn via the Agent Chat Rail (`describe a change / run a turn`) with the MCP server enabled. Verify the turn completes and the Evidence popover carries `mcp_tool_call_hash` (redaction-safe) — no raw tool arguments or results leak into the trace.
+7. Verify the tool list renders under the server row after a successful `Test connection`. Verify tool names + descriptions render. Click `Invoke` on a tool; verify a redacted `McpToolCallResult` renders (no raw tool bodies or secret markers).
+8. Run a turn via the Agent Chat Rail (`describe a change / run a turn`) with the MCP server enabled. Verify the turn completes. Open the Trace Debug workspace, expand `Technical Details`, and in the Trace Evidence → `Reproducibility` group verify the `MCP tool call hash` field renders (redaction-safe) — no raw tool arguments or results leak into the trace.
 
 ## Evidence
 
-Record the URL, viewport, clicked command, visible trace id, proof section, trace section, Agent Mesh backend boundary, export package boundary, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
+Record the URL, viewport, clicked command, visible trace id, proof section, trace section, Agent Mesh backend boundary, export package boundary, MCP server test result (ok/failed + tools count), redacted tool-call result, presence of the `MCP tool call hash` reproducibility field, and whether console errors were present. Screenshots may be kept under `artifacts/qa/` for local review, but should not be committed by default.
 
 ## Boundaries
 

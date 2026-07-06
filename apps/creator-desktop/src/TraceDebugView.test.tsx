@@ -61,6 +61,13 @@ describe("TraceDebugView", () => {
       screen.getAllByText("sha256:plotforge-local-mock-provider-config-v1")
         .length,
     ).toBeGreaterThan(0);
+    // The MCP tool-call hash is a redaction-safe reproducibility field; it
+    // must surface in the Trace Reproducibility group when present.
+    expect(
+      screen.getAllByText("sha256:plotforge-local-mock-mcp-tool-call-v1")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("MCP tool call hash")).toBeTruthy();
     expect(
       screen.getAllByText("local ready").length,
     ).toBeGreaterThan(0);

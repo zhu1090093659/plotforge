@@ -139,6 +139,7 @@ export const demoReproducibilityMetadata: ReproducibilityMetadata = {
   prompt_version: "plotforge-local-mock-prompt-v1",
   model_version: "plotforge-local-mock-model-v1",
   provider_config_hash: "sha256:plotforge-local-mock-provider-config-v1",
+  mcp_tool_call_hash: "sha256:plotforge-local-mock-mcp-tool-call-v1",
   trace_id: null,
   snapshot_id: null,
 };

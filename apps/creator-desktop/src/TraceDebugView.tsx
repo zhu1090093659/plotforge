@@ -537,6 +537,10 @@ function TraceEvidence({
             label={t("trace.providerConfigHash")}
             value={reproducibility.provider_config_hash}
           />
+          <TraceField
+            label={t("trace.mcpToolCallHash")}
+            value={reproducibility.mcp_tool_call_hash ?? null}
+          />
           <TraceField label={t("trace.traceIdField")} value={reproducibility.trace_id} />
           <TraceField label={t("trace.snapshotId")} value={reproducibility.snapshot_id} />
         </EvidenceGroup>
