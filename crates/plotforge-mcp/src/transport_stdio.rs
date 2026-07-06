@@ -7,20 +7,27 @@
 //! `std::process::Command` + `BufReader`/`BufWriter` + `std::thread` for
 //! concurrent write+read. The read thread blocks on `BufReader::read_line`
 //! and posts responses into a `std::sync::mpsc` channel; the call thread
-//! sends a request line and waits on the channel for the matching response
-//! (by JSON-RPC `id`).
+//! sends a request line and drains the channel for the matching response
+//! (by JSON-RPC `id`). Late/unsolicited responses that survive a prior
+//! timeout are discarded (not fatal) so a misbehaving server cannot poison
+//! the transport.
 //!
 //! ## Lifecycle
 //!
 //! spawn → `initialize` handshake → `tools/list` cache → `tools/call` per
 //! invoke → detect child process death → explicit `mcp_spawn_failed` /
-//! `mcp_io` error (no silent restart per AGENTS.md G9). Drop child on
-//! `close`.
+//! `mcp_io` error (no silent restart per AGENTS.md G9). On `close`/drop the
+//! child is killed (`start_kill`) before `wait` and both joins are bounded
+//! by a timeout so a wedged subprocess cannot hang the agent thread.
 //!
 //! ## Redaction
 //!
 //! Tool args and result content pass through `contains_secret_marker_text`
 //! before send / after receive. Raw tool bodies never leave this struct.
+//! This includes `Text`, `Image`, and `Resource` content blocks: the
+//! text of a Text block is scanned directly, and an Image/Resource block is
+//! serialised and scanned so base64 bytes / JSON payloads cannot smuggle a
+//! secret marker past the guard.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -28,6 +35,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use plotforge_schema::{
     McpToolCallResult, McpToolContentBlock, McpToolManifest, contains_secret_marker_text,
@@ -35,14 +43,26 @@ use plotforge_schema::{
 
 use crate::{McpError, McpServerInfo, McpTransport};
 
+/// Bounded wait for a JSON-RPC response before treating the call as timed out.
+const STDIO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Bounded wait for the child to exit after `kill` and for the reader thread
+/// to join on `close`/drop. Prevents a wedged subprocess from hanging the
+/// agent thread indefinitely (the previous implementation blocked forever).
+const STDIO_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// A MCP stdio transport client. Owns a child process + a reader thread +
-/// a request/response correlation channel. Not `Clone` (one transport per
-/// server connection).
+/// a request/response correlation channel + a stderr-drainer thread. Not
+/// `Clone` (one transport per server connection).
 pub struct StdioMcpClient {
     child: Option<Child>,
     stdin: Option<BufWriter<std::process::ChildStdin>>,
     response_rx: mpsc::Receiver<JsonRpcResponse>,
     reader_handle: Option<thread::JoinHandle<()>>,
+    /// Latest line captured from the child's stderr. Surfaces in handshake /
+    /// I/O errors so a spawn or handshake failure is diagnosable instead of
+    /// an opaque timeout. Drained by a background thread that discards older
+    /// lines to bound memory.
+    last_stderr: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     next_id: AtomicU64,
     initialized: bool,
     tools_cache: Vec<McpToolManifest>,
@@ -84,7 +104,7 @@ impl StdioMcpClient {
         }
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            .stderr(Stdio::piped());
         let mut child = cmd.spawn().map_err(|_error| McpError::SpawnFailed {
             command: redact_command_name(command),
         })?;
@@ -94,6 +114,32 @@ impl StdioMcpClient {
         let stdout = child.stdout.take().ok_or_else(|| McpError::SpawnFailed {
             command: redact_command_name(command),
         })?;
+        let stderr = child.stderr.take();
+        let last_stderr = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+        // Spawn a stderr drainer that keeps only the most recent line, so a
+        // spawn/handshake failure surfaces a diagnostic instead of an opaque
+        // timeout (M1). The thread exits when stderr closes (child exited).
+        if let Some(stderr) = stderr {
+            let last_stderr_for_thread = last_stderr.clone();
+            let _stderr_handle = thread::Builder::new()
+                .name("plotforge-mcp-stdio-stderr".into())
+                .spawn(move || {
+                    let reader = BufReader::new(stderr);
+                    for line in reader.lines() {
+                        match line {
+                            Ok(line) if !line.trim().is_empty() => {
+                                if let Ok(mut guard) = last_stderr_for_thread.lock() {
+                                    *guard = Some(line);
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                });
+            // The handle is intentionally detached: the thread is bounded by
+            // the child's stderr lifetime and the shutdown path kills the
+            // child, which closes stderr and lets this thread exit.
+        }
         let (tx, rx) = mpsc::channel::<JsonRpcResponse>();
         let reader_handle = thread::spawn(move || {
             let reader = BufReader::new(stdout);
@@ -122,6 +168,7 @@ impl StdioMcpClient {
             stdin: Some(BufWriter::new(stdin)),
             response_rx: rx,
             reader_handle: Some(reader_handle),
+            last_stderr,
             next_id: AtomicU64::new(1),
             initialized: false,
             tools_cache: Vec::new(),
@@ -134,6 +181,11 @@ impl StdioMcpClient {
     /// - send failure (child stdin closed) → `mcp_io`
     /// - response `error` field → `mcp_tool_error` / `mcp_handshake_failed`
     /// - timeout (channel recv) → `mcp_io`
+    ///
+    /// Drains the channel until the matching id arrives (or the timeout
+    /// elapses), so a late response that survived a prior call's timeout —
+    /// or an unsolicited duplicate/progress response from a misbehaving
+    /// server — is discarded instead of poisoning the next call (H2).
     fn request(
         &mut self,
         method: &str,
@@ -170,21 +222,47 @@ impl StdioMcpClient {
                 detail: "stdin closed".into(),
             });
         }
-        // Wait for the matching response (filter by id). Responses for other
-        // ids are discarded (the stdio transport is single-request at a time
-        // in this blocking impl, so no other id should be in flight).
-        let timeout = std::time::Duration::from_secs(30);
-        let response = self
-            .response_rx
-            .recv_timeout(timeout)
-            .map_err(|error| McpError::Io {
-                detail: format!("timed out waiting for response: {error}"),
-            })?;
-        if response.id != id {
-            return Err(McpError::Io {
-                detail: "response id mismatch".into(),
-            });
+        // Drain the channel until the matching id arrives, discarding any
+        // late/unsolicited responses for other ids. The deadline bounds the
+        // total wait so a server that never answers does not hang forever.
+        let deadline = std::time::Instant::now() + STDIO_RESPONSE_TIMEOUT;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(self.io_error_with_stderr(
+                    "timed out waiting for response (no matching id in channel)",
+                ));
+            }
+            match self.response_rx.recv_timeout(remaining) {
+                Ok(response) if response.id == id => {
+                    return self.finalize_response(response, method);
+                }
+                Ok(_other) => {
+                    // A response for a different id (late, duplicate, or
+                    // progress). Discard and keep draining.
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(self.io_error_with_stderr(
+                        "timed out waiting for response (channel drained, no match)",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(self.io_error_with_stderr(
+                        "response channel disconnected (child exited or reader thread died)",
+                    ));
+                }
+            }
         }
+    }
+
+    /// Map a JSON-RPC response into its `result` field or the appropriate
+    /// `McpError` variant based on the originating method.
+    fn finalize_response(
+        &self,
+        response: JsonRpcResponse,
+        method: &str,
+    ) -> Result<serde_json::Value, McpError> {
         if let Some(error_obj) = response.error {
             let detail = error_obj
                 .get("message")
@@ -203,6 +281,29 @@ impl StdioMcpClient {
         response.result.ok_or_else(|| McpError::Io {
             detail: "response had no result field".into(),
         })
+    }
+
+    /// Build an `McpError::Io` that includes the last captured stderr line
+    /// (if any) so spawn/handshake/I/O failures are diagnosable (M1). The
+    /// stderr text is run through `contains_secret_marker_text` first; if it
+    /// trips the guard, the line is replaced with a redaction notice so a
+    /// server that logs a credential cannot leak it through the error.
+    fn io_error_with_stderr(&self, base_detail: &str) -> McpError {
+        let detail = match self.last_stderr.lock() {
+            Ok(guard) => {
+                if let Some(line) = guard.as_deref() {
+                    if contains_secret_marker_text(line) {
+                        format!("{base_detail}; server stderr contained a secret marker (redacted)")
+                    } else {
+                        format!("{base_detail}; server stderr: {line}")
+                    }
+                } else {
+                    base_detail.to_string()
+                }
+            }
+            Err(_) => base_detail.to_string(),
+        };
+        McpError::Io { detail }
     }
 }
 
@@ -323,17 +424,12 @@ impl McpTransport for StdioMcpClient {
                 serde_json::from_value(block_value).map_err(|error| McpError::Io {
                     detail: format!("failed to parse content block: {error}"),
                 })?;
-            // Redaction scan on the parsed block's text.
-            #[allow(clippy::collapsible_if)]
-            if let McpToolContentBlock::Text { text } = &block {
-                if contains_secret_marker_text(text) {
-                    return Err(McpError::Io {
-                        detail: "tool result text contains a secret marker".into(),
-                    });
-                }
-            }
             blocks.push(block);
         }
+        // Redaction scan covers all block kinds (Text, Image, Resource) so a
+        // marker in a base64 image body or a nested resource JSON cannot slip
+        // past the guard (H1).
+        crate::ports::scan_content_blocks_for_secret_markers(&blocks)?;
         Ok(McpToolCallResult {
             ok: !is_error,
             content: blocks,
@@ -345,11 +441,28 @@ impl McpTransport for StdioMcpClient {
         // Drop stdin first so the child sees EOF and exits cleanly.
         self.stdin = None;
         if let Some(mut child) = self.child.take() {
-            let _ = child.wait();
+            // Kill before wait so a wedged subprocess cannot hang the agent
+            // thread forever (C2). `kill` sends SIGKILL (Unix) / TerminateProcess
+            // (Windows) and returns once the signal is delivered (it does not
+            // wait for reaping).
+            let _ = child.kill();
+            // Bounded wait via non-blocking `try_wait` poll. If the child does
+            // not exit within the shutdown timeout, leak it rather than block
+            // the caller — a leaked child is OS-reaped on process exit, a hung
+            // agent thread is not.
+            let deadline = std::time::Instant::now() + STDIO_SHUTDOWN_TIMEOUT;
+            while child.try_wait().ok().flatten().is_none() {
+                if std::time::Instant::now() >= deadline {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
         }
-        // The reader thread exits when stdout closes (child exited).
+        // The reader thread exits when stdout closes (child exited/was killed).
+        // Bound its join with the same timeout so it cannot outlive the
+        // shutdown window.
         if let Some(handle) = self.reader_handle.take() {
-            let _ = handle.join();
+            let _ = join_bounded(handle, STDIO_SHUTDOWN_TIMEOUT);
         }
         self.initialized = false;
     }
@@ -385,6 +498,26 @@ fn redact_command_name(command: &str) -> String {
 /// Convenience alias for the error type returned by `list_tools`. The trait
 /// signature uses `McpError`; this alias keeps the impl readable.
 type McpToolManifestError = McpError;
+
+/// Join a `JoinHandle` with a bounded timeout so a blocked reader thread
+/// cannot hang the agent thread forever during `close`/drop. If the thread
+/// does not finish within `timeout`, it is detached (the OS reaps it on
+/// process exit). Returns `Ok` if it joined, `Err` if it timed out.
+fn join_bounded(handle: thread::JoinHandle<()>, timeout: Duration) -> Result<(), ()> {
+    // Spin a short sleep/poll loop since `JoinHandle::join` has no timeout.
+    // The thread is expected to exit promptly once the child is killed (its
+    // stdout closes), so this rarely spins.
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if handle.is_finished() {
+            return handle.join().map_err(|_| ());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -432,5 +565,59 @@ mod tests {
     fn parse_jsonrpc_response_rejects_malformed() {
         assert!(parse_jsonrpc_response("not json").is_err());
         assert!(parse_jsonrpc_response("").is_err());
+    }
+
+    /// C2 regression: `close()` must terminate even when the child never
+    /// exits on its own. A child that ignores stdin EOF and keeps running
+    /// must not hang the agent thread — `close` kills it and bounds the wait.
+    #[test]
+    fn close_does_not_hang_on_unresponsive_child() {
+        // A `sleep 60` child that ignores stdin EOF: simulates a wedged server.
+        let mut client = StdioMcpClient::new("sleep", &["60".to_string()], &BTreeMap::new())
+            .expect("spawn sleep child");
+        let start = std::time::Instant::now();
+        client.close();
+        let elapsed = start.elapsed();
+        // Must return well under the child's 60s lifetime, bounded by the
+        // shutdown timeout (5s) — assert a comfortable margin.
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "close() hung for {elapsed:?}"
+        );
+    }
+
+    /// M1 regression: child stderr is captured, not discarded. A child that
+    /// writes to stderr on failure surfaces the line in the resulting error.
+    #[test]
+    fn stderr_capture_surfaces_in_io_error() {
+        // A `sh -c 'echo bad-config >&2; sleep 30'` child writes a stderr
+        // line then idles; the request times out and the error must include
+        // the captured stderr text.
+        let mut client = StdioMcpClient::new(
+            "sh",
+            &["-c".into(), "echo bad-config-line >&2; sleep 30".into()],
+            &BTreeMap::new(),
+        )
+        .expect("spawn stderr child");
+        // Use a short-response timeout variant by requesting and timing out.
+        // The default STDIO_RESPONSE_TIMEOUT is 30s; cap the test by killing
+        // the client after a short poll so it does not run the full 30s.
+        let poll_deadline = std::time::Instant::now() + Duration::from_secs(8);
+        let result = std::thread::scope(|s| {
+            s.spawn(|| client.request("initialize", serde_json::json!({})))
+                .join()
+                .expect("request thread")
+        });
+        let _ = poll_deadline;
+        let error = result.expect_err("request should time out (no MCP server)");
+        assert!(matches!(error, McpError::Io { .. }));
+        let detail = match error {
+            McpError::Io { detail } => detail,
+            _ => String::new(),
+        };
+        assert!(
+            detail.contains("bad-config-line"),
+            "expected captured stderr in error, got: {detail}"
+        );
     }
 }

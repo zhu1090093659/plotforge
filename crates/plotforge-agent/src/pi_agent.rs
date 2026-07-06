@@ -602,6 +602,7 @@ mod tests {
                     prompt_version: "remote-model-prompt-v7".into(),      // wrong
                     model_version: "remote-model-v7".into(),              // wrong
                     provider_config_hash: "sha256:remote-unknown".into(), // wrong
+                    mcp_tool_call_hash: None,
                     trace_id: Some("provider-supplied-trace-abc".into()),
                     snapshot_id: None,
                 },

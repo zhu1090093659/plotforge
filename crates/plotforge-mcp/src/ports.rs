@@ -127,6 +127,56 @@ impl McpError {
     }
 }
 
+/// Scan the content blocks of a `tools/call` result for secret markers,
+/// returning `Err(McpError::Io)` if any block carries a marker.
+///
+/// All block kinds are covered (H1):
+/// - `Text { text }`: scanned directly.
+/// - `Image { data, mime_type }`: `data` is base64-encoded bytes and could
+///   embed a marker (some servers log `data:application/json;base64,...` with
+///   a credential); the `data` + `mime_type` are scanned.
+/// - `Resource { resource }`: an arbitrary JSON `Value`; serialised and
+///   scanned so a nested credential cannot slip past.
+///
+/// AGENTS.md mandates that MCP tool-call results pass through
+/// `contains_secret_marker_text` before entering traces; this helper is the
+/// single place that contract is enforced for the `tools/call` result body,
+/// so all three transports share one redaction gate.
+pub fn scan_content_blocks_for_secret_markers(
+    blocks: &[plotforge_schema::McpToolContentBlock],
+) -> Result<(), McpError> {
+    use plotforge_schema::McpToolContentBlock;
+    for block in blocks {
+        match block {
+            McpToolContentBlock::Text { text } => {
+                if plotforge_schema::contains_secret_marker_text(text) {
+                    return Err(McpError::Io {
+                        detail: "tool result text contains a secret marker".into(),
+                    });
+                }
+            }
+            McpToolContentBlock::Image { data, mime_type } => {
+                if plotforge_schema::contains_secret_marker_text(data)
+                    || plotforge_schema::contains_secret_marker_text(mime_type)
+                {
+                    return Err(McpError::Io {
+                        detail: "tool result image block contains a secret marker".into(),
+                    });
+                }
+            }
+            McpToolContentBlock::Resource { resource } => {
+                let serialised = resource.to_string();
+                if plotforge_schema::contains_secret_marker_text(&serialised) {
+                    return Err(McpError::Io {
+                        detail: "tool result resource block contains a secret marker".into(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Assert (at compile time of the test) that `McpError` Display does not
 /// leak obvious secret markers for representative inputs. This pins the
 /// redaction-safe `Display` contract.
@@ -277,5 +327,47 @@ mod tests {
             })
             .expect("invoke_tool");
         assert!(result.ok);
+    }
+
+    /// H1 regression: a secret marker in an Image or Resource content block
+    /// must trip the scan, not just a Text block. Before the fix, only Text
+    /// blocks were scanned so base64 image bytes / nested resource JSON could
+    /// smuggle a credential past the redaction guard.
+    #[test]
+    fn content_block_scan_rejects_secret_in_image_and_resource() {
+        use plotforge_schema::McpToolContentBlock;
+        let text_ok = vec![McpToolContentBlock::Text {
+            text: "harmless output".into(),
+        }];
+        scan_content_blocks_for_secret_markers(&text_ok).expect("clean text passes");
+
+        let image_bad = vec![McpToolContentBlock::Image {
+            data: "c2tfcmVhbGtleQ==".into(), // base64; not a marker itself
+            mime_type: "image/png".into(),
+        }];
+        scan_content_blocks_for_secret_markers(&image_bad).expect("clean image passes");
+
+        let image_with_marker = vec![McpToolContentBlock::Image {
+            data: "sk-test-secret-marker".into(),
+            mime_type: String::new(),
+        }];
+        let error = scan_content_blocks_for_secret_markers(&image_with_marker)
+            .expect_err("image marker must be rejected");
+        assert!(matches!(error, McpError::Io { .. }));
+
+        let resource_with_marker = vec![McpToolContentBlock::Resource {
+            resource: serde_json::json!({"note": "leaked api_key sk-realkey-here"}),
+        }];
+        let error = scan_content_blocks_for_secret_markers(&resource_with_marker)
+            .expect_err("nested resource marker must be rejected");
+        assert!(matches!(error, McpError::Io { .. }));
+
+        // Text is still rejected (regression guard).
+        let text_bad = vec![McpToolContentBlock::Text {
+            text: "sk-test-secret-marker".into(),
+        }];
+        let error =
+            scan_content_blocks_for_secret_markers(&text_bad).expect_err("text marker rejected");
+        assert!(matches!(error, McpError::Io { .. }));
     }
 }

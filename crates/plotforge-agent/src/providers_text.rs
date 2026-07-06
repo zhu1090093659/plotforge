@@ -156,16 +156,18 @@ impl TextProviderConfig {
                 });
             }
         }
-        if self.credential_env_var.trim().is_empty() {
-            return Err(TextProviderConfigError::InvalidField {
-                field: "credential_env_var",
-                reason: "must not be empty".into(),
-            });
-        }
-        if !self
-            .credential_env_var
-            .chars()
-            .all(|value| value.is_ascii_uppercase() || value.is_ascii_digit() || value == '_')
+        // `credential_env_var` may be empty for local no-auth endpoints
+        // (Ollama, vLLM without a token) — the `OptionalEnvCredentialResolver`
+        // path in `build_text_provider` returns an empty credential and the
+        // HTTP clients omit the auth header. Auth-required providers use the
+        // strict `EnvCredentialResolver`, which surfaces `pi_agent_missing_credential`
+        // when the env var is unset/empty. Only the character-set check runs
+        // unconditionally so a malformed env-var name cannot reach the resolver.
+        if !self.credential_env_var.trim().is_empty()
+            && !self
+                .credential_env_var
+                .chars()
+                .all(|value| value.is_ascii_uppercase() || value.is_ascii_digit() || value == '_')
         {
             return Err(TextProviderConfigError::InvalidField {
                 field: "credential_env_var",
@@ -193,6 +195,7 @@ impl TextProviderConfig {
             prompt_version: TEXT_PROMPT_VERSION.into(),
             model_version: self.model.clone(),
             provider_config_hash: self.provider_config_hash(),
+            mcp_tool_call_hash: None,
             trace_id: None,
             snapshot_id: None,
         }
@@ -506,6 +509,7 @@ impl TextModelProvider for FakeTextModelProvider {
             prompt_version: self.reproducibility.prompt_version.into(),
             model_version: self.reproducibility.model_version.into(),
             provider_config_hash: self.reproducibility.provider_config_hash.into(),
+            mcp_tool_call_hash: None,
             trace_id: None,
             snapshot_id: None,
         }
@@ -784,6 +788,7 @@ fn encode_fake_response(
             prompt_version: request.prompt_version.clone(),
             model_version: request.model_version.clone(),
             provider_config_hash: request.provider_config_hash.clone(),
+            mcp_tool_call_hash: None,
             trace_id: None,
             snapshot_id: None,
         },

@@ -50,6 +50,16 @@ static SHARED_HTTP_CLIENT: std::sync::OnceLock<Client> = std::sync::OnceLock::ne
 /// Returns the shared blocking `reqwest::Client` with the standard PlotForge
 /// timeouts. All three providers share this client; only the headers and body
 /// differ per API.
+///
+/// Redirect policy: `Policy::none()` (H4). reqwest defaults to following up to
+/// 10 redirects and only strips its built-in sensitive headers
+/// (`authorization`, `cookie`, `www-authenticate`) on cross-host redirects.
+/// The Anthropic client sends `x-api-key` and `anthropic-version` — both
+/// custom headers that reqwest would replay to a redirect target. A hijacked
+/// or misconfigured `endpoint_url` that 302s to an attacker- or
+/// internal-controlled host would leak the API key in `x-api-key`. Disabling
+/// redirects surfaces a redirect as an explicit provider error instead
+/// (AGENTS.md: no silent fallback).
 fn shared_http_client() -> Result<&'static Client, TextModelProviderError> {
     if let Some(client) = SHARED_HTTP_CLIENT.get() {
         return Ok(client);
@@ -57,6 +67,7 @@ fn shared_http_client() -> Result<&'static Client, TextModelProviderError> {
     let client = Client::builder()
         .timeout(HTTP_TIMEOUT)
         .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|error| {
             TextModelProviderError::provider(
@@ -75,24 +86,44 @@ fn shared_http_client() -> Result<&'static Client, TextModelProviderError> {
 
 /// Adds a bearer auth header to `headers` only when `credential` is
 /// non-empty. Empty credentials (local no-auth endpoints) skip the header.
-fn push_bearer_auth(headers: &mut HeaderMap, credential: &str) {
+///
+/// A credential containing a byte illegal in an HTTP header value (non-ASCII,
+/// control char) surfaces as an explicit error rather than being silently
+/// dropped (L1) — otherwise the request would go out with no Authorization
+/// header and the upstream would return a confusing 401/403 instead of a
+/// clear "credential contains illegal characters" error.
+fn push_bearer_auth(
+    headers: &mut HeaderMap,
+    credential: &str,
+) -> Result<(), TextModelProviderError> {
     if credential.trim().is_empty() {
-        return;
+        return Ok(());
     }
-    if let Ok(value) = HeaderValue::from_str(&format!("Bearer {credential}")) {
-        headers.insert("Authorization", value);
-    }
+    let value = HeaderValue::from_str(&format!("Bearer {credential}")).map_err(|_| {
+        TextModelProviderError::provider(
+            "text_provider_credential_header",
+            "provider credential contains bytes illegal in an HTTP header value",
+        )
+    })?;
+    headers.insert("Authorization", value);
+    Ok(())
 }
 
 /// Adds an `x-api-key` header to `headers` only when `credential` is
-/// non-empty. Anthropic uses this header instead of `Authorization`.
-fn push_x_api_key(headers: &mut HeaderMap, credential: &str) {
+/// non-empty. Anthropic uses this header instead of `Authorization`. Same
+/// explicit-error-on-illegal-bytes discipline as `push_bearer_auth` (L1).
+fn push_x_api_key(headers: &mut HeaderMap, credential: &str) -> Result<(), TextModelProviderError> {
     if credential.trim().is_empty() {
-        return;
+        return Ok(());
     }
-    if let Ok(value) = HeaderValue::from_str(credential) {
-        headers.insert("x-api-key", value);
-    }
+    let value = HeaderValue::from_str(credential).map_err(|_| {
+        TextModelProviderError::provider(
+            "text_provider_credential_header",
+            "provider credential contains bytes illegal in an HTTP header value",
+        )
+    })?;
+    headers.insert("x-api-key", value);
+    Ok(())
 }
 
 /// Executes a `RequestBuilder`, mapping network/decode failures into
@@ -173,7 +204,7 @@ impl TextModelClient for OpenAiCompatibleClient {
 
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        push_bearer_auth(&mut headers, request.credential);
+        push_bearer_auth(&mut headers, request.credential)?;
 
         let body = serde_json::json!({
             "model": request.config.model,
@@ -255,7 +286,7 @@ impl TextModelClient for OpenAiResponsesClient {
 
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        push_bearer_auth(&mut headers, request.credential);
+        push_bearer_auth(&mut headers, request.credential)?;
 
         let body = serde_json::json!({
             "model": request.config.model,
@@ -343,11 +374,17 @@ impl TextModelClient for AnthropicMessagesClient {
             "anthropic-version",
             HeaderValue::from_static(ANTHROPIC_VERSION),
         );
-        push_x_api_key(&mut headers, request.credential);
+        push_x_api_key(&mut headers, request.credential)?;
 
+        // `max_tokens` is required by the Anthropic Messages API and caps the
+        // output length. 8192 (L3) is comfortable for scene-plan / story-bible
+        // generation; the previous 4096 silently truncated longer outputs
+        // mid-JSON-object, which surfaced as opaque `text_provider_invalid_json`
+        // errors instead of clean completions. The Anthropic default floor is
+        // 4096, so 8192 only ever produces longer (not shorter) outputs.
         let body = serde_json::json!({
             "model": request.config.model,
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "messages": [
                 { "role": "user", "content": request.request.prompt }
             ],

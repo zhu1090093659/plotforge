@@ -79,7 +79,7 @@ export interface Choice { id: string; label: string; action_type: string; input_
 
 export type AgentRole = "story_architect" | "story_craft_planner" | "character_designer" | "scene_planner" | "beat_writer" | "plot_doctor" | "consistency_checker" | "deslop_refiner";
 export interface AgentOutputProposal { id: string; agent: AgentRole; output: AgentProposalPayload; }
-export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; trace_id?: string | null; snapshot_id?: string | null; }
+export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; mcp_tool_call_hash?: string | null; trace_id?: string | null; snapshot_id?: string | null; }
 export interface AgentOutputEnvelope { id: string; contract_version: string; schema_version: number; agent: AgentRole; reproducibility: ReproducibilityMetadata; proposal: AgentOutputProposal; }
 export type AgentProposalPayload = { kind: "world_expansion"; payload: WorldExpansionProposal } | { kind: "story_craft_plan"; payload: StoryCraftPlanProposal } | { kind: "character_profile"; payload: CharacterProposal } | { kind: "scene_plan"; payload: ScenePlanProposal } | { kind: "beat_drafts"; payload: BeatDraftsProposal } | { kind: "review"; payload: ReviewProposal };
 export interface WorldGenerationRequest { expansion_goal: string; document: WorldEditDocument; }

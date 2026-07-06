@@ -111,7 +111,8 @@ impl SseMcpClient {
         let credential = self.resolve_credential();
         let endpoint_url = self.endpoint_url.clone();
         let client = self.client.clone();
-        let result = crate::runtime().block_on(async move {
+        let method_owned = method.to_string();
+        let result = crate::runtime::block_on_async(async move {
             let mut builder = client
                 .post(&endpoint_url)
                 .header("Accept", "text/event-stream")
@@ -125,17 +126,20 @@ impl SseMcpClient {
             })?;
             let status = response.status();
             if !status.is_success() {
-                return Err(McpError::Io {
-                    detail: format!("SSE endpoint returned {status}"),
-                });
+                // M3: a 4xx/5xx body may carry a JSON-RPC error with a useful
+                // `error.message`; try to parse it before falling back to a
+                // generic status string. This keeps a structured tool/handshake
+                // error from being misclassified as a bare transport error.
+                return Err(http_error_with_jsonrpc(status, response, &method_owned).await);
             }
-            // Read the full body as text (SSE frames are line-delimited).
-            // For a true streaming impl we'd use response.bytes_stream(), but
-            // the MCP streamable-HTTP pattern returns a finite event stream
-            // per request, so reading the full body is correct here.
-            let body = response.text().await.map_err(|error| McpError::Io {
-                detail: format!("failed to read SSE body: {error}"),
-            })?;
+            // M2: bound the body read so a server that streams forever (or
+            // returns a giant non-SSE error page) cannot OOM the worker. 4 MiB
+            // is generous for a finite MCP event stream; a long-lived SSE
+            // connection should be consumed with `bytes_stream()` in a future
+            // revision, but for the streamable-HTTP per-request pattern this
+            // cap is the correct safety bound.
+            const SSE_BODY_LIMIT: usize = 4 * 1024 * 1024;
+            let body = bounded_text(response, SSE_BODY_LIMIT).await?;
             // Parse SSE frames: lines starting with `data: ` are JSON payloads.
             for line in body.lines() {
                 let line = line.trim();
@@ -158,7 +162,7 @@ impl SseMcpClient {
                             .and_then(|m| m.as_str())
                             .unwrap_or("unknown error")
                             .to_string();
-                        return Err(match method {
+                        return Err(match method_owned.as_str() {
                             "tools/call" => McpError::ToolError {
                                 tool_name: "(unknown)".into(),
                                 detail,
@@ -215,6 +219,19 @@ impl McpTransport for SseMcpClient {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        // M4: send `notifications/initialized` after a successful handshake.
+        // The MCP spec requires this before subsequent calls; spec-strict
+        // servers may reject `tools/list` without it. Best-effort: a transport
+        // failure here is not fatal (the server already accepted initialize).
+        let credential = self.resolve_credential();
+        let client = self.client.clone();
+        let endpoint_url = self.endpoint_url.clone();
+        crate::runtime::block_on_async(crate::transport_sse::send_initialized_notification(
+            client,
+            endpoint_url,
+            credential,
+            "text/event-stream",
+        ));
         self.initialized = true;
         Ok(McpServerInfo {
             name,
@@ -282,16 +299,10 @@ impl McpTransport for SseMcpClient {
                 serde_json::from_value(block_value).map_err(|error| McpError::Io {
                     detail: format!("failed to parse content block: {error}"),
                 })?;
-            #[allow(clippy::collapsible_if)]
-            if let McpToolContentBlock::Text { text } = &block {
-                if contains_secret_marker_text(text) {
-                    return Err(McpError::Io {
-                        detail: "tool result text contains a secret marker".into(),
-                    });
-                }
-            }
             blocks.push(block);
         }
+        // Redaction scan covers all block kinds (Text, Image, Resource) — H1.
+        crate::ports::scan_content_blocks_for_secret_markers(&blocks)?;
         Ok(McpToolCallResult {
             ok: !is_error,
             content: blocks,
@@ -317,6 +328,94 @@ fn url_has_query_credential(url: &str) -> bool {
         || lower.contains("&api_key=")
         || lower.contains("?token=")
         || lower.contains("&token=")
+}
+
+/// Read up to `limit` bytes from `response` as text. Returns `mcp_io` if the
+/// body exceeds the limit (M2: prevents a non-SSE error page or a
+/// runaway stream from OOMing the worker). The cap is generous for a finite
+/// MCP event stream; a long-lived SSE connection needs `bytes_stream()` in a
+/// future revision.
+pub(crate) async fn bounded_text(
+    response: reqwest::Response,
+    limit: usize,
+) -> Result<String, McpError> {
+    let bytes = response.bytes().await.map_err(|error| McpError::Io {
+        detail: format!("failed to read response body: {error}"),
+    })?;
+    if bytes.len() > limit {
+        return Err(McpError::Io {
+            detail: format!("response body exceeded the {limit}-byte safety limit"),
+        });
+    }
+    String::from_utf8(bytes.to_vec()).map_err(|error| McpError::Io {
+        detail: format!("response body was not valid UTF-8: {error}"),
+    })
+}
+
+/// Build an `McpError` for a non-2xx HTTP response, attempting to parse the
+/// body as a JSON-RPC `{error: {message}}` first so a structured tool/handshake
+/// error is not misclassified as a bare transport error (M3). Falls back to a
+/// generic `mcp_io` carrying the status code when the body is not JSON-RPC.
+pub(crate) async fn http_error_with_jsonrpc(
+    status: reqwest::StatusCode,
+    response: reqwest::Response,
+    method: &str,
+) -> McpError {
+    let body = bounded_text(response, 64 * 1024)
+        .await
+        .unwrap_or_default();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body)
+        && let Some(message) = value
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+    {
+        return match method {
+            "tools/call" => McpError::ToolError {
+                tool_name: "(unknown)".into(),
+                detail: message.to_string(),
+            },
+            "initialize" => McpError::HandshakeFailed {
+                detail: message.to_string(),
+            },
+            _ => McpError::Io {
+                detail: format!("HTTP {status}: {message}"),
+            },
+        };
+    }
+    McpError::Io {
+        detail: format!("HTTP endpoint returned {status}"),
+    }
+}
+
+/// Fire a `notifications/initialized` POST with no expected response (M4).
+/// The MCP spec requires this notification after a successful `initialize`
+/// handshake; spec-strict servers may reject subsequent calls without it.
+/// The notification carries no `id`, so the server must not respond — any
+/// response bytes are discarded. Best-effort: a failure here does not abort
+/// initialization (the server is still considered initialized) but surfaces
+/// a debug-level `mcp_io` in the caller's stderr only.
+pub(crate) async fn send_initialized_notification(
+    client: reqwest::Client,
+    endpoint_url: String,
+    credential: String,
+    accept: &str,
+) {
+    let notification = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+    });
+    let mut builder = client
+        .post(&endpoint_url)
+        .header("Accept", accept)
+        .header("Content-Type", "application/json")
+        .json(&notification);
+    if !credential.is_empty() {
+        builder = builder.bearer_auth(&credential);
+    }
+    // Best-effort: the spec says servers must not respond to notifications,
+    // so we send and drop the result. A transport error here is not fatal.
+    let _ = builder.send().await;
 }
 
 #[cfg(test)]

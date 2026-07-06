@@ -447,10 +447,13 @@ mod tests {
         assert!(!error.message.contains("sk-"));
     }
 
-    /// A local no-auth endpoint (empty `credential_env_var`) must still work:
-    /// the optional resolver returns an empty credential and `complete` only
-    /// validates config (which rejects an empty env-var name). This pins the
-    /// intended split — strict for auth-required, optional for no-auth.
+    /// H3 regression: a local no-auth endpoint (empty `credential_env_var`)
+    /// must be usable, not rejected. The optional resolver returns an empty
+    /// credential, `validate()` accepts an empty env-var name, and the HTTP
+    /// client omits the auth header. The call then either succeeds (a running
+    /// Ollama) or fails with an explicit transport error — never a config
+    /// rejection. Previously `validate()` rejected the empty name and the
+    /// no-auth path was unreachable.
     #[test]
     fn build_text_provider_uses_optional_resolver_for_no_auth_endpoint() {
         let entry = ProviderEntry {
@@ -474,14 +477,21 @@ mod tests {
             provider_config_hash: reproducibility.provider_config_hash.clone(),
             prompt: "{}".into(),
         };
-        // An empty credential_env_var is rejected by TextProviderConfig::validate
-        // (it requires a non-empty env-var name). This is the explicit error —
-        // the no-auth path is documented to require a dummy env-var name whose
-        // value resolves empty; the empty-name case is an explicit config error.
+        // No Ollama is running in the test process, so the call must fail —
+        // but with an explicit HTTP transport error, NOT a config rejection.
+        // This is the contract: the no-auth path reaches the HTTP client;
+        // it does not die at `validate()`.
         let error = provider
             .complete(&request)
-            .expect_err("empty env var name is a config error");
-        assert_eq!(error.code, "text_provider_config");
-        assert!(error.message.contains("credential_env_var"));
+            .expect_err("no Ollama running; transport error expected");
+        assert!(
+            !error.code.contains("text_provider_config"),
+            "no-auth endpoint must pass validate(), got config error: {error}"
+        );
+        assert!(
+            error.code.contains("text_provider_http")
+                || error.code.contains("text_provider_timeout"),
+            "expected an HTTP transport error for the unreachable no-auth endpoint, got: {error}"
+        );
     }
 }

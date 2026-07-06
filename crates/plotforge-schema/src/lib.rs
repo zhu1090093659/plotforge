@@ -773,6 +773,15 @@ pub struct ReproducibilityMetadata {
     pub prompt_version: String,
     pub model_version: String,
     pub provider_config_hash: String,
+    /// Reproducibility hash for the MCP server config that participated in a
+    /// tool-call turn (mirrors `provider_config_hash`). Derived only from
+    /// non-secret config fields (server id, transport kind, endpoint_url,
+    /// credential_env_var *name*); never the credential value. `None` when no
+    /// MCP server was invoked on this turn (the local-mock path, or a turn
+    /// without MCP tool use). Carried for reproducibility per AGENTS.md's MCP
+    /// carve-out; raw tool-call arguments/results never enter this field.
+    #[serde(default)]
+    pub mcp_tool_call_hash: Option<String>,
     #[serde(default)]
     pub trace_id: Option<String>,
     #[serde(default)]
@@ -792,6 +801,7 @@ impl ReproducibilityMetadata {
             prompt_version: "plotforge-local-mock-prompt-v1".into(),
             model_version: "plotforge-local-mock-model-v1".into(),
             provider_config_hash: "sha256:plotforge-local-mock-provider-config-v1".into(),
+            mcp_tool_call_hash: None,
             trace_id: None,
             snapshot_id: None,
         }
@@ -804,6 +814,13 @@ impl ReproducibilityMetadata {
 
     pub fn with_snapshot_id(mut self, snapshot_id: impl Into<String>) -> Self {
         self.snapshot_id = Some(snapshot_id.into());
+        self
+    }
+
+    /// Attach the MCP tool-call reproducibility hash. Used by the MCP
+    /// tool-use orchestrator when a turn invoked one or more MCP servers.
+    pub fn with_mcp_tool_call_hash(mut self, hash: impl Into<String>) -> Self {
+        self.mcp_tool_call_hash = Some(hash.into());
         self
     }
 }
@@ -2027,7 +2044,7 @@ export interface Choice { id: string; label: string; action_type: string; input_
 
 export type AgentRole = "story_architect" | "story_craft_planner" | "character_designer" | "scene_planner" | "beat_writer" | "plot_doctor" | "consistency_checker" | "deslop_refiner";
 export interface AgentOutputProposal { id: string; agent: AgentRole; output: AgentProposalPayload; }
-export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; trace_id?: string | null; snapshot_id?: string | null; }
+export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; mcp_tool_call_hash?: string | null; trace_id?: string | null; snapshot_id?: string | null; }
 export interface AgentOutputEnvelope { id: string; contract_version: string; schema_version: number; agent: AgentRole; reproducibility: ReproducibilityMetadata; proposal: AgentOutputProposal; }
 export type AgentProposalPayload = { kind: "world_expansion"; payload: WorldExpansionProposal } | { kind: "story_craft_plan"; payload: StoryCraftPlanProposal } | { kind: "character_profile"; payload: CharacterProposal } | { kind: "scene_plan"; payload: ScenePlanProposal } | { kind: "beat_drafts"; payload: BeatDraftsProposal } | { kind: "review"; payload: ReviewProposal };
 export interface WorldGenerationRequest { expansion_goal: string; document: WorldEditDocument; }
@@ -2266,6 +2283,44 @@ mod tests {
             serde_json::from_str(&encoded).expect("deserialize config");
         assert_eq!(decoded, config);
         assert_eq!(decoded.enabled_mcp_servers.len(), 2);
+    }
+
+    /// M6 back-compat: a `ReproducibilityMetadata` written before
+    /// `mcp_tool_call_hash` existed must still deserialize — the new field
+    /// defaults to `None` so old traces/snapshots/envelopes load cleanly.
+    #[test]
+    fn reproducibility_metadata_loads_old_json_without_mcp_tool_call_hash() {
+        let old_json = r#"{
+            "run_seed": 7,
+            "prompt_version": "plotforge-agent-text-prompt-v1",
+            "model_version": "fake-text-model-v1",
+            "provider_config_hash": "sha256:fake-text-provider-config",
+            "trace_id": "trace-1",
+            "snapshot_id": "snap-1"
+        }"#;
+        let decoded: ReproducibilityMetadata =
+            serde_json::from_str(old_json).expect("old reproducibility metadata must deserialize");
+        assert_eq!(decoded.run_seed, 7);
+        assert_eq!(decoded.trace_id.as_deref(), Some("trace-1"));
+        assert!(
+            decoded.mcp_tool_call_hash.is_none(),
+            "missing mcp_tool_call_hash defaults to None"
+        );
+    }
+
+    /// M6 round-trip: a populated `mcp_tool_call_hash` survives
+    /// serialize/deserialize and does not leak into `provider_config_hash`.
+    #[test]
+    fn reproducibility_metadata_roundtrips_mcp_tool_call_hash() {
+        let meta = ReproducibilityMetadata::local_mock(42)
+            .with_mcp_tool_call_hash("sha256:mcp-server-local-fs");
+        let encoded = serde_json::to_string(&meta).expect("serialize");
+        let decoded: ReproducibilityMetadata = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, meta);
+        assert_eq!(
+            decoded.mcp_tool_call_hash.as_deref(),
+            Some("sha256:mcp-server-local-fs")
+        );
     }
 
     #[test]
@@ -3257,6 +3312,7 @@ mod tests {
             prompt_version: "plotforge-agent-text-prompt-v1".into(),
             model_version: "fake-text-model-v1".into(),
             provider_config_hash: "sha256:fake-text-provider-config".into(),
+            mcp_tool_call_hash: None,
             trace_id: None,
             snapshot_id: None,
         }

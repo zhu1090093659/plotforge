@@ -8,7 +8,6 @@ repository.workspace = true
 [dependencies]
 plotforge-agent.workspace = true
 plotforge-export.workspace = true
-plotforge-mcp.workspace = true
 plotforge-runtime.workspace = true
 plotforge-schema.workspace = true
 plotforge-storage.workspace = true

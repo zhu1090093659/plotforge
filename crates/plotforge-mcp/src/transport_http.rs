@@ -82,7 +82,8 @@ impl HttpMcpClient {
         let credential = self.resolve_credential();
         let endpoint_url = self.endpoint_url.clone();
         let client = self.client.clone();
-        let result = crate::runtime().block_on(async move {
+        let method_owned = method.to_string();
+        let result = crate::runtime::block_on_async(async move {
             let mut builder = client
                 .post(&endpoint_url)
                 .header("Content-Type", "application/json")
@@ -95,13 +96,23 @@ impl HttpMcpClient {
             })?;
             let status = response.status();
             if !status.is_success() {
-                return Err(McpError::Io {
-                    detail: format!("HTTP endpoint returned {status}"),
-                });
+                // M3: parse a JSON-RPC error body before falling back to a
+                // generic status string so a structured tool/handshake error
+                // is not misclassified as a bare transport error.
+                return Err(crate::transport_sse::http_error_with_jsonrpc(
+                    status,
+                    response,
+                    &method_owned,
+                )
+                .await);
             }
-            let value: serde_json::Value = response.json().await.map_err(|error| McpError::Io {
-                detail: format!("failed to parse HTTP response: {error}"),
-            })?;
+            // M2: bound the body read so a giant non-JSON error page cannot
+            // OOM the worker. 4 MiB is generous for a single JSON-RPC response.
+            let body = crate::transport_sse::bounded_text(response, 4 * 1024 * 1024).await?;
+            let value: serde_json::Value =
+                serde_json::from_str(&body).map_err(|error| McpError::Io {
+                    detail: format!("failed to parse HTTP response: {error}"),
+                })?;
             let response_id = value.get("id").and_then(|v| v.as_u64());
             if response_id != Some(id) {
                 return Err(McpError::Io {
@@ -114,7 +125,7 @@ impl HttpMcpClient {
                     .and_then(|m| m.as_str())
                     .unwrap_or("unknown error")
                     .to_string();
-                return Err(match method {
+                return Err(match method_owned.as_str() {
                     "tools/call" => McpError::ToolError {
                         tool_name: "(unknown)".into(),
                         detail,
@@ -166,6 +177,17 @@ impl McpTransport for HttpMcpClient {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        // M4: send `notifications/initialized` after a successful handshake
+        // (mirrors the stdio transport; MCP spec requires it).
+        let credential = self.resolve_credential();
+        let client = self.client.clone();
+        let endpoint_url = self.endpoint_url.clone();
+        crate::runtime::block_on_async(crate::transport_sse::send_initialized_notification(
+            client,
+            endpoint_url,
+            credential,
+            "application/json",
+        ));
         self.initialized = true;
         Ok(McpServerInfo {
             name,
@@ -233,16 +255,10 @@ impl McpTransport for HttpMcpClient {
                 serde_json::from_value(block_value).map_err(|error| McpError::Io {
                     detail: format!("failed to parse content block: {error}"),
                 })?;
-            #[allow(clippy::collapsible_if)]
-            if let McpToolContentBlock::Text { text } = &block {
-                if contains_secret_marker_text(text) {
-                    return Err(McpError::Io {
-                        detail: "tool result text contains a secret marker".into(),
-                    });
-                }
-            }
             blocks.push(block);
         }
+        // Redaction scan covers all block kinds (Text, Image, Resource) — H1.
+        crate::ports::scan_content_blocks_for_secret_markers(&blocks)?;
         Ok(McpToolCallResult {
             ok: !is_error,
             content: blocks,

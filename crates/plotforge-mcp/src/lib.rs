@@ -35,7 +35,9 @@
 //! and stdio transport land in Phase 2; SSE/HTTP transport in Phase 3.
 
 pub mod ports;
-pub use ports::{McpError, McpServerInfo, McpToolClient, McpTransport};
+pub use ports::{
+    McpError, McpServerInfo, McpToolClient, McpTransport, scan_content_blocks_for_secret_markers,
+};
 
 pub mod client;
 pub use client::McpToolRegistry;

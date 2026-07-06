@@ -1,13 +1,13 @@
 use plotforge_studio::{
-    AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterEditDocument,
-    CharacterGenerationReport, ExportProfile, GitBranchInfo, GitSwitchResult, ModelOption,
-    PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
-    PiAgentRunResult, PlayOnceReport, ProjectCheckReport, ProjectCreationReport,
-    ProjectCreationRequest, ProjectData, ProviderEntry, ProviderTestResult, PromptTemplate,
-    ResourceDefinition, Rule, RulesEditDocument, SkillIndex, SkillManifest, SourceFileContent,
-    SourceFileSummary, StateVariablesEditDocument, StaticExportReport, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StudioCommandError, VisualBible, WorldEditDocument,
-    WorldGenerationReport,
+    AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterDraft,
+    CharacterEditDocument, CharacterGenerationReport, ExportProfile, GitBranchInfo,
+    GitSwitchResult, ModelOption, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability,
+    PiAgentRunRequest, PiAgentRunResult, PlayOnceReport, ProjectCheckReport,
+    ProjectCreationReport, ProjectCreationRequest, ProjectData, ProviderEntry, ProviderTestResult,
+    PromptTemplate, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, SkillIndex,
+    SkillManifest, SourceFileContent, SourceFileSummary, StateVariablesEditDocument,
+    StaticExportReport, StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError,
+    VisualBible, WorldEditDocument, WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -83,6 +83,22 @@ pub fn create_character(
     character: Character,
 ) -> Result<CharacterEditDocument, StudioCommandError> {
     plotforge_studio::create_character(path, character)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_character_from_draft(
+    path: String,
+    draft: CharacterDraft,
+) -> Result<CharacterEditDocument, StudioCommandError> {
+    plotforge_studio::create_character_from_draft(path, draft)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_rule_from_draft(
+    path: String,
+    draft: RuleDraft,
+) -> Result<RulesEditDocument, StudioCommandError> {
+    plotforge_studio::create_rule_from_draft(path, draft)
 }
 
 #[tauri::command(rename_all = "snake_case")]

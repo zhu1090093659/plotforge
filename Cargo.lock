@@ -1003,7 +1003,6 @@ version = "0.1.0"
 dependencies = [
  "plotforge-agent",
  "plotforge-export",
- "plotforge-mcp",
  "plotforge-runtime",
  "plotforge-schema",
  "plotforge-storage",
