@@ -1,7 +1,8 @@
 use plotforge_studio::{
     AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, ExportProfile, GitBranchInfo,
-    GitSwitchResult, ModelOption, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability,
+    GitSwitchResult, McpServerEntry, McpServerTestResult, McpToolCallRequest, McpToolCallResult,
+    McpToolManifest, ModelOption, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability,
     PiAgentRunRequest, PiAgentRunResult, PlayOnceReport, ProjectCheckReport,
     ProjectCreationReport, ProjectCreationRequest, ProjectData, ProviderEntry, ProviderTestResult,
     PromptTemplate, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, SkillIndex,
@@ -437,4 +438,45 @@ pub fn enable_skill_for_project(
     enabled: bool,
 ) -> Result<AgentSessionConfig, StudioCommandError> {
     plotforge_studio::enable_skill_for_project(project_path, skill_id, enabled)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_mcp_servers() -> Result<Vec<McpServerEntry>, StudioCommandError> {
+    plotforge_studio::list_mcp_servers()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upsert_mcp_server(entry: McpServerEntry) -> Result<McpServerEntry, StudioCommandError> {
+    plotforge_studio::upsert_mcp_server(entry)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_mcp_server(id: String) -> Result<McpServerEntry, StudioCommandError> {
+    plotforge_studio::delete_mcp_server(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn test_mcp_server(id: String) -> Result<McpServerTestResult, StudioCommandError> {
+    plotforge_studio::test_mcp_server(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_mcp_tools(server_id: String) -> Result<Vec<McpToolManifest>, StudioCommandError> {
+    plotforge_studio::list_mcp_tools(server_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn invoke_mcp_tool(
+    request: McpToolCallRequest,
+) -> Result<McpToolCallResult, StudioCommandError> {
+    plotforge_studio::invoke_mcp_tool(request)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn enable_mcp_server_for_project(
+    project_path: String,
+    server_id: String,
+    enabled: bool,
+) -> Result<AgentSessionConfig, StudioCommandError> {
+    plotforge_studio::enable_mcp_server_for_project(project_path, server_id, enabled)
 }

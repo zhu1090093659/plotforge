@@ -10,6 +10,11 @@ import type {
   ExportProfile,
   GitBranchInfo,
   GitSwitchResult,
+  McpServerEntry,
+  McpServerTestResult,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpToolManifest,
   ModelOption,
   PiAgentApplyRequest,
   PiAgentApplyResult,
@@ -186,6 +191,17 @@ export interface StudioDataSource {
     skillId: string,
     enabled: boolean,
   ): Promise<AgentSessionConfig>;
+  listMcpServers(): Promise<McpServerEntry[]>;
+  upsertMcpServer(entry: McpServerEntry): Promise<McpServerEntry>;
+  deleteMcpServer(id: string): Promise<McpServerEntry>;
+  testMcpServer(id: string): Promise<McpServerTestResult>;
+  listMcpTools(serverId: string): Promise<McpToolManifest[]>;
+  invokeMcpTool(request: McpToolCallRequest): Promise<McpToolCallResult>;
+  enableMcpServerForProject(
+    projectPath: string,
+    serverId: string,
+    enabled: boolean,
+  ): Promise<AgentSessionConfig>;
 }
 
 export function createTauriStudioDataSource(): StudioDataSource {
@@ -283,5 +299,12 @@ function createStudioDataSource(
     importSkill: bridge.importSkill,
     readSkillBody: bridge.readSkillBody,
     enableSkillForProject: bridge.enableSkillForProject,
+    listMcpServers: bridge.listMcpServers,
+    upsertMcpServer: bridge.upsertMcpServer,
+    deleteMcpServer: bridge.deleteMcpServer,
+    testMcpServer: bridge.testMcpServer,
+    listMcpTools: bridge.listMcpTools,
+    invokeMcpTool: bridge.invokeMcpTool,
+    enableMcpServerForProject: bridge.enableMcpServerForProject,
   };
 }

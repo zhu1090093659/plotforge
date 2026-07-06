@@ -24,14 +24,21 @@ pub use plotforge_schema::{
     WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
     redact_trace_text,
 };
+// MCP schema types (Phase 5): re-exported publicly so the Tauri command
+// wrappers (`creator-desktop/src-tauri`) and downstream callers can import
+// them from `plotforge_studio` alongside the rest of the studio surface,
+// mirroring the `plotforge_schema` re-exports above. The blocking client /
+// registry helpers below remain private to this crate.
+pub use plotforge_mcp::{
+    McpServerEntry, McpServerTestResult, McpToolCallRequest, McpToolCallResult, McpToolManifest,
+};
 // MCP client surface (Phase 5): the registry IO + blocking façade live in
 // `plotforge-mcp`; the schema types (`McpServerEntry`, `McpToolManifest`,
 // …) are re-exported through it. These are used by the 7 MCP Studio commands
 // below. Credentials are referenced indirectly by env-var name only; the
 // registry never enters project source, contracts, traces, or exports.
 use plotforge_mcp::{
-    McpServerEntry, McpServerTestResult, McpToolCallRequest, McpToolCallResult, McpToolClient,
-    McpToolManifest, McpToolRegistry, build_mcp_client, load_mcp_registry, resolve_mcp_server,
+    McpToolClient, McpToolRegistry, build_mcp_client, load_mcp_registry, resolve_mcp_server,
     validate_server_entry, write_mcp_registry,
 };
 use plotforge_storage::{
