@@ -240,6 +240,13 @@ describe("creator desktop i18n", () => {
       "MCP",
       "mcp",
       "server",
+      // Settings: MCP transport protocol identifiers, kept verbatim in zh
+      // alongside HTTP (they name the transport kind, not a translatable
+      // concept). "shell" names the environment that holds credential env
+      // vars, kept verbatim like "path"/"envVar".
+      "stdio",
+      "sse",
+      "shell",
     ]);
     const leaks: Array<[string, string]> = [];
     for (const [key, value] of Object.entries(zhDictionary)) {

@@ -24,6 +24,7 @@ import {
 } from "./testHelpers/studioDataSource";
 import type {
   AgentSessionConfig,
+  McpServerEntry,
   PromptTemplate,
   ProviderEntry,
   SkillManifest,
@@ -120,6 +121,15 @@ function settingsTestDataSource(
     importSkill: mockImportSkill,
     readSkillBody: mockReadSkillBody,
     enableSkillForProject: async () => defaultConfig,
+    // MCP-surface methods (Phase 6): default to empty/ok so the MCP tab
+    // renders its real management surface without a live server.
+    listMcpServers: async () => [],
+    upsertMcpServer: async (entry: McpServerEntry) => entry,
+    deleteMcpServer: async () => undefined,
+    testMcpServer: async () => ({ ok: true, message: "ok", tools_count: 0 }),
+    listMcpTools: async () => [],
+    invokeMcpTool: async () => ({ ok: true, content: [], is_error: false }),
+    enableMcpServerForProject: async () => defaultConfig,
   } as unknown as StudioDataSource;
   return { ...base, ...overrides };
 }
@@ -341,20 +351,27 @@ describe("SettingsView", () => {
     );
   });
 
-  it("renders the MCP tab placeholder (Phase A: MCP runtime not yet wired)", async () => {
+  it("renders the MCP tab with real server management surface (Phase 6)", async () => {
     renderSettingsView();
 
     fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
 
-    // The MCP tab is an honest placeholder — it must NOT claim to manage
-    // servers. The EN value of `settings.mcp.placeholder` is asserted so a
-    // future regression that wires a fake MCP surface without the backend
-    // contract is loud.
+    // Phase 6: the MCP tab is a real server management surface, not a
+    // placeholder. The "Add server" button must be present, and the empty
+    // state (no servers registered) is shown — NOT the old "coming in a
+    // future release" placeholder. The empty state renders after the
+    // `listMcpServers()` promise resolves, so use `findByText` (async).
+    expect(screen.getByRole("button", { name: "Add server" })).toBeTruthy();
     expect(
-      screen.getByText(
-        "MCP server configuration is coming in a future release.",
-      ),
+      await screen.findByText("No MCP servers registered. Add a server to begin."),
     ).toBeTruthy();
+    // Regression guard: the old placeholder copy must NOT appear.
+    expect(
+      screen.queryByText("MCP server configuration is coming in a future release."),
+    ).toBeNull();
+    // No launch-promise language (no Steam publishing / platform approval).
+    const mcpPanelText = screen.getByRole("tabpanel").textContent ?? "";
+    expect(mcpPanelText).not.toMatch(/publish to steam|automatic.*publish|platform approval/i);
   });
 
   it("renders the Skills tab: shows the refresh button and lists both skills with their origin badges", async () => {

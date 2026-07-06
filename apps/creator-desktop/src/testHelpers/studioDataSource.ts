@@ -1,6 +1,11 @@
 import { demoPlayOnceReport, demoProjectData, demoReproducibilityMetadata } from "../demoStudioData";
 import type {
   AgentSessionConfig,
+  McpServerEntry,
+  McpServerTestResult,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpToolManifest,
   PiAgentApplyRequest,
   PiAgentApplyResult,
   ProviderEntry,

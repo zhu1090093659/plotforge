@@ -13,8 +13,8 @@ import { useStudioI18n } from "./i18n";
 //
 // Owns three internal tabs:
 //   - Agent  → Providers / Model / Prompts (AgentConfigSection)
-//   - MCP    → Phase A placeholder (McpSection); full runtime is Phase B and
-//              requires an AGENTS.md boundary carve-out before any code.
+//   - MCP    → MCP server registry management (McpSection): list, add/upsert,
+//              delete, test-connection, per-project enable, tool list + invoke.
 //   - Skills → user skill library + per-project enablement (SkillsSection)
 //
 // The per-project model config (AgentSessionConfig) is passed in from
@@ -58,7 +58,14 @@ export function SettingsView({
     {
       id: "mcp" as const,
       label: t("settings.tab.mcp"),
-      children: <McpSection />,
+      children: (
+        <McpSection
+          dataSource={dataSource}
+          loadedPath={loadedPath}
+          agentConfig={agentConfig}
+          onAgentConfigChange={onAgentConfigChange}
+        />
+      ),
     },
     {
       id: "skills" as const,
