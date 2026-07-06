@@ -25,6 +25,7 @@ const defaultConfig: AgentSessionConfig = {
   permission_level: "ask_every_time",
   thinking_level: "medium",
   enabled_skills: [],
+  enabled_mcp_servers: [],
 };
 
 const defaultBranches: GitBranchInfo[] = [
@@ -66,7 +67,7 @@ function renderLaunchpad(overrides: Partial<Parameters<typeof LaunchpadView>[0]>
 }
 
 describe("LaunchpadView", () => {
-  it("renders the brand mark and a greeting", () => {
+  it("renders the greeting", () => {
     renderLaunchpad();
 
     // Greeting is one of the four time-based keys; assert by role.

@@ -134,7 +134,7 @@ describe("App", () => {
     });
   });
 
-  it("exposes the flat nav (Home, Play, World, Story, Characters, State, Rules, Assets, Trace, Export, Source, Agent)", async () => {
+  it("exposes the flat nav (Home, Play, World, Story, Characters, State, Rules, Assets, Trace, Export, Source, Settings)", async () => {
     const dataSource = appTestDataSource();
 
     render(
@@ -153,11 +153,11 @@ describe("App", () => {
     expect(getNavButton("Trace")).toBeTruthy();
     expect(getNavButton("Export")).toBeTruthy();
     expect(getNavButton("Source")).toBeTruthy();
-    // Agent is sidebar item #12 — its label is the EN value of
-    // `nav.agent.label`. Assert it is reachable as a nav button by accessible
-    // name so a future regression that drops the Agent section from the flat
-    // nav fails loudly.
-    expect(getNavButton("Agent")).toBeTruthy();
+    // Settings is sidebar item #12 — its label is the EN value of
+    // `nav.settings.label`. Assert it is reachable as a nav button by
+    // accessible name so a future regression that drops the Settings section
+    // from the flat nav fails loudly.
+    expect(getNavButton("Settings")).toBeTruthy();
     // Source is the active section after waitForDefaultSourceCanvas navigates there.
     expect(getNavButton("Source").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Agent rail")).toBeTruthy();
@@ -1023,16 +1023,15 @@ function getNavButton(name: string) {
 }
 
 async function waitForDefaultSourceCanvas() {
-  // Home is the default landing section (full-screen, no StudioShell). Wait
-  // for the project directory chip — its presence means the project loaded —
-  // then navigate to the Source section via ⌘K so the StudioShell + nav tree
-  // are mounted for `getNavButton` lookups.
+  // Home is the default landing section and now renders inside StudioShell
+  // (A1), so the nav tree is already mounted on load. Wait for the project
+  // directory chip — its presence means the project loaded — then navigate
+  // to the Source section directly via the nav tree (no ⌘K palette hop
+  // needed, since the shell is already present).
   expect(
     await screen.findByLabelText(/项目目录|Project directory/i),
   ).toBeTruthy();
-  fireEvent.keyDown(window, { key: "k", metaKey: true });
-  const sourceAction = await screen.findByRole("button", { name: /^Source$/i });
-  fireEvent.click(sourceAction);
+  fireEvent.click(getNavButton("Source"));
 }
 
 function expectExportEvidenceStatus(label: string, status: string) {
@@ -1282,6 +1281,7 @@ function appTestDataSource(
         permission_level: "ask_every_time",
         thinking_level: "medium",
         enabled_skills: [],
+        enabled_mcp_servers: [],
       };
     },
     async setAgentSessionConfig(
@@ -1361,6 +1361,7 @@ function appTestDataSource(
         permission_level: "ask_every_time",
         thinking_level: "medium",
         enabled_skills: [],
+        enabled_mcp_servers: [],
       } as never;
     },
   };

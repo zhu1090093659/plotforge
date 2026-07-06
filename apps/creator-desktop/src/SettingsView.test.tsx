@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentView } from "./AgentView";
+import { SettingsView } from "./SettingsView";
 import { StudioI18nProvider } from "./i18n";
 import type { StudioDataSource } from "./studioDataSource";
 import {
@@ -41,10 +41,11 @@ const defaultConfig: AgentSessionConfig = {
   permission_level: "ask_every_time",
   thinking_level: "medium",
   enabled_skills: [],
+  enabled_mcp_servers: [],
 };
 
 /** A provider already saved in the user registry, used to exercise the table
- * (non-editor) branch of the Providers tab. */
+ * (non-editor) branch of the Providers area inside the Agent tab. */
 const savedProvider: ProviderEntry = {
   id: "openai-prod",
   kind: "openai_compatible",
@@ -100,14 +101,14 @@ const projectPrompt: PromptTemplate = {
 };
 
 /** Build a hermetic `StudioDataSource` whose Agent-surface methods return
- * contract-typed values via the shared mock helpers. Methods AgentView never
+ * contract-typed values via the shared mock helpers. Methods SettingsView never
  * calls are stubbed with `throw` so a future wiring change is loud, not silent. */
-function agentTestDataSource(
+function settingsTestDataSource(
   overrides: Partial<StudioDataSource> = {},
 ): StudioDataSource {
   const base = {
     runtimeName: "Test runtime",
-    // Agent-surface methods — only these are consumed by AgentView.
+    // Agent-surface methods — only these are consumed by SettingsView.
     listProviders: mockListProviders,
     upsertProvider: mockUpsertProvider,
     deleteProvider: mockDeleteProvider,
@@ -123,7 +124,7 @@ function agentTestDataSource(
   return { ...base, ...overrides };
 }
 
-function renderAgentView(
+function renderSettingsView(
   overrides: {
     dataSource?: StudioDataSource;
     agentConfig?: AgentSessionConfig;
@@ -134,10 +135,10 @@ function renderAgentView(
   const onAgentConfigChange =
     overrides.onAgentConfigChange ?? vi.fn();
   const dataSource =
-    overrides.dataSource ?? agentTestDataSource();
+    overrides.dataSource ?? settingsTestDataSource();
   const result = render(
     <StudioI18nProvider>
-      <AgentView
+      <SettingsView
         dataSource={dataSource}
         loadedPath={overrides.loadedPath ?? "/tmp/starter-project"}
         agentConfig={overrides.agentConfig ?? defaultConfig}
@@ -149,35 +150,36 @@ function renderAgentView(
   return { ...result, onAgentConfigChange, dataSource };
 }
 
-describe("AgentView", () => {
-  it("renders the ViewHeader eyebrow (12) and the Agent title", () => {
-    renderAgentView();
+describe("SettingsView", () => {
+  it("renders the ViewHeader eyebrow (12) and the Settings title", () => {
+    renderSettingsView();
 
-    // Eyebrow numeral is the 1-based index of the Agent nav section.
+    // Eyebrow numeral is the 1-based index of the Settings nav section.
     expect(screen.getByText("12")).toBeTruthy();
-    // Title is the EN value of `nav.agent.label`.
-    expect(screen.getByRole("heading", { name: "Agent" })).toBeTruthy();
+    // Title is the EN value of `nav.settings.label`.
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
   });
 
-  it("renders all four tabs (Providers / Model / Prompts / Skills) by accessible name", () => {
-    renderAgentView();
+  it("renders all three tabs (Agent / MCP / Skills) by accessible name", () => {
+    renderSettingsView();
 
     const tablist = screen.getByRole("tablist");
-    expect(within(tablist).getByRole("tab", { name: "Providers" })).toBeTruthy();
-    expect(within(tablist).getByRole("tab", { name: "Model" })).toBeTruthy();
-    expect(within(tablist).getByRole("tab", { name: "Prompts" })).toBeTruthy();
-    expect(within(tablist).getByRole("tab", { name: /^Skills/ })).toBeTruthy();
+    expect(within(tablist).getByRole("tab", { name: "Agent" })).toBeTruthy();
+    expect(within(tablist).getByRole("tab", { name: "MCP" })).toBeTruthy();
+    expect(within(tablist).getByRole("tab", { name: "Skills" })).toBeTruthy();
   });
 
-  it("clicking the Providers tab renders the Add button and the providers table", async () => {
-    const dataSource = agentTestDataSource({
+  it("clicking the Agent tab surfaces the Add provider button and the providers table", async () => {
+    const dataSource = settingsTestDataSource({
       async listProviders() {
         return [savedProvider];
       },
     });
-    renderAgentView({ dataSource });
+    renderSettingsView({ dataSource });
 
-    fireEvent.click(screen.getByRole("tab", { name: "Providers" }));
+    // Agent tab is the default, but click explicitly so the test does not rely
+    // on default-tab behavior.
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
 
     // The Add button (EN value of `agent.provider.add`) is the single
     // affordance for creating a new provider entry.
@@ -196,9 +198,9 @@ describe("AgentView", () => {
   });
 
   it("opens the provider editor from the Add button and exposes only a credential env-var text input (never a secret value field)", async () => {
-    renderAgentView();
+    renderSettingsView();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Providers" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
     fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
 
     // Security rule (AGENTS.md): the UI must never display or collect secret
@@ -234,7 +236,7 @@ describe("AgentView", () => {
 
   it("persists a provider through the editor (saves credential_env_var name only, never the value)", async () => {
     const upsert = vi.fn(async (entry: ProviderEntry) => entry);
-    const dataSource = agentTestDataSource({
+    const dataSource = settingsTestDataSource({
       async upsertProvider(entry) {
         return upsert(entry);
       },
@@ -242,9 +244,9 @@ describe("AgentView", () => {
         return [];
       },
     });
-    renderAgentView({ dataSource });
+    renderSettingsView({ dataSource });
 
-    fireEvent.click(screen.getByRole("tab", { name: "Providers" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
     fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
 
     fireEvent.change(screen.getByLabelText("Provider id"), {
@@ -269,15 +271,101 @@ describe("AgentView", () => {
     ).toBeUndefined();
   });
 
+  it("renders the Prompts user/project scope toggle buttons inside the Agent tab", async () => {
+    const dataSource = settingsTestDataSource({
+      async listUserPromptTemplates() {
+        return [userPrompt];
+      },
+      async listProjectPromptTemplates() {
+        return [projectPrompt];
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+
+    // Scope toggle buttons render by their EN label (`agent.prompt.scope.*`).
+    expect(screen.getByRole("button", { name: "User library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "This project" })).toBeTruthy();
+    // The user-scope list is shown by default; its template renders after the
+    // async prompt-template loads resolve on mount.
+    expect(await screen.findByText("Opening hook prompt")).toBeTruthy();
+    // Switch to project scope.
+    fireEvent.click(screen.getByRole("button", { name: "This project" }));
+    expect(await screen.findByText("Council scene prompt")).toBeTruthy();
+  });
+
+  it("renders the Model selects inside the Agent tab by accessible name", async () => {
+    renderSettingsView();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+
+    // Selects are labelled by the EN values of `home.aria.modelSelect` /
+    // `home.aria.permissionSelect` / `home.aria.thinkingSelect` (the shared
+    // selectors in ./agentConfigSelectors). Scope to <select> so the labels
+    // resolve to the select elements, not the surrounding <label> wrappers.
+    expect(screen.getByLabelText("Model", { selector: "select" })).toBeTruthy();
+    expect(
+      screen.getByLabelText("Permission level", { selector: "select" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText("Thinking level", { selector: "select" }),
+    ).toBeTruthy();
+    // The configured model is the currently selected option.
+    expect(
+      (screen.getByLabelText("Model", { selector: "select" }) as HTMLSelectElement)
+        .value,
+    ).toBe("local-pi");
+    expect(
+      (screen.getByLabelText("Permission level", { selector: "select" }) as HTMLSelectElement)
+        .value,
+    ).toBe("ask_every_time");
+    expect(
+      (screen.getByLabelText("Thinking level", { selector: "select" }) as HTMLSelectElement)
+        .value,
+    ).toBe("medium");
+  });
+
+  it("propagates model changes to onAgentConfigChange", async () => {
+    const onAgentConfigChange = vi.fn();
+    renderSettingsView({ onAgentConfigChange });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+    fireEvent.change(
+      screen.getByLabelText("Permission level", { selector: "select" }),
+      { target: { value: "full_access" } },
+    );
+
+    expect(onAgentConfigChange).toHaveBeenCalledWith(
+      expect.objectContaining({ permission_level: "full_access" }),
+    );
+  });
+
+  it("renders the MCP tab placeholder (Phase A: MCP runtime not yet wired)", async () => {
+    renderSettingsView();
+
+    fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
+
+    // The MCP tab is an honest placeholder — it must NOT claim to manage
+    // servers. The EN value of `settings.mcp.placeholder` is asserted so a
+    // future regression that wires a fake MCP surface without the backend
+    // contract is loud.
+    expect(
+      screen.getByText(
+        "MCP server configuration is coming in a future release.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("renders the Skills tab: shows the refresh button and lists both skills with their origin badges", async () => {
-    const dataSource = agentTestDataSource({
+    const dataSource = settingsTestDataSource({
       async listSkills() {
         return [userSkill, claudeSkill];
       },
     });
-    renderAgentView({ dataSource });
+    renderSettingsView({ dataSource });
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Skills/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
 
     // Refresh is the canonical action for re-scanning external roots.
     expect(
@@ -288,8 +376,8 @@ describe("AgentView", () => {
     expect(await screen.findByText("Council Stylist")).toBeTruthy();
     expect(await screen.findByText("Beat Architect")).toBeTruthy();
     // Origin badges render by their EN label (`agent.skill.origin.*`); the
-    // SkillsTab wraps the label in "[…]" so assert the bracketed badge text
-    // exactly (avoids matching "PlotForge" inside the skill description).
+    // SkillsSection wraps the label in "[…]" so assert the bracketed badge
+    // text exactly (avoids matching "PlotForge" inside the skill description).
     expect(await screen.findByText("[PlotForge]")).toBeTruthy();
     expect(await screen.findByText("[Claude Code]")).toBeTruthy();
   });
@@ -306,7 +394,7 @@ describe("AgentView", () => {
       references: [],
       assets: [],
     }));
-    const dataSource = agentTestDataSource({
+    const dataSource = settingsTestDataSource({
       async listSkills() {
         return [claudeSkill];
       },
@@ -314,9 +402,9 @@ describe("AgentView", () => {
         return importSkill(id);
       },
     });
-    renderAgentView({ dataSource });
+    renderSettingsView({ dataSource });
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Skills/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
 
     // Wait for the skill row to mount, then look up the Import button.
     await screen.findByText("Beat Architect");
@@ -345,7 +433,7 @@ describe("AgentView", () => {
       references: [],
       assets: [],
     }));
-    const dataSource = agentTestDataSource({
+    const dataSource = settingsTestDataSource({
       async listSkills() {
         return [userSkill];
       },
@@ -353,9 +441,9 @@ describe("AgentView", () => {
         return importSkill(id);
       },
     });
-    renderAgentView({ dataSource });
+    renderSettingsView({ dataSource });
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Skills/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
 
     // Wait for the user-library skill row to mount before asserting on the
     // Import affordance, so a slow load does not produce a false pass.
@@ -364,10 +452,7 @@ describe("AgentView", () => {
     // Per finding L2: a skill whose origin is `plot_forge_user` is already in
     // the user library, so the Import affordance must not be a clickable
     // enabled button. This test pins the FIXED behavior so a regression that
-    // re-enables Import for user-library skills fails loudly. NOTE: as of this
-    // commit the L2 UI fix is being applied in parallel; if AgentView still
-    // renders an enabled Import button here, this guard will fail until the
-    // fix lands — that is intentional.
+    // re-enables Import for user-library skills fails loudly.
     const importButtons = screen.queryAllByRole("button", {
       name: "Import to PlotForge",
     });
@@ -382,74 +467,6 @@ describe("AgentView", () => {
     expect(importSkill).not.toHaveBeenCalled();
   });
 
-  it("renders the Prompts tab user/project scope toggle buttons", async () => {
-    const dataSource = agentTestDataSource({
-      async listUserPromptTemplates() {
-        return [userPrompt];
-      },
-      async listProjectPromptTemplates() {
-        return [projectPrompt];
-      },
-    });
-    renderAgentView({ dataSource });
-
-    fireEvent.click(screen.getByRole("tab", { name: "Prompts" }));
-
-    // Scope toggle buttons render by their EN label (`agent.prompt.scope.*`).
-    expect(screen.getByRole("button", { name: "User library" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "This project" })).toBeTruthy();
-    // The user-scope list is shown by default; its template renders after the
-    // async prompt-template loads resolve on mount.
-    expect(await screen.findByText("Opening hook prompt")).toBeTruthy();
-    // Switch to project scope.
-    fireEvent.click(screen.getByRole("button", { name: "This project" }));
-    expect(await screen.findByText("Council scene prompt")).toBeTruthy();
-  });
-
-  it("renders the Model tab model/permission/thinking selects by accessible name", async () => {
-    renderAgentView();
-
-    fireEvent.click(screen.getByRole("tab", { name: "Model" }));
-
-    // Selects are labelled by the EN values of `home.modelLabel` /
-    // `home.permissionLabel` / `home.thinkingLabel`. Scope to <select> so the
-    // Model *tab* button (also accessible-named "Model") is not ambiguous.
-    expect(screen.getByLabelText("Model", { selector: "select" })).toBeTruthy();
-    expect(
-      screen.getByLabelText("Permission", { selector: "select" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByLabelText("Thinking", { selector: "select" }),
-    ).toBeTruthy();
-    // The configured model is the currently selected option.
-    expect(
-      (screen.getByLabelText("Model", { selector: "select" }) as HTMLSelectElement)
-        .value,
-    ).toBe("local-pi");
-    expect(
-      (screen.getByLabelText("Permission", { selector: "select" }) as HTMLSelectElement)
-        .value,
-    ).toBe("ask_every_time");
-    expect(
-      (screen.getByLabelText("Thinking", { selector: "select" }) as HTMLSelectElement)
-        .value,
-    ).toBe("medium");
-  });
-
-  it("propagates model changes to onAgentConfigChange", async () => {
-    const onAgentConfigChange = vi.fn();
-    renderAgentView({ onAgentConfigChange });
-
-    fireEvent.click(screen.getByRole("tab", { name: "Model" }));
-    fireEvent.change(screen.getByLabelText("Permission", { selector: "select" }), {
-      target: { value: "full_access" },
-    });
-
-    expect(onAgentConfigChange).toHaveBeenCalledWith(
-      expect.objectContaining({ permission_level: "full_access" }),
-    );
-  });
-
   it("toggles a skill for the project through enableSkillForProject", async () => {
     const enableSkillForProject = vi.fn(
       async (
@@ -461,7 +478,7 @@ describe("AgentView", () => {
         enabled_skills: [userSkill.id],
       }),
     );
-    const dataSource = agentTestDataSource({
+    const dataSource = settingsTestDataSource({
       async listSkills() {
         return [userSkill];
       },
@@ -470,9 +487,9 @@ describe("AgentView", () => {
       },
     });
     const onAgentConfigChange = vi.fn();
-    renderAgentView({ dataSource, onAgentConfigChange });
+    renderSettingsView({ dataSource, onAgentConfigChange });
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Skills/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
     // Wait for the skill row to mount before interacting with the enable
     // checkbox (the list loads async via `listSkills` on mount).
     await screen.findByText("Council Stylist");

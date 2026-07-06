@@ -235,6 +235,11 @@ describe("creator desktop i18n", () => {
       "shell",
       "envVar",
       "code",
+      // Settings: MCP (Model Context Protocol) is a proper protocol name,
+      // kept verbatim in zh alongside the translated "server"/"服务".
+      "MCP",
+      "mcp",
+      "server",
     ]);
     const leaks: Array<[string, string]> = [];
     for (const [key, value] of Object.entries(zhDictionary)) {

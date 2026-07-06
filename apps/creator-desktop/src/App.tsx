@@ -1,7 +1,6 @@
 import { Command, Loader2, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentChatRail } from "./AgentChatRail";
-import { AgentView } from "./AgentView";
 import { AssetMaintenanceView } from "./AssetMaintenanceView";
 import { LaunchpadView } from "./LaunchpadView";
 import { CharactersView } from "./CharactersView";
@@ -9,6 +8,7 @@ import { StateView } from "./StateView";
 import { PlayView } from "./PlayView";
 import { ExportView } from "./ExportView";
 import { RulesView } from "./RulesView";
+import { SettingsView } from "./SettingsView";
 import { SourceView } from "./SourceView";
 import { StudioCommandPalette, type PaletteAction } from "./StudioCommandPalette";
 import { TraceDebugView } from "./TraceDebugView";
@@ -153,7 +153,35 @@ function AppContent({
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
-        return null; // Rendered full-screen outside StudioShell (see below).
+        // Home now renders inside StudioShell (A1): the sidebar, agent rail,
+        // command-palette entry, and collapse toggles are all available on
+        // the home page — previously home was a full-screen branch outside
+        // the shell, which made the sidebar toggle unreachable from home.
+        return (
+          <LaunchpadView
+            loadedPath={loadedPath}
+            projectDirName={deriveProjectDirName(loadedPath)}
+            currentBranch={gitInfo.currentBranch}
+            branches={gitInfo.branches}
+            switchingBranch={gitInfo.switchingBranch}
+            switchError={gitInfo.switchError}
+            onSwitchBranch={(branch) => void gitInfo.switchBranch(branch)}
+            availableModels={agentConfig.availableModels}
+            agentConfig={agentConfig.agentConfig}
+            onAgentConfigChange={agentConfig.setAgentConfig}
+            configSaveError={agentConfig.saveError}
+            input={agent.input}
+            onInputChange={agent.setInput}
+            onSubmit={async () => {
+              const result = await agent.submit();
+              if (result.succeeded) {
+                setActiveSection("trace");
+              }
+            }}
+            running={agent.running}
+            canSubmit={agent.canSubmit}
+          />
+        );
       case "play":
         return (
           <PlayView
@@ -342,9 +370,9 @@ function AppContent({
             onSaveSelectedFile={() => void saveSelectedFile()}
           />
         );
-      case "agent":
+      case "settings":
         return (
-          <AgentView
+          <SettingsView
             dataSource={dataSource}
             loadedPath={loadedPath}
             agentConfig={agentConfig.agentConfig}
@@ -460,37 +488,6 @@ function AppContent({
 
   return (
     <>
-    {activeSection === "home" ? (
-      <div className="relative flex min-h-100dvh flex-col">
-        {/* Minimal home chrome: language toggle in the corner */}
-        <div className="absolute right-4 top-4 z-10">
-          <LanguageToggle />
-        </div>
-        <LaunchpadView
-          loadedPath={loadedPath}
-          projectDirName={deriveProjectDirName(loadedPath)}
-          currentBranch={gitInfo.currentBranch}
-          branches={gitInfo.branches}
-          switchingBranch={gitInfo.switchingBranch}
-          switchError={gitInfo.switchError}
-          onSwitchBranch={(branch) => void gitInfo.switchBranch(branch)}
-          availableModels={agentConfig.availableModels}
-          agentConfig={agentConfig.agentConfig}
-          onAgentConfigChange={agentConfig.setAgentConfig}
-          configSaveError={agentConfig.saveError}
-          input={agent.input}
-          onInputChange={agent.setInput}
-          onSubmit={async () => {
-            const result = await agent.submit();
-            if (result.succeeded) {
-              setActiveSection("trace");
-            }
-          }}
-          running={agent.running}
-          canSubmit={agent.canSubmit}
-        />
-      </div>
-    ) : (
     <StudioShell
       projectPath={loadedPath}
       projectLoading={loading}
@@ -536,7 +533,6 @@ function AppContent({
     >
       {renderActiveSection()}
     </StudioShell>
-    )}
     <StudioCommandPalette
       open={paletteOpen}
       onClose={() => setPaletteOpen(false)}

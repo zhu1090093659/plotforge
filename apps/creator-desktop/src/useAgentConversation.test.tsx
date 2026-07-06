@@ -18,6 +18,7 @@ const defaultAgentConfig: AgentSessionConfig = {
   permission_level: "ask_every_time",
   thinking_level: "medium",
   enabled_skills: [],
+  enabled_mcp_servers: [],
 };
 
 /** Build a `PiAgentApplyResult` from a demo `PlayOnceReport` so the hook can

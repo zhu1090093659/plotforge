@@ -475,6 +475,7 @@ function workspaceTestDataSource(
         permission_level: "ask_every_time",
         thinking_level: "medium",
         enabled_skills: [],
+        enabled_mcp_servers: [],
       };
     },
     async setAgentSessionConfig(
@@ -552,6 +553,7 @@ function workspaceTestDataSource(
         permission_level: "ask_every_time",
         thinking_level: "medium",
         enabled_skills: [],
+        enabled_mcp_servers: [],
       } as never;
     },
   };

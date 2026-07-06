@@ -1,22 +1,22 @@
 import {
-  Brain,
   ChevronDown,
-  Cpu,
   Folder,
   GitBranch,
   Loader2,
   Plus,
   Send,
-  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AgentSessionConfig,
   GitBranchInfo,
   ModelOption,
-  PermissionLevel,
-  ThinkingLevel,
 } from "../../../contracts/plotforge";
+import {
+  ModelSelect,
+  PermissionSelect,
+  ThinkingSelect,
+} from "./agentConfigSelectors";
 import { useStudioI18n } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -93,13 +93,13 @@ export function LaunchpadView({
   }
 
   return (
-    <div className="relative flex min-h-100dvh flex-col items-center justify-center bg-parchment px-4 py-10">
-      <div className="paper-grain pointer-events-none absolute inset-0 opacity-60" aria-hidden />
-
-      <div className="relative grid w-full max-w-3xl place-items-center gap-8">
-        {/* Brand mark */}
-        <PlotForgeBrandMark />
-
+    // Home renders inside StudioShell (A1): the shell already paints the
+    // `paper-grain` background and the sidebar brand box, so this surface no
+    // longer carries its own full-screen wrapper, grain layer, or brand
+    // mark. We center the conversation card within the shell's main area
+    // instead of the viewport.
+    <div className="grid min-h-[60dvh] place-items-center px-2 py-10">
+      <div className="grid w-full max-w-3xl place-items-center gap-8">
         {/* Greeting — a time-of-day display line with a quiet copper eyebrow
             above it. The eyebrow anchors the greeting to the brand voice
             ("Studio · Conversation entry") without restating the greeting. */}
@@ -236,30 +236,6 @@ function pickGreetingKey(date: Date): string {
 }
 
 // ---------------------------------------------------------------------------
-// Brand mark — the PlotForge "PF" monogram.
-//
-// Matches the sidebar's `t("brand.logo")` seal (a violet-ink box with a
-// copper hairline under the glyph) but scaled up for the home display so it
-// reads as a wax-seal manuscript mark, not a generic app icon. We keep a
-// Fraunces black-weight "PF" rather than a lucide glyph so the home mark is
-// unmistakably the PlotForge brand, not interchangeable sparkle decoration.
-// ---------------------------------------------------------------------------
-
-function PlotForgeBrandMark() {
-  const { t } = useStudioI18n();
-  return (
-    <div
-      aria-hidden
-      className="grid h-16 w-16 place-items-center rounded-2xl bg-ink text-canvas-50 shadow-[0_18px_48px_rgba(90,70,130,0.18),inset_0_-1px_0_rgba(138,100,80,0.4)]"
-    >
-      <span className="font-display text-2xl font-black tracking-display-tight">
-        {t("brand.logo")}
-      </span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Project directory chip
 // ---------------------------------------------------------------------------
 
@@ -381,105 +357,8 @@ function GitBranchChip({
 }
 
 // ---------------------------------------------------------------------------
-// Selectors: model / permission / thinking
+// Selectors: model / permission / thinking — moved to ./agentConfigSelectors
+// (shared with AgentConfigSection so the same AgentSessionConfig renders with
+// one UI in both the home toolbar and the Settings → Agent tab).
 // ---------------------------------------------------------------------------
 
-function ModelSelect({
-  models,
-  value,
-  onChange,
-}: {
-  models: ModelOption[];
-  value: string;
-  onChange(value: string): void;
-}) {
-  const { t } = useStudioI18n();
-  return (
-    <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-canvas-200/70 bg-canvas-50 pl-2.5 pr-1.5 text-sm text-ink/80">
-      <Cpu aria-hidden size={15} className="text-copper-500" />
-      <span className="sr-only">{t("home.aria.modelSelect")}</span>
-      <select
-        aria-label={t("home.aria.modelSelect")}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="cursor-pointer bg-transparent text-sm font-medium outline-none"
-      >
-        {models.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown aria-hidden size={14} className="text-ink/45" />
-    </label>
-  );
-}
-
-function PermissionSelect({
-  value,
-  onChange,
-}: {
-  value: PermissionLevel;
-  onChange(value: PermissionLevel): void;
-}) {
-  const { t } = useStudioI18n();
-  const labels: Record<PermissionLevel, string> = {
-    full_access: t("home.permissionFull"),
-    ask_every_time: t("home.permissionAsk"),
-    read_only: t("home.permissionReadOnly"),
-  };
-  return (
-    <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-canvas-200/70 bg-canvas-50 pl-2.5 pr-1.5 text-sm text-ink/80">
-      <ShieldCheck aria-hidden size={15} className="text-copper-500" />
-      <span className="sr-only">{t("home.aria.permissionSelect")}</span>
-      <select
-        aria-label={t("home.aria.permissionSelect")}
-        value={value}
-        onChange={(event) => onChange(event.target.value as PermissionLevel)}
-        className="cursor-pointer bg-transparent text-sm font-medium outline-none"
-      >
-        {(Object.keys(labels) as PermissionLevel[]).map((level) => (
-          <option key={level} value={level}>
-            {labels[level]}
-          </option>
-        ))}
-      </select>
-      <ChevronDown aria-hidden size={14} className="text-ink/45" />
-    </label>
-  );
-}
-
-function ThinkingSelect({
-  value,
-  onChange,
-}: {
-  value: ThinkingLevel;
-  onChange(value: ThinkingLevel): void;
-}) {
-  const { t } = useStudioI18n();
-  const labels: Record<ThinkingLevel, string> = {
-    high: t("home.thinkingHigh"),
-    medium: t("home.thinkingMedium"),
-    low: t("home.thinkingLow"),
-    off: t("home.thinkingOff"),
-  };
-  return (
-    <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-canvas-200/70 bg-canvas-50 pl-2.5 pr-1.5 text-sm text-ink/80">
-      <Brain aria-hidden size={15} className="text-copper-500" />
-      <span className="sr-only">{t("home.aria.thinkingSelect")}</span>
-      <select
-        aria-label={t("home.aria.thinkingSelect")}
-        value={value}
-        onChange={(event) => onChange(event.target.value as ThinkingLevel)}
-        className="cursor-pointer bg-transparent text-sm font-medium outline-none"
-      >
-        {(Object.keys(labels) as ThinkingLevel[]).map((level) => (
-          <option key={level} value={level}>
-            {labels[level]}
-          </option>
-        ))}
-      </select>
-      <ChevronDown aria-hidden size={14} className="text-ink/45" />
-    </label>
-  );
-}
