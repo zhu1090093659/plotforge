@@ -1,5 +1,6 @@
 mod cli_output;
 
+use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::{fs, io, path::PathBuf};
 
@@ -13,8 +14,9 @@ use dialoguer::Input;
 use plotforge_export::{export_desktop_runtime_draft, export_static_web, export_static_web_zip};
 use plotforge_runtime::{RuntimeSession, summarize_delta};
 use plotforge_schema::{
-    DESKTOP_RUNTIME_DRAFT_FILE, ProjectCreationRequest, ProjectTemplateId,
-    SteamSubmissionKitRequest, WorkshopPublishDraft, supported_export_profiles,
+    DESKTOP_RUNTIME_DRAFT_FILE, McpServerEntry, McpTransportConfig, McpTransportKind,
+    ProjectCreationRequest, ProjectTemplateId, SteamSubmissionKitRequest, WorkshopPublishDraft,
+    supported_export_profiles,
 };
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot, read_runtime_snapshot,
@@ -49,6 +51,10 @@ enum Command {
     Export(ExportCommand),
     Workshop(WorkshopCommand),
     Studio(StudioInvokeArgs),
+    /// Manage MCP (Model Context Protocol) servers and tools. Thin
+    /// orchestration only — delegates to `plotforge_studio` (registry IO +
+    /// redaction live there), never reimplements business logic.
+    Mcp(McpCommand),
 }
 
 #[derive(Debug, Args)]
@@ -277,6 +283,86 @@ struct StudioInvokeArgs {
     command: String,
 }
 
+// --- MCP subcommand (Phase 5, P5.3) ---
+// Thin CLI orchestration over the 7 MCP Studio commands. The CLI only
+// collects parameters; validation + redaction stay in `plotforge_studio`
+// (AGENTS.md:65). Interactive wizards use `dialoguer` and guard stdin TTY;
+// `--batch` enables full flag-driven input for scripts/tests.
+
+#[derive(Debug, Args)]
+struct McpCommand {
+    #[command(subcommand)]
+    command: McpSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum McpSub {
+    /// List registered MCP servers.
+    List,
+    /// Add or update a MCP server entry (interactive wizard by default; `--batch` for scripts).
+    Add(McpAddArgs),
+    /// Remove a MCP server entry by id.
+    Remove(McpRemoveArgs),
+    /// Probe a MCP server (spawn/connect → initialize → tools/list).
+    Test(McpTestArgs),
+    /// List tools exposed by a MCP server.
+    Tools(McpToolsArgs),
+    /// Invoke a MCP tool (batch only; takes a JSON arguments string).
+    Invoke(McpInvokeArgs),
+}
+
+#[derive(Debug, Args)]
+struct McpAddArgs {
+    /// Skip the interactive wizard; all fields must be supplied via flags.
+    #[arg(long)]
+    batch: bool,
+    #[arg(long)]
+    id: Option<String>,
+    /// Transport kind: stdio, sse, or http.
+    #[arg(long)]
+    kind: Option<String>,
+    #[arg(long)]
+    label: Option<String>,
+    /// stdio transport: the command to spawn (e.g. `mcp-server-fs`).
+    #[arg(long)]
+    command: Option<String>,
+    /// stdio transport: args for the spawned command (repeatable).
+    #[arg(long = "arg")]
+    args: Vec<String>,
+    /// SSE/HTTP transport: the endpoint URL.
+    #[arg(long)]
+    endpoint_url: Option<String>,
+    /// Environment variable name holding the credential (never the value).
+    #[arg(long)]
+    credential_env_var: Option<String>,
+    #[arg(long, default_value = "true")]
+    enabled: bool,
+}
+
+#[derive(Debug, Args)]
+struct McpRemoveArgs {
+    id: String,
+}
+
+#[derive(Debug, Args)]
+struct McpTestArgs {
+    id: String,
+}
+
+#[derive(Debug, Args)]
+struct McpToolsArgs {
+    id: String,
+}
+
+#[derive(Debug, Args)]
+struct McpInvokeArgs {
+    id: String,
+    tool: String,
+    /// JSON arguments matching the tool's input_schema.
+    #[arg(long)]
+    arguments: String,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let language = resolve_output_language(cli.language);
@@ -288,6 +374,7 @@ fn main() -> Result<()> {
         Command::Export(command) => handle_export(command, language),
         Command::Workshop(command) => handle_workshop(command, language),
         Command::Studio(args) => handle_studio(args),
+        Command::Mcp(command) => handle_mcp(command, language),
     }
 }
 
@@ -570,30 +657,34 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
                 enabled,
             ))?)
         }
-        "list_mcp_servers" => print_studio_json(studio_result(plotforge_studio::list_mcp_servers())?),
+        "list_mcp_servers" => {
+            print_studio_json(studio_result(plotforge_studio::list_mcp_servers())?)
+        }
         "upsert_mcp_server" => print_studio_json(studio_result(
             plotforge_studio::upsert_mcp_server(studio_arg(&payload, "entry")?),
         )?),
         "delete_mcp_server" => print_studio_json(studio_result(
             plotforge_studio::delete_mcp_server(studio_arg::<String>(&payload, "id")?),
         )?),
-        "test_mcp_server" => print_studio_json(studio_result(
-            plotforge_studio::test_mcp_server(studio_arg::<String>(&payload, "id")?),
-        )?),
-        "list_mcp_tools" => print_studio_json(studio_result(
-            plotforge_studio::list_mcp_tools(studio_arg::<String>(&payload, "server_id")?),
-        )?),
-        "invoke_mcp_tool" => print_studio_json(studio_result(
-            plotforge_studio::invoke_mcp_tool(studio_arg(&payload, "request")?),
-        )?),
+        "test_mcp_server" => print_studio_json(studio_result(plotforge_studio::test_mcp_server(
+            studio_arg::<String>(&payload, "id")?,
+        ))?),
+        "list_mcp_tools" => print_studio_json(studio_result(plotforge_studio::list_mcp_tools(
+            studio_arg::<String>(&payload, "server_id")?,
+        ))?),
+        "invoke_mcp_tool" => print_studio_json(studio_result(plotforge_studio::invoke_mcp_tool(
+            studio_arg(&payload, "request")?,
+        ))?),
         "enable_mcp_server_for_project" => {
             let server_id: String = studio_arg(&payload, "server_id")?;
             let enabled: bool = studio_arg(&payload, "enabled")?;
-            print_studio_json(studio_result(plotforge_studio::enable_mcp_server_for_project(
-                studio_arg::<PathBuf>(&payload, "path")?,
-                server_id,
-                enabled,
-            ))?)
+            print_studio_json(studio_result(
+                plotforge_studio::enable_mcp_server_for_project(
+                    studio_arg::<PathBuf>(&payload, "path")?,
+                    server_id,
+                    enabled,
+                ),
+            )?)
         }
         other => anyhow::bail!("unknown studio command `{other}`"),
     }
@@ -609,6 +700,226 @@ fn studio_arg<T: DeserializeOwned>(payload: &Value, name: &str) -> Result<T> {
 
 fn studio_result<T>(result: plotforge_studio::StudioCommandResult<T>) -> Result<T> {
     result.map_err(|source| anyhow::anyhow!("{}: {}", source.code, source.message))
+}
+
+/// CLI orchestration for MCP server + tool management. Thin wrapper that
+/// delegates to `plotforge_studio` (registry IO + redaction live there); the
+/// CLI only collects parameters and prints results (AGENTS.md:65). Interactive
+/// wizards guard stdin TTY and bail to `--batch` when non-TTY.
+fn handle_mcp(command: McpCommand, language: OutputLanguage) -> Result<()> {
+    match command.command {
+        McpSub::List => {
+            let servers = studio_result(plotforge_studio::list_mcp_servers())?;
+            match language {
+                OutputLanguage::En => println!("mcp servers: {}", servers.len()),
+                OutputLanguage::Zh => println!("MCP 服务器：{}", servers.len()),
+            }
+            for entry in &servers {
+                println!(
+                    "  {} ({}, {})",
+                    entry.id,
+                    entry.label,
+                    transport_kind_label(entry.kind)
+                );
+            }
+        }
+        McpSub::Add(args) => {
+            let entry = if args.batch {
+                build_mcp_entry_from_flags(args)?
+            } else {
+                if !io::stdin().is_terminal() {
+                    anyhow::bail!(
+                        "mcp add interactive wizard requires a TTY; pass --batch with full arguments"
+                    );
+                }
+                build_mcp_entry_wizard(language)?
+            };
+            let saved = studio_result(plotforge_studio::upsert_mcp_server(entry.clone()))
+                .with_context(|| format!("upsert MCP server {}", entry.id))?;
+            match language {
+                OutputLanguage::En => println!("added mcp server {} ({})", saved.id, saved.label),
+                OutputLanguage::Zh => println!("已添加 MCP 服务器 {}（{}）", saved.id, saved.label),
+            }
+        }
+        McpSub::Remove(args) => {
+            let removed = studio_result(plotforge_studio::delete_mcp_server(args.id.clone()))
+                .with_context(|| format!("delete MCP server {}", args.id))?;
+            match language {
+                OutputLanguage::En => {
+                    println!("removed mcp server {} ({})", removed.id, removed.label)
+                }
+                OutputLanguage::Zh => {
+                    println!("已移除 MCP 服务器 {}（{}）", removed.id, removed.label)
+                }
+            }
+        }
+        McpSub::Test(args) => {
+            let result = studio_result(plotforge_studio::test_mcp_server(args.id.clone()))
+                .with_context(|| format!("test MCP server {}", args.id))?;
+            match language {
+                OutputLanguage::En => println!(
+                    "mcp test {}: ok={}, tools={}, {}",
+                    args.id, result.ok, result.tools_count, result.message
+                ),
+                OutputLanguage::Zh => println!(
+                    "MCP 测试 {}：ok={}，工具={}，{}",
+                    args.id, result.ok, result.tools_count, result.message
+                ),
+            }
+        }
+        McpSub::Tools(args) => {
+            let tools = studio_result(plotforge_studio::list_mcp_tools(args.id.clone()))
+                .with_context(|| format!("list MCP tools for {}", args.id))?;
+            match language {
+                OutputLanguage::En => println!("mcp tools ({}): {}", args.id, tools.len()),
+                OutputLanguage::Zh => println!("MCP 工具（{}）：{}", args.id, tools.len()),
+            }
+            for tool in &tools {
+                println!("  {} — {}", tool.name, tool.description);
+            }
+        }
+        McpSub::Invoke(args) => {
+            let arguments: Value = serde_json::from_str(&args.arguments)
+                .with_context(|| format!("parse --arguments JSON for tool {}", args.tool))?;
+            let request = plotforge_schema::McpToolCallRequest {
+                server_id: args.id.clone(),
+                tool_name: args.tool.clone(),
+                arguments,
+            };
+            let result = studio_result(plotforge_studio::invoke_mcp_tool(request))
+                .with_context(|| format!("invoke MCP tool {} on {}", args.tool, args.id))?;
+            // Print the redaction-safe result as JSON (contract-typed).
+            println!("{}", serde_json::to_string(&result)?);
+        }
+    }
+    Ok(())
+}
+
+/// Build a `McpServerEntry` from `--batch` flags. All required fields must be
+/// supplied; missing fields surface explicit errors (no silent defaults).
+fn build_mcp_entry_from_flags(args: McpAddArgs) -> Result<McpServerEntry> {
+    let id = args
+        .id
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --id"))?;
+    let kind = args
+        .kind
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --kind (stdio|sse|http)"))?;
+    let kind = match kind {
+        "stdio" => McpTransportKind::Stdio,
+        "sse" => McpTransportKind::Sse,
+        "http" => McpTransportKind::Http,
+        other => anyhow::bail!("--kind must be stdio|sse|http, got `{other}`"),
+    };
+    let label = args
+        .label
+        .ok_or_else(|| anyhow::anyhow!("--batch requires --label"))?;
+    let transport_config = match kind {
+        McpTransportKind::Stdio => {
+            let command = args
+                .command
+                .ok_or_else(|| anyhow::anyhow!("--kind stdio requires --command"))?;
+            McpTransportConfig::Stdio {
+                command,
+                args: args.args,
+                env: BTreeMap::new(),
+            }
+        }
+        McpTransportKind::Sse => {
+            let endpoint_url = args
+                .endpoint_url
+                .ok_or_else(|| anyhow::anyhow!("--kind sse requires --endpoint-url"))?;
+            McpTransportConfig::Sse { endpoint_url }
+        }
+        McpTransportKind::Http => {
+            let endpoint_url = args
+                .endpoint_url
+                .ok_or_else(|| anyhow::anyhow!("--kind http requires --endpoint-url"))?;
+            McpTransportConfig::Http { endpoint_url }
+        }
+    };
+    Ok(McpServerEntry {
+        id,
+        kind,
+        label,
+        transport_config,
+        credential_env_var: args.credential_env_var.unwrap_or_default(),
+        enabled: args.enabled,
+    })
+}
+
+/// Interactive wizard for `mcp add`. Steps through id, kind, label, transport
+/// fields, and credential_env_var name (never the value) via `dialoguer`.
+fn build_mcp_entry_wizard(language: OutputLanguage) -> Result<McpServerEntry> {
+    use dialoguer::Input;
+    let id: String = Input::new()
+        .with_prompt(prompt_label("MCP server id", "MCP 服务器 id", language))
+        .interact_text()?;
+    let kind_str: String = Input::new()
+        .with_prompt(prompt_label(
+            "transport kind (stdio|sse|http)",
+            "传输类型 (stdio|sse|http)",
+            language,
+        ))
+        .default("stdio".into())
+        .interact_text()?;
+    let kind = match kind_str.trim() {
+        "stdio" => McpTransportKind::Stdio,
+        "sse" => McpTransportKind::Sse,
+        "http" => McpTransportKind::Http,
+        other => anyhow::bail!("kind must be stdio|sse|http, got `{other}`"),
+    };
+    let label: String = Input::new()
+        .with_prompt(prompt_label("label", "标签", language))
+        .interact_text()?;
+    let transport_config = match kind {
+        McpTransportKind::Stdio => {
+            let command: String = Input::new()
+                .with_prompt(prompt_label("command to spawn", "要启动的命令", language))
+                .interact_text()?;
+            McpTransportConfig::Stdio {
+                command,
+                args: Vec::new(),
+                env: BTreeMap::new(),
+            }
+        }
+        McpTransportKind::Sse => {
+            let endpoint_url: String = Input::new()
+                .with_prompt(prompt_label("SSE endpoint URL", "SSE 端点 URL", language))
+                .interact_text()?;
+            McpTransportConfig::Sse { endpoint_url }
+        }
+        McpTransportKind::Http => {
+            let endpoint_url: String = Input::new()
+                .with_prompt(prompt_label("HTTP endpoint URL", "HTTP 端点 URL", language))
+                .interact_text()?;
+            McpTransportConfig::Http { endpoint_url }
+        }
+    };
+    let credential_env_var: String = Input::new()
+        .with_prompt(prompt_label(
+            "credential env var name (e.g. MCP_TOKEN; leave empty for none)",
+            "凭据环境变量名（例如 MCP_TOKEN；留空表示无）",
+            language,
+        ))
+        .allow_empty(true)
+        .interact_text()?;
+    Ok(McpServerEntry {
+        id,
+        kind,
+        label,
+        transport_config,
+        credential_env_var,
+        enabled: true,
+    })
+}
+
+fn transport_kind_label(kind: plotforge_schema::McpTransportKind) -> &'static str {
+    match kind {
+        plotforge_schema::McpTransportKind::Stdio => "stdio",
+        plotforge_schema::McpTransportKind::Sse => "sse",
+        plotforge_schema::McpTransportKind::Http => "http",
+    }
 }
 
 fn handle_new(command: NewCommand, language: OutputLanguage) -> Result<()> {

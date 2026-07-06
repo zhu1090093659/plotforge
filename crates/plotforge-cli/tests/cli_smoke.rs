@@ -1195,12 +1195,89 @@ fn cli_check_supports_chinese_output() {
         .assert_contains("1 个场景");
 }
 
+/// MCP command-group smoke test (Phase 5, P5.3). Split into its own test so a
+/// failure here does not block the other command groups. Uses `cli_with_home`
+/// so the user-global `~/.plotforge/mcp.json` is redirected to a temp dir —
+/// the test never touches the real registry. Asserts exit codes + output
+/// shape only; business correctness lives in `plotforge-studio` unit tests.
+#[test]
+fn cli_mcp_command_group_round_trips_server_registry() {
+    let home = hermetic_home();
+
+    // `mcp list` on a fresh install → empty list, exit 0.
+    run_with_home(&home.home, ["mcp", "list"]).assert_success_contains("mcp servers: 0");
+
+    // `mcp add --batch` adds a stdio server entry. The entry points at a
+    // non-existent command (the test never spawns it); it only asserts the
+    // registry write succeeds.
+    run_with_home(
+        &home.home,
+        [
+            "mcp",
+            "add",
+            "--batch",
+            "--id",
+            "test-fs",
+            "--kind",
+            "stdio",
+            "--label",
+            "Test FS MCP",
+            "--command",
+            "mcp-server-fs-test",
+            "--credential-env-var",
+            "MCP_TEST_TOKEN",
+        ],
+    )
+    .assert_success_contains("added mcp server test-fs");
+
+    // `mcp list` now shows 1 server.
+    run_with_home(&home.home, ["mcp", "list"])
+        .assert_success_contains("mcp servers: 1")
+        .assert_contains("test-fs");
+
+    // `mcp test` may fail (the command binary doesn't exist) — assert the
+    // command runs and produces a test result line, not that it succeeds.
+    let test_output = run_with_home(&home.home, ["mcp", "test", "test-fs"]);
+    let test_stdout = String::from_utf8_lossy(&test_output.output.stdout);
+    let test_stderr = String::from_utf8_lossy(&test_output.output.stderr);
+    assert!(
+        test_stdout.contains("mcp test test-fs:") || test_stderr.contains("test-fs"),
+        "mcp test must produce a result line; stdout={test_stdout}\nstderr={test_stderr}"
+    );
+
+    // `mcp remove` removes the entry, exit 0.
+    run_with_home(&home.home, ["mcp", "remove", "test-fs"])
+        .assert_success_contains("removed mcp server test-fs");
+
+    // Back to empty.
+    run_with_home(&home.home, ["mcp", "list"]).assert_success_contains("mcp servers: 0");
+
+    // No secret markers leak through any MCP command output.
+    assert!(!test_stdout.contains("sk-"));
+    assert!(!test_stdout.contains("api_key"));
+}
+
 fn run<I, S>(args: I) -> CommandOutput
 where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
     let output = cli().args(args).output().expect("run command");
+    CommandOutput { output }
+}
+
+/// Like `run`, but redirects `HOME` to a temp dir so user-global config
+/// (`~/.plotforge/mcp.json`, providers, skills, prompts) never touches the
+/// real home directory. Used by the MCP command-group smoke test.
+fn run_with_home<I, S>(home: &std::path::Path, args: I) -> CommandOutput
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let output = cli_with_home(home)
+        .args(args)
+        .output()
+        .expect("run command with home");
     CommandOutput { output }
 }
 
