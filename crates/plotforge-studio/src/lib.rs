@@ -279,7 +279,6 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                 message: source.to_string(),
             })?
         };
-    let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
 
     // Build the redaction-safe run request the pi-Agent expects. The prompt
     // summary carries the player input (local-only); the hash anchors the
@@ -293,7 +292,20 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             plotforge_agent::stable_sha256_hash(&request.player_input)
         ),
     };
-    let (run_result, envelope) =
+
+    // Branch on MCP enablement. When `AgentSessionConfig.enabled_mcp_servers`
+    // is non-empty, drive the multi-turn tool-call loop via
+    // `complete_with_mcp_tools` instead of the one-shot
+    // `PiAgent::run_with_envelope`. The provider is borrowed for the loop
+    // (not moved into a `PiAgent`) so the loop can drive multiple `complete()`
+    // turns. When empty, the existing one-shot path is taken byte-for-byte
+    // (the agent is constructed and `run_with_envelope` is called as before).
+    let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
+    let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
+        // Empty list → existing one-shot path. Construct the agent and call
+        // `run_with_envelope` exactly as before (byte-identical regression
+        // guard: this branch must not change the existing behavior).
+        let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
         agent
             .run_with_envelope(run_request)
             .map_err(|error| StudioCommandError {
@@ -310,7 +322,69 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                     _ => "pi_agent_apply_run".into(),
                 },
                 message: error.to_string(),
+            })?
+    } else {
+        // Non-empty list → MCP tool-use loop. Load the MCP registry + build
+        // the blocking `McpToolClient` façade, derive the redaction-safe
+        // `mcp_tool_call_hash` inputs, and drive `complete_with_mcp_tools`.
+        // Transport/registry failures surface as explicit errors
+        // (`mcp_apply_registry` / `mcp_apply_tool_error`); no silent fallback
+        // to the no-MCP path (AGENTS.md:144).
+        let mcp_registry =
+            plotforge_mcp::McpToolRegistry::load().map_err(|source| StudioCommandError {
+                code: "mcp_apply_registry".into(),
+                message: format!("failed to load MCP registry: {source}"),
             })?;
+        let hash_inputs = mcp_registry.hash_inputs_for(enabled_mcp_servers);
+        // If none of the enabled servers resolve to registry entries, surface
+        // an explicit error rather than silently running with an empty hash
+        // (which would look like a no-MCP turn to downstream consumers).
+        if hash_inputs.is_empty() {
+            return Err(StudioCommandError {
+                code: "mcp_apply_no_server".into(),
+                message: format!(
+                    "none of the enabled MCP servers are present in the registry: {}",
+                    enabled_mcp_servers.join(", ")
+                ),
+            });
+        }
+        plotforge_agent::complete_with_mcp_tools(
+            provider.as_ref(),
+            &request.agent_id,
+            run_request,
+            &mcp_registry,
+            enabled_mcp_servers,
+            &hash_inputs,
+        )
+        .map_err(|error| StudioCommandError {
+            code: match &error {
+                plotforge_agent::McpLoopError::ToolFailure { code, .. } => {
+                    if code == "mcp_unknown_server" {
+                        "mcp_apply_no_server".into()
+                    } else {
+                        "mcp_apply_tool_error".into()
+                    }
+                }
+                plotforge_agent::McpLoopError::ToolResultSecretMarker { .. }
+                | plotforge_agent::McpLoopError::ToolArgSecretMarker { .. } => {
+                    "mcp_apply_secret_marker".into()
+                }
+                plotforge_agent::McpLoopError::ExceededRounds(_) => {
+                    "mcp_apply_exceeded_rounds".into()
+                }
+                plotforge_agent::McpLoopError::ProviderFailure { code, .. } => {
+                    if code.contains("missing_credential") {
+                        "pi_agent_missing_credential".into()
+                    } else if code.contains("timeout") {
+                        "pi_agent_provider_timeout".into()
+                    } else {
+                        "pi_agent_apply_run".into()
+                    }
+                }
+            },
+            message: error.to_string(),
+        })?
+    };
 
     // Extract the ScenePlan payload. Other payload kinds are not committable
     // today; surface an explicit error rather than silently skipping.
@@ -2761,6 +2835,60 @@ mod tests {
         // starter project's rules may not key on change_scene), but the
         // field must be present and forward the same value the report carries.
         let _ = &result.delta_summary;
+    }
+
+    /// P4.3: when `AgentSessionConfig.enabled_mcp_servers` is non-empty but
+    /// none of the listed servers are present in the user-global MCP registry
+    /// (the empty-registry case on a fresh machine), `pi_agent_apply_run`
+    /// surfaces an explicit `mcp_apply_no_server` error — never a silent
+    /// fallback to the no-MCP path (AGENTS.md:144). This is the hermetic error
+    /// branch; the full MCP loop round-trip is covered by the
+    /// `complete_with_mcp_tools` unit tests in `plotforge-agent` (P4.1) and
+    /// the CLI smoke (Phase 5).
+    #[test]
+    fn pi_agent_apply_run_surfaces_mcp_no_server_error_when_registry_empty() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("agent-apply-mcp");
+        create_starter_project(&project_path);
+
+        // Enable an MCP server id that is not present in the (empty on a
+        // fresh machine) user-global registry. The on-disk config is written
+        // through the same `set_agent_session_config` path the Studio bridge
+        // uses, so the test mirrors a real SettingsView enable action.
+        set_agent_session_config(
+            &project_path,
+            &super::AgentSessionConfig {
+                model_id: plotforge_agent::LOCAL_PI_MODEL_ID.into(),
+                permission_level: super::PermissionLevel::FullAccess,
+                thinking_level: super::ThinkingLevel::Medium,
+                enabled_skills: Vec::new(),
+                enabled_mcp_servers: vec!["absent-mcp-server".into()],
+            },
+        )
+        .expect("set agent session config");
+
+        let request = PiAgentApplyRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 9,
+            project_path: project_path.display().to_string(),
+            player_input: "Take the witness stand.".into(),
+            save_id: None,
+            restore_id: None,
+        };
+        let error = pi_agent_apply_run(request)
+            .expect_err("absent MCP server must surface an explicit error");
+        assert_eq!(
+            error.code, "mcp_apply_no_server",
+            "expected mcp_apply_no_server, got {}",
+            error.code
+        );
+        assert!(
+            error.message.contains("absent-mcp-server"),
+            "error must name the missing server id"
+        );
+        // No secret markers leak through the error.
+        assert!(!error.message.contains("sk-"));
+        assert!(!error.message.contains("api_key"));
     }
 
     #[test]

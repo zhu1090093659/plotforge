@@ -361,9 +361,7 @@ pub(crate) async fn http_error_with_jsonrpc(
     response: reqwest::Response,
     method: &str,
 ) -> McpError {
-    let body = bounded_text(response, 64 * 1024)
-        .await
-        .unwrap_or_default();
+    let body = bounded_text(response, 64 * 1024).await.unwrap_or_default();
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body)
         && let Some(message) = value
             .get("error")

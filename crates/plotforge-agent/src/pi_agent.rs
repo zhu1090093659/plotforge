@@ -186,7 +186,34 @@ impl std::fmt::Debug for PiAgent {
 /// Return the static capability list the pi-Agent runtime exposes. The
 /// list describes what is wired and what is deferred; it never promises
 /// external agent execution, network model calls, or platform outcomes.
+///
+/// `mcp_enabled = false` (the default for the one-shot path): the
+/// `pi-agent.mcp-tool-use` capability is `not-implemented`, honestly
+/// reflecting that MCP tool use is opt-in per `AgentSessionConfig.enabled_
+/// mcp_servers`. Call the `complete_with_mcp_tools` wrapper with a non-empty
+/// server list to flip this capability to `wired` for that turn.
 pub fn pi_agent_capabilities() -> Vec<PiAgentCapability> {
+    pi_agent_capabilities_with_mcp(false)
+}
+
+/// Return the capability list with the MCP tool-use capability's status set
+/// by `mcp_enabled`. When `true`, `pi-agent.mcp-tool-use` is `wired`
+/// (the `complete_with_mcp_tools` loop is driving tool calls this turn);
+/// when `false`, it is `not-implemented` (the one-shot path is taken). The
+/// capability never promises external agent execution, network model calls,
+/// or platform outcomes — only local MCP tool-call orchestration.
+pub fn pi_agent_capabilities_with_mcp(mcp_enabled: bool) -> Vec<PiAgentCapability> {
+    let mcp_status = if mcp_enabled {
+        "wired"
+    } else {
+        "not-implemented"
+    };
+    let mcp_evidence = if mcp_enabled {
+        "complete_with_mcp_tools loop is driving MCP tool calls this turn."
+    } else {
+        "MCP tool use is opt-in via AgentSessionConfig.enabled_mcp_servers; \
+         not active on this turn."
+    };
     vec![
         PiAgentCapability {
             id: "pi-agent.text-generation".into(),
@@ -194,6 +221,13 @@ pub fn pi_agent_capabilities() -> Vec<PiAgentCapability> {
             status: "wired".into(),
             source: "local-mock-text-provider".into(),
             evidence: "FakeTextModelProvider produces validated agent output envelopes.".into(),
+        },
+        PiAgentCapability {
+            id: "pi-agent.mcp-tool-use".into(),
+            label: "MCP tool use".into(),
+            status: mcp_status.into(),
+            source: "plotforge-mcp-client".into(),
+            evidence: mcp_evidence.into(),
         },
         PiAgentCapability {
             id: "pi-agent.image-generation".into(),
@@ -374,11 +408,51 @@ mod tests {
         assert_eq!(
             wired.len(),
             1,
-            "exactly one capability should be wired; got {wired:?}"
+            "exactly one capability should be wired (mcp-tool-use is not-implemented by default); got {wired:?}"
         );
         assert_eq!(
             wired[0].id, "pi-agent.text-generation",
-            "only text-generation should be wired"
+            "only text-generation should be wired by default"
+        );
+        // The MCP tool-use capability must be present and not-implemented by
+        // default (it flips to wired only on turns that drive the MCP loop).
+        let mcp = capabilities
+            .iter()
+            .find(|c| c.id == "pi-agent.mcp-tool-use")
+            .expect("pi-agent.mcp-tool-use capability must be present");
+        assert_eq!(
+            mcp.status, "not-implemented",
+            "mcp-tool-use must be not-implemented on the default (non-MCP) path"
+        );
+        for capability in &capabilities {
+            assert!(!contains_secret_marker_text(&capability.evidence));
+            assert!(!capability.evidence.contains("sk-"));
+        }
+    }
+
+    /// When MCP servers are enabled, `pi_agent_capabilities_with_mcp(true)`
+    /// flips the `pi-agent.mcp-tool-use` capability to `wired`. The other
+    /// capabilities (text-generation wired, image/steam-upload deferred) are
+    /// unchanged. The capability evidence stays redaction-safe.
+    #[test]
+    fn pi_agent_capabilities_with_mcp_flips_mcp_tool_use() {
+        let capabilities = pi_agent_capabilities_with_mcp(true);
+        let mcp = capabilities
+            .iter()
+            .find(|c| c.id == "pi-agent.mcp-tool-use")
+            .expect("mcp-tool-use capability present");
+        assert_eq!(
+            mcp.status, "wired",
+            "mcp-tool-use must be wired when servers are enabled"
+        );
+        let wired: Vec<&PiAgentCapability> = capabilities
+            .iter()
+            .filter(|c| c.status == "wired")
+            .collect();
+        assert_eq!(
+            wired.len(),
+            2,
+            "exactly two capabilities wired when MCP is on; got {wired:?}"
         );
         for capability in &capabilities {
             assert!(!contains_secret_marker_text(&capability.evidence));

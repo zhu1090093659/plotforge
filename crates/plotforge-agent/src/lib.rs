@@ -8,6 +8,7 @@
 //! name and signature. The `pi_agent` facade is additive and lives in its own
 //! module.
 
+mod mcp_loop;
 mod pi_agent;
 mod pipelines;
 mod providers_http;
@@ -23,7 +24,8 @@ mod validation;
 // Re-export the public API so downstream consumers (and the crate's own
 // `crate::` paths used by the pi-Agent facade) keep resolving at the crate
 // root with the same names.
-pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities};
+pub use mcp_loop::{McpLoopError, complete_with_mcp_tools, parse_mcp_tool_calls};
+pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities, pi_agent_capabilities_with_mcp};
 pub use pipelines::{
     generate_character, generate_character_with_provider, generate_story_craft,
     generate_story_craft_with_provider, generate_world_expansion,
