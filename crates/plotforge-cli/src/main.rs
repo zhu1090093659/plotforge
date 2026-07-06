@@ -570,6 +570,31 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
                 enabled,
             ))?)
         }
+        "list_mcp_servers" => print_studio_json(studio_result(plotforge_studio::list_mcp_servers())?),
+        "upsert_mcp_server" => print_studio_json(studio_result(
+            plotforge_studio::upsert_mcp_server(studio_arg(&payload, "entry")?),
+        )?),
+        "delete_mcp_server" => print_studio_json(studio_result(
+            plotforge_studio::delete_mcp_server(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "test_mcp_server" => print_studio_json(studio_result(
+            plotforge_studio::test_mcp_server(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "list_mcp_tools" => print_studio_json(studio_result(
+            plotforge_studio::list_mcp_tools(studio_arg::<String>(&payload, "server_id")?),
+        )?),
+        "invoke_mcp_tool" => print_studio_json(studio_result(
+            plotforge_studio::invoke_mcp_tool(studio_arg(&payload, "request")?),
+        )?),
+        "enable_mcp_server_for_project" => {
+            let server_id: String = studio_arg(&payload, "server_id")?;
+            let enabled: bool = studio_arg(&payload, "enabled")?;
+            print_studio_json(studio_result(plotforge_studio::enable_mcp_server_for_project(
+                studio_arg::<PathBuf>(&payload, "path")?,
+                server_id,
+                enabled,
+            ))?)
+        }
         other => anyhow::bail!("unknown studio command `{other}`"),
     }
 }

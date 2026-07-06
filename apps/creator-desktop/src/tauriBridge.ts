@@ -11,6 +11,11 @@ import type {
   ExportProfile,
   GitBranchInfo,
   GitSwitchResult,
+  McpServerEntry,
+  McpServerTestResult,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpToolManifest,
   ModelOption,
   PiAgentApplyRequest,
   PiAgentApplyResult,
@@ -103,6 +108,13 @@ export const studioCommandNames = {
   importSkill: "import_skill",
   readSkillBody: "read_skill_body",
   enableSkillForProject: "enable_skill_for_project",
+  listMcpServers: "list_mcp_servers",
+  upsertMcpServer: "upsert_mcp_server",
+  deleteMcpServer: "delete_mcp_server",
+  testMcpServer: "test_mcp_server",
+  listMcpTools: "list_mcp_tools",
+  invokeMcpTool: "invoke_mcp_tool",
+  enableMcpServerForProject: "enable_mcp_server_for_project",
 } as const;
 
 export interface StudioCommandError {
@@ -659,6 +671,45 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<AgentSessionConfig>(
         studioCommandNames.enableSkillForProject,
         { project_path: projectPath, skill_id: skillId, enabled },
+      );
+    },
+    listMcpServers(): Promise<McpServerEntry[]> {
+      return invokeCommand<McpServerEntry[]>(studioCommandNames.listMcpServers);
+    },
+    upsertMcpServer(entry: McpServerEntry): Promise<McpServerEntry> {
+      return invokeCommand<McpServerEntry>(studioCommandNames.upsertMcpServer, {
+        entry,
+      });
+    },
+    deleteMcpServer(id: string): Promise<McpServerEntry> {
+      return invokeCommand<McpServerEntry>(studioCommandNames.deleteMcpServer, {
+        id,
+      });
+    },
+    testMcpServer(id: string): Promise<McpServerTestResult> {
+      return invokeCommand<McpServerTestResult>(
+        studioCommandNames.testMcpServer,
+        { id },
+      );
+    },
+    listMcpTools(serverId: string): Promise<McpToolManifest[]> {
+      return invokeCommand<McpToolManifest[]>(studioCommandNames.listMcpTools, {
+        server_id: serverId,
+      });
+    },
+    invokeMcpTool(request: McpToolCallRequest): Promise<McpToolCallResult> {
+      return invokeCommand<McpToolCallResult>(studioCommandNames.invokeMcpTool, {
+        request,
+      });
+    },
+    enableMcpServerForProject(
+      projectPath: string,
+      serverId: string,
+      enabled: boolean,
+    ): Promise<AgentSessionConfig> {
+      return invokeCommand<AgentSessionConfig>(
+        studioCommandNames.enableMcpServerForProject,
+        { project_path: projectPath, server_id: serverId, enabled },
       );
     },
   };

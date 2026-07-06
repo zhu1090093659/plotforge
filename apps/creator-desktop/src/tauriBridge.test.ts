@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AgentSessionConfig,
   AiSafetyPolicy,
   AudioBible,
   Character,
   CharacterEditDocument,
+  McpServerEntry,
+  McpServerTestResult,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpToolManifest,
   ProjectCreationReport,
   ResourceDefinition,
   Rule,
@@ -26,6 +32,46 @@ import {
   type StaticExportReport,
   type StudioInvoke,
 } from "./tauriBridge";
+
+const demoMcpServerEntry: McpServerEntry = {
+  id: "weather",
+  kind: "stdio",
+  label: "Weather MCP",
+  transport_config: {
+    kind: "stdio",
+    command: "weather-mcp",
+    args: ["--stdio"],
+    env: {},
+  },
+  credential_env_var: "",
+  enabled: true,
+};
+
+const demoMcpServerTestResult: McpServerTestResult = {
+  ok: true,
+  message: "MCP server `weather` responded; 1 tool(s) available",
+  tools_count: 1,
+};
+
+const demoMcpToolManifest: McpToolManifest = {
+  name: "get_forecast",
+  description: "Returns the forecast for a city.",
+  input_schema: { type: "object", properties: { city: { type: "string" } } },
+};
+
+const demoMcpToolCallResult: McpToolCallResult = {
+  ok: true,
+  content: [{ type: "text", text: "Rain expected in Reik." }],
+  is_error: false,
+};
+
+const demoAgentSessionConfig: AgentSessionConfig = {
+  model_id: "demo-model",
+  permission_level: "ask_every_time",
+  thinking_level: "medium",
+  enabled_skills: [],
+  enabled_mcp_servers: ["weather"],
+};
 
 describe("createStudioBridge", () => {
   it("maps typed frontend methods to Tauri command names and arguments", async () => {
@@ -446,6 +492,70 @@ describe("createStudioBridge", () => {
           path: "/tmp/starter-project",
           relative_path: "world/world.md",
           content: "# World Bible\n",
+        },
+      },
+    ]);
+  });
+});
+
+describe("createStudioBridge MCP commands", () => {
+  it("maps each MCP method to the correct snake_case command and arguments", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: StudioInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      if (command === studioCommandNames.listMcpServers) {
+        return [demoMcpServerEntry] as T;
+      }
+      if (command === studioCommandNames.upsertMcpServer) {
+        return (args?.entry ?? demoMcpServerEntry) as T;
+      }
+      if (command === studioCommandNames.deleteMcpServer) {
+        return demoMcpServerEntry as T;
+      }
+      if (command === studioCommandNames.testMcpServer) {
+        return demoMcpServerTestResult as T;
+      }
+      if (command === studioCommandNames.listMcpTools) {
+        return [demoMcpToolManifest] as T;
+      }
+      if (command === studioCommandNames.invokeMcpTool) {
+        return demoMcpToolCallResult as T;
+      }
+      if (command === studioCommandNames.enableMcpServerForProject) {
+        return demoAgentSessionConfig as T;
+      }
+      return {} as never;
+    };
+
+    const bridge = createStudioBridge(invoke);
+    const entry: McpServerEntry = demoMcpServerEntry;
+    const request: McpToolCallRequest = {
+      server_id: "weather",
+      tool_name: "get_forecast",
+      arguments: { city: "Reik" },
+    };
+
+    await bridge.listMcpServers();
+    await bridge.upsertMcpServer(entry);
+    await bridge.deleteMcpServer("weather");
+    await bridge.testMcpServer("weather");
+    await bridge.listMcpTools("weather");
+    await bridge.invokeMcpTool(request);
+    await bridge.enableMcpServerForProject("/tmp/starter-project", "weather", true);
+
+    expect(calls).toEqual([
+      { command: "list_mcp_servers", args: undefined },
+      { command: "upsert_mcp_server", args: { entry } },
+      { command: "delete_mcp_server", args: { id: "weather" } },
+      { command: "test_mcp_server", args: { id: "weather" } },
+      { command: "list_mcp_tools", args: { server_id: "weather" } },
+      { command: "invoke_mcp_tool", args: { request } },
+      {
+        command: "enable_mcp_server_for_project",
+        args: {
+          project_path: "/tmp/starter-project",
+          server_id: "weather",
+          enabled: true,
         },
       },
     ]);

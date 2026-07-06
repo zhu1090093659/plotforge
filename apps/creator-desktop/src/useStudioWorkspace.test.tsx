@@ -8,6 +8,11 @@ import {
 import { StudioI18nProvider } from "./i18n";
 import type { StudioDataSource } from "./studioDataSource";
 import type {
+  McpServerEntry,
+  McpServerTestResult,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpToolManifest,
   ProviderEntry,
   PromptTemplate,
 } from "../../../contracts/plotforge";
@@ -548,6 +553,44 @@ function workspaceTestDataSource(
       return "";
     },
     async enableSkillForProject(_projectPath: string, _skillId: string, _enabled: boolean) {
+      return {
+        model_id: "local-pi",
+        permission_level: "ask_every_time",
+        thinking_level: "medium",
+        enabled_skills: [],
+        enabled_mcp_servers: [],
+      } as never;
+    },
+    async listMcpServers(): Promise<McpServerEntry[]> {
+      return [];
+    },
+    async upsertMcpServer(entry: McpServerEntry): Promise<McpServerEntry> {
+      return entry;
+    },
+    async deleteMcpServer(id: string): Promise<McpServerEntry> {
+      return {
+        id,
+        kind: "stdio",
+        label: "",
+        transport_config: { kind: "stdio", command: "", args: [], env: {} },
+        credential_env_var: "",
+        enabled: false,
+      };
+    },
+    async testMcpServer(_id: string): Promise<McpServerTestResult> {
+      return { ok: true, message: "", tools_count: 0 };
+    },
+    async listMcpTools(_serverId: string): Promise<McpToolManifest[]> {
+      return [];
+    },
+    async invokeMcpTool(_request: McpToolCallRequest): Promise<McpToolCallResult> {
+      return { ok: true, content: [], is_error: false };
+    },
+    async enableMcpServerForProject(
+      _projectPath: string,
+      _serverId: string,
+      _enabled: boolean,
+    ) {
       return {
         model_id: "local-pi",
         permission_level: "ask_every_time",

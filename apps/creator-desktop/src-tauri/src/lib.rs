@@ -65,7 +65,14 @@ pub fn run() {
             commands::refresh_skill_index,
             commands::import_skill,
             commands::read_skill_body,
-            commands::enable_skill_for_project
+            commands::enable_skill_for_project,
+            commands::list_mcp_servers,
+            commands::upsert_mcp_server,
+            commands::delete_mcp_server,
+            commands::test_mcp_server,
+            commands::list_mcp_tools,
+            commands::invoke_mcp_tool,
+            commands::enable_mcp_server_for_project
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlotForge Studio");
