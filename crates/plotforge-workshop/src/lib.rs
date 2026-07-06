@@ -2607,6 +2607,217 @@ Draft support material only. The creator must review the shipped build, screensh
         ));
     }
 
+    // P5.4 (#188): the per-project `.plotforge/agent-config.json` (which carries
+    // `enabled_mcp_servers`) and the user-global `~/.plotforge/mcp.json` must
+    // never enter a Workshop package. The denylist in `reject_private_path`
+    // blocks `.plotforge`; these tests assert that explicitly and confirm a
+    // validated package + publish draft carry no MCP references.
+
+    /// Redaction-safe text mimicking `.plotforge/agent-config.json` with MCP
+    /// enabled. No secrets — only a server id and the `enabled_mcp_servers`
+    /// field name we want to prove never leaks.
+    const AGENT_CONFIG_WITH_MCP: &str = r#"{
+  "model_id": "local-pi",
+  "permission_level": "standard",
+  "thinking_level": "balanced",
+  "enabled_skills": [],
+  "enabled_mcp_servers": ["local-fs"]
+}"#;
+
+    /// Redaction-safe text mimicking user-global `~/.plotforge/mcp.json`. No
+    /// secrets — only a `credential_env_var` name (never the value).
+    const USER_GLOBAL_MCP_REGISTRY: &str = r#"{
+  "version": "2026-07-06",
+  "servers": [
+    {
+      "id": "local-fs",
+      "kind": "stdio",
+      "label": "Local filesystem MCP server",
+      "transport_config": { "command": "mcp-server-local-fs", "args": [] },
+      "credential_env_var": "MCP_LOCAL_FS_TOKEN",
+      "enabled": true
+    }
+  ]
+}"#;
+
+    #[test]
+    fn workshop_package_rejects_plotforge_agent_config_content_file() {
+        // A package that lists a `.plotforge/agent-config.json` (carrying
+        // `enabled_mcp_servers`) as a content file must be rejected. The file
+        // is placed under `content/` so it passes the content-root guard and
+        // is then blocked by the `.plotforge` denylist in `reject_private_path`
+        // — proving MCP config cannot enter a validated package or publish
+        // draft even when nested inside the content root.
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+        fs::create_dir_all(package.path().join("content/.plotforge")).expect("plotforge dir");
+        let leak_path = "content/.plotforge/agent-config.json";
+        write_file(
+            package.path().join(leak_path),
+            AGENT_CONFIG_WITH_MCP.as_bytes(),
+        );
+        let manifest_path = package.path().join(WORKSHOP_ITEM_MANIFEST_FILE);
+        let mut manifest = sample_package(game_json(), preview_png());
+        manifest
+            .content_files
+            .push(file_record(leak_path, AGENT_CONFIG_WITH_MCP.as_bytes()));
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).expect("manifest json"),
+        )
+        .expect("write manifest");
+
+        let validation_error = validate_workshop_package(package.path())
+            .expect_err("agent-config content file must be rejected");
+        assert!(matches!(
+            validation_error,
+            WorkshopPackageError::UnsafePath(path)
+                if path == leak_path
+        ));
+    }
+
+    #[test]
+    fn workshop_package_rejects_stray_mcp_json_content_file() {
+        // Even a stray user-global-style `mcp.json` placed at the package root
+        // and listed as a content file is rejected (denylist + path safety).
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+        write_file(
+            package.path().join("mcp.json"),
+            USER_GLOBAL_MCP_REGISTRY.as_bytes(),
+        );
+        let manifest_path = package.path().join(WORKSHOP_ITEM_MANIFEST_FILE);
+        let mut manifest = sample_package(game_json(), preview_png());
+        manifest
+            .content_files
+            .push(file_record("mcp.json", USER_GLOBAL_MCP_REGISTRY.as_bytes()));
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).expect("manifest json"),
+        )
+        .expect("write manifest");
+
+        let validation_error = validate_workshop_package(package.path())
+            .expect_err("mcp.json content file must be rejected");
+        // `mcp.json` is not a private-path component, so it is rejected by the
+        // content-root guard (it lives outside `content/`), not the denylist.
+        // Either way it cannot enter a validated package or publish draft.
+        assert!(matches!(
+            validation_error,
+            WorkshopPackageError::InvalidMetadata(_) | WorkshopPackageError::UnsafePath(_)
+        ));
+    }
+
+    #[test]
+    fn workshop_publish_draft_omits_mcp_references_for_valid_package() {
+        // A valid package (no `.plotforge/`, no `mcp.json`) validates and its
+        // publish draft must not echo MCP server ids, the mcp.json filename,
+        // or the enabled_mcp_servers field.
+        let package = tempfile::tempdir().expect("package");
+        write_valid_package(package.path());
+
+        let report = validate_workshop_package(package.path()).expect("valid package");
+        let draft = generate_workshop_publish_draft(&report).expect("publish draft");
+        let draft_json = serde_json::to_string_pretty(&draft).expect("draft json");
+
+        assert!(
+            !draft_json.contains("enabled_mcp_servers"),
+            "publish draft leaked enabled_mcp_servers"
+        );
+        assert!(
+            !draft_json.contains("mcp.json"),
+            "publish draft leaked a mcp.json reference"
+        );
+        assert!(
+            !draft_json.contains("local-fs"),
+            "publish draft leaked an MCP server id"
+        );
+
+        // The validated package files themselves carry no MCP references.
+        for file in &report.files {
+            let bytes = fs::read(package.path().join(&file.path)).expect("read package file");
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(
+                !text.contains("enabled_mcp_servers"),
+                "package file {} leaked enabled_mcp_servers",
+                file.path.display()
+            );
+            assert!(
+                !text.contains("mcp.json"),
+                "package file {} leaked a mcp.json reference",
+                file.path.display()
+            );
+            assert!(
+                !text.contains("local-fs"),
+                "package file {} leaked an MCP server id",
+                file.path.display()
+            );
+        }
+        assert!(
+            !package.path().join(".plotforge").exists(),
+            "valid package must not contain a .plotforge/ directory"
+        );
+        assert!(
+            !package.path().join("mcp.json").exists(),
+            "valid package must not contain a stray mcp.json"
+        );
+    }
+
+    #[test]
+    fn workshop_imported_library_item_omits_mcp_config_files() {
+        // Importing a valid package into the library must not copy any
+        // `.plotforge/agent-config.json` or stray `mcp.json` even if such
+        // files existed in the source package dir but were not listed as
+        // content files (defence-in-depth: the import only copies audited
+        // files, so unlisted private files never travel into the library).
+        let package = tempfile::tempdir().expect("package");
+        let library = tempfile::tempdir().expect("library");
+        write_valid_package(package.path());
+        fs::create_dir_all(package.path().join(".plotforge")).expect("plotforge dir");
+        write_file(
+            package.path().join(".plotforge").join("agent-config.json"),
+            AGENT_CONFIG_WITH_MCP.as_bytes(),
+        );
+        write_file(
+            package.path().join("mcp.json"),
+            USER_GLOBAL_MCP_REGISTRY.as_bytes(),
+        );
+
+        let report = import_workshop_library_package(library.path(), package.path())
+            .expect("import valid package");
+        let imported_dir = &report.item.package_dir;
+
+        assert!(
+            !imported_dir.join(".plotforge").exists(),
+            "imported library item leaked a .plotforge/ directory"
+        );
+        assert!(
+            !imported_dir.join("mcp.json").exists(),
+            "imported library item leaked a stray mcp.json"
+        );
+        // Re-validate the imported package: no MCP references anywhere.
+        let revalidated = validate_workshop_package(imported_dir).expect("revalidate import");
+        for file in &revalidated.files {
+            let bytes = fs::read(imported_dir.join(&file.path)).expect("read imported file");
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(
+                !text.contains("enabled_mcp_servers"),
+                "imported file {} leaked enabled_mcp_servers",
+                file.path.display()
+            );
+            assert!(
+                !text.contains("mcp.json"),
+                "imported file {} leaked a mcp.json reference",
+                file.path.display()
+            );
+            assert!(
+                !text.contains("local-fs"),
+                "imported file {} leaked an MCP server id",
+                file.path.display()
+            );
+        }
+    }
+
     fn write_valid_package(package_dir: &std::path::Path) {
         fs::create_dir_all(package_dir.join("content")).expect("content dir");
         write_file(package_dir.join("content/game.json"), game_json());
