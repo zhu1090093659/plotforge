@@ -577,9 +577,7 @@ mod tests {
             delta_summary: Vec::new(),
             snapshot: None,
             snapshot_path: None,
-            image_generation_failed: Some(
-                "image provider timed out: connection refused".into(),
-            ),
+            image_generation_failed: Some("image provider timed out: connection refused".into()),
         };
         let encoded = serde_json::to_string_pretty(&result).expect("serialize");
         assert!(

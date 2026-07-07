@@ -13,17 +13,16 @@ pub use plotforge_schema::{
     AiUsageManifest, AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Condition,
     Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ImageProviderEntry, ModelOption,
-    PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability,
-    PiAgentRunRequest, PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest,
-    ProjectData, ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind,
-    ProviderRegistry, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft, RulesEditDocument,
-    RuntimeSnapshot, RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface,
-    SkillManifest, SkillOrigin, SkillSource, StateVariablesEditDocument,
-    SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, TtsProviderEntry,
-    VisualBible,
-    WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
-    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, redact_trace_text,
+    PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
+    PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
+    ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry,
+    RemoteModelInfo, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot,
+    RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin,
+    SkillSource, StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
+    TtsProviderEntry, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
+    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
+    WorldGenerationRequest, redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -46,7 +45,8 @@ use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot,
     read_project_prompt_templates, read_runtime_snapshot, read_user_prompt_templates,
     update_scene_background_asset, validate_project, validate_runtime_snapshot_id,
-    write_project_prompt_templates, write_runtime_snapshot, write_trace, write_user_prompt_templates,
+    write_project_prompt_templates, write_runtime_snapshot, write_trace,
+    write_user_prompt_templates,
 };
 use serde::Serialize;
 
@@ -629,7 +629,6 @@ fn scene_image_prompt(scene: &Scene, visual_style: &str) -> String {
     prompt
 }
 
-
 // ---------------------------------------------------------------------------
 // Provider registry, prompt template, and skill library commands.
 //
@@ -837,21 +836,20 @@ pub fn list_remote_models(provider_id: String) -> StudioCommandResult<Vec<Remote
             code: "provider_not_found".into(),
             message: format!("no provider with id `{provider_id}`"),
         })?;
-    plotforge_agent::fetch_provider_models(entry)
-        .map_err(|source| StudioCommandError {
-            code: match source {
-                plotforge_agent::ModelDiscoveryError::MissingCredential { .. } => {
-                    "list_remote_models_missing_credential"
-                }
-                plotforge_agent::ModelDiscoveryError::Http { .. } => "list_remote_models_http",
-                plotforge_agent::ModelDiscoveryError::Cache { .. } => "list_remote_models_cache",
+    plotforge_agent::fetch_provider_models(entry).map_err(|source| StudioCommandError {
+        code: match source {
+            plotforge_agent::ModelDiscoveryError::MissingCredential { .. } => {
+                "list_remote_models_missing_credential"
             }
-            .into(),
-            // `fetch_provider_models` already redacts via `redact_trace_text`;
-            // apply it again as defence-in-depth before the UI sees the
-            // message (mirrors `test_provider_connection`).
-            message: redact_trace_text(&source.to_string()),
-        })
+            plotforge_agent::ModelDiscoveryError::Http { .. } => "list_remote_models_http",
+            plotforge_agent::ModelDiscoveryError::Cache { .. } => "list_remote_models_cache",
+        }
+        .into(),
+        // `fetch_provider_models` already redacts via `redact_trace_text`;
+        // apply it again as defence-in-depth before the UI sees the
+        // message (mirrors `test_provider_connection`).
+        message: redact_trace_text(&source.to_string()),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2301,15 +2299,15 @@ mod tests {
         list_asset_records, list_available_models, list_export_profiles, list_mcp_servers,
         list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
         list_workshop_library, load_workshop_library_item, open_project, pi_agent_apply_run,
-        pi_agent_capabilities, pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
-        play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
-        read_character_edit_document, read_rules_edit_document, read_source_file,
-        read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, upsert_project_prompt_template, upsert_provider,
-        validate_workshop_package, write_source_file, write_steam_submission_kit,
-        write_workshop_publish_draft,
+        pi_agent_capabilities, pi_agent_run, play_once_project,
+        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
+        play_once_project_with_save, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, set_agent_session_config, update_ai_safety_policy,
+        update_story_craft_edit_document, update_world_edit_document,
+        upsert_project_prompt_template, upsert_provider, validate_workshop_package,
+        write_source_file, write_steam_submission_kit, write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
@@ -3525,11 +3523,14 @@ mod tests {
         // T1.2: an unknown provider id surfaces `provider_not_found` — never
         // an empty list and never a silent fetch attempt. The sentinel id is
         // guaranteed absent from the user's registry.
-        let error =
-            list_remote_models("pf-review-sentinel-not-registered-4b1e92".into())
-                .expect_err("missing provider must error");
+        let error = list_remote_models("pf-review-sentinel-not-registered-4b1e92".into())
+            .expect_err("missing provider must error");
         assert_eq!(error.code, "provider_not_found");
-        assert!(error.message.contains("pf-review-sentinel-not-registered-4b1e92"));
+        assert!(
+            error
+                .message
+                .contains("pf-review-sentinel-not-registered-4b1e92")
+        );
     }
 
     fn sample_character(id: &str) -> Character {

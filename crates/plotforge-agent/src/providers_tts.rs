@@ -444,7 +444,9 @@ impl OpenAiTtsClient {
     /// Constructs a new TTS client from a registry entry. The credential is
     /// NOT stored — it is resolved from `credential_env_var` on each
     /// `synthesize` call via `EnvCredentialResolver`.
-    pub fn from_entry(entry: &plotforge_schema::TtsProviderEntry) -> Result<Self, TtsProviderError> {
+    pub fn from_entry(
+        entry: &plotforge_schema::TtsProviderEntry,
+    ) -> Result<Self, TtsProviderError> {
         Self::new(
             &entry.endpoint_url,
             &entry.model,
@@ -708,7 +710,13 @@ mod tests {
     use std::net::TcpListener;
     use std::thread;
 
-    fn tts_capturing_server(reply_body: Vec<u8>) -> (std::net::SocketAddr, thread::JoinHandle<()>, std::sync::Arc<std::sync::Mutex<String>>) {
+    fn tts_capturing_server(
+        reply_body: Vec<u8>,
+    ) -> (
+        std::net::SocketAddr,
+        thread::JoinHandle<()>,
+        std::sync::Arc<std::sync::Mutex<String>>,
+    ) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("local addr");
         let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
@@ -723,7 +731,9 @@ mod tests {
                 "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\n\r\n",
                 reply_body.len(),
             );
-            stream.write_all(response.as_bytes()).expect("write headers");
+            stream
+                .write_all(response.as_bytes())
+                .expect("write headers");
             stream.write_all(&reply_body).expect("write body");
             let _ = stream.flush();
         });
@@ -732,7 +742,9 @@ mod tests {
 
     fn sample_tts_request() -> TtsRequest {
         TtsRequest {
-            target: TtsTarget::Scene { scene_key: "scene-1".into() },
+            target: TtsTarget::Scene {
+                scene_key: "scene-1".into(),
+            },
             text: "Hello world".into(),
             voice: "coral".into(),
             output_path: "assets/generated/audio/test.wav".into(),
@@ -760,9 +772,18 @@ mod tests {
         assert_eq!(output.model, Some("gpt-4o-mini-tts".into()));
         // Verify the request body contained the right model, input, and voice
         let body = captured.lock().expect("capture lock").clone();
-        assert!(body.contains("\"model\":\"gpt-4o-mini-tts\""), "body must contain model, got: {body}");
-        assert!(body.contains("\"input\":\"Hello world\""), "body must contain input text, got: {body}");
-        assert!(body.contains("\"voice\":\"coral\""), "body must contain voice, got: {body}");
+        assert!(
+            body.contains("\"model\":\"gpt-4o-mini-tts\""),
+            "body must contain model, got: {body}"
+        );
+        assert!(
+            body.contains("\"input\":\"Hello world\""),
+            "body must contain input text, got: {body}"
+        );
+        assert!(
+            body.contains("\"voice\":\"coral\""),
+            "body must contain voice, got: {body}"
+        );
         handle.join().expect("server thread clean");
     }
 
@@ -778,7 +799,11 @@ mod tests {
         .expect("construct client");
         let request = sample_tts_request();
         let error = client.synthesize(&request).expect_err("missing credential");
-        assert!(error.code.contains("missing_credential"), "error code must mention missing_credential, got: {}", error.code);
+        assert!(
+            error.code.contains("missing_credential"),
+            "error code must mention missing_credential, got: {}",
+            error.code
+        );
     }
 
     #[test]
@@ -804,7 +829,11 @@ mod tests {
         .expect("construct client");
         let request = sample_tts_request();
         let error = client.synthesize(&request).expect_err("http error");
-        assert!(error.code.contains("http_status"), "error code must mention http_status, got: {}", error.code);
+        assert!(
+            error.code.contains("http_status"),
+            "error code must mention http_status, got: {}",
+            error.code
+        );
         handle.join().expect("server thread clean");
     }
 }

@@ -552,7 +552,10 @@ pub fn assemble_context(project: &ProjectContext, budget: &ContextBudget) -> Ass
         };
     }
 
-    AssembledContext { text, estimated_tokens: estimate }
+    AssembledContext {
+        text,
+        estimated_tokens: estimate,
+    }
 }
 
 /// Collect the non-empty sections of `project` in priority order (highest
@@ -737,7 +740,11 @@ mod tests {
             output_instructions: "OUTPUT",
         };
         let messages = PromptAssembler::assemble(&template, "CONTEXT");
-        assert_eq!(messages.len(), 2, "assemble must produce exactly 2 messages");
+        assert_eq!(
+            messages.len(),
+            2,
+            "assemble must produce exactly 2 messages"
+        );
         assert_eq!(messages[0].role, MessageRole::System);
         assert_eq!(messages[1].role, MessageRole::User);
     }
@@ -752,8 +759,7 @@ mod tests {
         };
         let messages = PromptAssembler::assemble(&template, "ignored-context");
         assert_eq!(
-            messages[0].content,
-            "ROLE-TEXT\n\nOUTPUT-TEXT",
+            messages[0].content, "ROLE-TEXT\n\nOUTPUT-TEXT",
             "system message must be system_message + \"\\n\\n\" + output_instructions"
         );
         assert!(
@@ -816,7 +822,11 @@ mod tests {
             PLOT_DOCTOR_V1.version,
         ];
         let unique: std::collections::HashSet<&str> = versions.iter().copied().collect();
-        assert_eq!(unique.len(), 3, "built-in template versions must be distinct");
+        assert_eq!(
+            unique.len(),
+            3,
+            "built-in template versions must be distinct"
+        );
     }
 
     #[test]
@@ -845,7 +855,11 @@ mod tests {
             SCENE_PLANNER_V1.system_message, SCENE_PLANNER_V1.output_instructions
         );
         let lower = combined.to_lowercase();
-        assert!(lower.contains("agentoutputenvelope") || lower.contains("agent output envelope") || lower.contains("json"));
+        assert!(
+            lower.contains("agentoutputenvelope")
+                || lower.contains("agent output envelope")
+                || lower.contains("json")
+        );
         assert!(lower.contains("sceneplan") || lower.contains("scene plan"));
     }
 
@@ -856,7 +870,11 @@ mod tests {
             BEAT_WRITER_V1.system_message, BEAT_WRITER_V1.output_instructions
         );
         let lower = combined.to_lowercase();
-        assert!(lower.contains("beatdrafts") || lower.contains("beat drafts") || lower.contains("beats"));
+        assert!(
+            lower.contains("beatdrafts")
+                || lower.contains("beat drafts")
+                || lower.contains("beats")
+        );
     }
 
     #[test]
@@ -866,7 +884,11 @@ mod tests {
             PLOT_DOCTOR_V1.system_message, PLOT_DOCTOR_V1.output_instructions
         );
         let lower = combined.to_lowercase();
-        assert!(lower.contains("narrativereview") || lower.contains("narrative review") || lower.contains("review"));
+        assert!(
+            lower.contains("narrativereview")
+                || lower.contains("narrative review")
+                || lower.contains("review")
+        );
     }
 
     #[test]
@@ -955,7 +977,11 @@ mod tests {
     #[test]
     fn estimate_tokens_empty_string_is_zero() {
         assert_eq!(estimate_tokens(""), 0);
-        assert_eq!(estimate_tokens("   \n\t  "), 0, "whitespace-only has 0 words");
+        assert_eq!(
+            estimate_tokens("   \n\t  "),
+            0,
+            "whitespace-only has 0 words"
+        );
     }
 
     #[test]
@@ -1051,7 +1077,10 @@ mod tests {
         }
         // `gpt-5.4-mini` must stay in the 400k tier even though it starts with
         // `gpt-5.4`; this guards the million-tier exclusion.
-        assert_ne!(ContextBudget::for_model("gpt-5.4-mini").total_tokens, 1_000_000);
+        assert_ne!(
+            ContextBudget::for_model("gpt-5.4-mini").total_tokens,
+            1_000_000
+        );
     }
 
     #[test]
@@ -1082,7 +1111,10 @@ mod tests {
         let project = ProjectContext::default();
         let budget = ContextBudget::for_model("gpt-4o");
         let assembled = assemble_context(&project, &budget);
-        assert!(assembled.text.is_empty(), "empty project => empty context text");
+        assert!(
+            assembled.text.is_empty(),
+            "empty project => empty context text"
+        );
         assert_eq!(assembled.estimated_tokens, 0);
     }
 
@@ -1099,7 +1131,10 @@ mod tests {
         };
         let budget = ContextBudget::for_model("gpt-4o");
         let assembled = assemble_context(&project, &budget);
-        assert!(assembled.text.is_empty(), "whitespace-only fields must be omitted");
+        assert!(
+            assembled.text.is_empty(),
+            "whitespace-only fields must be omitted"
+        );
     }
 
     #[test]
@@ -1183,9 +1218,10 @@ mod tests {
         );
         // The current scene header must precede the world header when both
         // are present.
-        if let (Some(scene_pos), Some(world_pos)) =
-            (assembled.text.find("## Current Scene"), assembled.text.find("## World"))
-        {
+        if let (Some(scene_pos), Some(world_pos)) = (
+            assembled.text.find("## Current Scene"),
+            assembled.text.find("## World"),
+        ) {
             assert!(
                 scene_pos < world_pos,
                 "current scene must appear before world in priority order"

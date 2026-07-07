@@ -171,7 +171,15 @@ pub(crate) fn complete_text_agent_output<P>(
 where
     P: TextModelProvider + ?Sized,
 {
-    complete_text_agent_output_with_retry(provider, agent, run_seed, call_id, scene_key, prompt, &RetryPolicy::default())
+    complete_text_agent_output_with_retry(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        prompt,
+        &RetryPolicy::default(),
+    )
 }
 
 /// Like `complete_text_agent_output` but with a caller-supplied retry
@@ -191,15 +199,7 @@ where
     P: TextModelProvider + ?Sized,
 {
     complete_text_agent_output_core(
-        provider,
-        agent,
-        run_seed,
-        call_id,
-        scene_key,
-        prompt,
-        None,
-        None,
-        policy,
+        provider, agent, run_seed, call_id, scene_key, prompt, None, None, policy,
     )
 }
 
@@ -766,9 +766,17 @@ mod tests {
     }
 
     impl SequencedTextProvider {
-        fn new(failures: Vec<TextModelProviderError>) -> (Self, std::rc::Rc<std::cell::Cell<usize>>) {
+        fn new(
+            failures: Vec<TextModelProviderError>,
+        ) -> (Self, std::rc::Rc<std::cell::Cell<usize>>) {
             let calls = std::rc::Rc::new(std::cell::Cell::new(0));
-            (Self { failures, calls: calls.clone() }, calls)
+            (
+                Self {
+                    failures,
+                    calls: calls.clone(),
+                },
+                calls,
+            )
         }
     }
 
@@ -803,7 +811,13 @@ mod tests {
     impl AlwaysFailingProvider {
         fn new(error: TextModelProviderError) -> (Self, std::rc::Rc<std::cell::Cell<usize>>) {
             let calls = std::rc::Rc::new(std::cell::Cell::new(0));
-            (Self { error, calls: calls.clone() }, calls)
+            (
+                Self {
+                    error,
+                    calls: calls.clone(),
+                },
+                calls,
+            )
         }
     }
 
@@ -860,17 +874,16 @@ mod tests {
         let (provider, calls) =
             AlwaysFailingProvider::new(TextModelProviderError::rate_limit(None, "rate limited"));
         let policy = fast_policy(2);
-        let error =
-            complete_text_agent_output_with_retry(
-                &provider,
-                AgentRole::ScenePlanner,
-                1,
-                "retry-exhaust".into(),
-                "scene-1".into(),
-                "{\"role\":\"scene_planner\"}".into(),
-                &policy,
-            )
-            .expect_err("must exhaust retries");
+        let error = complete_text_agent_output_with_retry(
+            &provider,
+            AgentRole::ScenePlanner,
+            1,
+            "retry-exhaust".into(),
+            "scene-1".into(),
+            "{\"role\":\"scene_planner\"}".into(),
+            &policy,
+        )
+        .expect_err("must exhaust retries");
         assert_eq!(calls.get(), 2, "expected exactly max_attempts calls");
         assert!(
             matches!(error, ProviderPipelineError::Provider(ref e) if e.code == "text_provider_rate_limit"
@@ -883,9 +896,8 @@ mod tests {
 
     #[test]
     fn content_filtered_is_non_retryable_and_surfaces_immediately() {
-        let (provider, calls) = AlwaysFailingProvider::new(
-            TextModelProviderError::content_filtered("content_filter"),
-        );
+        let (provider, calls) =
+            AlwaysFailingProvider::new(TextModelProviderError::content_filtered("content_filter"));
         let policy = fast_policy(3);
         let error = complete_text_agent_output_with_retry(
             &provider,
@@ -911,9 +923,8 @@ mod tests {
 
     #[test]
     fn output_truncated_is_non_retryable_and_surfaces_immediately() {
-        let (provider, calls) = AlwaysFailingProvider::new(
-            TextModelProviderError::output_truncated(Some(4096)),
-        );
+        let (provider, calls) =
+            AlwaysFailingProvider::new(TextModelProviderError::output_truncated(Some(4096)));
         let policy = fast_policy(3);
         let error = complete_text_agent_output_with_retry(
             &provider,
@@ -935,11 +946,10 @@ mod tests {
     fn provider_5xx_is_retryable_and_exhausts_budget() {
         // The generic `Provider` kind models a 5xx / transport error and is
         // retryable per `is_retryable`.
-        let (provider, calls) =
-            AlwaysFailingProvider::new(TextModelProviderError::provider(
-                "text_provider_http_status",
-                "provider returned HTTP 503",
-            ));
+        let (provider, calls) = AlwaysFailingProvider::new(TextModelProviderError::provider(
+            "text_provider_http_status",
+            "provider returned HTTP 503",
+        ));
         let policy = fast_policy(3);
         let error = complete_text_agent_output_with_retry(
             &provider,
@@ -967,9 +977,15 @@ mod tests {
             max_delay_ms: 8_000,
         };
         // attempt 0: base * 2^0 = 5000, no server hint.
-        assert_eq!(policy.delay_for(0, None), std::time::Duration::from_millis(5_000));
+        assert_eq!(
+            policy.delay_for(0, None),
+            std::time::Duration::from_millis(5_000)
+        );
         // attempt 5: 5000 * 2^5 = 160000 → clamped to 8000.
-        assert_eq!(policy.delay_for(5, None), std::time::Duration::from_millis(8_000));
+        assert_eq!(
+            policy.delay_for(5, None),
+            std::time::Duration::from_millis(8_000)
+        );
         // Server-advised retry-after is honoured and clamped.
         assert_eq!(
             policy.delay_for(0, Some(20_000)),
@@ -1073,10 +1089,8 @@ mod tests {
         // the provider with a coherent prompt.
         let provider = crate::providers_text::FakeTextModelProvider::success();
         let context = "the per-call scene context";
-        let messages = crate::prompts::PromptAssembler::assemble(
-            &crate::prompts::SCENE_PLANNER_V1,
-            context,
-        );
+        let messages =
+            crate::prompts::PromptAssembler::assemble(&crate::prompts::SCENE_PLANNER_V1, context);
         let envelope = complete_text_agent_output_with_messages(
             &provider,
             AgentRole::ScenePlanner,
@@ -1127,9 +1141,8 @@ mod tests {
     fn complete_text_agent_output_with_messages_propagates_provider_failure() {
         // A failing provider must surface an explicit error, never a silent
         // fallback envelope.
-        let provider = crate::providers_text::FakeTextModelProvider::provider_error(
-            AgentRole::BeatWriter,
-        );
+        let provider =
+            crate::providers_text::FakeTextModelProvider::provider_error(AgentRole::BeatWriter);
         let messages = crate::prompts::PromptAssembler::assemble(
             &crate::prompts::BEAT_WRITER_V1,
             "beat context",

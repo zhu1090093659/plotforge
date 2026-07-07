@@ -60,12 +60,16 @@ pub enum ImageProviderErrorKind {
     /// the server-advised delay parsed from the `Retry-After` header, in
     /// milliseconds, when present. It is `None` if the header was absent or
     /// unparseable — the caller then falls back to its own backoff.
-    RateLimit { retry_after_ms: Option<u64> },
+    RateLimit {
+        retry_after_ms: Option<u64>,
+    },
     /// Upstream flagged the image request as content-policy-filtered. Carries
     /// a short provider-reported reason token (not user content, so it is
     /// trace-safe). Non-retryable: retrying with the same prompt reproduces
     /// the filter.
-    ContentFiltered { reason: String },
+    ContentFiltered {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -625,13 +629,13 @@ where
             reqwest::header::HeaderValue::from_static("application/json"),
         );
         if !credential.trim().is_empty() {
-            let value = reqwest::header::HeaderValue::from_str(&format!(
-                "Bearer {credential}"
-            ))
-            .map_err(|_| ImageProviderError::provider(
-                "image_provider_credential_header",
-                "provider credential contains bytes illegal in an HTTP header value",
-            ))?;
+            let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+                .map_err(|_| {
+                    ImageProviderError::provider(
+                        "image_provider_credential_header",
+                        "provider credential contains bytes illegal in an HTTP header value",
+                    )
+                })?;
             headers.insert(reqwest::header::AUTHORIZATION, value);
         }
 
@@ -695,9 +699,7 @@ where
 /// parsed `Retry-After` (ms); other non-2xx surface as `Provider` with the
 /// status code in the message. Timeouts surface as `Timeout`. No raw response
 /// body enters the error text.
-fn execute_image(
-    request: reqwest::blocking::RequestBuilder,
-) -> Result<String, ImageProviderError> {
+fn execute_image(request: reqwest::blocking::RequestBuilder) -> Result<String, ImageProviderError> {
     let response = request.send().map_err(|error| {
         if error.is_timeout() {
             ImageProviderError::timeout(redact_trace_text(&error.to_string()))
@@ -711,7 +713,8 @@ fn execute_image(
     let status = response.status();
     if !status.is_success() {
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry_after_ms = parse_image_retry_after(response.headers().get(reqwest::header::RETRY_AFTER));
+            let retry_after_ms =
+                parse_image_retry_after(response.headers().get(reqwest::header::RETRY_AFTER));
             return Err(ImageProviderError::rate_limit(
                 retry_after_ms,
                 format!("provider returned HTTP {status}"),
@@ -1021,8 +1024,7 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_B64_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let response = client.generate(&sample_image_request()).expect("generate");
         handle.join().expect("server thread clean");
         assert_eq!(response.bytes, png_bytes);
@@ -1032,10 +1034,22 @@ mod tests {
         // fields and the Authorization header must be present (not the raw
         // credential echoed back).
         let request = captured.lock().expect("capture lock").clone();
-        assert!(request.contains("\"model\":\"gpt-image-1\""), "model in body: {request}");
-        assert!(request.contains("\"size\":\"1024x1024\""), "size in body: {request}");
-        assert!(request.contains("\"quality\":\"medium\""), "quality in body: {request}");
-        assert!(request.contains("\"output_format\":\"png\""), "output_format in body: {request}");
+        assert!(
+            request.contains("\"model\":\"gpt-image-1\""),
+            "model in body: {request}"
+        );
+        assert!(
+            request.contains("\"size\":\"1024x1024\""),
+            "size in body: {request}"
+        );
+        assert!(
+            request.contains("\"quality\":\"medium\""),
+            "quality in body: {request}"
+        );
+        assert!(
+            request.contains("\"output_format\":\"png\""),
+            "output_format in body: {request}"
+        );
         assert!(request.contains("\"n\":1"), "n=1 in body: {request}");
         // reqwest canonicalises header names to lowercase; assert the bearer
         // auth header is present (case-insensitive) and the raw credential is
@@ -1045,7 +1059,10 @@ mod tests {
             request_lower.contains("authorization: bearer "),
             "auth header present (case-insensitive), got: {request}"
         );
-        assert!(!request.contains("test-credential\r\n\r\n"), "credential not in body");
+        assert!(
+            !request.contains("test-credential\r\n\r\n"),
+            "credential not in body"
+        );
         unsafe { std::env::remove_var(env_var) };
     }
 
@@ -1079,8 +1096,7 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_URL_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let response = client.generate(&sample_image_request()).expect("generate");
         handle.join().expect("generations server clean");
         image_handle.join().expect("image server clean");
@@ -1098,14 +1114,18 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_429_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let error = client
             .generate(&sample_image_request())
             .expect_err("429 must error");
         handle.join().expect("server thread clean");
         assert!(
-            matches!(error.kind, ImageProviderErrorKind::RateLimit { retry_after_ms: Some(5000) }),
+            matches!(
+                error.kind,
+                ImageProviderErrorKind::RateLimit {
+                    retry_after_ms: Some(5000)
+                }
+            ),
             "expected RateLimit{{retry_after_ms:Some(5000)}}, got {error:?}"
         );
         assert_eq!(error.code, "image_provider_rate_limit");
@@ -1122,14 +1142,18 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_429_NO_HEADER_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let error = client
             .generate(&sample_image_request())
             .expect_err("429 must error");
         handle.join().expect("server thread clean");
         assert!(
-            matches!(error.kind, ImageProviderErrorKind::RateLimit { retry_after_ms: None }),
+            matches!(
+                error.kind,
+                ImageProviderErrorKind::RateLimit {
+                    retry_after_ms: None
+                }
+            ),
             "expected RateLimit{{None}} when header absent, got {error:?}"
         );
         unsafe { std::env::remove_var(env_var) };
@@ -1145,13 +1169,17 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_FILTER_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let error = client
             .generate(&sample_image_request())
             .expect_err("content_filter must error");
         handle.join().expect("server thread clean");
-        assert_eq!(error.kind, ImageProviderErrorKind::ContentFiltered { reason: "content_filter".into() });
+        assert_eq!(
+            error.kind,
+            ImageProviderErrorKind::ContentFiltered {
+                reason: "content_filter".into()
+            }
+        );
         assert_eq!(error.code, "image_provider_content_filtered");
         // Non-retryable: content filter reproduces on retry.
         assert!(!error.retryable());
@@ -1165,8 +1193,7 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_UNSET_CRED";
         unsafe { std::env::remove_var(env_var) };
         let entry = sample_image_entry("http://127.0.0.1:1", env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let error = client
             .generate(&sample_image_request())
             .expect_err("missing credential must error");
@@ -1175,7 +1202,10 @@ mod tests {
             error.message.contains(env_var),
             "error must name the missing env var, got: {error}"
         );
-        assert!(!error.message.contains("sk-"), "no credential value in message");
+        assert!(
+            !error.message.contains("sk-"),
+            "no credential value in message"
+        );
     }
 
     #[test]
@@ -1188,8 +1218,7 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_500_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let error = client
             .generate(&sample_image_request())
             .expect_err("500 must error");
@@ -1211,8 +1240,8 @@ mod tests {
         let body = serde_json::json!({ "data": [{ "b64_json": b64 }] }).to_string();
         let (addr, handle, captured) = image_capturing_server(body);
         let entry = sample_image_entry(&format!("http://{addr}"), "");
-        let client = OpenAiImageClient::new(&entry, OptionalEnvCredentialResolver)
-            .expect("client builds");
+        let client =
+            OpenAiImageClient::new(&entry, OptionalEnvCredentialResolver).expect("client builds");
         let response = client.generate(&sample_image_request()).expect("generate");
         handle.join().expect("server thread clean");
         assert_eq!(response.bytes, png_bytes);
@@ -1230,8 +1259,7 @@ mod tests {
         let env_var = "PLOTFORGE_T31_IMAGE_EMPTY_DATA_KEY";
         unsafe { std::env::set_var(env_var, "test-credential") };
         let entry = sample_image_entry(&format!("http://{addr}"), env_var);
-        let client =
-            OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
+        let client = OpenAiImageClient::new(&entry, EnvCredentialResolver).expect("client builds");
         let error = client
             .generate(&sample_image_request())
             .expect_err("empty data must error");
@@ -1241,4 +1269,3 @@ mod tests {
         unsafe { std::env::remove_var(env_var) };
     }
 }
-

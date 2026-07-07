@@ -199,11 +199,7 @@ impl PiAgent {
     /// Build the redaction-safe `PiAgentRunResult` from a validated envelope.
     /// Shared by both `run_with_envelope` and `run_with_envelope_with_context`
     /// so the trace-identity and evidence-summary contract is identical.
-    fn assemble_result(
-        &self,
-        envelope: &AgentOutputEnvelope,
-        run_seed: u64,
-    ) -> PiAgentRunResult {
+    fn assemble_result(&self, envelope: &AgentOutputEnvelope, run_seed: u64) -> PiAgentRunResult {
         let mut reproducibility = envelope.reproducibility.clone();
         // The pi-Agent facade owns the trace-evidence identity for its results:
         // it derives a deterministic, redaction-safe id from `agent_id:run_seed`
@@ -248,9 +244,7 @@ impl PiAgent {
 
     /// Route a `ProviderPipelineError` through the shared redaction path so
     /// the pi-Agent surface never leaks raw provider text or secrets.
-    fn provider_error(
-        pipeline_error: crate::pipelines::ProviderPipelineError,
-    ) -> PiAgentError {
+    fn provider_error(pipeline_error: crate::pipelines::ProviderPipelineError) -> PiAgentError {
         let runtime_error = pipeline_error.into_runtime_error();
         PiAgentError::Provider {
             code: runtime_error.code,

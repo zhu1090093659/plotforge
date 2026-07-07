@@ -50,8 +50,8 @@ pub use providers_text::{
 // `MessageRole` are also embedded in the additive `TextModelRequest.messages`
 // field, so downstream consumers build messages through these types.
 pub use prompts::{
-    BEAT_WRITER_V1, PLOT_DOCTOR_V1, SCENE_PLANNER_V1, AssembledContext, ChatMessage,
-    ContextBudget, MessageRole, ProjectContext, PromptAssembler, PromptTemplate, assemble_context,
+    AssembledContext, BEAT_WRITER_V1, ChatMessage, ContextBudget, MessageRole, PLOT_DOCTOR_V1,
+    ProjectContext, PromptAssembler, PromptTemplate, SCENE_PLANNER_V1, assemble_context,
     estimate_tokens, prompt_version_for_role,
 };
 pub use providers_tts::{
@@ -88,8 +88,8 @@ pub use validation::{
 // helper through stable `crate::` paths. These do not widen the public API.
 #[allow(unused_imports)] // RetryPolicy + retry variant are test-facing only
 pub(crate) use pipelines::{
-    complete_text_agent_output, complete_text_agent_output_with_messages,
-    complete_text_agent_output_with_retry, RetryPolicy,
+    RetryPolicy, complete_text_agent_output, complete_text_agent_output_with_messages,
+    complete_text_agent_output_with_retry,
 };
 pub(crate) use plotforge_schema::contains_secret_marker_text;
 

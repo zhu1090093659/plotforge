@@ -349,12 +349,9 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
 /// be inserted into the request body as the `"messages"` field.
 fn openai_chat_messages(request: &crate::providers_text::TextModelRequest) -> serde_json::Value {
     match request.messages.as_ref() {
-        Some(messages) => serde_json::Value::Array(
-            messages
-                .iter()
-                .map(chat_message_to_json)
-                .collect(),
-        ),
+        Some(messages) => {
+            serde_json::Value::Array(messages.iter().map(chat_message_to_json).collect())
+        }
         None => serde_json::json!([
             { "role": "user", "content": request.prompt }
         ]),
@@ -416,7 +413,11 @@ fn anthropic_system_and_messages(
                 .map(|message| message.content.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
-            let system = if system.is_empty() { None } else { Some(system) };
+            let system = if system.is_empty() {
+                None
+            } else {
+                Some(system)
+            };
             let body_messages = serde_json::Value::Array(
                 messages
                     .iter()
@@ -684,7 +685,9 @@ impl TextModelClient for OpenAiResponsesClient {
 /// repair. `incomplete` due to `max_output_tokens` surfaces as
 /// `OutputTruncated`. Token usage from the top-level `usage` object is
 /// forwarded when present.
-fn extract_openai_responses_content(body: &str) -> Result<ExtractedResponse, TextModelProviderError> {
+fn extract_openai_responses_content(
+    body: &str,
+) -> Result<ExtractedResponse, TextModelProviderError> {
     let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
         TextModelProviderError::provider(
             "text_provider_http_decode",
@@ -704,9 +707,7 @@ fn extract_openai_responses_content(body: &str) -> Result<ExtractedResponse, Tex
                     .and_then(|reason| reason.as_str())
                     .unwrap_or("incomplete");
                 if reason == "content_filter" {
-                    return Err(TextModelProviderError::content_filtered(
-                        reason.to_string(),
-                    ));
+                    return Err(TextModelProviderError::content_filtered(reason.to_string()));
                 }
                 return Err(TextModelProviderError::output_truncated(
                     output_tokens_from_usage(&value),
@@ -961,14 +962,16 @@ fn join_endpoint(base_url: &str, relative: &str) -> String {
 /// count from a Chat Completions or Responses `usage` object. Used for the
 /// `OutputTruncated` token count on a `length` / `max_output_tokens` finish.
 fn output_tokens_from_usage(value: &serde_json::Value) -> Option<u64> {
-    value
-        .get("usage")
-        .and_then(|usage| {
-            usage
-                .get("output_tokens")
-                .and_then(|tokens| tokens.as_u64())
-                .or_else(|| usage.get("completion_tokens").and_then(|tokens| tokens.as_u64()))
-        })
+    value.get("usage").and_then(|usage| {
+        usage
+            .get("output_tokens")
+            .and_then(|tokens| tokens.as_u64())
+            .or_else(|| {
+                usage
+                    .get("completion_tokens")
+                    .and_then(|tokens| tokens.as_u64())
+            })
+    })
 }
 
 /// Parses an OpenAI-style `usage` object into a `UsageInfo`. The Chat
@@ -980,11 +983,19 @@ fn parse_openai_usage(usage: Option<&serde_json::Value>) -> Option<UsageInfo> {
     let input_tokens = usage
         .get("input_tokens")
         .and_then(|tokens| tokens.as_u64())
-        .or_else(|| usage.get("prompt_tokens").and_then(|tokens| tokens.as_u64()));
+        .or_else(|| {
+            usage
+                .get("prompt_tokens")
+                .and_then(|tokens| tokens.as_u64())
+        });
     let output_tokens = usage
         .get("output_tokens")
         .and_then(|tokens| tokens.as_u64())
-        .or_else(|| usage.get("completion_tokens").and_then(|tokens| tokens.as_u64()));
+        .or_else(|| {
+            usage
+                .get("completion_tokens")
+                .and_then(|tokens| tokens.as_u64())
+        });
     Some(UsageInfo {
         input_tokens,
         output_tokens,
@@ -996,7 +1007,9 @@ fn parse_anthropic_usage(usage: Option<&serde_json::Value>) -> Option<UsageInfo>
     let usage = usage?;
     Some(UsageInfo {
         input_tokens: usage.get("input_tokens").and_then(|tokens| tokens.as_u64()),
-        output_tokens: usage.get("output_tokens").and_then(|tokens| tokens.as_u64()),
+        output_tokens: usage
+            .get("output_tokens")
+            .and_then(|tokens| tokens.as_u64()),
     })
 }
 
@@ -1388,7 +1401,10 @@ mod tests {
         // Far-future date clamps to max_delay (8_000ms) only inside the retry
         // policy; here `parse_retry_after` returns the raw delay, so just
         // assert it is a large positive number of ms.
-        assert!(parsed > 1_000_000, "expected a large future delay, got {parsed}");
+        assert!(
+            parsed > 1_000_000,
+            "expected a large future delay, got {parsed}"
+        );
     }
 
     #[test]
@@ -1404,25 +1420,46 @@ mod tests {
     fn openai_chat_content_filter_finish_reason_surfaces_content_filtered() {
         let body = r#"{"choices":[{"message":{"content":""},"finish_reason":"content_filter"}]}"#;
         let error = extract_openai_chat_content(body).expect_err("content_filter must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "content_filter".into() });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: "content_filter".into()
+            }
+        );
         assert_eq!(error.code, "text_provider_content_filtered");
-        assert!(error.message.contains("content policy"), "actionable message, got: {error}");
+        assert!(
+            error.message.contains("content policy"),
+            "actionable message, got: {error}"
+        );
     }
 
     #[test]
     fn openai_chat_length_finish_reason_surfaces_output_truncated() {
         let body = r#"{"choices":[{"message":{"content":"{\"id\":\"par"},"finish_reason":"length"}],"usage":{"completion_tokens":4096}}"#;
         let error = extract_openai_chat_content(body).expect_err("length must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::OutputTruncated { tokens_generated: Some(4096) });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::OutputTruncated {
+                tokens_generated: Some(4096)
+            }
+        );
         assert_eq!(error.code, "text_provider_output_truncated");
-        assert!(error.message.contains("max_tokens"), "actionable message, got: {error}");
+        assert!(
+            error.message.contains("max_tokens"),
+            "actionable message, got: {error}"
+        );
     }
 
     #[test]
     fn openai_responses_refusal_surfaces_content_filtered() {
         let body = r#"{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[]}"#;
         let error = extract_openai_responses_content(body).expect_err("refusal must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "content_filter".into() });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: "content_filter".into()
+            }
+        );
         assert_eq!(error.code, "text_provider_content_filtered");
     }
 
@@ -1430,7 +1467,12 @@ mod tests {
     fn openai_responses_max_output_tokens_surfaces_output_truncated() {
         let body = r#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"content":[{"text":"partial"}]}],"usage":{"output_tokens":8192}}"#;
         let error = extract_openai_responses_content(body).expect_err("truncation must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::OutputTruncated { tokens_generated: Some(8192) });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::OutputTruncated {
+                tokens_generated: Some(8192)
+            }
+        );
         assert_eq!(error.code, "text_provider_output_truncated");
     }
 
@@ -1438,32 +1480,58 @@ mod tests {
     fn openai_responses_refusal_output_type_surfaces_content_filtered() {
         let body = r#"{"status":"completed","output":[{"type":"refusal","refusal":"policy"}]}"#;
         let error = extract_openai_responses_content(body).expect_err("refusal part must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "refusal".into() });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: "refusal".into()
+            }
+        );
     }
 
     #[test]
     fn anthropic_max_tokens_stop_reason_surfaces_output_truncated() {
         let body = r#"{"stop_reason":"max_tokens","content":[{"text":"partial"}],"usage":{"output_tokens":8192}}"#;
         let error = extract_anthropic_content(body).expect_err("max_tokens must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::OutputTruncated { tokens_generated: Some(8192) });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::OutputTruncated {
+                tokens_generated: Some(8192)
+            }
+        );
         assert_eq!(error.code, "text_provider_output_truncated");
-        assert!(error.message.contains("max_tokens"), "actionable message, got: {error}");
+        assert!(
+            error.message.contains("max_tokens"),
+            "actionable message, got: {error}"
+        );
     }
 
     #[test]
     fn anthropic_content_filter_stop_reason_surfaces_content_filtered() {
         let body = r#"{"stop_reason":"content_filter","content":[{"text":""}]}"#;
         let error = extract_anthropic_content(body).expect_err("content_filter must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "content_filter".into() });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: "content_filter".into()
+            }
+        );
         assert_eq!(error.code, "text_provider_content_filtered");
-        assert!(error.message.contains("content policy"), "actionable message, got: {error}");
+        assert!(
+            error.message.contains("content policy"),
+            "actionable message, got: {error}"
+        );
     }
 
     #[test]
     fn anthropic_redacted_content_block_surfaces_content_filtered() {
         let body = r#"{"stop_reason":"end_turn","content":[{"type":"redacted_content"}]}"#;
         let error = extract_anthropic_content(body).expect_err("redacted block must error");
-        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "redacted_content".into() });
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: "redacted_content".into()
+            }
+        );
     }
 
     // --- 429 Retry-After end-to-end via execute() --------------------------
@@ -1497,7 +1565,12 @@ mod tests {
             })
             .expect_err("429 must error");
         assert!(
-            matches!(error.kind, TextModelProviderErrorKind::RateLimit { retry_after_ms: Some(1000) }),
+            matches!(
+                error.kind,
+                TextModelProviderErrorKind::RateLimit {
+                    retry_after_ms: Some(1000)
+                }
+            ),
             "expected RateLimit{{retry_after_ms:Some(1000)}}, got {error:?}"
         );
         assert_eq!(error.code, "text_provider_rate_limit");
@@ -1513,7 +1586,8 @@ mod tests {
             let (mut stream, _) = listener.accept().expect("accept");
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
-            let _ = stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\r\n");
+            let _ =
+                stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\r\n");
             let _ = stream.flush();
         });
         let client = OpenAiCompatibleClient::default();
@@ -1527,7 +1601,12 @@ mod tests {
             })
             .expect_err("429 must error");
         assert!(
-            matches!(error.kind, TextModelProviderErrorKind::RateLimit { retry_after_ms: None }),
+            matches!(
+                error.kind,
+                TextModelProviderErrorKind::RateLimit {
+                    retry_after_ms: None
+                }
+            ),
             "expected RateLimit{{None}} when header absent, got {error:?}"
         );
         server.join().expect("server thread clean");
@@ -1894,7 +1973,10 @@ mod tests {
         // `$schema` and `title` field; a degenerate empty object would
         // indicate generation failed.
         assert!(
-            schema.as_object().map(|obj| !obj.is_empty()).unwrap_or(false),
+            schema
+                .as_object()
+                .map(|obj| !obj.is_empty())
+                .unwrap_or(false),
             "AgentOutputEnvelope schema must be a non-empty JSON object"
         );
     }
@@ -1922,10 +2004,7 @@ mod tests {
         let messages = openai_chat_messages(&request);
         let array = messages.as_array().expect("messages is an array");
         assert_eq!(array.len(), 1, "None path wraps prompt as one message");
-        assert_eq!(
-            array[0].get("role").and_then(|r| r.as_str()),
-            Some("user")
-        );
+        assert_eq!(array[0].get("role").and_then(|r| r.as_str()), Some("user"));
         assert_eq!(
             array[0].get("content").and_then(|c| c.as_str()),
             Some("{\"role\":\"scene_planner\"}")
@@ -2025,22 +2104,14 @@ mod tests {
         // message wrapping the prompt. Assert role + content independently
         // (serde_json key order is not guaranteed) plus that no system role
         // leaks in.
-        let payload = body
-            .split("\r\n\r\n")
-            .nth(1)
-            .unwrap_or(&body)
-            .to_string();
-        let messages: serde_json::Value =
-            serde_json::from_str(&payload).expect("body is JSON");
+        let payload = body.split("\r\n\r\n").nth(1).unwrap_or(&body).to_string();
+        let messages: serde_json::Value = serde_json::from_str(&payload).expect("body is JSON");
         let array = messages
             .get("messages")
             .and_then(|m| m.as_array())
             .expect("messages array present");
         assert_eq!(array.len(), 1, "None path wraps prompt as one message");
-        assert_eq!(
-            array[0].get("role").and_then(|r| r.as_str()),
-            Some("user")
-        );
+        assert_eq!(array[0].get("role").and_then(|r| r.as_str()), Some("user"));
         assert_eq!(
             array[0].get("content").and_then(|c| c.as_str()),
             Some("{\"role\":\"scene_planner\"}")
@@ -2153,10 +2224,7 @@ mod tests {
         assert_eq!(system, None, "None path has no system param");
         let array = messages.as_array().expect("messages is an array");
         assert_eq!(array.len(), 1);
-        assert_eq!(
-            array[0].get("role").and_then(|r| r.as_str()),
-            Some("user")
-        );
+        assert_eq!(array[0].get("role").and_then(|r| r.as_str()), Some("user"));
         assert_eq!(
             array[0].get("content").and_then(|c| c.as_str()),
             Some("{\"role\":\"scene_planner\"}")
@@ -2214,10 +2282,7 @@ mod tests {
         );
         let array = messages.as_array().expect("messages is an array");
         assert_eq!(array.len(), 1, "only the user message remains in the array");
-        assert_eq!(
-            array[0].get("role").and_then(|r| r.as_str()),
-            Some("user")
-        );
+        assert_eq!(array[0].get("role").and_then(|r| r.as_str()), Some("user"));
     }
 
     #[test]
@@ -2278,22 +2343,14 @@ mod tests {
         // Backward compat: the None path must still produce a single user
         // message wrapping the prompt, and must omit the top-level system
         // param. Parse the JSON payload (key order is not guaranteed).
-        let payload = body
-            .split("\r\n\r\n")
-            .nth(1)
-            .unwrap_or(&body)
-            .to_string();
-        let messages: serde_json::Value =
-            serde_json::from_str(&payload).expect("body is JSON");
+        let payload = body.split("\r\n\r\n").nth(1).unwrap_or(&body).to_string();
+        let messages: serde_json::Value = serde_json::from_str(&payload).expect("body is JSON");
         let array = messages
             .get("messages")
             .and_then(|m| m.as_array())
             .expect("messages array present");
         assert_eq!(array.len(), 1, "None path wraps prompt as one message");
-        assert_eq!(
-            array[0].get("role").and_then(|r| r.as_str()),
-            Some("user")
-        );
+        assert_eq!(array[0].get("role").and_then(|r| r.as_str()), Some("user"));
         assert_eq!(
             array[0].get("content").and_then(|c| c.as_str()),
             Some("{\"role\":\"scene_planner\"}")

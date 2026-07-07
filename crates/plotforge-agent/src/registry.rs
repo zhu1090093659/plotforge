@@ -20,7 +20,9 @@ use plotforge_schema::{
     RemoteModelList, TtsProviderEntry, redact_trace_text,
 };
 
-use crate::providers_http::{AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient};
+use crate::providers_http::{
+    AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient,
+};
 use crate::providers_image::{ImageProvider, OpenAiImageClient};
 use crate::providers_text::{
     ConfiguredTextModelProvider, EnvCredentialResolver, FakeTextModelProvider,
@@ -238,10 +240,7 @@ pub fn build_image_provider(
 /// fails). A disabled entry is treated the same as absent (no silent degraded
 /// run from a provider the user explicitly turned off).
 pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProviderEntry> {
-    registry
-        .image_providers
-        .iter()
-        .find(|entry| entry.enabled)
+    registry.image_providers.iter().find(|entry| entry.enabled)
 }
 
 // ---------------------------------------------------------------------------
@@ -254,9 +253,7 @@ pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProvi
 // ---------------------------------------------------------------------------
 
 /// Constructs an `OpenAiTtsClient` from a registered `TtsProviderEntry`.
-pub fn build_tts_provider(
-    entry: &TtsProviderEntry,
-) -> Result<OpenAiTtsClient, ProviderBuildError> {
+pub fn build_tts_provider(entry: &TtsProviderEntry) -> Result<OpenAiTtsClient, ProviderBuildError> {
     OpenAiTtsClient::from_entry(entry).map_err(|error| ProviderBuildError::ClientConstruction {
         provider_id: entry.id.clone(),
         message: error.message,
@@ -384,11 +381,10 @@ fn write_cached_models(
             message: redact_trace_text(&format!("failed to create model cache dir: {error}")),
         })?;
     }
-    let content = serde_json::to_string_pretty(list).map_err(|error| {
-        ModelDiscoveryError::Cache {
+    let content =
+        serde_json::to_string_pretty(list).map_err(|error| ModelDiscoveryError::Cache {
             message: redact_trace_text(&format!("failed to serialize model cache: {error}")),
-        }
-    })?;
+        })?;
     std::fs::write(path, content).map_err(|error| ModelDiscoveryError::Cache {
         message: redact_trace_text(&format!("failed to write model cache: {error}")),
     })?;
@@ -472,15 +468,13 @@ fn dispatch_models_request(
     match auth {
         ModelsAuth::Bearer => {
             if !credential.trim().is_empty() {
-                let value = reqwest::header::HeaderValue::from_str(&format!(
-                    "Bearer {credential}"
-                ))
-                .map_err(|_| ModelDiscoveryError::Http {
-                    code: "credential_header".into(),
-                    message: redact_trace_text(
-                        "provider credential contains bytes illegal in an HTTP header value",
-                    ),
-                })?;
+                let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+                    .map_err(|_| ModelDiscoveryError::Http {
+                        code: "credential_header".into(),
+                        message: redact_trace_text(
+                            "provider credential contains bytes illegal in an HTTP header value",
+                        ),
+                    })?;
                 headers.insert("Authorization", value);
             }
         }
@@ -498,12 +492,15 @@ fn dispatch_models_request(
             }
         }
     }
-    let response = client.get(url).headers(headers).send().map_err(|error| {
-        ModelDiscoveryError::Http {
-            code: "transport".into(),
-            message: redact_trace_text(&error.to_string()),
-        }
-    })?;
+    let response =
+        client
+            .get(url)
+            .headers(headers)
+            .send()
+            .map_err(|error| ModelDiscoveryError::Http {
+                code: "transport".into(),
+                message: redact_trace_text(&error.to_string()),
+            })?;
     let status = response.status();
     if !status.is_success() {
         return Err(ModelDiscoveryError::Http {
@@ -525,20 +522,20 @@ fn parse_models_response(
     body: &str,
     kind: ProviderKind,
 ) -> Result<Vec<RemoteModelInfo>, ModelDiscoveryError> {
-    let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
-        ModelDiscoveryError::Http {
+    let value: serde_json::Value =
+        serde_json::from_str(body).map_err(|error| ModelDiscoveryError::Http {
             code: "decode".into(),
             message: redact_trace_text(&format!("model list response was not JSON: {error}")),
-        }
-    })?;
-    let data = value.get("data").and_then(|d| d.as_array()).ok_or_else(|| {
-        ModelDiscoveryError::Http {
+        })?;
+    let data = value
+        .get("data")
+        .and_then(|d| d.as_array())
+        .ok_or_else(|| ModelDiscoveryError::Http {
             code: "decode".into(),
             message: redact_trace_text(&format!(
                 "{kind:?} model list response missing `data` array"
             )),
-        }
-    })?;
+        })?;
     let mut models = Vec::with_capacity(data.len());
     for item in data {
         let id = item
@@ -581,7 +578,6 @@ fn unix_now() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
-
 
 /// it. `local-pi` returns `None` so the caller routes to
 /// `FakeTextModelProvider::local_pi()`; an unknown model id also returns
@@ -922,7 +918,12 @@ mod tests {
     // the missing-credential case.
     // -----------------------------------------------------------------------
 
-    fn discovery_entry(id: &str, kind: ProviderKind, endpoint: &str, env_var: &str) -> ProviderEntry {
+    fn discovery_entry(
+        id: &str,
+        kind: ProviderKind,
+        endpoint: &str,
+        env_var: &str,
+    ) -> ProviderEntry {
         ProviderEntry {
             id: id.into(),
             kind,
@@ -978,8 +979,7 @@ mod tests {
         );
         let dir = TempDir::new().expect("temp dir");
         let cache = dir.path().join("openai-test.json");
-        let models =
-            fetch_provider_models_to(&entry, &cache).expect("fetch openai models");
+        let models = fetch_provider_models_to(&entry, &cache).expect("fetch openai models");
         handle.join().expect("server thread clean");
         assert_eq!(models.len(), 2);
         assert_eq!(models[0].id, "gpt-4o");
@@ -1018,8 +1018,7 @@ mod tests {
         );
         let dir = TempDir::new().expect("temp dir");
         let cache = dir.path().join("anthropic-test.json");
-        let models =
-            fetch_provider_models_to(&entry, &cache).expect("fetch anthropic models");
+        let models = fetch_provider_models_to(&entry, &cache).expect("fetch anthropic models");
         handle.join().expect("server thread clean");
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "claude-3-5-sonnet");
@@ -1056,8 +1055,7 @@ mod tests {
             "http://127.0.0.1:1", // unreachable; must never be hit
             "PLOTFORGE_T12_UNSET_CACHE_VAR",
         );
-        let models =
-            fetch_provider_models_to(&entry, &cache).expect("fresh cache returns cached");
+        let models = fetch_provider_models_to(&entry, &cache).expect("fresh cache returns cached");
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "cached-model");
     }
@@ -1092,8 +1090,7 @@ mod tests {
             &format!("http://{addr}"),
             env_var,
         );
-        let models =
-            fetch_provider_models_to(&entry, &cache).expect("stale cache refetches");
+        let models = fetch_provider_models_to(&entry, &cache).expect("stale cache refetches");
         handle.join().expect("server thread clean");
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "fresh-model");
@@ -1118,8 +1115,8 @@ mod tests {
         );
         let dir = TempDir::new().expect("temp dir");
         let cache = dir.path().join("no-cred.json");
-        let error = fetch_provider_models_to(&entry, &cache)
-            .expect_err("missing credential must error");
+        let error =
+            fetch_provider_models_to(&entry, &cache).expect_err("missing credential must error");
         assert!(matches!(
             error,
             ModelDiscoveryError::MissingCredential { ref env_var } if env_var == "PLOTFORGE_T12_MISSING_CRED_UNSET_VAR"
@@ -1183,8 +1180,7 @@ mod tests {
         );
         let dir = TempDir::new().expect("temp dir");
         let cache = dir.path().join("auth-fail.json");
-        let error = fetch_provider_models_to(&entry, &cache)
-            .expect_err("401 must error");
+        let error = fetch_provider_models_to(&entry, &cache).expect_err("401 must error");
         handle.join().expect("server thread clean");
         assert!(matches!(error, ModelDiscoveryError::Http { .. }));
         assert!(error.to_string().contains("401"));

@@ -68,16 +68,22 @@ pub enum TextModelProviderErrorKind {
     /// or HTTP-date), in milliseconds, when present. It is `None` if the
     /// header was absent or unparseable — the retry loop then falls back to
     /// its own backoff.
-    RateLimit { retry_after_ms: Option<u64> },
+    RateLimit {
+        retry_after_ms: Option<u64>,
+    },
     /// Upstream flagged the response as content-policy-filtered. Carries the
     /// provider-reported `finish_reason` / `stop_reason` string (a short
     /// enumerated token, not user content, so it is trace-safe).
     /// Non-retryable: retrying with the same prompt reproduces the filter.
-    ContentFiltered { finish_reason: String },
+    ContentFiltered {
+        finish_reason: String,
+    },
     /// Upstream truncated the output at the model's max-token limit. Carries
     /// the provider-reported output token count when available. Non-retryable:
     /// retrying with the same prompt/limit reproduces the truncation.
-    OutputTruncated { tokens_generated: Option<u64> },
+    OutputTruncated {
+        tokens_generated: Option<u64>,
+    },
 }
 
 /// Whether a provider error kind is worth retrying with the same request.
@@ -1103,7 +1109,9 @@ mod tests {
         }
     }
 
-    fn base_request_with_messages(messages: Option<Vec<crate::prompts::ChatMessage>>) -> TextModelRequest {
+    fn base_request_with_messages(
+        messages: Option<Vec<crate::prompts::ChatMessage>>,
+    ) -> TextModelRequest {
         TextModelRequest {
             call_id: "call-1".into(),
             agent: plotforge_schema::AgentRole::ScenePlanner,
@@ -1128,9 +1136,14 @@ mod tests {
         );
         let request = base_request_with_messages(Some(vec![
             ChatMessage::new(MessageRole::System, "you are the scene planner"),
-            ChatMessage::new(MessageRole::User, "Authorization: bearer sk-leak-in-message"),
+            ChatMessage::new(
+                MessageRole::User,
+                "Authorization: bearer sk-leak-in-message",
+            ),
         ]));
-        let error = provider.complete(&request).expect_err("secret marker must error");
+        let error = provider
+            .complete(&request)
+            .expect_err("secret marker must error");
         assert_eq!(error.code, "text_provider_prompt_secret");
         assert!(error.message.contains("secret marker"));
         assert!(
