@@ -10,6 +10,7 @@ import type {
   PiAgentApplyResult,
   ProviderEntry,
   PromptTemplate,
+  RemoteModelInfo,
   SkillIndex,
   SkillManifest,
 } from "../../../../contracts/plotforge";
@@ -162,6 +163,33 @@ export async function mockDeleteProvider(id: string): Promise<ProviderEntry> {
 
 export async function mockTestProviderConnection(_id: string): Promise<ProviderTestResult> {
   return { ok: true, message: "" };
+}
+
+/**
+ * Mock `listRemoteModels`: returns a small, sensible list of contract-typed
+ * `RemoteModelInfo` entries so the provider editor's "Fetch models" flow can be
+ * exercised in tests without a live provider. Mirrors the OpenAI `/v1/models`
+ * shape (id + owned_by + created + token caps).
+ */
+export async function mockListRemoteModels(
+  _providerId: string,
+): Promise<RemoteModelInfo[]> {
+  return [
+    {
+      id: "gpt-4o",
+      owned_by: "openai",
+      created: 1715367600,
+      max_input_tokens: 128000,
+      max_output_tokens: 16384,
+    },
+    {
+      id: "gpt-4o-mini",
+      owned_by: "openai",
+      created: 1715367600,
+      max_input_tokens: 128000,
+      max_output_tokens: 16384,
+    },
+  ];
 }
 
 export async function mockListUserPromptTemplates(): Promise<PromptTemplate[]> {

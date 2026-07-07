@@ -155,6 +155,9 @@ export function AgentChatRail({
                   // label + the raw redacted message (R1).
                   missingCredentialLabel={t("agent.apply.missingCredential")}
                   providerTimeoutLabel={t("agent.apply.providerTimeout")}
+                  rateLimitLabel={t("agent.apply.rateLimit")}
+                  contentFilteredLabel={t("agent.apply.contentFiltered")}
+                  outputTruncatedLabel={t("agent.apply.outputTruncated")}
                   failedLabel={t("agent.apply.failed")}
                 />
               </li>
@@ -239,6 +242,9 @@ function TurnResult({
   errorLabel,
   missingCredentialLabel,
   providerTimeoutLabel,
+  rateLimitLabel,
+  contentFilteredLabel,
+  outputTruncatedLabel,
   failedLabel,
 }: {
   role: string;
@@ -250,6 +256,9 @@ function TurnResult({
   errorLabel: string;
   missingCredentialLabel: string;
   providerTimeoutLabel: string;
+  rateLimitLabel: string;
+  contentFilteredLabel: string;
+  outputTruncatedLabel: string;
   failedLabel: string;
 }) {
   const { report, error, errorCode, errorEnvVar } = turn;
@@ -265,6 +274,11 @@ function TurnResult({
         : missingCredentialLabel.replace("{envVar}", "");
     }
     if (errorCode === "pi_agent_provider_timeout") return providerTimeoutLabel;
+    if (errorCode === "text_provider_rate_limit") return rateLimitLabel;
+    if (errorCode === "text_provider_content_filtered")
+      return contentFilteredLabel;
+    if (errorCode === "text_provider_output_truncated")
+      return outputTruncatedLabel;
     return failedLabel;
   })();
   return (

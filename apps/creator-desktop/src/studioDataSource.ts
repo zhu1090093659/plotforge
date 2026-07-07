@@ -26,6 +26,7 @@ import type {
   ProjectData,
   ProviderEntry,
   PromptTemplate,
+  RemoteModelInfo,
   ResourceDefinition,
   Rule,
   RuleDraft,
@@ -173,6 +174,7 @@ export interface StudioDataSource {
   upsertProvider(entry: ProviderEntry): Promise<ProviderEntry>;
   deleteProvider(id: string): Promise<ProviderEntry>;
   testProviderConnection(id: string): Promise<ProviderTestResult>;
+  listRemoteModels(providerId: string): Promise<RemoteModelInfo[]>;
   listUserPromptTemplates(): Promise<PromptTemplate[]>;
   listProjectPromptTemplates(projectPath: string): Promise<PromptTemplate[]>;
   upsertUserPromptTemplate(template: PromptTemplate): Promise<PromptTemplate>;
@@ -288,6 +290,7 @@ function createStudioDataSource(
     upsertProvider: bridge.upsertProvider,
     deleteProvider: bridge.deleteProvider,
     testProviderConnection: bridge.testProviderConnection,
+    listRemoteModels: bridge.listRemoteModels,
     listUserPromptTemplates: bridge.listUserPromptTemplates,
     listProjectPromptTemplates: bridge.listProjectPromptTemplates,
     upsertUserPromptTemplate: bridge.upsertUserPromptTemplate,

@@ -9,7 +9,7 @@ import type {
 import type { StudioDataSource } from "./studioDataSource";
 import type { ProviderTestResult } from "./tauriBridge";
 import {
-  ModelSelect,
+  ModelCombobox,
   PermissionSelect,
   ThinkingSelect,
 } from "./agentConfigSelectors";
@@ -147,6 +147,7 @@ export function AgentConfigSection({
   return (
     <div className="grid gap-6">
       <ProvidersArea
+        dataSource={dataSource}
         providers={providers}
         loading={providersLoading}
         error={providerError}
@@ -180,6 +181,7 @@ export function AgentConfigSection({
 // ---------------------------------------------------------------------------
 
 interface ProvidersAreaProps {
+  dataSource: StudioDataSource;
   providers: ProviderEntry[];
   loading: boolean;
   error: string | null;
@@ -195,6 +197,7 @@ interface ProvidersAreaProps {
 }
 
 function ProvidersArea({
+  dataSource,
   providers,
   loading,
   error,
@@ -228,7 +231,12 @@ function ProvidersArea({
         </div>
       )}
       {editingEntry ? (
-        <ProviderEditor entry={editingEntry} onCancel={onCancelEdit} onSave={onSave} />
+        <ProviderEditor
+          dataSource={dataSource}
+          entry={editingEntry}
+          onCancel={onCancelEdit}
+          onSave={onSave}
+        />
       ) : loading ? (
         <EmptyState>…</EmptyState>
       ) : providers.length === 0 ? (
@@ -306,16 +314,21 @@ function kindLabel(kind: ProviderKind, t: (key: string) => string): string {
 }
 
 interface ProviderEditorProps {
+  dataSource: StudioDataSource;
   entry: ProviderEntry;
   onCancel: () => void;
   onSave: (entry: ProviderEntry) => void;
 }
 
-function ProviderEditor({ entry, onCancel, onSave }: ProviderEditorProps) {
+function ProviderEditor({ dataSource, entry, onCancel, onSave }: ProviderEditorProps) {
   const { t } = useStudioI18n();
   const [draft, setDraft] = useState<ProviderEntry>(entry);
   const update = <K extends keyof ProviderEntry>(key: K, value: ProviderEntry[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
+  // The provider id must be set before its upstream models can be fetched.
+  // The combobox's Fetch button is only enabled once an id is present; an
+  // empty id would surface a `provider_not_found` error otherwise.
+  const canFetch = draft.id.trim().length > 0;
   return (
     <StudioPanel className="mt-3">
       <div className="grid max-w-xl gap-3">
@@ -354,12 +367,30 @@ function ProviderEditor({ entry, onCancel, onSave }: ProviderEditorProps) {
           value={draft.endpoint_url}
           onChange={(v) => update("endpoint_url", v)}
         />
-        <TextInput
-          label={t("agent.provider.model")}
-          ariaLabel={t("agent.provider.model")}
-          value={draft.model}
-          onChange={(v) => update("model", v)}
-        />
+        <div className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+            {t("agent.provider.model")}
+          </span>
+          {canFetch ? (
+            <ModelCombobox
+              ariaLabel={t("agent.provider.model")}
+              value={draft.model}
+              onChange={(v) => update("model", v)}
+              placeholder={t("agent.provider.modelPlaceholder")}
+              fetch={{ dataSource, providerId: draft.id }}
+            />
+          ) : (
+            <input
+              aria-label={t("agent.provider.model")}
+              value={draft.model}
+              onChange={(e) => update("model", e.target.value)}
+              placeholder={t("agent.provider.modelPlaceholder")}
+              autoComplete="off"
+              className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+            />
+          )}
+          <small className="text-xs text-ink/55">{t("agent.provider.modelHint")}</small>
+        </div>
         <div className="grid gap-1">
           <TextInput
             label={t("agent.provider.credentialEnvVar")}
@@ -370,6 +401,26 @@ function ProviderEditor({ entry, onCancel, onSave }: ProviderEditorProps) {
           />
           <small className="text-xs text-ink/55">{t("agent.provider.credentialHint")}</small>
         </div>
+        <label className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+            {t("agent.provider.maxOutputTokens")}
+          </span>
+          <input
+            type="number"
+            min={1}
+            aria-label={t("agent.provider.maxOutputTokens")}
+            value={draft.max_output_tokens ?? ""}
+            onChange={(e) =>
+              update(
+                "max_output_tokens",
+                e.target.value === "" ? null : Number(e.target.value),
+              )
+            }
+            placeholder={t("agent.provider.maxOutputTokensPlaceholder")}
+            className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+          />
+          <small className="text-xs text-ink/55">{t("agent.provider.maxOutputTokensHint")}</small>
+        </label>
         <label className="inline-flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"

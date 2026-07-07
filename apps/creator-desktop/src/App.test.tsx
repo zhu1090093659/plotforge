@@ -1320,6 +1320,9 @@ function appTestDataSource(
     async testProviderConnection(_id: string) {
       return { ok: true, message: "" };
     },
+    async listRemoteModels(_providerId: string) {
+      return [];
+    },
     async listUserPromptTemplates() {
       return [];
     },
