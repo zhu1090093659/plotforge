@@ -117,6 +117,29 @@ pub fn shared_blocking_client() -> Result<Client, TextModelProviderError> {
     shared_http_client().cloned()
 }
 
+/// Returns the JSON Schema for `AgentOutputEnvelope`, generated once via
+/// `schemars::schema_for!` and cached for the process lifetime. Used by the
+/// T2.4 JSON Schema output constraint: OpenAI-compatible/Responses send it
+/// as the `response_format.json_schema.schema` field; Anthropic Messages
+/// sends it as the `input_schema` of a forced `emit_envelope` tool. The
+/// schema is derived from the same `JsonSchema` impl that backs
+/// `contracts/plotforge.schema.json`, so the wire constraint matches the
+/// Rust contract exactly.
+fn agent_output_envelope_schema() -> &'static serde_json::Value {
+    static SCHEMA: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        let root = schemars::schema_for!(plotforge_schema::AgentOutputEnvelope);
+        serde_json::to_value(&root).unwrap_or_else(|error| {
+            // Schema generation should never fail for a deriving type, but
+            // degrade gracefully to an empty object rather than panicking in
+            // a Tauri worker thread. The JSON repair path remains as a safety
+            // net even with a degenerate schema.
+            eprintln!("plotforge-agent: failed to serialize AgentOutputEnvelope schema: {error}");
+            serde_json::json!({})
+        })
+    })
+}
+
 /// Adds a bearer auth header to `headers` only when `credential` is
 /// non-empty. Empty credentials (local no-auth endpoints) skip the header.
 ///
@@ -484,8 +507,24 @@ impl TextModelClient for OpenAiCompatibleClient {
         let mut body = serde_json::json!({
             "model": request.config.model,
             "messages": openai_chat_messages(request.request),
-            "response_format": { "type": "json_object" },
         });
+        // T2.4: JSON Schema output constraint. When the provider supports
+        // json_schema response_format, send the full AgentOutputEnvelope
+        // schema so the model is structurally constrained to valid output
+        // (reduces reliance on JSON repair). When not supported, fall back to
+        // the coarser json_object mode (the pre-T2.4 shape).
+        if request.config.supports_json_schema {
+            body["response_format"] = serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_output_envelope",
+                    "schema": agent_output_envelope_schema(),
+                    "strict": true,
+                }
+            });
+        } else {
+            body["response_format"] = serde_json::json!({ "type": "json_object" });
+        }
         if let Some(max_tokens) = request.config.max_output_tokens {
             body["max_tokens"] = serde_json::json!(max_tokens);
         }
@@ -618,6 +657,18 @@ impl TextModelClient for OpenAiResponsesClient {
         }
         if let Some(max_output_tokens) = request.config.max_output_tokens {
             body["max_output_tokens"] = serde_json::json!(max_output_tokens);
+        }
+        // T2.4: JSON Schema output constraint. The Responses API supports the
+        // same response_format shape as Chat Completions.
+        if request.config.supports_json_schema {
+            body["response_format"] = serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_output_envelope",
+                    "schema": agent_output_envelope_schema(),
+                    "strict": true,
+                }
+            });
         }
 
         let builder = self.client.post(responses_url).headers(headers).json(&body);
@@ -784,6 +835,20 @@ impl TextModelClient for AnthropicMessagesClient {
         if let Some(system) = system {
             body["system"] = serde_json::json!(system);
         }
+        // T2.4: JSON Schema output constraint via forced tool_use. Anthropic
+        // does not support a response_format parameter; instead, a tool with
+        // the envelope schema as its input_schema is defined and forced via
+        // tool_choice, so the model must emit a tool_use content block whose
+        // input is a valid AgentOutputEnvelope. The extract path checks for
+        // tool_use blocks first and falls back to text content.
+        if request.config.supports_json_schema {
+            body["tools"] = serde_json::json!([{
+                "name": "emit_envelope",
+                "description": "Emit the agent output envelope as structured JSON",
+                "input_schema": agent_output_envelope_schema(),
+            }]);
+            body["tool_choice"] = serde_json::json!({"type": "tool", "name": "emit_envelope"});
+        }
 
         let builder = self.client.post(messages_url).headers(headers).json(&body);
         let text = execute(builder)?;
@@ -840,6 +905,32 @@ fn extract_anthropic_content(body: &str) -> Result<ExtractedResponse, TextModelP
         .unwrap_or(false);
     if has_redacted_block {
         return Err(TextModelProviderError::content_filtered("redacted_content"));
+    }
+    // T2.4: when JSON Schema mode is active (forced tool_use), the envelope
+    // JSON is in a `tool_use` content block's `input` field, not in a `text`
+    // block. Scan content blocks for a tool_use block first; if found,
+    // serialize its `input` object to a JSON string. Fall back to `text`
+    // content for the pre-T2.4 shape (no tools sent).
+    if let Some(content_array) = value.get("content").and_then(|c| c.as_array()) {
+        for block in content_array {
+            if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                && let Some(input) = block.get("input")
+            {
+                let serialized = serde_json::to_string(input).map_err(|error| {
+                    TextModelProviderError::provider(
+                        "text_provider_http_decode",
+                        redact_trace_text(&format!(
+                            "anthropic_messages tool_use input was not serializable: {error}"
+                        )),
+                    )
+                })?;
+                return Ok(ExtractedResponse {
+                    content: serialized,
+                    finish_reason: stop_reason,
+                    usage: parse_anthropic_usage(value.get("usage")),
+                });
+            }
+        }
     }
     let content = value
         .get("content")
@@ -1488,7 +1579,11 @@ mod tests {
         let captured_clone = captured.clone();
         let handle = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
-            let mut buf = vec![0u8; 8192];
+            // Read the full request — the T2.4 JSON Schema response_format
+            // carries the full AgentOutputEnvelope schema, which is ~13KB,
+            // so a single 8KB read would truncate the body and miss the
+            // response_format keys the tests assert on.
+            let mut buf = vec![0u8; 65536];
             let read = stream.read(&mut buf).expect("read request");
             let request = String::from_utf8_lossy(&buf[..read]).to_string();
             *captured_clone.lock().expect("capture lock") = request;
@@ -1615,6 +1710,192 @@ mod tests {
         assert!(
             body.contains("\"max_tokens\":8192"),
             "default max_tokens must be 8192 when None, got: {body}"
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // T2.4: JSON Schema output constraint.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn openai_compatible_sends_json_schema_when_supported() {
+        let reply = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let mut config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        config.supports_json_schema = true;
+        let request = sample_request(&config);
+        let client = OpenAiCompatibleClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"type\":\"json_schema\""),
+            "json_schema response_format type must be sent when supports_json_schema, got: {body}"
+        );
+        assert!(
+            body.contains("\"name\":\"agent_output_envelope\""),
+            "json_schema name must be agent_output_envelope, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_compatible_sends_json_object_when_not_supported() {
+        let reply = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = OpenAiCompatibleClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"type\":\"json_object\""),
+            "json_object response_format must be sent when not supports_json_schema, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_responses_sends_json_schema_when_supported() {
+        let reply = r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let mut config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        config.supports_json_schema = true;
+        let request = sample_request(&config);
+        let client = OpenAiResponsesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"type\":\"json_schema\""),
+            "json_schema response_format type must be sent for Responses API, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_responses_omits_response_format_when_not_supported() {
+        let reply = r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = OpenAiResponsesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            !body.contains("response_format"),
+            "response_format must be omitted for Responses API when not supported, got: {body}"
+        );
+    }
+
+    #[test]
+    fn anthropic_sends_tools_and_tool_choice_when_supported() {
+        let reply = r#"{"content":[{"type":"text","text":"{\"id\":\"z\"}"}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let mut config = sample_config("anthropic", &format!("http://{addr}"), "TEST_KEY");
+        config.supports_json_schema = true;
+        let request = sample_request(&config);
+        let client = AnthropicMessagesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"tools\""),
+            "tools array must be sent when supports_json_schema, got: {body}"
+        );
+        assert!(
+            body.contains("\"emit_envelope\""),
+            "tool name must be emit_envelope, got: {body}"
+        );
+        assert!(
+            body.contains("\"tool_choice\""),
+            "tool_choice must force the tool, got: {body}"
+        );
+    }
+
+    #[test]
+    fn anthropic_omits_tools_when_not_supported() {
+        let reply = r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("anthropic", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = AnthropicMessagesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            !body.contains("tools"),
+            "tools must be omitted when not supports_json_schema, got: {body}"
+        );
+    }
+
+    #[test]
+    fn anthropic_extracts_tool_use_input_as_json() {
+        // When JSON Schema mode is active, the model emits a tool_use block
+        // whose input is the envelope object. The extract path must serialize
+        // the input object back to a JSON string for the pipeline.
+        let reply = r#"{"content":[{"type":"tool_use","name":"emit_envelope","input":{"id":"x","contract_version":"1","schema_version":1}}]}"#;
+        let extracted = extract_anthropic_content(reply).expect("extract tool_use");
+        assert!(
+            extracted.content.contains("\"id\":\"x\""),
+            "tool_use input must be serialized to JSON, got: {}",
+            extracted.content
+        );
+    }
+
+    #[test]
+    fn anthropic_falls_back_to_text_when_no_tool_use_block() {
+        // Backward compat: when no tool_use block is present (pre-T2.4 or
+        // provider returned text), the extract path falls back to content[0].text.
+        let reply = r#"{"content":[{"type":"text","text":"{\"id\":\"fallback\"}"}]}"#;
+        let extracted = extract_anthropic_content(reply).expect("extract text fallback");
+        assert_eq!(extracted.content, "{\"id\":\"fallback\"}");
+    }
+
+    #[test]
+    fn agent_output_envelope_schema_is_non_empty_object() {
+        let schema = agent_output_envelope_schema();
+        // The schemars-generated schema is a RootSchema with at least a
+        // `$schema` and `title` field; a degenerate empty object would
+        // indicate generation failed.
+        assert!(
+            schema.as_object().map(|obj| !obj.is_empty()).unwrap_or(false),
+            "AgentOutputEnvelope schema must be a non-empty JSON object"
         );
     }
 

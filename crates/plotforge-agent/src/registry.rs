@@ -160,6 +160,16 @@ pub fn build_text_provider(
     entry: &ProviderEntry,
 ) -> Result<Box<dyn TextModelProvider>, ProviderBuildError> {
     let client = build_provider_client(entry)?;
+    // JSON Schema output constraint is enabled for providers that support
+    // provider-native structured output: OpenAI Responses (json_schema
+    // response_format) and Anthropic Messages (forced tool_use). OpenAI
+    // Compatible is left off by default because many compatible endpoints
+    // (DeepSeek, GLM, Ollama, vLLM) do not implement the json_schema
+    // response_format and would reject the request.
+    let supports_json_schema = matches!(
+        entry.kind,
+        ProviderKind::OpenAiResponses | ProviderKind::AnthropicMessages
+    );
     let config = TextProviderConfig {
         enabled: entry.enabled,
         provider: entry.label.clone(),
@@ -167,6 +177,7 @@ pub fn build_text_provider(
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
         max_output_tokens: entry.max_output_tokens,
+        supports_json_schema,
     };
     if entry.credential_env_var.trim().is_empty() {
         Ok(Box::new(ConfiguredTextModelProvider::new(

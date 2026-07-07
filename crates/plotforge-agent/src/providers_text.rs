@@ -188,6 +188,16 @@ pub struct TextProviderConfig {
     /// provider-config hash so reproducibility distinguishes runs that differ
     /// only by the output token cap.
     pub max_output_tokens: Option<u32>,
+    /// When `true`, the HTTP clients use provider-native JSON Schema mode to
+    /// constrain output to a valid `AgentOutputEnvelope` shape:
+    /// OpenAI-compatible/Responses send `response_format:
+    /// {"type":"json_schema",...}`; Anthropic Messages uses a forced
+    /// `tool_use` block with the envelope as the tool input schema. When
+    /// `false`, OpenAI-compatible keeps the `json_object` response format and
+    /// Anthropic sends plain messages with no tool constraint (the pre-T2.4
+    /// shapes). Deliberately excluded from `provider_config_hash` — it is a
+    /// client-side capability flag, not part of provider identity.
+    pub supports_json_schema: bool,
 }
 
 impl TextProviderConfig {
@@ -199,6 +209,7 @@ impl TextProviderConfig {
             endpoint_url: None,
             credential_env_var: "PLOTFORGE_TEXT_PROVIDER_TOKEN".into(),
             max_output_tokens: None,
+            supports_json_schema: false,
         }
     }
 
@@ -215,7 +226,16 @@ impl TextProviderConfig {
             endpoint_url: Some(endpoint_url.into()),
             credential_env_var: credential_env_var.into(),
             max_output_tokens: None,
+            supports_json_schema: false,
         }
+    }
+
+    /// Builder-style setter for JSON Schema output constraint support. The
+    /// registry calls this after constructing the base config to enable
+    /// provider-native structured-output mode.
+    pub fn with_json_schema_support(mut self, enabled: bool) -> Self {
+        self.supports_json_schema = enabled;
+        self
     }
 
     pub fn validate(&self) -> Result<(), TextProviderConfigError> {

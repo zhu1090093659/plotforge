@@ -506,6 +506,7 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
         max_output_tokens: entry.max_output_tokens,
+        supports_json_schema: false,
     };
     config.validate().map_err(|error| StudioCommandError {
         code: "upsert_provider_invalid".into(),
@@ -595,6 +596,7 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
         max_output_tokens: entry.max_output_tokens,
+        supports_json_schema: false,
     };
     // Issue a tiny completion to verify the credential + endpoint resolve.
     // The request body is a benign probe; the response is discarded.
