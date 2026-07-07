@@ -18,6 +18,7 @@ function makeTurn(intent: string, withError = false): AgentTurn {
     error: withError ? "provider_timeout" : null,
     errorCode: withError ? "pi_agent_provider_timeout" : null,
     errorEnvVar: null,
+    imageWarning: null,
   };
 }
 
@@ -80,6 +81,7 @@ describe("AgentChatRail", () => {
       error: "missing provider credential in env var `OPENAI_API_KEY`",
       errorCode: "pi_agent_missing_credential",
       errorEnvVar: "OPENAI_API_KEY",
+      imageWarning: null,
     };
     renderRail({ turns: [turn] });
     // The friendly message names the env var. The raw redacted error is also
@@ -98,6 +100,7 @@ describe("AgentChatRail", () => {
       error: "text provider timed out",
       errorCode: "pi_agent_provider_timeout",
       errorEnvVar: null,
+    imageWarning: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Provider timed out/)).toBeTruthy();
@@ -114,6 +117,7 @@ describe("AgentChatRail", () => {
       error: "pi-agent provider failure: text_provider_rate_limit: 429",
       errorCode: "text_provider_rate_limit",
       errorEnvVar: null,
+    imageWarning: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Rate limited; retrying with backoff/)).toBeTruthy();
@@ -127,6 +131,7 @@ describe("AgentChatRail", () => {
       error: "pi-agent provider failure: text_provider_content_filtered: content policy triggered",
       errorCode: "text_provider_content_filtered",
       errorEnvVar: null,
+    imageWarning: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Content policy triggered; modify your prompt/)).toBeTruthy();
@@ -140,6 +145,7 @@ describe("AgentChatRail", () => {
       error: "pi-agent provider failure: text_provider_output_truncated: output truncated at max_tokens",
       errorCode: "text_provider_output_truncated",
       errorEnvVar: null,
+    imageWarning: null,
     };
     renderRail({ turns: [turn] });
     expect(

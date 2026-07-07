@@ -253,10 +253,17 @@ pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProvi
 // ---------------------------------------------------------------------------
 
 /// Constructs an `OpenAiTtsClient` from a registered `TtsProviderEntry`.
-pub fn build_tts_provider(entry: &TtsProviderEntry) -> Result<OpenAiTtsClient, ProviderBuildError> {
-    OpenAiTtsClient::from_entry(entry).map_err(|error| ProviderBuildError::ClientConstruction {
-        provider_id: entry.id.clone(),
-        message: error.message,
+/// Uses the strict `EnvCredentialResolver` for auth-required providers and
+/// `OptionalEnvCredentialResolver` for local no-auth endpoints (empty
+/// `credential_env_var`), mirroring the text provider pattern.
+pub fn build_tts_provider(
+    entry: &TtsProviderEntry,
+) -> Result<OpenAiTtsClient<EnvCredentialResolver>, ProviderBuildError> {
+    OpenAiTtsClient::from_entry(entry, EnvCredentialResolver).map_err(|error| {
+        ProviderBuildError::ClientConstruction {
+            provider_id: entry.id.clone(),
+            message: error.message,
+        }
     })
 }
 

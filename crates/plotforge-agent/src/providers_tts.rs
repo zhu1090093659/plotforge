@@ -153,6 +153,17 @@ impl TtsProviderOutput {
 pub enum TtsProviderErrorKind {
     Provider,
     Timeout,
+    /// Upstream returned a 429 (Too Many Requests). `retry_after_ms` carries
+    /// the server-advised delay parsed from the `Retry-After` header, in
+    /// milliseconds, when present. Mirrors the image/text provider pattern.
+    RateLimit {
+        retry_after_ms: Option<u64>,
+    },
+    /// Upstream flagged the TTS request as content-policy-filtered.
+    /// Non-retryable: retrying with the same text reproduces the filter.
+    ContentFiltered {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -179,10 +190,35 @@ impl TtsProviderError {
         }
     }
 
+    /// 429 / rate-limit error. `retry_after_ms` is the parsed `Retry-After`
+    /// header value (in ms) when the server supplied one.
+    pub fn rate_limit(retry_after_ms: Option<u64>, message: impl Into<String>) -> Self {
+        Self {
+            kind: TtsProviderErrorKind::RateLimit { retry_after_ms },
+            code: "tts_provider_rate_limit".into(),
+            message: message.into(),
+        }
+    }
+
+    /// Content-policy-filtered TTS response. Non-retryable. `reason` is the
+    /// short provider-reported stop reason; it is a fixed enumerated token,
+    /// not user content, so it is trace-safe.
+    pub fn content_filtered(reason: impl Into<String>) -> Self {
+        Self {
+            kind: TtsProviderErrorKind::ContentFiltered {
+                reason: reason.into(),
+            },
+            code: "tts_provider_content_filtered".into(),
+            message: "content policy triggered; modify prompt".into(),
+        }
+    }
+
     fn retryable(&self) -> bool {
         matches!(
             self.kind,
-            TtsProviderErrorKind::Provider | TtsProviderErrorKind::Timeout
+            TtsProviderErrorKind::Provider
+                | TtsProviderErrorKind::Timeout
+                | TtsProviderErrorKind::RateLimit { .. }
         )
     }
 
@@ -193,6 +229,12 @@ impl TtsProviderError {
                 "tts_provider_timeout",
                 format!("tts provider timed out: {}", self.message),
             ),
+            TtsProviderErrorKind::RateLimit { .. } => {
+                RuntimeError::redacted(self.code, self.message)
+            }
+            TtsProviderErrorKind::ContentFiltered { .. } => {
+                RuntimeError::redacted(self.code, self.message)
+            }
         }
     }
 }
@@ -420,8 +462,12 @@ where
 // A real `TtsProvider` backed by the OpenAI Audio Speech API
 // (`POST /v1/audio/speech`). Sends `Authorization: Bearer <credential>` and
 // receives raw audio bytes as the response body (not JSON). Credentials are
-// resolved at call-time from the env var named in `credential_env_var`; the
-// value never lives in a struct field, trace, or the persisted registry.
+// resolved at call-time via an injected `ProviderCredentialResolver` (strict
+// `EnvCredentialResolver` for auth-required providers,
+// `OptionalEnvCredentialResolver` for local no-auth endpoints) — the value
+// never lives in a struct field, trace, or the persisted registry. A 429
+// surfaces `RateLimit` (with the parsed `Retry-After` in ms); an empty audio
+// body surfaces an explicit error rather than a silent zero-byte asset.
 // ---------------------------------------------------------------------------
 
 /// The maximum time a single TTS HTTP call may take before it is treated as a
@@ -430,22 +476,29 @@ const TTS_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60)
 
 /// A `TtsProvider` that talks to the OpenAI Audio Speech API
 /// (`/v1/audio/speech`). The response body is raw audio bytes — NOT JSON.
+/// Generic over the credential resolver so tests can inject a fake resolver
+/// instead of mutating process-global env state.
 #[derive(Clone, Debug)]
-pub struct OpenAiTtsClient {
+pub struct OpenAiTtsClient<R> {
     endpoint_url: String,
     model: String,
     default_voice: String,
     format: String,
     credential_env_var: String,
+    credential_resolver: R,
     client: reqwest::blocking::Client,
 }
 
-impl OpenAiTtsClient {
-    /// Constructs a new TTS client from a registry entry. The credential is
-    /// NOT stored — it is resolved from `credential_env_var` on each
-    /// `synthesize` call via `EnvCredentialResolver`.
+impl<R> OpenAiTtsClient<R>
+where
+    R: crate::providers_text::ProviderCredentialResolver,
+{
+    /// Constructs a new TTS client from a registry entry and a credential
+    /// resolver. The credential value is NOT resolved here — only at
+    /// `synthesize()` time.
     pub fn from_entry(
         entry: &plotforge_schema::TtsProviderEntry,
+        credential_resolver: R,
     ) -> Result<Self, TtsProviderError> {
         Self::new(
             &entry.endpoint_url,
@@ -453,6 +506,7 @@ impl OpenAiTtsClient {
             &entry.voice,
             &entry.format,
             &entry.credential_env_var,
+            credential_resolver,
         )
     }
 
@@ -463,6 +517,7 @@ impl OpenAiTtsClient {
         default_voice: &str,
         format: &str,
         credential_env_var: &str,
+        credential_resolver: R,
     ) -> Result<Self, TtsProviderError> {
         let client = reqwest::blocking::Client::builder()
             .timeout(TTS_HTTP_TIMEOUT)
@@ -481,37 +536,33 @@ impl OpenAiTtsClient {
             default_voice: default_voice.into(),
             format: format.into(),
             credential_env_var: credential_env_var.into(),
+            credential_resolver,
             client,
         })
     }
-
-    fn resolve_credential(&self) -> Result<String, TtsProviderError> {
-        if self.credential_env_var.trim().is_empty() {
-            return Ok(String::new());
-        }
-        match std::env::var(&self.credential_env_var) {
-            Ok(value) if !value.trim().is_empty() => Ok(value),
-            Ok(_) => Err(TtsProviderError::provider(
-                "tts_provider_missing_credential",
-                format!(
-                    "tts provider credential env var `{}` is empty",
-                    self.credential_env_var
-                ),
-            )),
-            Err(_) => Err(TtsProviderError::provider(
-                "tts_provider_missing_credential",
-                format!(
-                    "tts provider credential env var `{}` is not set",
-                    self.credential_env_var
-                ),
-            )),
-        }
-    }
 }
 
-impl TtsProvider for OpenAiTtsClient {
+impl<R> TtsProvider for OpenAiTtsClient<R>
+where
+    R: crate::providers_text::ProviderCredentialResolver,
+{
     fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError> {
-        let credential = self.resolve_credential()?;
+        // Resolve the credential at call time. A missing/empty credential for
+        // an auth-required provider surfaces an explicit error (no silent
+        // degraded run); the optional resolver yields an empty credential for
+        // local no-auth endpoints.
+        let credential = self
+            .credential_resolver
+            .resolve(&self.credential_env_var)
+            .map_err(|_| {
+                TtsProviderError::provider(
+                    "tts_provider_missing_credential",
+                    format!(
+                        "tts provider credential env var `{}` is missing or empty; set it before synthesizing audio",
+                        self.credential_env_var
+                    ),
+                )
+            })?;
         let speech_url = format!("{}/audio/speech", self.endpoint_url.trim_end_matches('/'));
         let voice = if request.voice.is_empty() {
             self.default_voice.as_str()
@@ -557,6 +608,19 @@ impl TtsProvider for OpenAiTtsClient {
             })?;
         let status = response.status();
         if !status.is_success() {
+            // A 429 surfaces as `RateLimit` with the parsed `Retry-After` (ms)
+            // so callers can honour server-advised backoff. Other non-2xx
+            // statuses surface as generic `Provider` errors. No raw response
+            // body enters the error text.
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after_ms = crate::providers_http::parse_retry_after(
+                    response.headers().get(reqwest::header::RETRY_AFTER),
+                );
+                return Err(TtsProviderError::rate_limit(
+                    retry_after_ms,
+                    format!("tts provider returned HTTP {status}"),
+                ));
+            }
             return Err(TtsProviderError::provider(
                 "tts_provider_http_status",
                 format!("tts provider returned HTTP {status}"),
@@ -568,6 +632,16 @@ impl TtsProvider for OpenAiTtsClient {
                 redact_trace_text(&error.to_string()),
             )
         })?;
+        // Guard against an empty audio body: a 200 OK with zero bytes is a
+        // silent failure (a degenerate audio asset), not a successful
+        // synthesis. Surface it explicitly so the pipeline's fallback path
+        // registers a placeholder rather than a zero-byte file.
+        if bytes.is_empty() {
+            return Err(TtsProviderError::provider(
+                "tts_provider_empty_body",
+                "tts provider returned an empty audio body",
+            ));
+        }
         Ok(TtsProviderOutput::audio(
             bytes.to_vec(),
             "openai_tts",
@@ -754,6 +828,7 @@ mod tests {
 
     #[test]
     fn openai_tts_client_synthesizes_audio_bytes() {
+        use crate::registry::OptionalEnvCredentialResolver;
         let fake_audio = b"fake-mp3-audio-bytes".to_vec();
         let (addr, handle, captured) = tts_capturing_server(fake_audio.clone());
         // Use a no-auth client so we don't need to set env vars
@@ -763,6 +838,7 @@ mod tests {
             "coral",
             "mp3",
             "", // empty credential_env_var = no auth
+            OptionalEnvCredentialResolver,
         )
         .expect("construct client");
         let request = sample_tts_request();
@@ -789,12 +865,14 @@ mod tests {
 
     #[test]
     fn openai_tts_client_surfaces_missing_credential_explicitly() {
+        use crate::providers_text::EnvCredentialResolver;
         let client = OpenAiTtsClient::new(
             "https://example.invalid",
             "gpt-4o-mini-tts",
             "coral",
             "mp3",
             "PLOTFORGE_TTS_TEST_MISSING_KEY",
+            EnvCredentialResolver,
         )
         .expect("construct client");
         let request = sample_tts_request();
@@ -808,6 +886,7 @@ mod tests {
 
     #[test]
     fn openai_tts_client_surfaces_http_error_status() {
+        use crate::registry::OptionalEnvCredentialResolver;
         // A server that returns 500 Internal Server Error.
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("local addr");
@@ -825,6 +904,7 @@ mod tests {
             "coral",
             "mp3",
             "",
+            OptionalEnvCredentialResolver,
         )
         .expect("construct client");
         let request = sample_tts_request();
@@ -832,6 +912,71 @@ mod tests {
         assert!(
             error.code.contains("http_status"),
             "error code must mention http_status, got: {}",
+            error.code
+        );
+        handle.join().expect("server thread clean");
+    }
+
+    #[test]
+    fn openai_tts_client_surfaces_rate_limit_with_retry_after() {
+        use crate::registry::OptionalEnvCredentialResolver;
+        // A server that returns 429 with a Retry-After header.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = vec![0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response =
+                "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 5\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        });
+        let client = OpenAiTtsClient::new(
+            &format!("http://{addr}"),
+            "gpt-4o-mini-tts",
+            "coral",
+            "mp3",
+            "",
+            OptionalEnvCredentialResolver,
+        )
+        .expect("construct client");
+        let request = sample_tts_request();
+        let error = client.synthesize(&request).expect_err("rate limit");
+        assert!(
+            error.code.contains("rate_limit"),
+            "error code must mention rate_limit, got: {}",
+            error.code
+        );
+        assert_eq!(
+            error.kind,
+            TtsProviderErrorKind::RateLimit {
+                retry_after_ms: Some(5000)
+            },
+            "429 must surface RateLimit with parsed retry_after_ms"
+        );
+        handle.join().expect("server thread clean");
+    }
+
+    #[test]
+    fn openai_tts_client_rejects_empty_audio_body() {
+        use crate::registry::OptionalEnvCredentialResolver;
+        // A server that returns 200 OK with an empty body.
+        let (addr, handle, _captured) = tts_capturing_server(Vec::new());
+        let client = OpenAiTtsClient::new(
+            &format!("http://{addr}"),
+            "gpt-4o-mini-tts",
+            "coral",
+            "mp3",
+            "",
+            OptionalEnvCredentialResolver,
+        )
+        .expect("construct client");
+        let request = sample_tts_request();
+        let error = client.synthesize(&request).expect_err("empty body");
+        assert!(
+            error.code.contains("empty_body"),
+            "error code must mention empty_body, got: {}",
             error.code
         );
         handle.join().expect("server thread clean");

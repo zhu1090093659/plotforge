@@ -297,6 +297,13 @@ fn join_and_body(server: CapturingServer) -> String {
     request.split("\r\n\r\n").nth(1).unwrap_or("").to_string()
 }
 
+/// Like `join_and_body` but returns the full captured HTTP request (headers
+/// + body), so tests can assert on request headers (e.g. Authorization).
+fn join_and_full_request(server: CapturingServer) -> String {
+    server.handle.join().expect("mock server thread clean");
+    server.captured.lock().expect("capture lock").clone()
+}
+
 // ===========================================================================
 // Test scenario 1: successful text generation (full provider pipeline).
 //
@@ -648,6 +655,77 @@ fn text_supports_json_schema_sends_envelope_schema_response_format() {
 }
 
 // ===========================================================================
+// Test scenario 5b: Anthropic Messages JSON Schema (tool_use) path.
+//
+// When `supports_json_schema` is true, the Anthropic client sends a forced
+// `emit_envelope` tool with the envelope schema as `input_schema`, and
+// `extract_anthropic_content` must decode the `tool_use` content block's
+// `input` field as JSON. This test exercises the full Anthropic tool_use
+// wire shape + response decode at the integration layer (the unit tests
+// cover the extract logic, but the integration test verifies the public
+// client end-to-end). No real Anthropic API is contacted.
+// ===========================================================================
+#[test]
+#[ignore]
+fn anthropic_tool_use_json_schema_extracts_envelope_from_tool_input() {
+    use plotforge_agent::AnthropicMessagesClient;
+
+    // The response carries a tool_use content block whose `input` is a
+    // minimal valid envelope-shaped object. The extract path must serialize
+    // `input` back to a JSON string.
+    let tool_input = serde_json::json!({
+        "id": "anthropic-tool-use-test",
+        "contract_version": "1",
+        "schema_version": 1,
+        "agent": "scene_planner"
+    });
+    let body = format!(
+        r#"{{"content":[{{"type":"tool_use","name":"emit_envelope","input":{}}}]}}"#,
+        tool_input
+    );
+    let reply = http_response("HTTP/1.1 200 OK", "application/json", &body);
+    let server = capturing_server(reply);
+
+    let mut config = TextProviderConfig::openai_compatible(
+        "anthropic-test",
+        "claude-sonnet-5",
+        format!("http://{}", server.addr),
+        "PFIT_ANTHROPIC_TOKEN",
+    );
+    config.supports_json_schema = true;
+    let request = single_prompt_request(&config);
+    let client = AnthropicMessagesClient::default();
+
+    let response = client
+        .complete(TextModelClientRequest {
+            config: &config,
+            credential: "anthropic-key",
+            request: &request,
+        })
+        .expect("anthropic tool_use complete");
+
+    // The raw_json must contain the serialized tool_use input.
+    assert!(
+        response
+            .raw_json
+            .contains("\"id\":\"anthropic-tool-use-test\""),
+        "tool_use input must be serialized to raw_json, got: {}",
+        response.raw_json
+    );
+
+    let raw_request = join_and_body(server);
+    // The request must carry the forced tool definition.
+    assert!(
+        raw_request.contains("\"emit_envelope\""),
+        "Anthropic request must define the emit_envelope tool, got: {raw_request}"
+    );
+    assert!(
+        raw_request.contains("\"tool_choice\""),
+        "Anthropic request must force tool_choice, got: {raw_request}"
+    );
+}
+
+// ===========================================================================
 // Test scenario 6: image generation → bytes returned → asset recorded.
 //
 // The mock image API returns a 200 with `data[0].b64_json` carrying a small
@@ -769,13 +847,15 @@ fn tts_generation_returns_audio_bytes() {
     let server = capturing_server(reply);
 
     let entry = tts_entry(&format!("http://{}", server.addr), "PFIT_TTS_TOKEN");
-    // The TTS client resolves the credential internally via `std::env::var`
-    // (strict: missing/empty surfaces `tts_provider_missing_credential`).
-    // Set the env var so the client omits neither the call nor the auth
-    // header; clean up at the end so the global state does not leak.
+    // The TTS client resolves the credential via the injected
+    // `EnvCredentialResolver` (strict: missing/empty surfaces
+    // `tts_provider_missing_credential`). Set the env var so the client
+    // omits neither the call nor the auth header; clean up at the end so
+    // the global state does not leak.
     let tts_credential = "test-tts-credential";
     unsafe { std::env::set_var("PFIT_TTS_TOKEN", tts_credential) };
-    let client = OpenAiTtsClient::from_entry(&entry).expect("build tts client");
+    let client = OpenAiTtsClient::from_entry(&entry, plotforge_agent::EnvCredentialResolver)
+        .expect("build tts client");
 
     let request = TtsRequest {
         target: TtsTarget::Scene {
@@ -793,9 +873,16 @@ fn tts_generation_returns_audio_bytes() {
     assert_eq!(output.model.as_deref(), Some("gpt-tts-test"));
     assert_eq!(output.spent_cost_units, 1);
 
-    // The captured request body must carry model/input/voice/format, with the
-    // entry default voice (coral) since the request voice was empty.
-    let body = join_and_body(server);
+    // The captured request must carry model/input/voice/format, with the
+    // entry default voice (coral) since the request voice was empty. Use
+    // `join_and_full_request` so we can also assert on the Authorization
+    // header (F8).
+    let full_request = join_and_full_request(server);
+    let body = full_request
+        .split("\r\n\r\n")
+        .nth(1)
+        .unwrap_or("")
+        .to_string();
     let payload: serde_json::Value =
         serde_json::from_str(&body).expect("captured tts body is JSON");
     assert_eq!(
@@ -810,6 +897,16 @@ fn tts_generation_returns_audio_bytes() {
     assert_eq!(
         payload.get("response_format").and_then(|v| v.as_str()),
         Some("mp3")
+    );
+
+    // F8: assert the credential actually reached the wire as a Bearer header.
+    // The text integration test checks this for the text provider; the TTS
+    // client must send the same header pattern.
+    assert!(
+        full_request
+            .to_lowercase()
+            .contains("authorization: bearer test-tts-credential"),
+        "TTS request must carry the Authorization: Bearer header, got: {full_request}"
     );
 
     unsafe { std::env::remove_var("PFIT_TTS_TOKEN") };

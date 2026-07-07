@@ -39,6 +39,10 @@ export interface AgentTurn {
    * `OPENAI_API_KEY`) so the rail can surface the friendly "set {envVar}"
    * hint. The value is the env-var NAME only, never the credential value. */
   errorEnvVar: string | null;
+  /** When the turn succeeded but image generation failed (a non-blocking
+   * warning), this carries the redacted failure message so the rail can
+   * surface it as a visible warning rather than a silent missing image. */
+  imageWarning: string | null;
 }
 
 export interface AgentConversationWorkspace {
@@ -142,6 +146,7 @@ export function useAgentConversation(
         });
         idCounterRef.current += 1;
         const report = applyResultToReport(result);
+        const imageWarning = result.image_generation_failed ?? null;
         setTurns((prev) => [
           ...prev,
           {
@@ -151,6 +156,7 @@ export function useAgentConversation(
             error: null,
             errorCode: null,
             errorEnvVar: null,
+            imageWarning,
           },
         ]);
         // Mirror the report into the playtest workspace so TraceDebugView /
@@ -175,6 +181,7 @@ export function useAgentConversation(
             error: message,
             errorCode,
             errorEnvVar,
+            imageWarning: null,
           },
         ]);
         playtest.setPlaytestReport(null);

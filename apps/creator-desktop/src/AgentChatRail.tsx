@@ -159,6 +159,7 @@ export function AgentChatRail({
                   contentFilteredLabel={t("agent.apply.contentFiltered")}
                   outputTruncatedLabel={t("agent.apply.outputTruncated")}
                   failedLabel={t("agent.apply.failed")}
+                  imageWarningLabel={t("agent.apply.imageWarning")}
                 />
               </li>
             ))}
@@ -246,6 +247,7 @@ function TurnResult({
   contentFilteredLabel,
   outputTruncatedLabel,
   failedLabel,
+  imageWarningLabel,
 }: {
   role: string;
   turn: AgentTurn;
@@ -260,8 +262,9 @@ function TurnResult({
   contentFilteredLabel: string;
   outputTruncatedLabel: string;
   failedLabel: string;
+  imageWarningLabel: string;
 }) {
-  const { report, error, errorCode, errorEnvVar } = turn;
+  const { report, error, errorCode, errorEnvVar, imageWarning } = turn;
   // Render a friendly, code-specific message when `errorCode` is set. The
   // raw redacted `error` is shown as a detail line so the user can still
   // see the provider's redacted message (R1 — `errorCode` is no longer dead
@@ -319,6 +322,14 @@ function TurnResult({
             <dd className="truncate">{report.scene.title}</dd>
           </div>
         </dl>
+      ) : null}
+      {imageWarning ? (
+        <div className="mt-2 rounded-md border border-amber-400/30 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+          <p>
+            <span className="font-semibold">{imageWarningLabel}:</span>{" "}
+            {imageWarning}
+          </p>
+        </div>
       ) : null}
     </div>
   );

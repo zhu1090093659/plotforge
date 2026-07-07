@@ -234,7 +234,7 @@ fn http_status_error(status: StatusCode) -> TextModelProviderError {
 /// (`"Wed, 21 Oct 2026 07:28:00 GMT"`). Returns `None` when the header is
 /// absent or unparseable — the caller then falls back to its own backoff.
 /// The parsed value is redaction-safe (a duration, not user content).
-fn parse_retry_after(header: Option<&HeaderValue>) -> Option<u64> {
+pub(crate) fn parse_retry_after(header: Option<&HeaderValue>) -> Option<u64> {
     let value = header?;
     let value = value.to_str().ok()?;
     let trimmed = value.trim();

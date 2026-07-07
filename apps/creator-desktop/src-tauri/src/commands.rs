@@ -1,14 +1,15 @@
 use plotforge_studio::{
     AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, ExportProfile, GitBranchInfo,
-    GitSwitchResult, McpServerEntry, McpServerTestResult, McpToolCallRequest, McpToolCallResult,
-    McpToolManifest, ModelOption, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability,
-    PiAgentRunRequest, PiAgentRunResult, PlayOnceReport, ProjectCheckReport,
-    ProjectCreationReport, ProjectCreationRequest, ProjectData, ProviderEntry, ProviderTestResult,
-    PromptTemplate, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, SkillIndex,
-    SkillManifest, SourceFileContent, SourceFileSummary, StateVariablesEditDocument,
-    StaticExportReport, StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError,
-    VisualBible, WorldEditDocument, WorldGenerationReport,
+    GitSwitchResult, ImageProviderEntry, McpServerEntry, McpServerTestResult,
+    McpToolCallRequest, McpToolCallResult, McpToolManifest, ModelOption, PiAgentApplyRequest,
+    PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, PlayOnceReport,
+    ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData, ProviderEntry,
+    ProviderTestResult, PromptTemplate, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft,
+    RulesEditDocument, SkillIndex, SkillManifest, SourceFileContent, SourceFileSummary,
+    StateVariablesEditDocument, StaticExportReport, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StudioCommandError, TtsProviderEntry, VisualBible,
+    WorldEditDocument, WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -369,6 +370,21 @@ pub fn delete_provider(id: String) -> Result<ProviderEntry, StudioCommandError> 
 #[tauri::command(rename_all = "snake_case")]
 pub fn test_provider_connection(id: String) -> Result<ProviderTestResult, StudioCommandError> {
     plotforge_studio::test_provider_connection(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_remote_models(provider_id: String) -> Result<Vec<RemoteModelInfo>, StudioCommandError> {
+    plotforge_studio::list_remote_models(provider_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_image_providers() -> Result<Vec<ImageProviderEntry>, StudioCommandError> {
+    plotforge_studio::list_image_providers()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_tts_providers() -> Result<Vec<TtsProviderEntry>, StudioCommandError> {
+    plotforge_studio::list_tts_providers()
 }
 
 #[tauri::command(rename_all = "snake_case")]
