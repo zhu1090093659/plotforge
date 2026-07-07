@@ -200,6 +200,8 @@ describe("creator desktop i18n", () => {
       "page",
       "project",
       "provider",
+      "providers",
+      "image",
       "resource",
       "review",
       "rules",
@@ -240,6 +242,9 @@ describe("creator desktop i18n", () => {
       "MCP",
       "mcp",
       "server",
+      // Settings: TTS (text-to-speech) is a technical acronym kept verbatim.
+      "TTS",
+      "tts",
       // Settings: MCP transport protocol identifiers, kept verbatim in zh
       // alongside HTTP (they name the transport kind, not a translatable
       // concept). "shell" names the environment that holds credential env

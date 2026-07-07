@@ -702,6 +702,25 @@ pub fn attach_scene_audio_reference(
     Ok(scene)
 }
 
+/// Updates a scene's `background_asset` field to `background_asset_path` and
+/// persists the scene file. Used by the pi-Agent image-generation flow to
+/// record the generated background image's project-relative path after the
+/// image bytes have been written by the `AssetRegistry`. The path must be
+/// project-relative (e.g. `assets/generated/{scene_key}.png`); it never
+/// carries a credential or raw provider response.
+pub fn update_scene_background_asset(
+    project_path: impl AsRef<Path>,
+    scene_key: &str,
+    background_asset_path: &str,
+) -> Result<Scene, StorageError> {
+    let project_path = project_path.as_ref();
+    validate_identifier("scene_background", "scene_key", scene_key)?;
+    let mut scene = read_scene_file(project_path, scene_key)?;
+    scene.background_asset = background_asset_path.to_string();
+    write_scene_file(project_path, &scene)?;
+    Ok(scene)
+}
+
 pub fn attach_beat_audio_reference(
     project_path: impl AsRef<Path>,
     scene_key: &str,

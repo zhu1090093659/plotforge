@@ -27,7 +27,10 @@ import type {
   ProjectData,
   ProviderEntry,
   ProviderKind,
+  ImageProviderEntry,
+  TtsProviderEntry,
   PromptTemplate,
+  RemoteModelInfo,
   ResourceDefinition,
   Rule,
   RuleDraft,
@@ -97,6 +100,9 @@ export const studioCommandNames = {
   upsertProvider: "upsert_provider",
   deleteProvider: "delete_provider",
   testProviderConnection: "test_provider_connection",
+  listRemoteModels: "list_remote_models",
+  listImageProviders: "list_image_providers",
+  listTtsProviders: "list_tts_providers",
   listUserPromptTemplates: "list_user_prompt_templates",
   listProjectPromptTemplates: "list_project_prompt_templates",
   upsertUserPromptTemplate: "upsert_user_prompt_template",
@@ -605,6 +611,22 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<ProviderTestResult>(
         studioCommandNames.testProviderConnection,
         { id },
+      );
+    },
+    listRemoteModels(providerId: string): Promise<RemoteModelInfo[]> {
+      return invokeCommand<RemoteModelInfo[]>(
+        studioCommandNames.listRemoteModels,
+        { provider_id: providerId },
+      );
+    },
+    listImageProviders(): Promise<ImageProviderEntry[]> {
+      return invokeCommand<ImageProviderEntry[]>(
+        studioCommandNames.listImageProviders,
+      );
+    },
+    listTtsProviders(): Promise<TtsProviderEntry[]> {
+      return invokeCommand<TtsProviderEntry[]>(
+        studioCommandNames.listTtsProviders,
       );
     },
     listUserPromptTemplates(): Promise<PromptTemplate[]> {

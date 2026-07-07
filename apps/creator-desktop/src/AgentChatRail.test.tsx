@@ -103,6 +103,50 @@ describe("AgentChatRail", () => {
     expect(screen.getByText(/Provider timed out/)).toBeTruthy();
   });
 
+  // T1.4: rich error display for the new text_provider_* error codes. Each
+  // surfaces specific guidance instead of a generic "error". The raw redacted
+  // provider message is kept as a detail line under the friendly message.
+  it("renders the rate-limit guidance for text_provider_rate_limit", () => {
+    const turn: AgentTurn = {
+      id: "turn-rate-limit",
+      intent: "run a turn",
+      report: null,
+      error: "pi-agent provider failure: text_provider_rate_limit: 429",
+      errorCode: "text_provider_rate_limit",
+      errorEnvVar: null,
+    };
+    renderRail({ turns: [turn] });
+    expect(screen.getByText(/Rate limited; retrying with backoff/)).toBeTruthy();
+  });
+
+  it("renders the content-filter guidance for text_provider_content_filtered", () => {
+    const turn: AgentTurn = {
+      id: "turn-content-filter",
+      intent: "run a turn",
+      report: null,
+      error: "pi-agent provider failure: text_provider_content_filtered: content policy triggered",
+      errorCode: "text_provider_content_filtered",
+      errorEnvVar: null,
+    };
+    renderRail({ turns: [turn] });
+    expect(screen.getByText(/Content policy triggered; modify your prompt/)).toBeTruthy();
+  });
+
+  it("renders the output-truncation guidance for text_provider_output_truncated", () => {
+    const turn: AgentTurn = {
+      id: "turn-output-truncated",
+      intent: "run a turn",
+      report: null,
+      error: "pi-agent provider failure: text_provider_output_truncated: output truncated at max_tokens",
+      errorCode: "text_provider_output_truncated",
+      errorEnvVar: null,
+    };
+    renderRail({ turns: [turn] });
+    expect(
+      screen.getByText(/Output truncated; increase max_output_tokens or reduce context/),
+    ).toBeTruthy();
+  });
+
   it("calls onSubmit when the Send button is clicked", () => {
     const { onSubmit } = renderRail();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

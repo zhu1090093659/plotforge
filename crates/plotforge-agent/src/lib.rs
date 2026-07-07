@@ -11,6 +11,7 @@
 mod mcp_loop;
 mod pi_agent;
 mod pipelines;
+mod prompts;
 mod providers_http;
 mod providers_image;
 mod providers_text;
@@ -31,11 +32,13 @@ pub use pipelines::{
     generate_story_craft_with_provider, generate_world_expansion,
     generate_world_expansion_with_provider,
 };
-pub use providers_http::{AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient};
+pub use providers_http::{
+    AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient, shared_blocking_client,
+};
 pub use providers_image::{
     FakeImageProvider, ImageGenerationRequest, ImageGenerationResponse, ImageProvider,
-    ImageProviderError, ImageProviderErrorKind, SceneImagePipeline, SceneImagePipelineError,
-    SceneImageRequest, SceneImageResult,
+    ImageProviderError, ImageProviderErrorKind, OpenAiImageClient, SceneImagePipeline,
+    SceneImagePipelineError, SceneImageRequest, SceneImageResult,
 };
 pub use providers_text::{
     ConfiguredTextModelProvider, EnvCredentialResolver, FakeTextModelProvider,
@@ -43,15 +46,24 @@ pub use providers_text::{
     TextModelProvider, TextModelProviderError, TextModelProviderErrorKind, TextModelRequest,
     TextModelResponse, TextProviderConfig, TextProviderConfigError,
 };
+// Public re-exports of the prompt template system. `ChatMessage` and
+// `MessageRole` are also embedded in the additive `TextModelRequest.messages`
+// field, so downstream consumers build messages through these types.
+pub use prompts::{
+    AssembledContext, BEAT_WRITER_V1, ChatMessage, ContextBudget, MessageRole, PLOT_DOCTOR_V1,
+    ProjectContext, PromptAssembler, PromptTemplate, SCENE_PLANNER_V1, assemble_context,
+    estimate_tokens, prompt_version_for_role,
+};
 pub use providers_tts::{
-    FakeTtsProvider, TtsPipeline, TtsPipelineError, TtsPipelineResult, TtsProvider,
-    TtsProviderError, TtsProviderErrorKind, TtsProviderOutput, TtsRequest, TtsTarget,
+    FakeTtsProvider, OpenAiTtsClient, TtsPipeline, TtsPipelineError, TtsPipelineResult,
+    TtsProvider, TtsProviderError, TtsProviderErrorKind, TtsProviderOutput, TtsRequest, TtsTarget,
 };
 pub use registry::{
-    LOCAL_PI_MODEL_ID, OptionalEnvCredentialResolver, ProviderBuildError, ProviderRegistryError,
-    build_provider_client, build_text_provider, load_provider_registry,
-    load_provider_registry_from, local_pi_provider, provider_registry_path,
-    resolve_provider_for_model, user_config_dir, write_provider_registry,
+    LOCAL_PI_MODEL_ID, ModelDiscoveryError, OptionalEnvCredentialResolver, ProviderBuildError,
+    ProviderRegistryError, build_image_provider, build_provider_client, build_text_provider,
+    build_tts_provider, fetch_provider_models, fetch_provider_models_to, load_provider_registry,
+    load_provider_registry_from, local_pi_provider, provider_registry_path, resolve_image_provider,
+    resolve_provider_for_model, resolve_tts_provider, user_config_dir, write_provider_registry,
     write_provider_registry_to,
 };
 pub use scene_planner::{
@@ -74,7 +86,11 @@ pub use validation::{
 // Crate-internal re-exports so the pi-Agent facade can keep referencing the
 // shared text-output pipeline, the payload-kind helper, and the redaction
 // helper through stable `crate::` paths. These do not widen the public API.
-pub(crate) use pipelines::complete_text_agent_output;
+#[allow(unused_imports)] // RetryPolicy + retry variant are test-facing only
+pub(crate) use pipelines::{
+    RetryPolicy, complete_text_agent_output, complete_text_agent_output_with_messages,
+    complete_text_agent_output_with_retry,
+};
 pub(crate) use plotforge_schema::contains_secret_marker_text;
 
 /// Public re-export of the payload-kind helper so the Studio layer can name

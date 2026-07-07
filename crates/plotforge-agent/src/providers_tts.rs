@@ -414,6 +414,170 @@ where
     }
 }
 
+// ---------------------------------------------------------------------------
+// OpenAI TTS client.
+//
+// A real `TtsProvider` backed by the OpenAI Audio Speech API
+// (`POST /v1/audio/speech`). Sends `Authorization: Bearer <credential>` and
+// receives raw audio bytes as the response body (not JSON). Credentials are
+// resolved at call-time from the env var named in `credential_env_var`; the
+// value never lives in a struct field, trace, or the persisted registry.
+// ---------------------------------------------------------------------------
+
+/// The maximum time a single TTS HTTP call may take before it is treated as a
+/// timeout. TTS synthesis is typically faster than image generation.
+const TTS_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A `TtsProvider` that talks to the OpenAI Audio Speech API
+/// (`/v1/audio/speech`). The response body is raw audio bytes — NOT JSON.
+#[derive(Clone, Debug)]
+pub struct OpenAiTtsClient {
+    endpoint_url: String,
+    model: String,
+    default_voice: String,
+    format: String,
+    credential_env_var: String,
+    client: reqwest::blocking::Client,
+}
+
+impl OpenAiTtsClient {
+    /// Constructs a new TTS client from a registry entry. The credential is
+    /// NOT stored — it is resolved from `credential_env_var` on each
+    /// `synthesize` call via `EnvCredentialResolver`.
+    pub fn from_entry(
+        entry: &plotforge_schema::TtsProviderEntry,
+    ) -> Result<Self, TtsProviderError> {
+        Self::new(
+            &entry.endpoint_url,
+            &entry.model,
+            &entry.voice,
+            &entry.format,
+            &entry.credential_env_var,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        endpoint_url: &str,
+        model: &str,
+        default_voice: &str,
+        format: &str,
+        credential_env_var: &str,
+    ) -> Result<Self, TtsProviderError> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(TTS_HTTP_TIMEOUT)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|error| {
+                TtsProviderError::provider(
+                    "tts_provider_http_client",
+                    redact_trace_text(&error.to_string()),
+                )
+            })?;
+        Ok(Self {
+            endpoint_url: endpoint_url.into(),
+            model: model.into(),
+            default_voice: default_voice.into(),
+            format: format.into(),
+            credential_env_var: credential_env_var.into(),
+            client,
+        })
+    }
+
+    fn resolve_credential(&self) -> Result<String, TtsProviderError> {
+        if self.credential_env_var.trim().is_empty() {
+            return Ok(String::new());
+        }
+        match std::env::var(&self.credential_env_var) {
+            Ok(value) if !value.trim().is_empty() => Ok(value),
+            Ok(_) => Err(TtsProviderError::provider(
+                "tts_provider_missing_credential",
+                format!(
+                    "tts provider credential env var `{}` is empty",
+                    self.credential_env_var
+                ),
+            )),
+            Err(_) => Err(TtsProviderError::provider(
+                "tts_provider_missing_credential",
+                format!(
+                    "tts provider credential env var `{}` is not set",
+                    self.credential_env_var
+                ),
+            )),
+        }
+    }
+}
+
+impl TtsProvider for OpenAiTtsClient {
+    fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError> {
+        let credential = self.resolve_credential()?;
+        let speech_url = format!("{}/audio/speech", self.endpoint_url.trim_end_matches('/'));
+        let voice = if request.voice.is_empty() {
+            self.default_voice.as_str()
+        } else {
+            request.voice.as_str()
+        };
+        let body = serde_json::json!({
+            "model": self.model,
+            "input": request.text,
+            "voice": voice,
+            "response_format": self.format,
+        });
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static("application/json"),
+        );
+        if !credential.trim().is_empty() {
+            let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+                .map_err(|_| {
+                    TtsProviderError::provider(
+                        "tts_provider_credential_header",
+                        "provider credential contains bytes illegal in an HTTP header value",
+                    )
+                })?;
+            headers.insert("Authorization", value);
+        }
+        let response = self
+            .client
+            .post(&speech_url)
+            .headers(headers)
+            .json(&body)
+            .send()
+            .map_err(|error| {
+                if error.is_timeout() {
+                    TtsProviderError::timeout(redact_trace_text(&error.to_string()))
+                } else {
+                    TtsProviderError::provider(
+                        "tts_provider_http_send",
+                        redact_trace_text(&error.to_string()),
+                    )
+                }
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(TtsProviderError::provider(
+                "tts_provider_http_status",
+                format!("tts provider returned HTTP {status}"),
+            ));
+        }
+        let bytes = response.bytes().map_err(|error| {
+            TtsProviderError::provider(
+                "tts_provider_http_body",
+                redact_trace_text(&error.to_string()),
+            )
+        })?;
+        Ok(TtsProviderOutput::audio(
+            bytes.to_vec(),
+            "openai_tts",
+            Some(self.model.clone()),
+            None,
+            1,
+        ))
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct FakeTtsProvider {
     failure: Option<FakeTtsFailureKind>,
@@ -537,4 +701,139 @@ fn silent_audio_bytes(request: &TtsRequest, prompt_hash: &str) -> Vec<u8> {
         request.target
     )
     .into_bytes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn tts_capturing_server(
+        reply_body: Vec<u8>,
+    ) -> (
+        std::net::SocketAddr,
+        thread::JoinHandle<()>,
+        std::sync::Arc<std::sync::Mutex<String>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let captured_clone = captured.clone();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = vec![0u8; 65536];
+            let read = stream.read(&mut buf).expect("read request");
+            let request = String::from_utf8_lossy(&buf[..read]).to_string();
+            *captured_clone.lock().expect("capture lock") = request;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\n\r\n",
+                reply_body.len(),
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write headers");
+            stream.write_all(&reply_body).expect("write body");
+            let _ = stream.flush();
+        });
+        (addr, handle, captured)
+    }
+
+    fn sample_tts_request() -> TtsRequest {
+        TtsRequest {
+            target: TtsTarget::Scene {
+                scene_key: "scene-1".into(),
+            },
+            text: "Hello world".into(),
+            voice: "coral".into(),
+            output_path: "assets/generated/audio/test.wav".into(),
+            asset_kind: AssetKind::Audio,
+        }
+    }
+
+    #[test]
+    fn openai_tts_client_synthesizes_audio_bytes() {
+        let fake_audio = b"fake-mp3-audio-bytes".to_vec();
+        let (addr, handle, captured) = tts_capturing_server(fake_audio.clone());
+        // Use a no-auth client so we don't need to set env vars
+        let client = OpenAiTtsClient::new(
+            &format!("http://{addr}"),
+            "gpt-4o-mini-tts",
+            "coral",
+            "mp3",
+            "", // empty credential_env_var = no auth
+        )
+        .expect("construct client");
+        let request = sample_tts_request();
+        let output = client.synthesize(&request).expect("synthesize");
+        assert_eq!(output.bytes, fake_audio);
+        assert_eq!(output.provider, "openai_tts");
+        assert_eq!(output.model, Some("gpt-4o-mini-tts".into()));
+        // Verify the request body contained the right model, input, and voice
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"model\":\"gpt-4o-mini-tts\""),
+            "body must contain model, got: {body}"
+        );
+        assert!(
+            body.contains("\"input\":\"Hello world\""),
+            "body must contain input text, got: {body}"
+        );
+        assert!(
+            body.contains("\"voice\":\"coral\""),
+            "body must contain voice, got: {body}"
+        );
+        handle.join().expect("server thread clean");
+    }
+
+    #[test]
+    fn openai_tts_client_surfaces_missing_credential_explicitly() {
+        let client = OpenAiTtsClient::new(
+            "https://example.invalid",
+            "gpt-4o-mini-tts",
+            "coral",
+            "mp3",
+            "PLOTFORGE_TTS_TEST_MISSING_KEY",
+        )
+        .expect("construct client");
+        let request = sample_tts_request();
+        let error = client.synthesize(&request).expect_err("missing credential");
+        assert!(
+            error.code.contains("missing_credential"),
+            "error code must mention missing_credential, got: {}",
+            error.code
+        );
+    }
+
+    #[test]
+    fn openai_tts_client_surfaces_http_error_status() {
+        // A server that returns 500 Internal Server Error.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = vec![0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        });
+        let client = OpenAiTtsClient::new(
+            &format!("http://{addr}"),
+            "gpt-4o-mini-tts",
+            "coral",
+            "mp3",
+            "",
+        )
+        .expect("construct client");
+        let request = sample_tts_request();
+        let error = client.synthesize(&request).expect_err("http error");
+        assert!(
+            error.code.contains("http_status"),
+            "error code must mention http_status, got: {}",
+            error.code
+        );
+        handle.join().expect("server thread clean");
+    }
 }

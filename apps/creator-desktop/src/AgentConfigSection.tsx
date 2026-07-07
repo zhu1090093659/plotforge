@@ -3,13 +3,15 @@ import type {
   AgentSessionConfig,
   ProviderEntry,
   ProviderKind,
+  ImageProviderEntry,
+  TtsProviderEntry,
   PromptScope,
   PromptTemplate,
 } from "../../../contracts/plotforge";
 import type { StudioDataSource } from "./studioDataSource";
 import type { ProviderTestResult } from "./tauriBridge";
 import {
-  ModelSelect,
+  ModelCombobox,
   PermissionSelect,
   ThinkingSelect,
 } from "./agentConfigSelectors";
@@ -76,6 +78,16 @@ export function AgentConfigSection({
   const [projectPrompts, setProjectPrompts] = useState<PromptTemplate[]>([]);
   const [promptScope, setPromptScope] = useState<PromptScope>("user");
 
+  const [imageProviders, setImageProviders] = useState<ImageProviderEntry[]>([]);
+  const [imageProvidersLoading, setImageProvidersLoading] = useState(false);
+  const [imageProviderError, setImageProviderError] = useState<string | null>(
+    null,
+  );
+
+  const [ttsProviders, setTtsProviders] = useState<TtsProviderEntry[]>([]);
+  const [ttsProvidersLoading, setTtsProvidersLoading] = useState(false);
+  const [ttsProviderError, setTtsProviderError] = useState<string | null>(null);
+
   const reloadProviders = useCallback(async () => {
     setProvidersLoading(true);
     setProviderError(null);
@@ -86,6 +98,36 @@ export function AgentConfigSection({
       setProviderError(error instanceof Error ? error.message : String(error));
     } finally {
       setProvidersLoading(false);
+    }
+  }, [dataSource]);
+
+  const reloadImageProviders = useCallback(async () => {
+    setImageProvidersLoading(true);
+    setImageProviderError(null);
+    try {
+      const list = await dataSource.listImageProviders();
+      setImageProviders(list);
+    } catch (error) {
+      setImageProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setImageProvidersLoading(false);
+    }
+  }, [dataSource]);
+
+  const reloadTtsProviders = useCallback(async () => {
+    setTtsProvidersLoading(true);
+    setTtsProviderError(null);
+    try {
+      const list = await dataSource.listTtsProviders();
+      setTtsProviders(list);
+    } catch (error) {
+      setTtsProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setTtsProvidersLoading(false);
     }
   }, [dataSource]);
 
@@ -106,8 +148,10 @@ export function AgentConfigSection({
 
   useEffect(() => {
     void reloadProviders();
+    void reloadImageProviders();
+    void reloadTtsProviders();
     void reloadPrompts();
-  }, [reloadProviders, reloadPrompts]);
+  }, [reloadProviders, reloadImageProviders, reloadTtsProviders, reloadPrompts]);
 
   const handleSaveEntry = async (entry: ProviderEntry) => {
     try {
@@ -147,6 +191,7 @@ export function AgentConfigSection({
   return (
     <div className="grid gap-6">
       <ProvidersArea
+        dataSource={dataSource}
         providers={providers}
         loading={providersLoading}
         error={providerError}
@@ -165,6 +210,16 @@ export function AgentConfigSection({
         onAgentConfigChange={onAgentConfigChange}
         saveError={configSaveError}
       />
+      <ImageProvidersArea
+        providers={imageProviders}
+        loading={imageProvidersLoading}
+        error={imageProviderError}
+      />
+      <TtsProvidersArea
+        providers={ttsProviders}
+        loading={ttsProvidersLoading}
+        error={ttsProviderError}
+      />
       <PromptsArea
         userPrompts={userPrompts}
         projectPrompts={projectPrompts}
@@ -180,6 +235,7 @@ export function AgentConfigSection({
 // ---------------------------------------------------------------------------
 
 interface ProvidersAreaProps {
+  dataSource: StudioDataSource;
   providers: ProviderEntry[];
   loading: boolean;
   error: string | null;
@@ -195,6 +251,7 @@ interface ProvidersAreaProps {
 }
 
 function ProvidersArea({
+  dataSource,
   providers,
   loading,
   error,
@@ -228,7 +285,12 @@ function ProvidersArea({
         </div>
       )}
       {editingEntry ? (
-        <ProviderEditor entry={editingEntry} onCancel={onCancelEdit} onSave={onSave} />
+        <ProviderEditor
+          dataSource={dataSource}
+          entry={editingEntry}
+          onCancel={onCancelEdit}
+          onSave={onSave}
+        />
       ) : loading ? (
         <EmptyState>…</EmptyState>
       ) : providers.length === 0 ? (
@@ -306,16 +368,21 @@ function kindLabel(kind: ProviderKind, t: (key: string) => string): string {
 }
 
 interface ProviderEditorProps {
+  dataSource: StudioDataSource;
   entry: ProviderEntry;
   onCancel: () => void;
   onSave: (entry: ProviderEntry) => void;
 }
 
-function ProviderEditor({ entry, onCancel, onSave }: ProviderEditorProps) {
+function ProviderEditor({ dataSource, entry, onCancel, onSave }: ProviderEditorProps) {
   const { t } = useStudioI18n();
   const [draft, setDraft] = useState<ProviderEntry>(entry);
   const update = <K extends keyof ProviderEntry>(key: K, value: ProviderEntry[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
+  // The provider id must be set before its upstream models can be fetched.
+  // The combobox's Fetch button is only enabled once an id is present; an
+  // empty id would surface a `provider_not_found` error otherwise.
+  const canFetch = draft.id.trim().length > 0;
   return (
     <StudioPanel className="mt-3">
       <div className="grid max-w-xl gap-3">
@@ -354,12 +421,30 @@ function ProviderEditor({ entry, onCancel, onSave }: ProviderEditorProps) {
           value={draft.endpoint_url}
           onChange={(v) => update("endpoint_url", v)}
         />
-        <TextInput
-          label={t("agent.provider.model")}
-          ariaLabel={t("agent.provider.model")}
-          value={draft.model}
-          onChange={(v) => update("model", v)}
-        />
+        <div className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+            {t("agent.provider.model")}
+          </span>
+          {canFetch ? (
+            <ModelCombobox
+              ariaLabel={t("agent.provider.model")}
+              value={draft.model}
+              onChange={(v) => update("model", v)}
+              placeholder={t("agent.provider.modelPlaceholder")}
+              fetch={{ dataSource, providerId: draft.id }}
+            />
+          ) : (
+            <input
+              aria-label={t("agent.provider.model")}
+              value={draft.model}
+              onChange={(e) => update("model", e.target.value)}
+              placeholder={t("agent.provider.modelPlaceholder")}
+              autoComplete="off"
+              className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+            />
+          )}
+          <small className="text-xs text-ink/55">{t("agent.provider.modelHint")}</small>
+        </div>
         <div className="grid gap-1">
           <TextInput
             label={t("agent.provider.credentialEnvVar")}
@@ -370,6 +455,26 @@ function ProviderEditor({ entry, onCancel, onSave }: ProviderEditorProps) {
           />
           <small className="text-xs text-ink/55">{t("agent.provider.credentialHint")}</small>
         </div>
+        <label className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+            {t("agent.provider.maxOutputTokens")}
+          </span>
+          <input
+            type="number"
+            min={1}
+            aria-label={t("agent.provider.maxOutputTokens")}
+            value={draft.max_output_tokens ?? ""}
+            onChange={(e) =>
+              update(
+                "max_output_tokens",
+                e.target.value === "" ? null : Number(e.target.value),
+              )
+            }
+            placeholder={t("agent.provider.maxOutputTokensPlaceholder")}
+            className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+          />
+          <small className="text-xs text-ink/55">{t("agent.provider.maxOutputTokensHint")}</small>
+        </label>
         <label className="inline-flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
@@ -456,6 +561,166 @@ function ModelArea({ agentConfig, onAgentConfigChange, saveError }: ModelAreaPro
 }
 
 // ---------------------------------------------------------------------------
+// Image providers area (T3.3 — read-only display; image providers are
+// configured via ~/.plotforge/providers.json in v1)
+// ---------------------------------------------------------------------------
+
+interface ImageProvidersAreaProps {
+  providers: ImageProviderEntry[];
+  loading: boolean;
+  error: string | null;
+}
+
+function ImageProvidersArea({
+  providers,
+  loading,
+  error,
+}: ImageProvidersAreaProps) {
+  const { t } = useStudioI18n();
+  return (
+    <StudioPanel>
+      <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
+        {t("agent.imageProvider.title")}
+      </h4>
+      {loading ? (
+        <p className="text-sm text-ink-faint">{t("agent.provider.loading")}</p>
+      ) : error ? (
+        <p className="text-sm text-danger">{error}</p>
+      ) : providers.length === 0 ? (
+        <p className="text-sm text-ink-faint">
+          {t("agent.imageProvider.empty")}
+        </p>
+      ) : (
+        <ul className="grid gap-2">
+          {providers.map((provider) => (
+            <li
+              key={provider.id}
+              className="rounded-md border border-canvas-200/70 bg-canvas-100/40 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <strong className="font-semibold text-ink">
+                  {provider.id}
+                </strong>
+                <span
+                  className={
+                    provider.enabled
+                      ? "text-xs font-medium text-success"
+                      : "text-xs font-medium text-ink-faint"
+                  }
+                >
+                  {provider.enabled
+                    ? t("agent.provider.enabled")
+                    : t("agent.provider.disabled")}
+                </span>
+              </div>
+              <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-ink-faint">
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.imageProvider.model")}
+                  </dt>
+                  <dd className="inline"> {provider.model}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.imageProvider.size")}
+                  </dt>
+                  <dd className="inline"> {provider.default_size}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.imageProvider.quality")}
+                  </dt>
+                  <dd className="inline"> {provider.default_quality}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+    </StudioPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TTS providers area (T4.1 — read-only display; TTS providers are
+// configured via ~/.plotforge/providers.json in v1)
+// ---------------------------------------------------------------------------
+
+interface TtsProvidersAreaProps {
+  providers: TtsProviderEntry[];
+  loading: boolean;
+  error: string | null;
+}
+
+function TtsProvidersArea({
+  providers,
+  loading,
+  error,
+}: TtsProvidersAreaProps) {
+  const { t } = useStudioI18n();
+  return (
+    <StudioPanel>
+      <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
+        {t("agent.ttsProvider.title")}
+      </h4>
+      {loading ? (
+        <p className="text-sm text-ink-faint">{t("agent.provider.loading")}</p>
+      ) : error ? (
+        <p className="text-sm text-danger">{error}</p>
+      ) : providers.length === 0 ? (
+        <p className="text-sm text-ink-faint">{t("agent.ttsProvider.empty")}</p>
+      ) : (
+        <ul className="grid gap-2">
+          {providers.map((provider) => (
+            <li
+              key={provider.id}
+              className="rounded-md border border-canvas-200/70 bg-canvas-100/40 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <strong className="font-semibold text-ink">
+                  {provider.id}
+                </strong>
+                <span
+                  className={
+                    provider.enabled
+                      ? "text-xs font-medium text-success"
+                      : "text-xs font-medium text-ink-faint"
+                  }
+                >
+                  {provider.enabled
+                    ? t("agent.provider.enabled")
+                    : t("agent.provider.disabled")}
+                </span>
+              </div>
+              <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-ink-faint">
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.ttsProvider.model")}
+                  </dt>
+                  <dd className="inline"> {provider.model}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.ttsProvider.voice")}
+                  </dt>
+                  <dd className="inline"> {provider.voice}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.ttsProvider.format")}
+                  </dt>
+                  <dd className="inline"> {provider.format}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+    </StudioPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Prompts area
 // ---------------------------------------------------------------------------
 
@@ -474,6 +739,29 @@ function PromptsArea({ userPrompts, projectPrompts, scope, onScopeChange }: Prom
       <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
         {t("agent.tab.prompts")}
       </h4>
+      {/* Built-in prompt template versions — read-only, code-managed (T2.5).
+          These are the structured prompt templates the pi-Agent uses for
+          scene planning, beat writing, and narrative review. They are
+          versioned for reproducibility and not user-editable in v1. */}
+      <div className="mb-4 rounded-md border border-canvas-200/70 bg-canvas-50/60 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          {t("agent.prompt.builtin.title")}
+        </p>
+        <dl className="grid grid-cols-1 gap-1 text-sm text-ink sm:grid-cols-3">
+          <div>
+            <dt className="inline font-medium">{t("agent.prompt.builtin.scene_planner")}</dt>
+            <dd className="inline text-ink-faint"> scene_planner_v1</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">{t("agent.prompt.builtin.beat_writer")}</dt>
+            <dd className="inline text-ink-faint"> beat_writer_v1</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">{t("agent.prompt.builtin.plot_doctor")}</dt>
+            <dd className="inline text-ink-faint"> plot_doctor_v1</dd>
+          </div>
+        </dl>
+      </div>
       <div className="mb-3 flex gap-2">
         <StudioButton
           variant={scope === "user" ? "primary" : "secondary"}

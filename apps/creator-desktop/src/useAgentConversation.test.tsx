@@ -168,6 +168,63 @@ describe("useAgentConversation", () => {
     expect(turn.errorEnvVar).toBe("ZAI_API_KEY");
   });
 
+  // T1.4: the new text_provider_* error codes map to distinct errorCode values
+  // so the rail can render specific guidance (rate-limit / content-filter /
+  // output-truncation) instead of a generic "turn failed".
+  it("maps a rate-limit failure to the text_provider_rate_limit errorCode", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          "pi-agent provider failure: text_provider_rate_limit: 429 too many requests",
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "text_provider_rate_limit",
+    );
+  });
+
+  it("maps a content-filtered failure to the text_provider_content_filtered errorCode", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          "pi-agent provider failure: text_provider_content_filtered: content policy triggered",
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "text_provider_content_filtered",
+    );
+  });
+
+  it("maps an output-truncated failure to the text_provider_output_truncated errorCode", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          "pi-agent provider failure: text_provider_output_truncated: output truncated at max_tokens",
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "text_provider_output_truncated",
+    );
+  });
+
   it("appends multiple turns with monotonic agent-turn-N ids", async () => {
     const { result } = renderHook(() => useHarness());
     await act(async () => {

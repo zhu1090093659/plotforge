@@ -859,6 +859,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 name = "plotforge-agent"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dirs",
  "plotforge-job",
  "plotforge-mcp",
@@ -867,6 +868,7 @@ dependencies = [
  "plotforge-storage",
  "plotforge-storycraft",
  "reqwest",
+ "schemars",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1003,7 +1005,9 @@ version = "0.1.0"
 dependencies = [
  "plotforge-agent",
  "plotforge-export",
+ "plotforge-job",
  "plotforge-mcp",
+ "plotforge-media",
  "plotforge-runtime",
  "plotforge-schema",
  "plotforge-storage",

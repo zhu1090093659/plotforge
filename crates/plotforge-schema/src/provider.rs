@@ -29,6 +29,13 @@ pub enum ProviderKind {
 /// A single registered provider entry. `credential_env_var` names the shell
 /// environment variable that holds the credential; the value itself is never
 /// serialized here, in traces, or in any project source.
+///
+/// `max_output_tokens` is an optional override for the provider's output token
+/// cap. When `None`, each HTTP client uses its own default (4096 for OpenAI
+/// variants, 8192 for Anthropic Messages). When `Some`, the value is
+/// propagated into the request body so a user can tune output length per
+/// provider without editing code. The field is `#[serde(default)]` so existing
+/// registries without it still deserialize.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderEntry {
@@ -39,15 +46,124 @@ pub struct ProviderEntry {
     pub model: String,
     pub credential_env_var: String,
     pub enabled: bool,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+}
+
+/// A single registered image provider entry. Like `ProviderEntry`, this is
+/// a routing record only — `credential_env_var` names the shell environment
+/// variable that holds the credential; the value itself is never serialized
+/// here, in traces, or in any project source.
+///
+/// `model` selects the upstream image model (e.g. `gpt-image-1`,
+/// `gpt-image-2`). `default_size` is the requested image dimensions
+/// (e.g. `1024x1024`) and `default_quality` is the generation quality tier
+/// (e.g. `medium`). All three are forwarded into the OpenAI Images API
+/// request body. Both `default_size` and `default_quality` are
+/// `#[serde(default)]` so existing registries without them still deserialize.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ImageProviderEntry {
+    pub id: String,
+    pub endpoint_url: String,
+    pub model: String,
+    pub credential_env_var: String,
+    pub enabled: bool,
+    #[serde(default = "default_image_size")]
+    pub default_size: String,
+    #[serde(default = "default_image_quality")]
+    pub default_quality: String,
+}
+
+fn default_image_size() -> String {
+    "1024x1024".into()
+}
+
+fn default_image_quality() -> String {
+    "medium".into()
+}
+
+/// A registered TTS (text-to-speech) provider entry. Mirrors the
+/// `ImageProviderEntry` shape for audio providers. `credential_env_var` names
+/// the shell environment variable holding the credential; the value is never
+/// serialized here, in traces, or in any project source. `voice` is the
+/// default voice for synthesis (the request may override); `format` is the
+/// audio output format (mp3, wav, opus, aac, flac, pcm). Both `voice` and
+/// `format` are `#[serde(default)]` so existing registries without them still
+/// deserialize.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TtsProviderEntry {
+    pub id: String,
+    pub endpoint_url: String,
+    pub model: String,
+    pub credential_env_var: String,
+    pub enabled: bool,
+    #[serde(default = "default_tts_voice")]
+    pub voice: String,
+    #[serde(default = "default_tts_format")]
+    pub format: String,
+}
+
+fn default_tts_voice() -> String {
+    "coral".into()
+}
+
+fn default_tts_format() -> String {
+    "mp3".into()
 }
 
 /// The persisted registry file (`~/.plotforge/providers.json`). An empty
 /// registry is the default for fresh installs; provider wiring is opt-in.
+///
+/// `image_providers` and `tts_providers` are `#[serde(default)]` so an
+/// existing registry serialized before image/TTS providers were introduced
+/// still deserializes (backward compatible). Text, image, and TTS providers
+/// are independent lists: a model id resolves against `providers` via
+/// `resolve_provider_for_model`, while the pi-Agent image pipeline resolves
+/// the first enabled `image_providers` entry and the TTS pipeline resolves
+/// the first enabled `tts_providers` entry.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProviderRegistry {
     pub version: String,
     pub providers: Vec<ProviderEntry>,
+    #[serde(default)]
+    pub image_providers: Vec<ImageProviderEntry>,
+    #[serde(default)]
+    pub tts_providers: Vec<TtsProviderEntry>,
+}
+
+/// A single model discovered from a provider's upstream `/models` (or
+/// equivalent) endpoint. The fields mirror the union of the OpenAI
+/// (`{ id, owned_by, created }`) and Anthropic
+/// (`{ id, max_input_tokens, max_output_tokens }`) model-list response shapes;
+/// every field except `id` is optional because neither provider returns the
+/// full set. No credential, endpoint, or raw response body is ever stored
+/// here — only the descriptive model metadata.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteModelInfo {
+    pub id: String,
+    #[serde(default)]
+    pub owned_by: Option<String>,
+    #[serde(default)]
+    pub created: Option<u64>,
+    #[serde(default)]
+    pub max_input_tokens: Option<u32>,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+}
+
+/// The cached model list for a single provider, persisted at
+/// `~/.plotforge/cache/models/{provider_id}.json`. `fetched_at` is a Unix
+/// timestamp (seconds); the registry treats a cache entry older than the
+/// discovery TTL (1 hour) as stale and refetches.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteModelList {
+    pub models: Vec<RemoteModelInfo>,
+    pub fetched_at: u64,
 }
 
 #[cfg(test)]
@@ -63,6 +179,7 @@ mod tests {
             model: "glm-4.6".into(),
             credential_env_var: "ZAI_API_KEY".into(),
             enabled: true,
+            max_output_tokens: None,
         }
     }
 
@@ -119,8 +236,11 @@ mod tests {
                     model: "qwen2.5".into(),
                     credential_env_var: String::new(),
                     enabled: false,
+                    max_output_tokens: None,
                 },
             ],
+            image_providers: Vec::new(),
+            tts_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -134,6 +254,7 @@ mod tests {
         let registry = ProviderRegistry::default();
         assert!(registry.providers.is_empty());
         assert!(registry.version.is_empty());
+        assert!(registry.tts_providers.is_empty());
     }
 
     #[test]
@@ -143,5 +264,266 @@ mod tests {
         let error = serde_json::from_value::<ProviderRegistry>(value)
             .expect_err("unknown registry field should be rejected");
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn provider_entry_roundtrips_max_output_tokens() {
+        let mut entry = sample_entry();
+        entry.max_output_tokens = Some(8192);
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize entry");
+        assert!(encoded.contains("max_output_tokens"));
+        let decoded: ProviderEntry = serde_json::from_str(&encoded).expect("deserialize entry");
+        assert_eq!(decoded, entry);
+        assert_eq!(decoded.max_output_tokens, Some(8192));
+    }
+
+    #[test]
+    fn provider_entry_backward_compatible_without_max_output_tokens() {
+        // An existing registry serialized before `max_output_tokens` was added
+        // must still deserialize with the field defaulting to `None`.
+        let legacy = serde_json::json!({
+            "id": "glm",
+            "kind": "openai_compatible",
+            "label": "GLM 4.6",
+            "endpoint_url": "https://open.bigmodels.cn/api/paas/v4",
+            "model": "glm-4.6",
+            "credential_env_var": "ZAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: ProviderEntry = serde_json::from_value(legacy).expect("legacy deserialize");
+        assert_eq!(decoded.max_output_tokens, None);
+    }
+
+    #[test]
+    fn remote_model_info_roundtrips_openai_shape() {
+        let info = RemoteModelInfo {
+            id: "gpt-4o".into(),
+            owned_by: Some("openai".into()),
+            created: Some(1_700_000_000),
+            max_input_tokens: None,
+            max_output_tokens: None,
+        };
+        let encoded = serde_json::to_string(&info).expect("serialize");
+        let decoded: RemoteModelInfo = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, info);
+    }
+
+    #[test]
+    fn remote_model_info_roundtrips_anthropic_shape() {
+        let info = RemoteModelInfo {
+            id: "claude-3-5-sonnet".into(),
+            owned_by: None,
+            created: None,
+            max_input_tokens: Some(200_000),
+            max_output_tokens: Some(8192),
+        };
+        let encoded = serde_json::to_string(&info).expect("serialize");
+        let decoded: RemoteModelInfo = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, info);
+    }
+
+    #[test]
+    fn remote_model_info_rejects_unknown_fields() {
+        let value = serde_json::json!({
+            "id": "gpt-4o",
+            "secret": "sk-test-secret-marker"
+        });
+        let error = serde_json::from_value::<RemoteModelInfo>(value)
+            .expect_err("unknown remote model field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn remote_model_list_roundtrips() {
+        let list = RemoteModelList {
+            models: vec![RemoteModelInfo {
+                id: "gpt-4o".into(),
+                owned_by: Some("openai".into()),
+                created: None,
+                max_input_tokens: None,
+                max_output_tokens: None,
+            }],
+            fetched_at: 1_700_000_000,
+        };
+        let encoded = serde_json::to_string(&list).expect("serialize");
+        let decoded: RemoteModelList = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, list);
+        assert_eq!(decoded.fetched_at, 1_700_000_000);
+    }
+
+    fn sample_image_entry() -> ImageProviderEntry {
+        ImageProviderEntry {
+            id: "openai-image".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-image-1".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            default_size: "1024x1024".into(),
+            default_quality: "medium".into(),
+        }
+    }
+
+    #[test]
+    fn image_provider_entry_roundtrips_json() {
+        let entry = sample_image_entry();
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize image entry");
+        let decoded: ImageProviderEntry =
+            serde_json::from_str(&encoded).expect("deserialize image entry");
+        assert_eq!(decoded, entry);
+    }
+
+    #[test]
+    fn image_provider_entry_rejects_secret_fields() {
+        let entry = sample_image_entry();
+        let mut value = serde_json::to_value(&entry).expect("image entry value");
+        value["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<ImageProviderEntry>(value)
+            .expect_err("api_key field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn image_provider_entry_defaults_size_and_quality_when_absent() {
+        // An entry serialized without default_size/default_quality must
+        // deserialize with the documented defaults (1024x1024 / medium).
+        let legacy = serde_json::json!({
+            "id": "openai-image",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "gpt-image-1",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: ImageProviderEntry =
+            serde_json::from_value(legacy).expect("legacy image entry deserialize");
+        assert_eq!(decoded.default_size, "1024x1024");
+        assert_eq!(decoded.default_quality, "medium");
+    }
+
+    #[test]
+    fn image_provider_entry_preserves_custom_size_and_quality() {
+        let entry = ImageProviderEntry {
+            id: "openai-image".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-image-1".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            default_size: "1536x1024".into(),
+            default_quality: "high".into(),
+        };
+        let encoded = serde_json::to_string(&entry).expect("serialize");
+        let decoded: ImageProviderEntry = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded.default_size, "1536x1024");
+        assert_eq!(decoded.default_quality, "high");
+    }
+
+    #[test]
+    fn provider_registry_with_image_providers_roundtrips() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: vec![sample_entry()],
+            image_providers: vec![sample_image_entry()],
+            tts_providers: Vec::new(),
+        };
+        let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
+        let decoded: ProviderRegistry =
+            serde_json::from_str(&encoded).expect("deserialize registry");
+        assert_eq!(decoded, registry);
+        assert_eq!(decoded.image_providers.len(), 1);
+        assert_eq!(decoded.image_providers[0].model, "gpt-image-1");
+    }
+
+    #[test]
+    fn provider_registry_backward_compatible_without_image_providers() {
+        // An existing registry serialized before `image_providers` was added
+        // must still deserialize with an empty image_providers list.
+        let legacy = serde_json::json!({
+            "version": "1",
+            "providers": [{
+                "id": "glm",
+                "kind": "openai_compatible",
+                "label": "GLM 4.6",
+                "endpoint_url": "https://open.bigmodels.cn/api/paas/v4",
+                "model": "glm-4.6",
+                "credential_env_var": "ZAI_API_KEY",
+                "enabled": true
+            }]
+        });
+        let decoded: ProviderRegistry =
+            serde_json::from_value(legacy).expect("legacy registry deserialize");
+        assert_eq!(decoded.providers.len(), 1);
+        assert!(decoded.image_providers.is_empty());
+    }
+
+    fn sample_tts_entry() -> TtsProviderEntry {
+        TtsProviderEntry {
+            id: "openai-tts".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-4o-mini-tts".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            voice: "coral".into(),
+            format: "mp3".into(),
+        }
+    }
+
+    #[test]
+    fn tts_provider_entry_roundtrips_json() {
+        let entry = sample_tts_entry();
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize entry");
+        let decoded: TtsProviderEntry = serde_json::from_str(&encoded).expect("deserialize entry");
+        assert_eq!(decoded, entry);
+    }
+
+    #[test]
+    fn tts_provider_entry_rejects_unknown_fields() {
+        let entry = sample_tts_entry();
+        let mut value = serde_json::to_value(&entry).expect("entry value");
+        value["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<TtsProviderEntry>(value)
+            .expect_err("api_key field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn tts_provider_entry_defaults_voice_and_format_when_absent() {
+        let legacy = serde_json::json!({
+            "id": "openai-tts",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini-tts",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: TtsProviderEntry =
+            serde_json::from_value(legacy).expect("legacy tts entry deserialize");
+        assert_eq!(decoded.voice, "coral");
+        assert_eq!(decoded.format, "mp3");
+    }
+
+    #[test]
+    fn provider_registry_with_tts_providers_roundtrips() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: vec![sample_entry()],
+            image_providers: Vec::new(),
+            tts_providers: vec![sample_tts_entry()],
+        };
+        let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
+        let decoded: ProviderRegistry =
+            serde_json::from_str(&encoded).expect("deserialize registry");
+        assert_eq!(decoded, registry);
+        assert_eq!(decoded.tts_providers.len(), 1);
+        assert_eq!(decoded.tts_providers[0].model, "gpt-4o-mini-tts");
+    }
+
+    #[test]
+    fn provider_registry_backward_compatible_without_tts_providers() {
+        let legacy = serde_json::json!({
+            "version": "1",
+            "providers": [],
+            "image_providers": []
+        });
+        let decoded: ProviderRegistry =
+            serde_json::from_value(legacy).expect("legacy registry deserialize");
+        assert!(decoded.tts_providers.is_empty());
     }
 }

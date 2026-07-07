@@ -12,17 +12,17 @@ pub use plotforge_schema::{
     AgentSessionConfig, AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure,
     AiUsageManifest, AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Condition,
-    Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ModelOption, PermissionLevel,
-    PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
+    Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ImageProviderEntry, ModelOption,
+    PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
     PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
     ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry,
-    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
-    SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin, SkillSource,
-    StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
+    RemoteModelInfo, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot,
+    RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin,
+    SkillSource, StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
     StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
-    VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
-    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
-    redact_trace_text,
+    TtsProviderEntry, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
+    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
+    WorldGenerationRequest, redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -44,8 +44,9 @@ use plotforge_mcp::{
 use plotforge_storage::{
     create_project_from_request, load_project, read_latest_runtime_snapshot,
     read_project_prompt_templates, read_runtime_snapshot, read_user_prompt_templates,
-    validate_project, validate_runtime_snapshot_id, write_project_prompt_templates,
-    write_runtime_snapshot, write_trace, write_user_prompt_templates,
+    update_scene_background_asset, validate_project, validate_runtime_snapshot_id,
+    write_project_prompt_templates, write_runtime_snapshot, write_trace,
+    write_user_prompt_templates,
 };
 use serde::Serialize;
 
@@ -271,6 +272,17 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     let agent_config = get_agent_session_config(project_path)?;
     let model_id = agent_config.model_id.as_str();
 
+    // Capture the project's visual style before `project` is moved into the
+    // runtime session. The visual style lives in
+    // `story_craft.bible.prose_style_guide` (where the storage layer persists
+    // the creator's `visual_style`) and feeds the scene image prompt.
+    let visual_style = project
+        .story_craft
+        .bible
+        .prose_style_guide
+        .clone()
+        .unwrap_or_default();
+
     // Resolve the provider. `local-pi` keeps the deterministic mock; any
     // other model id must resolve to a registered, enabled provider entry.
     // Both branches yield `Box<dyn TextModelProvider>` so the agent facade
@@ -456,10 +468,31 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     }
     let report = assemble_play_once_report(project_path, step, save_id, &session)?;
 
+    // -----------------------------------------------------------------------
+    // T3.2: optional scene background image generation (failure-isolated).
+    //
+    // When an enabled image provider is registered, generate a background
+    // image for the newly-committed scene and store it via the
+    // `plotforge-media` asset registry (content hash + provider metadata).
+    // The image prompt is built from the scene title + scene description +
+    // the project's visual style (read from `story_craft.bible.prose_style_guide`).
+    //
+    // Failure isolation: an image generation failure never fails the turn.
+    // The error is captured as a redaction-safe message in
+    // `image_generation_failed` so the user sees an explicit, trace-visible
+    // failure instead of a silent missing image (AGENTS.md: no silent
+    // fallback). When no image provider is configured, image generation is
+    // skipped (not an error).
+    // -----------------------------------------------------------------------
+    let mut scene = report.scene.clone();
+    let committed_scene = scene.clone();
+    let image_generation_failed =
+        attempt_scene_image_generation(project_path, &visual_style, &committed_scene, &mut scene);
+
     Ok(PiAgentApplyResult {
         run: run_result,
         scene_key,
-        scene: report.scene.clone(),
+        scene,
         trace: report.trace.clone(),
         trace_path: report.trace_path.clone(),
         // Forward the delta summary the report already computes so the rail
@@ -469,7 +502,131 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
         delta_summary: report.delta_summary.clone(),
         snapshot: report.snapshot.clone(),
         snapshot_path: report.snapshot_path.clone(),
+        image_generation_failed,
     })
+}
+
+/// A `JobClock` backed by `SystemTime`, used by the scene image pipeline so
+/// job records carry real timestamps. The pi-Agent apply flow constructs a
+/// fresh `JobQueue` per turn (image jobs are not long-lived), so this is the
+/// only place a real clock is needed in the studio layer.
+#[derive(Clone, Debug, Default)]
+struct SystemJobClock;
+
+impl plotforge_job::JobClock for SystemJobClock {
+    fn now_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+}
+
+/// Attempts to generate a scene background image when an enabled image
+/// provider is registered. Returns `None` when image generation was not
+/// attempted (no provider configured) or succeeded; returns `Some(message)`
+/// with a redaction-safe error message when generation failed but the turn
+/// must still succeed (failure isolation). On success, `scene.background_asset`
+/// is updated to the generated asset's project-relative path and the updated
+/// scene is written to disk.
+///
+/// `visual_style` is the project's visual style descriptor (read from
+/// `story_craft.bible.prose_style_guide` by the caller, before the project is
+/// moved into the runtime session).
+fn attempt_scene_image_generation(
+    project_path: &Path,
+    visual_style: &str,
+    committed_scene: &Scene,
+    result_scene: &mut Scene,
+) -> Option<String> {
+    // Resolve the image provider. When none is configured (or all are
+    // disabled), image generation is skipped — not an error. The turn
+    // succeeds without a generated background image.
+    let registry = match plotforge_agent::load_provider_registry() {
+        Ok(registry) => registry,
+        Err(error) => {
+            // Registry load failure is explicit and trace-visible, but does
+            // not fail the turn.
+            return Some(redact_trace_text(&format!(
+                "image generation skipped: provider registry load failed: {error}"
+            )));
+        }
+    };
+    let Some(entry) = plotforge_agent::resolve_image_provider(&registry) else {
+        // No enabled image provider: skip silently (this is the documented
+        // "not configured" path, not a failure).
+        return None;
+    };
+    let image_provider = match plotforge_agent::build_image_provider(entry) {
+        Ok(provider) => provider,
+        Err(error) => {
+            return Some(redact_trace_text(&format!(
+                "image generation skipped: provider build failed: {error}"
+            )));
+        }
+    };
+
+    // Build the image prompt from scene title + description + project visual
+    // style. The scene description is the scene summary the planner produced;
+    // the visual style is read from `story_craft.bible.prose_style_guide`
+    // (where the storage layer persists the creator's `visual_style`) and
+    // passed in by the caller.
+    let prompt = scene_image_prompt(committed_scene, visual_style);
+    let request = plotforge_agent::SceneImageRequest {
+        scene_key: committed_scene.key.clone(),
+        prompt,
+        output_path: format!("assets/generated/{}.png", committed_scene.key),
+    };
+
+    let pipeline = plotforge_agent::SceneImagePipeline::new(image_provider);
+    let mut asset_registry = plotforge_media::AssetRegistry::new();
+    let mut job_queue = plotforge_job::JobQueue::new(SystemJobClock);
+    match pipeline.generate_scene_background_for_project(
+        project_path,
+        request,
+        &mut asset_registry,
+        &mut job_queue,
+    ) {
+        Ok(result) => {
+            // Update the returned scene + persist the background_asset path
+            // so the next load reflects the generated image. The asset record
+            // (content hash + provider metadata) is captured in
+            // `asset_registry`; a disk-write failure here is also
+            // failure-isolated (the image bytes are already on disk).
+            let background_asset = result.asset_record.project_path.clone();
+            match update_scene_background_asset(
+                project_path,
+                &committed_scene.key,
+                &background_asset,
+            ) {
+                Ok(updated) => {
+                    result_scene.background_asset = updated.background_asset;
+                    None
+                }
+                Err(error) => Some(redact_trace_text(&format!(
+                    "image generated but scene background_asset persist failed: {error}"
+                ))),
+            }
+        }
+        Err(error) => Some(redact_trace_text(&format!(
+            "image generation failed: {error}"
+        ))),
+    }
+}
+
+/// Builds the image generation prompt from the scene's title + description +
+/// dramatic purpose/hook and the project's visual style. The prompt is
+/// redaction-safe scene content (no credentials); the visual style is the
+/// creator-authored style descriptor.
+fn scene_image_prompt(scene: &Scene, visual_style: &str) -> String {
+    let mut prompt = format!(
+        "title={}; location={}; dramatic_purpose={}; hook={}",
+        scene.title, scene.location, scene.dramatic_purpose, scene.hook
+    );
+    if !visual_style.trim().is_empty() {
+        prompt.push_str(&format!("; visual_style={visual_style}"));
+    }
+    prompt
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +649,32 @@ pub fn list_providers() -> StudioCommandResult<Vec<ProviderEntry>> {
     Ok(registry.providers)
 }
 
+/// Lists every registered image provider entry from the user-global registry.
+/// An absent registry returns an empty list (fresh install). Used by the
+/// desktop settings UI to render the image-provider list; the entries never
+/// carry credentials (only `credential_env_var` names).
+pub fn list_image_providers() -> StudioCommandResult<Vec<ImageProviderEntry>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_image_providers".into(),
+            message: source.to_string(),
+        })?;
+    Ok(registry.image_providers)
+}
+
+/// Lists all registered TTS providers from the user-global registry. These
+/// entries drive the TTS pipeline: when an enabled TTS provider exists, the
+/// pipeline routes to the real `OpenAiTtsClient`; otherwise it falls back to
+/// the fake provider.
+pub fn list_tts_providers() -> StudioCommandResult<Vec<TtsProviderEntry>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_tts_providers".into(),
+            message: source.to_string(),
+        })?;
+    Ok(registry.tts_providers)
+}
+
 /// Adds or updates (by `id`) a provider entry in the user-global registry.
 pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntry> {
     // Validate the entry before it is persisted. This catches credential
@@ -505,6 +688,8 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
+        max_output_tokens: entry.max_output_tokens,
+        supports_json_schema: false,
     };
     config.validate().map_err(|error| StudioCommandError {
         code: "upsert_provider_invalid".into(),
@@ -593,6 +778,8 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
+        max_output_tokens: entry.max_output_tokens,
+        supports_json_schema: false,
     };
     // Issue a tiny completion to verify the credential + endpoint resolve.
     // The request body is a benign probe; the response is discarded.
@@ -605,6 +792,7 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
         model_version: entry.model.clone(),
         provider_config_hash: probe_config.provider_config_hash(),
         prompt: "{\"probe\": true}".into(),
+        messages: None,
     };
     match built.complete(&request) {
         Ok(_) => Ok(ProviderTestResult {
@@ -621,6 +809,47 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
             message: redact_trace_text(&error.message),
         }),
     }
+}
+
+/// Lists the models a registered provider serves, fetched from the provider's
+/// upstream `/models` (or Anthropic `/v1/models`) endpoint. Results are cached
+/// locally under `~/.plotforge/cache/models/{provider_id}.json` with a 1-hour
+/// TTL so repeated UI lookups do not hammer the upstream.
+///
+/// The provider is resolved by `id` from the user-global registry; an unknown
+/// id surfaces an explicit `provider_not_found` error (no silent fallback).
+/// A missing credential surfaces an explicit error code so the UI can prompt
+/// the user to set their API key — never an empty model list. The returned
+/// `RemoteModelInfo` entries carry only descriptive metadata (id, owned_by,
+/// token caps); no endpoint URL, credential, or raw response body is leaked.
+pub fn list_remote_models(provider_id: String) -> StudioCommandResult<Vec<RemoteModelInfo>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_remote_models_load".into(),
+            message: source.to_string(),
+        })?;
+    let entry = registry
+        .providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .ok_or_else(|| StudioCommandError {
+            code: "provider_not_found".into(),
+            message: format!("no provider with id `{provider_id}`"),
+        })?;
+    plotforge_agent::fetch_provider_models(entry).map_err(|source| StudioCommandError {
+        code: match source {
+            plotforge_agent::ModelDiscoveryError::MissingCredential { .. } => {
+                "list_remote_models_missing_credential"
+            }
+            plotforge_agent::ModelDiscoveryError::Http { .. } => "list_remote_models_http",
+            plotforge_agent::ModelDiscoveryError::Cache { .. } => "list_remote_models_cache",
+        }
+        .into(),
+        // `fetch_provider_models` already redacts via `redact_trace_text`;
+        // apply it again as defence-in-depth before the UI sees the
+        // message (mirrors `test_provider_connection`).
+        message: redact_trace_text(&source.to_string()),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2068,17 +2297,17 @@ mod tests {
         generate_world_expansion, get_agent_session_config, git_current_branch, git_list_branches,
         git_project_dir_name, git_switch_branch, import_workshop_library_package,
         list_asset_records, list_available_models, list_export_profiles, list_mcp_servers,
-        list_project_prompt_templates, list_providers, list_source_files, list_workshop_library,
-        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
-        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
-        play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
-        read_character_edit_document, read_rules_edit_document, read_source_file,
-        read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, upsert_project_prompt_template, upsert_provider,
-        validate_workshop_package, write_source_file, write_steam_submission_kit,
-        write_workshop_publish_draft,
+        list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
+        list_workshop_library, load_workshop_library_item, open_project, pi_agent_apply_run,
+        pi_agent_capabilities, pi_agent_run, play_once_project,
+        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
+        play_once_project_with_save, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, set_agent_session_config, update_ai_safety_policy,
+        update_story_craft_edit_document, update_world_edit_document,
+        upsert_project_prompt_template, upsert_provider, validate_workshop_package,
+        write_source_file, write_steam_submission_kit, write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
@@ -3271,6 +3500,7 @@ mod tests {
             model: "m".into(),
             credential_env_var: "OPENAI_API_KEY".into(),
             enabled: true,
+            max_output_tokens: None,
         };
         let error = upsert_provider(entry).expect_err("query-string credential rejected");
         assert_eq!(error.code, "upsert_provider_invalid");
@@ -3286,6 +3516,21 @@ mod tests {
         let error = delete_provider("pf-review-sentinel-not-registered-9f3c7a".into())
             .expect_err("missing provider must error");
         assert_eq!(error.code, "provider_not_found");
+    }
+
+    #[test]
+    fn list_remote_models_reports_missing_provider_explicitly() {
+        // T1.2: an unknown provider id surfaces `provider_not_found` — never
+        // an empty list and never a silent fetch attempt. The sentinel id is
+        // guaranteed absent from the user's registry.
+        let error = list_remote_models("pf-review-sentinel-not-registered-4b1e92".into())
+            .expect_err("missing provider must error");
+        assert_eq!(error.code, "provider_not_found");
+        assert!(
+            error
+                .message
+                .contains("pf-review-sentinel-not-registered-4b1e92")
+        );
     }
 
     fn sample_character(id: &str) -> Character {

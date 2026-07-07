@@ -9,7 +9,10 @@ import type {
   PiAgentApplyRequest,
   PiAgentApplyResult,
   ProviderEntry,
+  ImageProviderEntry,
+  TtsProviderEntry,
   PromptTemplate,
+  RemoteModelInfo,
   SkillIndex,
   SkillManifest,
 } from "../../../../contracts/plotforge";
@@ -164,7 +167,51 @@ export async function mockTestProviderConnection(_id: string): Promise<ProviderT
   return { ok: true, message: "" };
 }
 
+/**
+ * Mock `listRemoteModels`: returns a small, sensible list of contract-typed
+ * `RemoteModelInfo` entries so the provider editor's "Fetch models" flow can be
+ * exercised in tests without a live provider. Mirrors the OpenAI `/v1/models`
+ * shape (id + owned_by + created + token caps).
+ */
+export async function mockListRemoteModels(
+  _providerId: string,
+): Promise<RemoteModelInfo[]> {
+  return [
+    {
+      id: "gpt-4o",
+      owned_by: "openai",
+      created: 1715367600,
+      max_input_tokens: 128000,
+      max_output_tokens: 16384,
+    },
+    {
+      id: "gpt-4o-mini",
+      owned_by: "openai",
+      created: 1715367600,
+      max_input_tokens: 128000,
+      max_output_tokens: 16384,
+    },
+  ];
+}
+
 export async function mockListUserPromptTemplates(): Promise<PromptTemplate[]> {
+  return [];
+}
+
+/**
+ * Mock `listImageProviders`: returns a small, sensible list of contract-typed
+ * `ImageProviderEntry` entries so the Settings → Agent → Image providers area
+ * can be exercised in tests without a live registry.
+ */
+export async function mockListImageProviders(): Promise<ImageProviderEntry[]> {
+  return [];
+}
+
+/**
+ * Mock `listTtsProviders`: returns an empty list so the Settings → Agent →
+ * TTS providers area can be exercised in tests without a live registry.
+ */
+export async function mockListTtsProviders(): Promise<TtsProviderEntry[]> {
   return [];
 }
 

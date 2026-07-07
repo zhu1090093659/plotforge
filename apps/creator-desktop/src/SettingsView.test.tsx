@@ -13,8 +13,11 @@ import type { StudioDataSource } from "./studioDataSource";
 import {
   mockDeleteProvider,
   mockImportSkill,
+  mockListImageProviders,
+  mockListTtsProviders,
   mockListProjectPromptTemplates,
   mockListProviders,
+  mockListRemoteModels,
   mockListSkills,
   mockListUserPromptTemplates,
   mockReadSkillBody,
@@ -114,6 +117,9 @@ function settingsTestDataSource(
     upsertProvider: mockUpsertProvider,
     deleteProvider: mockDeleteProvider,
     testProviderConnection: mockTestProviderConnection,
+    listRemoteModels: mockListRemoteModels,
+    listImageProviders: mockListImageProviders,
+    listTtsProviders: mockListTtsProviders,
     listUserPromptTemplates: mockListUserPromptTemplates,
     listProjectPromptTemplates: mockListProjectPromptTemplates,
     listSkills: mockListSkills,
@@ -279,6 +285,119 @@ describe("SettingsView", () => {
     expect(
       (saved as unknown as Record<string, unknown>).credential_value,
     ).toBeUndefined();
+  });
+
+  it("fetches remote models into the provider editor combobox on success", async () => {
+    const listRemoteModels = vi.fn(async (_providerId: string) => [
+      {
+        id: "gpt-4o",
+        owned_by: "openai",
+        created: 1715367600,
+        max_input_tokens: 128000,
+        max_output_tokens: 16384,
+      },
+      {
+        id: "gpt-4o-mini",
+        owned_by: "openai",
+        created: 1715367600,
+        max_input_tokens: 128000,
+        max_output_tokens: 16384,
+      },
+    ]);
+    const dataSource = settingsTestDataSource({
+      async listRemoteModels(providerId) {
+        return listRemoteModels(providerId);
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+
+    // A provider id is required before the Fetch button is enabled, so set it.
+    fireEvent.change(screen.getByLabelText("Provider id"), {
+      target: { value: "openai-prod" },
+    });
+
+    // The Fetch models button calls `listRemoteModels(providerId)`.
+    fireEvent.click(screen.getByRole("button", { name: "Fetch models" }));
+    await waitFor(() => {
+      expect(listRemoteModels).toHaveBeenCalledWith("openai-prod");
+    });
+
+    // The fetched model ids appear as <datalist> suggestions. A combobox keeps
+    // the text input editable (the user is never forced to pick a suggestion).
+    const modelInput = screen.getByLabelText("Model", { selector: "input" });
+    const listId = modelInput.getAttribute("list") ?? "";
+    const datalist = document.getElementById(listId) as HTMLDataListElement | null;
+    expect(datalist).not.toBeNull();
+    const optionValues = Array.from(datalist!.options).map((o) => o.value);
+    expect(optionValues).toContain("gpt-4o");
+    expect(optionValues).toContain("gpt-4o-mini");
+    // Selecting a suggestion still leaves the input free-typable.
+    fireEvent.change(modelInput, { target: { value: "gpt-4o" } });
+    expect((modelInput as HTMLInputElement).value).toBe("gpt-4o");
+  });
+
+  it("surfaces a fetch error in the provider editor when listRemoteModels rejects", async () => {
+    const listRemoteModels = vi.fn(async (_providerId: string) => {
+      throw new Error("Missing credential");
+    });
+    const dataSource = settingsTestDataSource({
+      async listRemoteModels(providerId) {
+        return listRemoteModels(providerId);
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.change(screen.getByLabelText("Provider id"), {
+      target: { value: "openai-prod" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Fetch models" }));
+    // The redaction-safe error message surfaces inside the editor (role=alert),
+    // never the raw provider response body.
+    expect(await screen.findByText("Missing credential")).toBeTruthy();
+  });
+
+  it("renders the max_output_tokens field in the provider editor form", async () => {
+    const upsert = vi.fn(async (entry: ProviderEntry) => entry);
+    const dataSource = settingsTestDataSource({
+      async upsertProvider(entry) {
+        return upsert(entry);
+      },
+      async listProviders() {
+        return [];
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+
+    // The max_output_tokens field is an optional numeric input labelled by the
+    // i18n string `agent.provider.maxOutputTokens` ("Max output tokens (optional)").
+    const maxTokensInput = screen.getByLabelText("Max output tokens (optional)", {
+      selector: "input",
+    });
+    expect(maxTokensInput.getAttribute("type")).toBe("number");
+    // The helper text explains it overrides the default.
+    expect(
+      screen.getByText(
+        /Overrides the provider's default output token cap/,
+      ),
+    ).toBeTruthy();
+
+    // Setting a value propagates it to the persisted ProviderEntry.
+    fireEvent.change(maxTokensInput, { target: { value: "8192" } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => {
+      expect(upsert).toHaveBeenCalledTimes(1);
+    });
+    const saved = upsert.mock.calls[0][0] as ProviderEntry;
+    expect(saved.max_output_tokens).toBe(8192);
   });
 
   it("renders the Prompts user/project scope toggle buttons inside the Agent tab", async () => {

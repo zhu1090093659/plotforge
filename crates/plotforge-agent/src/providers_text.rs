@@ -18,6 +18,7 @@ use plotforge_schema::{
     contains_secret_marker_text, redact_trace_text,
 };
 
+use crate::prompts::ChatMessage;
 use crate::shared::{
     FAKE_TEXT_MODEL_VERSION, FAKE_TEXT_PROVIDER_CONFIG_HASH, TEXT_PROMPT_VERSION,
     choice_input_terms, stable_sha256_hash,
@@ -33,6 +34,16 @@ pub struct TextModelRequest {
     pub model_version: String,
     pub provider_config_hash: String,
     pub prompt: String,
+    /// Optional structured chat-message list assembled by the prompt template
+    /// system (`crate::prompts::PromptAssembler`). `None` (the default for all
+    /// legacy constructors) means the caller is using the single `prompt`
+    /// string and the request behaves exactly as before this field was added.
+    /// `Some(messages)` carries the assembled system + user messages so a
+    /// future provider adapter can send a chat-completions body instead of a
+    /// single-prompt completion. This field is strictly additive: the
+    /// `TextModelClient` trait and the three HTTP `complete()` signatures are
+    /// NOT modified, and `None` preserves the current behaviour.
+    pub messages: Option<Vec<ChatMessage>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +63,40 @@ impl TextModelResponse {
 pub enum TextModelProviderErrorKind {
     Provider,
     Timeout,
+    /// Upstream returned a 429 (Too Many Requests). `retry_after_ms` carries
+    /// the server-advised delay parsed from the `Retry-After` header (seconds
+    /// or HTTP-date), in milliseconds, when present. It is `None` if the
+    /// header was absent or unparseable — the retry loop then falls back to
+    /// its own backoff.
+    RateLimit {
+        retry_after_ms: Option<u64>,
+    },
+    /// Upstream flagged the response as content-policy-filtered. Carries the
+    /// provider-reported `finish_reason` / `stop_reason` string (a short
+    /// enumerated token, not user content, so it is trace-safe).
+    /// Non-retryable: retrying with the same prompt reproduces the filter.
+    ContentFiltered {
+        finish_reason: String,
+    },
+    /// Upstream truncated the output at the model's max-token limit. Carries
+    /// the provider-reported output token count when available. Non-retryable:
+    /// retrying with the same prompt/limit reproduces the truncation.
+    OutputTruncated {
+        tokens_generated: Option<u64>,
+    },
+}
+
+/// Whether a provider error kind is worth retrying with the same request.
+/// Rate-limit (429), provider 5xx, and timeout are transient; content-filter
+/// and truncation are deterministic outcomes of the prompt/limit and must not
+/// be retried (retrying would reproduce the same result and burn quota).
+impl TextModelProviderErrorKind {
+    pub(crate) fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::RateLimit { .. } | Self::Provider | Self::Timeout
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,6 +120,43 @@ impl TextModelProviderError {
             kind: TextModelProviderErrorKind::Timeout,
             code: "text_provider_timeout".into(),
             message: message.into(),
+        }
+    }
+
+    /// 429 / rate-limit error. `retry_after_ms` is the parsed `Retry-After`
+    /// header value (in ms) when the server supplied one. The code is a
+    /// distinct, redacted stable identifier so callers and traces can branch
+    /// on it.
+    pub fn rate_limit(retry_after_ms: Option<u64>, message: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::RateLimit { retry_after_ms },
+            code: "text_provider_rate_limit".into(),
+            message: message.into(),
+        }
+    }
+
+    /// Content-policy-filtered response. Non-retryable. `finish_reason` is the
+    /// short provider-reported stop reason (e.g. `"content_filter"`); it is a
+    /// fixed enumerated token, not user content, so it is trace-safe.
+    pub fn content_filtered(finish_reason: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: finish_reason.into(),
+            },
+            code: "text_provider_content_filtered".into(),
+            message: "content policy triggered; modify prompt".into(),
+        }
+    }
+
+    /// Output truncated at the model's max-token limit. Non-retryable.
+    /// `tokens_generated` is the provider-reported output token count, when
+    /// available.
+    pub fn output_truncated(tokens_generated: Option<u64>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::OutputTruncated { tokens_generated },
+            code: "text_provider_output_truncated".into(),
+            message: "output truncated at max_tokens; increase max_output_tokens or reduce prompt"
+                .into(),
         }
     }
 }
@@ -105,6 +187,23 @@ pub struct TextProviderConfig {
     pub model: String,
     pub endpoint_url: Option<String>,
     pub credential_env_var: String,
+    /// Optional override for the provider's output token cap. `None` lets each
+    /// HTTP client use its own default (4096 for OpenAI variants, 8192 for
+    /// Anthropic Messages). `Some(n)` is propagated into the request body so
+    /// the configured value replaces the hardcoded default. Included in the
+    /// provider-config hash so reproducibility distinguishes runs that differ
+    /// only by the output token cap.
+    pub max_output_tokens: Option<u32>,
+    /// When `true`, the HTTP clients use provider-native JSON Schema mode to
+    /// constrain output to a valid `AgentOutputEnvelope` shape:
+    /// OpenAI-compatible/Responses send `response_format:
+    /// {"type":"json_schema",...}`; Anthropic Messages uses a forced
+    /// `tool_use` block with the envelope as the tool input schema. When
+    /// `false`, OpenAI-compatible keeps the `json_object` response format and
+    /// Anthropic sends plain messages with no tool constraint (the pre-T2.4
+    /// shapes). Deliberately excluded from `provider_config_hash` — it is a
+    /// client-side capability flag, not part of provider identity.
+    pub supports_json_schema: bool,
 }
 
 impl TextProviderConfig {
@@ -115,6 +214,8 @@ impl TextProviderConfig {
             model: "disabled".into(),
             endpoint_url: None,
             credential_env_var: "PLOTFORGE_TEXT_PROVIDER_TOKEN".into(),
+            max_output_tokens: None,
+            supports_json_schema: false,
         }
     }
 
@@ -130,7 +231,17 @@ impl TextProviderConfig {
             model: model.into(),
             endpoint_url: Some(endpoint_url.into()),
             credential_env_var: credential_env_var.into(),
+            max_output_tokens: None,
+            supports_json_schema: false,
         }
+    }
+
+    /// Builder-style setter for JSON Schema output constraint support. The
+    /// registry calls this after constructing the base config to enable
+    /// provider-native structured-output mode.
+    pub fn with_json_schema_support(mut self, enabled: bool) -> Self {
+        self.supports_json_schema = enabled;
+        self
     }
 
     pub fn validate(&self) -> Result<(), TextProviderConfigError> {
@@ -180,11 +291,20 @@ impl TextProviderConfig {
 
     pub fn provider_config_hash(&self) -> String {
         let endpoint_url = self.endpoint_url.as_deref().unwrap_or("");
+        let max_output_tokens = match self.max_output_tokens {
+            Some(value) => value.to_string(),
+            None => "None".into(),
+        };
         format!(
             "sha256:{}",
             stable_sha256_hash(&format!(
-                "enabled={}\nprovider={}\nmodel={}\nendpoint_url={}\ncredential_env_var={}\n",
-                self.enabled, self.provider, self.model, endpoint_url, self.credential_env_var
+                "enabled={}\nprovider={}\nmodel={}\nendpoint_url={}\ncredential_env_var={}\nmax_output_tokens={}\n",
+                self.enabled,
+                self.provider,
+                self.model,
+                endpoint_url,
+                self.credential_env_var,
+                max_output_tokens
             ))
         )
     }
@@ -393,6 +513,21 @@ where
                 "text_provider_prompt_secret",
                 "text model prompt contained a secret marker",
             ));
+        }
+        // T2.2: the additive `messages` field carries structured chat-message
+        // contents that also leave the process via the provider request body,
+        // so each message content is scanned for a secret marker at the same
+        // redaction boundary. `None` (the legacy single-prompt path) skips this
+        // loop — its content is already covered by the `prompt` scan above.
+        if let Some(messages) = request.messages.as_ref() {
+            for message in messages {
+                if contains_secret_marker_text(&message.content) {
+                    return Err(TextModelProviderError::provider(
+                        "text_provider_prompt_secret",
+                        "text model prompt message contained a secret marker",
+                    ));
+                }
+            }
         }
         let credential = self
             .credential_resolver
@@ -887,5 +1022,162 @@ fn generated_character(prompt: &str, provider_config_hash: &str) -> Character {
             reference_asset_ids: Vec::new(),
             fallback_allowed: true,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_config() -> TextProviderConfig {
+        TextProviderConfig::openai_compatible("p", "m", "https://x", "ENV")
+    }
+
+    #[test]
+    fn openai_compatible_constructor_defaults_max_output_tokens_to_none() {
+        let config = base_config();
+        assert_eq!(config.max_output_tokens, None);
+    }
+
+    #[test]
+    fn disabled_constructor_defaults_max_output_tokens_to_none() {
+        let config = TextProviderConfig::disabled();
+        assert_eq!(config.max_output_tokens, None);
+    }
+
+    #[test]
+    fn provider_config_hash_changes_with_max_output_tokens() {
+        // The hash must distinguish runs that differ only by the output token
+        // cap so reproducibility metadata keeps them apart.
+        let mut a = base_config();
+        a.max_output_tokens = None;
+        let mut b = base_config();
+        b.max_output_tokens = Some(8192);
+        let mut c = base_config();
+        c.max_output_tokens = Some(4096);
+        assert_ne!(a.provider_config_hash(), b.provider_config_hash());
+        assert_ne!(b.provider_config_hash(), c.provider_config_hash());
+        assert_ne!(a.provider_config_hash(), c.provider_config_hash());
+    }
+
+    #[test]
+    fn provider_config_hash_stable_for_same_max_output_tokens() {
+        let mut a = base_config();
+        a.max_output_tokens = Some(2048);
+        let mut b = base_config();
+        b.max_output_tokens = Some(2048);
+        assert_eq!(a.provider_config_hash(), b.provider_config_hash());
+    }
+
+    // ---------------------------------------------------------------------
+    // T2.2: message-content secret-marker scan in
+    // `ConfiguredTextModelProvider::complete`. The additive `messages` field
+    // carries structured chat-message contents that leave the process via the
+    // provider request body, so each message content is scanned at the same
+    // redaction boundary as `prompt`. A marker in any message must surface as
+    // `text_provider_prompt_secret` and must never reach the underlying client.
+    // ---------------------------------------------------------------------
+
+    /// A `TextModelClient` that records whether `complete()` was called. Used
+    /// to assert the adapter's secret-marker scan short-circuits before the
+    /// client sees the request.
+    #[derive(Default)]
+    struct CallCountingClient {
+        calls: std::cell::Cell<usize>,
+    }
+
+    impl TextModelClient for CallCountingClient {
+        fn complete(
+            &self,
+            _request: TextModelClientRequest<'_>,
+        ) -> Result<TextModelResponse, TextModelProviderError> {
+            self.calls.set(self.calls.get() + 1);
+            Ok(TextModelResponse::json("{}"))
+        }
+    }
+
+    /// A credential resolver that always returns a fixed token, so the adapter
+    /// reaches the message-scan step (it runs after credential resolution).
+    #[derive(Clone)]
+    struct StaticCredential {
+        token: &'static str,
+    }
+
+    impl ProviderCredentialResolver for StaticCredential {
+        fn resolve(&self, _env_var: &str) -> Result<String, ProviderCredentialError> {
+            Ok(self.token.into())
+        }
+    }
+
+    fn base_request_with_messages(
+        messages: Option<Vec<crate::prompts::ChatMessage>>,
+    ) -> TextModelRequest {
+        TextModelRequest {
+            call_id: "call-1".into(),
+            agent: plotforge_schema::AgentRole::ScenePlanner,
+            scene_key: "scene-1".into(),
+            run_seed: 1,
+            prompt_version: "v1".into(),
+            model_version: "m".into(),
+            provider_config_hash: "sha256:x".into(),
+            prompt: String::new(),
+            messages,
+        }
+    }
+
+    #[test]
+    fn complete_rejects_secret_marker_in_message_before_client_call() {
+        use crate::prompts::{ChatMessage, MessageRole};
+        let client = CallCountingClient::default();
+        let provider = ConfiguredTextModelProvider::new(
+            base_config(),
+            client,
+            StaticCredential { token: "tok" },
+        );
+        let request = base_request_with_messages(Some(vec![
+            ChatMessage::new(MessageRole::System, "you are the scene planner"),
+            ChatMessage::new(
+                MessageRole::User,
+                "Authorization: bearer sk-leak-in-message",
+            ),
+        ]));
+        let error = provider
+            .complete(&request)
+            .expect_err("secret marker must error");
+        assert_eq!(error.code, "text_provider_prompt_secret");
+        assert!(error.message.contains("secret marker"));
+        assert!(
+            !error.message.contains("sk-leak-in-message"),
+            "error message must not echo the secret marker value, got: {error}"
+        );
+        // The adapter must short-circuit at the scan: the client must NOT have
+        // been called (no request body with the marker leaves the process).
+        assert_eq!(
+            provider.client.calls.get(),
+            0,
+            "client must not be called when a message carries a secret marker"
+        );
+    }
+
+    #[test]
+    fn complete_accepts_messages_without_secret_marker() {
+        use crate::prompts::{ChatMessage, MessageRole};
+        let client = CallCountingClient::default();
+        let provider = ConfiguredTextModelProvider::new(
+            base_config(),
+            client,
+            StaticCredential { token: "tok" },
+        );
+        let request = base_request_with_messages(Some(vec![
+            ChatMessage::new(MessageRole::System, "you are the scene planner"),
+            ChatMessage::new(MessageRole::User, "plan the next scene"),
+        ]));
+        let response = provider.complete(&request).expect("clean messages succeed");
+        assert_eq!(response.raw_json, "{}");
+        assert_eq!(
+            provider.client.calls.get(),
+            1,
+            "client must be called exactly once for clean messages"
+        );
     }
 }
