@@ -52,6 +52,34 @@ impl TextModelResponse {
 pub enum TextModelProviderErrorKind {
     Provider,
     Timeout,
+    /// Upstream returned a 429 (Too Many Requests). `retry_after_ms` carries
+    /// the server-advised delay parsed from the `Retry-After` header (seconds
+    /// or HTTP-date), in milliseconds, when present. It is `None` if the
+    /// header was absent or unparseable — the retry loop then falls back to
+    /// its own backoff.
+    RateLimit { retry_after_ms: Option<u64> },
+    /// Upstream flagged the response as content-policy-filtered. Carries the
+    /// provider-reported `finish_reason` / `stop_reason` string (a short
+    /// enumerated token, not user content, so it is trace-safe).
+    /// Non-retryable: retrying with the same prompt reproduces the filter.
+    ContentFiltered { finish_reason: String },
+    /// Upstream truncated the output at the model's max-token limit. Carries
+    /// the provider-reported output token count when available. Non-retryable:
+    /// retrying with the same prompt/limit reproduces the truncation.
+    OutputTruncated { tokens_generated: Option<u64> },
+}
+
+/// Whether a provider error kind is worth retrying with the same request.
+/// Rate-limit (429), provider 5xx, and timeout are transient; content-filter
+/// and truncation are deterministic outcomes of the prompt/limit and must not
+/// be retried (retrying would reproduce the same result and burn quota).
+impl TextModelProviderErrorKind {
+    pub(crate) fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::RateLimit { .. } | Self::Provider | Self::Timeout
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,6 +103,43 @@ impl TextModelProviderError {
             kind: TextModelProviderErrorKind::Timeout,
             code: "text_provider_timeout".into(),
             message: message.into(),
+        }
+    }
+
+    /// 429 / rate-limit error. `retry_after_ms` is the parsed `Retry-After`
+    /// header value (in ms) when the server supplied one. The code is a
+    /// distinct, redacted stable identifier so callers and traces can branch
+    /// on it.
+    pub fn rate_limit(retry_after_ms: Option<u64>, message: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::RateLimit { retry_after_ms },
+            code: "text_provider_rate_limit".into(),
+            message: message.into(),
+        }
+    }
+
+    /// Content-policy-filtered response. Non-retryable. `finish_reason` is the
+    /// short provider-reported stop reason (e.g. `"content_filter"`); it is a
+    /// fixed enumerated token, not user content, so it is trace-safe.
+    pub fn content_filtered(finish_reason: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::ContentFiltered {
+                finish_reason: finish_reason.into(),
+            },
+            code: "text_provider_content_filtered".into(),
+            message: "content policy triggered; modify prompt".into(),
+        }
+    }
+
+    /// Output truncated at the model's max-token limit. Non-retryable.
+    /// `tokens_generated` is the provider-reported output token count, when
+    /// available.
+    pub fn output_truncated(tokens_generated: Option<u64>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::OutputTruncated { tokens_generated },
+            code: "text_provider_output_truncated".into(),
+            message: "output truncated at max_tokens; increase max_output_tokens or reduce prompt"
+                .into(),
         }
     }
 }
@@ -105,6 +170,13 @@ pub struct TextProviderConfig {
     pub model: String,
     pub endpoint_url: Option<String>,
     pub credential_env_var: String,
+    /// Optional override for the provider's output token cap. `None` lets each
+    /// HTTP client use its own default (4096 for OpenAI variants, 8192 for
+    /// Anthropic Messages). `Some(n)` is propagated into the request body so
+    /// the configured value replaces the hardcoded default. Included in the
+    /// provider-config hash so reproducibility distinguishes runs that differ
+    /// only by the output token cap.
+    pub max_output_tokens: Option<u32>,
 }
 
 impl TextProviderConfig {
@@ -115,6 +187,7 @@ impl TextProviderConfig {
             model: "disabled".into(),
             endpoint_url: None,
             credential_env_var: "PLOTFORGE_TEXT_PROVIDER_TOKEN".into(),
+            max_output_tokens: None,
         }
     }
 
@@ -130,6 +203,7 @@ impl TextProviderConfig {
             model: model.into(),
             endpoint_url: Some(endpoint_url.into()),
             credential_env_var: credential_env_var.into(),
+            max_output_tokens: None,
         }
     }
 
@@ -180,11 +254,20 @@ impl TextProviderConfig {
 
     pub fn provider_config_hash(&self) -> String {
         let endpoint_url = self.endpoint_url.as_deref().unwrap_or("");
+        let max_output_tokens = match self.max_output_tokens {
+            Some(value) => value.to_string(),
+            None => "None".into(),
+        };
         format!(
             "sha256:{}",
             stable_sha256_hash(&format!(
-                "enabled={}\nprovider={}\nmodel={}\nendpoint_url={}\ncredential_env_var={}\n",
-                self.enabled, self.provider, self.model, endpoint_url, self.credential_env_var
+                "enabled={}\nprovider={}\nmodel={}\nendpoint_url={}\ncredential_env_var={}\nmax_output_tokens={}\n",
+                self.enabled,
+                self.provider,
+                self.model,
+                endpoint_url,
+                self.credential_env_var,
+                max_output_tokens
             ))
         )
     }
@@ -887,5 +970,50 @@ fn generated_character(prompt: &str, provider_config_hash: &str) -> Character {
             reference_asset_ids: Vec::new(),
             fallback_allowed: true,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_config() -> TextProviderConfig {
+        TextProviderConfig::openai_compatible("p", "m", "https://x", "ENV")
+    }
+
+    #[test]
+    fn openai_compatible_constructor_defaults_max_output_tokens_to_none() {
+        let config = base_config();
+        assert_eq!(config.max_output_tokens, None);
+    }
+
+    #[test]
+    fn disabled_constructor_defaults_max_output_tokens_to_none() {
+        let config = TextProviderConfig::disabled();
+        assert_eq!(config.max_output_tokens, None);
+    }
+
+    #[test]
+    fn provider_config_hash_changes_with_max_output_tokens() {
+        // The hash must distinguish runs that differ only by the output token
+        // cap so reproducibility metadata keeps them apart.
+        let mut a = base_config();
+        a.max_output_tokens = None;
+        let mut b = base_config();
+        b.max_output_tokens = Some(8192);
+        let mut c = base_config();
+        c.max_output_tokens = Some(4096);
+        assert_ne!(a.provider_config_hash(), b.provider_config_hash());
+        assert_ne!(b.provider_config_hash(), c.provider_config_hash());
+        assert_ne!(a.provider_config_hash(), c.provider_config_hash());
+    }
+
+    #[test]
+    fn provider_config_hash_stable_for_same_max_output_tokens() {
+        let mut a = base_config();
+        a.max_output_tokens = Some(2048);
+        let mut b = base_config();
+        b.max_output_tokens = Some(2048);
+        assert_eq!(a.provider_config_hash(), b.provider_config_hash());
     }
 }

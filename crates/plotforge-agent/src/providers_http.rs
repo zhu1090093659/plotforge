@@ -24,7 +24,7 @@ use std::time::Duration;
 use plotforge_schema::redact_trace_text;
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, RequestBuilder};
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
 
 use crate::providers_text::{
     TextModelClient, TextModelClientRequest, TextModelProviderError, TextModelResponse,
@@ -39,6 +39,30 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 /// fail fast instead of holding a Tauri worker for the full 60s. The overall
 /// `HTTP_TIMEOUT` still bounds the whole request (connect + send + body).
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Token-usage breakdown extracted from a provider response, when the API
+/// surfaces one. Both fields are optional because not every provider reports
+/// both legs of usage on every response (e.g. some OpenAI-compatible gateways
+/// report only a total). Values are redaction-safe counts, never prompt or
+/// completion text.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UsageInfo {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+}
+
+/// The decoded payload shared by every provider's `extract_*_content` step.
+/// `content` is the model's text (the field `complete()` wraps in
+/// `TextModelResponse::json`). `finish_reason` and `usage` are surfaced so
+/// the pipeline can detect content-filter / truncation *before* attempting
+/// JSON repair — otherwise a content-filtered or max-tokens-truncated
+/// partial body would masquerade as opaque `text_provider_invalid_json`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExtractedResponse {
+    pub content: String,
+    pub finish_reason: Option<String>,
+    pub usage: Option<UsageInfo>,
+}
 
 /// A process-wide shared `reqwest::blocking::Client`. Connection pooling keeps
 /// keep-alive and TLS sessions across turns of the same provider, instead of
@@ -82,6 +106,14 @@ fn shared_http_client() -> Result<&'static Client, TextModelProviderError> {
     Ok(SHARED_HTTP_CLIENT
         .get()
         .expect("shared client was just set or already present"))
+}
+
+/// Returns a clone of the shared blocking `reqwest::Client` with the standard
+/// PlotForge timeouts. Exposed so other modules (e.g. registry model
+/// discovery) can reuse the same pooled client instead of constructing a
+/// duplicate. Errors are redaction-safe `TextModelProviderError`s.
+pub fn shared_blocking_client() -> Result<Client, TextModelProviderError> {
+    shared_http_client().cloned()
 }
 
 /// Adds a bearer auth header to `headers` only when `credential` is
@@ -129,6 +161,12 @@ fn push_x_api_key(headers: &mut HeaderMap, credential: &str) -> Result<(), TextM
 /// Executes a `RequestBuilder`, mapping network/decode failures into
 /// redaction-safe provider errors. Timeouts and connection failures map to
 /// `TextModelProviderError::timeout`; everything else maps to `provider`.
+///
+/// On a 429 response the `Retry-After` header (seconds or HTTP-date) is parsed
+/// and surfaced as the `RateLimit` kind so the retry loop can honour the
+/// server-advised backoff. 5xx responses stay on the `Provider` kind, which
+/// the retry policy treats as retryable. Other 4xx stay on `Provider` and are
+/// non-retryable (a 401/403 will not fix itself on a blind retry).
 fn execute(request: RequestBuilder) -> Result<String, TextModelProviderError> {
     let response = request.send().map_err(|error| {
         if error.is_timeout() {
@@ -142,6 +180,13 @@ fn execute(request: RequestBuilder) -> Result<String, TextModelProviderError> {
     })?;
     let status = response.status();
     if !status.is_success() {
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            let retry_after_ms = parse_retry_after(response.headers().get(RETRY_AFTER));
+            return Err(TextModelProviderError::rate_limit(
+                retry_after_ms,
+                format!("provider returned HTTP {status}"),
+            ));
+        }
         return Err(http_status_error(status));
     }
     let text = response.text().map_err(|error| {
@@ -158,6 +203,103 @@ fn http_status_error(status: StatusCode) -> TextModelProviderError {
         "text_provider_http_status",
         format!("provider returned HTTP {status}"),
     )
+}
+
+/// Parses an HTTP `Retry-After` header value into milliseconds. Supports both
+/// the delta-seconds form (`"120"`) and the HTTP-date form
+/// (`"Wed, 21 Oct 2026 07:28:00 GMT"`). Returns `None` when the header is
+/// absent or unparseable — the caller then falls back to its own backoff.
+/// The parsed value is redaction-safe (a duration, not user content).
+fn parse_retry_after(header: Option<&HeaderValue>) -> Option<u64> {
+    let value = header?;
+    let value = value.to_str().ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Delta-seconds form: a non-negative integer.
+    if let Ok(seconds) = trimmed.parse::<u64>() {
+        return Some(seconds.saturating_mul(1000));
+    }
+    // HTTP-date form. `rfc2822` conversion: trim to a fixed-length timestamp
+    // the std parser accepts. We compute the delay relative to now.
+    let date = httpdate_to_system_time(trimmed)?;
+    let now = std::time::SystemTime::now();
+    match date.duration_since(now) {
+        Ok(duration) => Some(duration.as_millis().try_into().ok()?),
+        // A past date means "retry now"; surface a zero delay so the retry loop
+        // honours the header but does not stall.
+        Err(_) => Some(0),
+    }
+}
+
+/// Parses an RFC 7231 HTTP-date into a `SystemTime`. Hand-rolled to avoid a
+/// new dependency: the only formats we accept are the three IMF-fixdate /
+/// RFC 850 / asctime forms, but in practice providers send IMF-fixdate
+/// (`Wed, 21 Oct 2026 07:28:00 GMT`). Falls back to `chrono`-free parsing of
+/// that canonical form; anything else returns `None` (caller falls back to
+/// its own backoff — no silent fallback, the retry loop still runs).
+fn httpdate_to_system_time(value: &str) -> Option<std::time::SystemTime> {
+    // IMF-fixdate: "Wed, 21 Oct 2026 07:28:00 GMT"
+    // Pull the time fields out positionally; this matches the dominant form.
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    if parts.len() != 6 {
+        return None;
+    }
+    // parts: [weekday, day, month, year, time, "GMT"]
+    let day: u32 = parts[1].parse().ok()?;
+    let month = month_index(parts[2])?;
+    let year: i32 = parts[3].parse().ok()?;
+    let time_parts: Vec<&str> = parts[4].split(':').collect();
+    if time_parts.len() != 3 {
+        return None;
+    }
+    let hour: u32 = time_parts[0].parse().ok()?;
+    let minute: u32 = time_parts[1].parse().ok()?;
+    let second: u32 = time_parts[2].parse().ok()?;
+    if parts[5] != "GMT" {
+        return None;
+    }
+    let epoch_seconds = days_from_civil(year, month, day)? as i64 * 86_400
+        + (hour as i64 * 3600)
+        + (minute as i64 * 60)
+        + second as i64;
+    let duration = std::time::Duration::from_secs(epoch_seconds.max(0) as u64);
+    Some(std::time::SystemTime::UNIX_EPOCH + duration)
+}
+
+fn month_index(name: &str) -> Option<u32> {
+    match name {
+        "Jan" => Some(1),
+        "Feb" => Some(2),
+        "Mar" => Some(3),
+        "Apr" => Some(4),
+        "May" => Some(5),
+        "Jun" => Some(6),
+        "Jul" => Some(7),
+        "Aug" => Some(8),
+        "Sep" => Some(9),
+        "Oct" => Some(10),
+        "Nov" => Some(11),
+        "Dec" => Some(12),
+        _ => None,
+    }
+}
+
+/// Howard Hinnant's days-from-civil algorithm. Returns `None` for an invalid
+/// month (1-12). Produces the count of days since 1970-01-01 for the given
+/// (year, month, day), supporting the HTTP-date epoch conversion above.
+fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
+    if !(1..=12).contains(&month) {
+        return None;
+    }
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u32;
+    let m = month as i32;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day as i32 - 1;
+    let doe = yoe as i64 * 365 + yoe as i64 / 4 - yoe as i64 / 100 + doy as i64;
+    Some(era as i64 * 146_097 + doe - 719_468)
 }
 
 // ---------------------------------------------------------------------------
@@ -206,33 +348,72 @@ impl TextModelClient for OpenAiCompatibleClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         push_bearer_auth(&mut headers, request.credential)?;
 
-        let body = serde_json::json!({
+        // `max_tokens` is sent only when the user configured an explicit
+        // override. When `None`, the OpenAI-compatible default (4096) is left
+        // up to the upstream server rather than pinned here, preserving the
+        // previous behaviour.
+        let mut body = serde_json::json!({
             "model": request.config.model,
             "messages": [
                 { "role": "user", "content": request.request.prompt }
             ],
             "response_format": { "type": "json_object" },
         });
+        if let Some(max_tokens) = request.config.max_output_tokens {
+            body["max_tokens"] = serde_json::json!(max_tokens);
+        }
 
         let builder = self.client.post(chat_url).headers(headers).json(&body);
         let text = execute(builder)?;
-        let content = extract_openai_chat_content(&text)?;
-        Ok(TextModelResponse::json(content))
+        let extracted = extract_openai_chat_content(&text)?;
+        Ok(TextModelResponse::json(extracted.content))
     }
 }
 
 /// Pulls `choices[0].message.content` out of a Chat Completions response body.
-fn extract_openai_chat_content(body: &str) -> Result<String, TextModelProviderError> {
+/// Also inspects `choices[0].finish_reason`: `"content_filter"` surfaces as a
+/// `ContentFiltered` error and `"length"` surfaces as `OutputTruncated`, both
+/// *before* the caller attempts JSON repair — otherwise a filtered/truncated
+/// partial body would masquerade as opaque `text_provider_invalid_json`.
+/// Token usage from the `usage` object is forwarded when present.
+fn extract_openai_chat_content(body: &str) -> Result<ExtractedResponse, TextModelProviderError> {
     let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
         TextModelProviderError::provider(
             "text_provider_http_decode",
             redact_trace_text(&format!("openai_compatible response was not JSON: {error}")),
         )
     })?;
-    let content = value
+    let choice = value
         .get("choices")
         .and_then(|choices| choices.get(0))
-        .and_then(|choice| choice.get("message"))
+        .ok_or_else(|| {
+            TextModelProviderError::provider(
+                "text_provider_http_decode",
+                "openai_compatible response missing choices[0]",
+            )
+        })?;
+    let finish_reason = choice
+        .get("finish_reason")
+        .and_then(|reason| reason.as_str())
+        .map(str::to_string);
+    // Detect content-filter / truncation from finish_reason before extracting
+    // content: a filtered or length-capped response may carry an empty or
+    // partial `content` that must not reach the JSON-repair stage.
+    if let Some(reason) = finish_reason.as_deref() {
+        match reason {
+            "content_filter" => {
+                return Err(TextModelProviderError::content_filtered(reason.to_string()));
+            }
+            "length" => {
+                return Err(TextModelProviderError::output_truncated(
+                    output_tokens_from_usage(&value),
+                ));
+            }
+            _ => {}
+        }
+    }
+    let content = choice
+        .get("message")
         .and_then(|message| message.get("content"))
         .and_then(|content| content.as_str())
         .ok_or_else(|| {
@@ -241,7 +422,11 @@ fn extract_openai_chat_content(body: &str) -> Result<String, TextModelProviderEr
                 "openai_compatible response missing choices[0].message.content",
             )
         })?;
-    Ok(content.to_string())
+    Ok(ExtractedResponse {
+        content: content.to_string(),
+        finish_reason,
+        usage: parse_openai_usage(value.get("usage")),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -288,26 +473,76 @@ impl TextModelClient for OpenAiResponsesClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         push_bearer_auth(&mut headers, request.credential)?;
 
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "model": request.config.model,
             "input": request.request.prompt,
         });
+        if let Some(max_output_tokens) = request.config.max_output_tokens {
+            body["max_output_tokens"] = serde_json::json!(max_output_tokens);
+        }
 
         let builder = self.client.post(responses_url).headers(headers).json(&body);
         let text = execute(builder)?;
-        let content = extract_openai_responses_content(&text)?;
-        Ok(TextModelResponse::json(content))
+        let extracted = extract_openai_responses_content(&text)?;
+        Ok(TextModelResponse::json(extracted.content))
     }
 }
 
 /// Pulls `output[0].content[0].text` out of a Responses API response body.
-fn extract_openai_responses_content(body: &str) -> Result<String, TextModelProviderError> {
+/// Detects refusal indicators (a `"refusal"` part or an `incomplete` status
+/// with a refusal reason) and surfaces them as `ContentFiltered` before JSON
+/// repair. `incomplete` due to `max_output_tokens` surfaces as
+/// `OutputTruncated`. Token usage from the top-level `usage` object is
+/// forwarded when present.
+fn extract_openai_responses_content(body: &str) -> Result<ExtractedResponse, TextModelProviderError> {
     let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
         TextModelProviderError::provider(
             "text_provider_http_decode",
             redact_trace_text(&format!("openai_responses response was not JSON: {error}")),
         )
     })?;
+    // The Responses API carries a top-level `status` (`completed`,
+    // `incomplete`, `failed`) and an `incomplete_details` object whose
+    // `reason` is `max_output_tokens` or `content_filter`. Check these before
+    // extracting text so a refusal/truncation never reaches JSON repair.
+    if let Some(status) = value.get("status").and_then(|status| status.as_str()) {
+        match status {
+            "incomplete" => {
+                let reason = value
+                    .get("incomplete_details")
+                    .and_then(|details| details.get("reason"))
+                    .and_then(|reason| reason.as_str())
+                    .unwrap_or("incomplete");
+                if reason == "content_filter" {
+                    return Err(TextModelProviderError::content_filtered(
+                        reason.to_string(),
+                    ));
+                }
+                return Err(TextModelProviderError::output_truncated(
+                    output_tokens_from_usage(&value),
+                ));
+            }
+            "failed" => {
+                // A failed response is not content-filter or truncation; fall
+                // through to the generic decode error if no text is present.
+            }
+            _ => {}
+        }
+    }
+    // Refusal parts: the Responses API may emit an output item of type
+    // `"refusal"` instead of text when content policy triggers.
+    let has_refusal = value
+        .get("output")
+        .and_then(|output| output.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .any(|item| item.get("type").and_then(|t| t.as_str()) == Some("refusal"))
+        })
+        .unwrap_or(false);
+    if has_refusal {
+        return Err(TextModelProviderError::content_filtered("refusal"));
+    }
     let content = value
         .get("output")
         .and_then(|output| output.get(0))
@@ -321,7 +556,14 @@ fn extract_openai_responses_content(body: &str) -> Result<String, TextModelProvi
                 "openai_responses response missing output[0].content[0].text",
             )
         })?;
-    Ok(content.to_string())
+    Ok(ExtractedResponse {
+        content: content.to_string(),
+        finish_reason: value
+            .get("status")
+            .and_then(|status| status.as_str())
+            .map(str::to_string),
+        usage: parse_openai_usage(value.get("usage")),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +574,7 @@ fn extract_openai_responses_content(body: &str) -> Result<String, TextModelProvi
 // the agent role/instructions as the `system` field.
 // ---------------------------------------------------------------------------
 
-const ANTHROPIC_VERSION: &str = "2023-06-01";
+pub(crate) const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 /// A `TextModelClient` that talks to the Anthropic Messages API
 /// (`/v1/messages`).
@@ -377,14 +619,17 @@ impl TextModelClient for AnthropicMessagesClient {
         push_x_api_key(&mut headers, request.credential)?;
 
         // `max_tokens` is required by the Anthropic Messages API and caps the
-        // output length. 8192 (L3) is comfortable for scene-plan / story-bible
-        // generation; the previous 4096 silently truncated longer outputs
-        // mid-JSON-object, which surfaced as opaque `text_provider_invalid_json`
-        // errors instead of clean completions. The Anthropic default floor is
-        // 4096, so 8192 only ever produces longer (not shorter) outputs.
+        // output length. When the user configured an explicit override it is
+        // used; otherwise the default is 8192 (L3), comfortable for scene-plan
+        // / story-bible generation. The previous 4096 silently truncated longer
+        // outputs mid-JSON-object, which surfaced as opaque
+        // `text_provider_invalid_json` errors instead of clean completions. The
+        // Anthropic default floor is 4096, so 8192 only ever produces longer
+        // (not shorter) outputs.
+        let max_tokens = request.config.max_output_tokens.unwrap_or(8192);
         let body = serde_json::json!({
             "model": request.config.model,
-            "max_tokens": 8192,
+            "max_tokens": max_tokens,
             "messages": [
                 { "role": "user", "content": request.request.prompt }
             ],
@@ -392,13 +637,17 @@ impl TextModelClient for AnthropicMessagesClient {
 
         let builder = self.client.post(messages_url).headers(headers).json(&body);
         let text = execute(builder)?;
-        let content = extract_anthropic_content(&text)?;
-        Ok(TextModelResponse::json(content))
+        let extracted = extract_anthropic_content(&text)?;
+        Ok(TextModelResponse::json(extracted.content))
     }
 }
 
 /// Pulls `content[0].text` out of an Anthropic Messages response body.
-fn extract_anthropic_content(body: &str) -> Result<String, TextModelProviderError> {
+/// Inspects `stop_reason`: `"max_tokens"` surfaces as `OutputTruncated`, and
+/// the content-policy indicators (`"content_filter"`, or a content block with
+/// `"type":"redacted_content"`) surface as `ContentFiltered` — both before
+/// JSON repair. Token usage from the `usage` object is forwarded when present.
+fn extract_anthropic_content(body: &str) -> Result<ExtractedResponse, TextModelProviderError> {
     let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
         TextModelProviderError::provider(
             "text_provider_http_decode",
@@ -407,6 +656,41 @@ fn extract_anthropic_content(body: &str) -> Result<String, TextModelProviderErro
             )),
         )
     })?;
+    let stop_reason = value
+        .get("stop_reason")
+        .and_then(|reason| reason.as_str())
+        .map(str::to_string);
+    // Detect truncation / content-filter from stop_reason before extracting
+    // text. A `max_tokens` stop reproduces on retry; a `content_filter` stop
+    // likewise reproduces. Both must surface as actionable errors, not opaque
+    // invalid-JSON failures on the partial body.
+    if let Some(reason) = stop_reason.as_deref() {
+        match reason {
+            "max_tokens" => {
+                return Err(TextModelProviderError::output_truncated(
+                    anthropic_output_tokens(&value),
+                ));
+            }
+            "content_filter" => {
+                return Err(TextModelProviderError::content_filtered(reason.to_string()));
+            }
+            _ => {}
+        }
+    }
+    // Anthropic surfaces policy refusals as a content block whose `type` is
+    // `redacted_content` (server-side redaction of a policy-triggered block).
+    let has_redacted_block = value
+        .get("content")
+        .and_then(|content| content.as_array())
+        .map(|blocks| {
+            blocks
+                .iter()
+                .any(|block| block.get("type").and_then(|t| t.as_str()) == Some("redacted_content"))
+        })
+        .unwrap_or(false);
+    if has_redacted_block {
+        return Err(TextModelProviderError::content_filtered("redacted_content"));
+    }
     let content = value
         .get("content")
         .and_then(|content| content.get(0))
@@ -418,7 +702,11 @@ fn extract_anthropic_content(body: &str) -> Result<String, TextModelProviderErro
                 "anthropic_messages response missing content[0].text",
             )
         })?;
-    Ok(content.to_string())
+    Ok(ExtractedResponse {
+        content: content.to_string(),
+        finish_reason: stop_reason,
+        usage: parse_anthropic_usage(value.get("usage")),
+    })
 }
 
 /// Joins an endpoint base URL with a relative path, normalising slashes.
@@ -426,6 +714,58 @@ fn extract_anthropic_content(body: &str) -> Result<String, TextModelProviderErro
 fn join_endpoint(base_url: &str, relative: &str) -> String {
     let trimmed = base_url.trim_end_matches('/');
     format!("{trimmed}/{relative}")
+}
+
+/// Extracts the OpenAI `usage.output_tokens` / legacy `completion_tokens`
+/// count from a Chat Completions or Responses `usage` object. Used for the
+/// `OutputTruncated` token count on a `length` / `max_output_tokens` finish.
+fn output_tokens_from_usage(value: &serde_json::Value) -> Option<u64> {
+    value
+        .get("usage")
+        .and_then(|usage| {
+            usage
+                .get("output_tokens")
+                .and_then(|tokens| tokens.as_u64())
+                .or_else(|| usage.get("completion_tokens").and_then(|tokens| tokens.as_u64()))
+        })
+}
+
+/// Parses an OpenAI-style `usage` object into a `UsageInfo`. The Chat
+/// Completions API uses `prompt_tokens` / `completion_tokens`; the Responses
+/// API uses `input_tokens` / `output_tokens`. Both are accepted; missing
+/// fields stay `None` rather than defaulting to a misleading zero.
+fn parse_openai_usage(usage: Option<&serde_json::Value>) -> Option<UsageInfo> {
+    let usage = usage?;
+    let input_tokens = usage
+        .get("input_tokens")
+        .and_then(|tokens| tokens.as_u64())
+        .or_else(|| usage.get("prompt_tokens").and_then(|tokens| tokens.as_u64()));
+    let output_tokens = usage
+        .get("output_tokens")
+        .and_then(|tokens| tokens.as_u64())
+        .or_else(|| usage.get("completion_tokens").and_then(|tokens| tokens.as_u64()));
+    Some(UsageInfo {
+        input_tokens,
+        output_tokens,
+    })
+}
+
+/// Parses an Anthropic `usage` object (`input_tokens` / `output_tokens`).
+fn parse_anthropic_usage(usage: Option<&serde_json::Value>) -> Option<UsageInfo> {
+    let usage = usage?;
+    Some(UsageInfo {
+        input_tokens: usage.get("input_tokens").and_then(|tokens| tokens.as_u64()),
+        output_tokens: usage.get("output_tokens").and_then(|tokens| tokens.as_u64()),
+    })
+}
+
+/// Extracts the Anthropic `usage.output_tokens` count for the
+/// `OutputTruncated` error on a `max_tokens` stop_reason.
+fn anthropic_output_tokens(value: &serde_json::Value) -> Option<u64> {
+    value
+        .get("usage")
+        .and_then(|usage| usage.get("output_tokens"))
+        .and_then(|tokens| tokens.as_u64())
 }
 
 #[cfg(test)]
@@ -468,9 +808,9 @@ mod tests {
         let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
         let request = sample_request(&config);
         let body = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
-        let content = extract_openai_chat_content(body).expect("decode");
-        assert_eq!(content, "{\"id\":\"x\"}");
-        let response = TextModelResponse::json(content);
+        let extracted = extract_openai_chat_content(body).expect("decode");
+        assert_eq!(extracted.content, "{\"id\":\"x\"}");
+        let response = TextModelResponse::json(extracted.content);
         assert_eq!(response.raw_json, "{\"id\":\"x\"}");
         let _ = request;
     }
@@ -485,15 +825,15 @@ mod tests {
     #[test]
     fn openai_responses_client_decodes_responses_body() {
         let body = r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#;
-        let content = extract_openai_responses_content(body).expect("decode");
-        assert_eq!(content, "{\"id\":\"y\"}");
+        let extracted = extract_openai_responses_content(body).expect("decode");
+        assert_eq!(extracted.content, "{\"id\":\"y\"}");
     }
 
     #[test]
     fn anthropic_client_decodes_messages_body() {
         let body = r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#;
-        let content = extract_anthropic_content(body).expect("decode");
-        assert_eq!(content, "{\"id\":\"z\"}");
+        let extracted = extract_anthropic_content(body).expect("decode");
+        assert_eq!(extracted.content, "{\"id\":\"z\"}");
     }
 
     #[test]
@@ -610,6 +950,352 @@ mod tests {
                 || error.code.contains("text_provider_http_decode")
                 || error.code.contains("text_provider_http_status"),
             "expected an explicit http error code, got {error}"
+        );
+    }
+
+    // --- Retry-After header parsing ----------------------------------------
+
+    #[test]
+    fn parse_retry_after_seconds_form() {
+        let value = HeaderValue::from_str("120").unwrap();
+        assert_eq!(parse_retry_after(Some(&value)), Some(120_000));
+    }
+
+    #[test]
+    fn parse_retry_after_zero_seconds() {
+        let value = HeaderValue::from_str("0").unwrap();
+        assert_eq!(parse_retry_after(Some(&value)), Some(0));
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_form_is_positive_duration() {
+        // A date a few hours in the future relative to the test run. We cannot
+        // assert an exact ms count (it depends on wall-clock skew), only that
+        // it parses to a non-negative duration. Use a date far enough out that
+        // clock skew cannot make it negative.
+        let value = HeaderValue::from_str("Wed, 21 Oct 2099 07:28:00 GMT").unwrap();
+        let parsed = parse_retry_after(Some(&value)).expect("http-date must parse");
+        // Far-future date clamps to max_delay (8_000ms) only inside the retry
+        // policy; here `parse_retry_after` returns the raw delay, so just
+        // assert it is a large positive number of ms.
+        assert!(parsed > 1_000_000, "expected a large future delay, got {parsed}");
+    }
+
+    #[test]
+    fn parse_retry_after_absent_or_unparseable_is_none() {
+        assert_eq!(parse_retry_after(None), None);
+        let bogus = HeaderValue::from_str("not-a-date").unwrap();
+        assert_eq!(parse_retry_after(Some(&bogus)), None);
+    }
+
+    // --- Content-filter / truncation detection per provider ----------------
+
+    #[test]
+    fn openai_chat_content_filter_finish_reason_surfaces_content_filtered() {
+        let body = r#"{"choices":[{"message":{"content":""},"finish_reason":"content_filter"}]}"#;
+        let error = extract_openai_chat_content(body).expect_err("content_filter must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "content_filter".into() });
+        assert_eq!(error.code, "text_provider_content_filtered");
+        assert!(error.message.contains("content policy"), "actionable message, got: {error}");
+    }
+
+    #[test]
+    fn openai_chat_length_finish_reason_surfaces_output_truncated() {
+        let body = r#"{"choices":[{"message":{"content":"{\"id\":\"par"},"finish_reason":"length"}],"usage":{"completion_tokens":4096}}"#;
+        let error = extract_openai_chat_content(body).expect_err("length must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::OutputTruncated { tokens_generated: Some(4096) });
+        assert_eq!(error.code, "text_provider_output_truncated");
+        assert!(error.message.contains("max_tokens"), "actionable message, got: {error}");
+    }
+
+    #[test]
+    fn openai_responses_refusal_surfaces_content_filtered() {
+        let body = r#"{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[]}"#;
+        let error = extract_openai_responses_content(body).expect_err("refusal must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "content_filter".into() });
+        assert_eq!(error.code, "text_provider_content_filtered");
+    }
+
+    #[test]
+    fn openai_responses_max_output_tokens_surfaces_output_truncated() {
+        let body = r#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"content":[{"text":"partial"}]}],"usage":{"output_tokens":8192}}"#;
+        let error = extract_openai_responses_content(body).expect_err("truncation must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::OutputTruncated { tokens_generated: Some(8192) });
+        assert_eq!(error.code, "text_provider_output_truncated");
+    }
+
+    #[test]
+    fn openai_responses_refusal_output_type_surfaces_content_filtered() {
+        let body = r#"{"status":"completed","output":[{"type":"refusal","refusal":"policy"}]}"#;
+        let error = extract_openai_responses_content(body).expect_err("refusal part must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "refusal".into() });
+    }
+
+    #[test]
+    fn anthropic_max_tokens_stop_reason_surfaces_output_truncated() {
+        let body = r#"{"stop_reason":"max_tokens","content":[{"text":"partial"}],"usage":{"output_tokens":8192}}"#;
+        let error = extract_anthropic_content(body).expect_err("max_tokens must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::OutputTruncated { tokens_generated: Some(8192) });
+        assert_eq!(error.code, "text_provider_output_truncated");
+        assert!(error.message.contains("max_tokens"), "actionable message, got: {error}");
+    }
+
+    #[test]
+    fn anthropic_content_filter_stop_reason_surfaces_content_filtered() {
+        let body = r#"{"stop_reason":"content_filter","content":[{"text":""}]}"#;
+        let error = extract_anthropic_content(body).expect_err("content_filter must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "content_filter".into() });
+        assert_eq!(error.code, "text_provider_content_filtered");
+        assert!(error.message.contains("content policy"), "actionable message, got: {error}");
+    }
+
+    #[test]
+    fn anthropic_redacted_content_block_surfaces_content_filtered() {
+        let body = r#"{"stop_reason":"end_turn","content":[{"type":"redacted_content"}]}"#;
+        let error = extract_anthropic_content(body).expect_err("redacted block must error");
+        assert_eq!(error.kind, TextModelProviderErrorKind::ContentFiltered { finish_reason: "redacted_content".into() });
+    }
+
+    // --- 429 Retry-After end-to-end via execute() --------------------------
+    //
+    // A tiny in-process TCP server returns a 429 with a `Retry-After: 1`
+    // header. `execute()` must surface the `RateLimit` kind with the parsed
+    // retry-after (1000 ms), not the generic `Provider` http-status kind.
+
+    #[test]
+    fn execute_surfaces_429_as_rate_limit_with_retry_after() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(
+                b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nRetry-After: 1\r\n\r\n",
+            );
+            let _ = stream.flush();
+        });
+        let client = OpenAiCompatibleClient::default();
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let error = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect_err("429 must error");
+        assert!(
+            matches!(error.kind, TextModelProviderErrorKind::RateLimit { retry_after_ms: Some(1000) }),
+            "expected RateLimit{{retry_after_ms:Some(1000)}}, got {error:?}"
+        );
+        assert_eq!(error.code, "text_provider_rate_limit");
+        server.join().expect("server thread clean");
+    }
+
+    #[test]
+    fn execute_429_without_retry_after_surfaces_rate_limit_none() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\r\n");
+            let _ = stream.flush();
+        });
+        let client = OpenAiCompatibleClient::default();
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let error = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect_err("429 must error");
+        assert!(
+            matches!(error.kind, TextModelProviderErrorKind::RateLimit { retry_after_ms: None }),
+            "expected RateLimit{{None}} when header absent, got {error:?}"
+        );
+        server.join().expect("server thread clean");
+    }
+
+    #[test]
+    fn openai_chat_extracts_usage_when_present() {
+        let body = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":20}}"#;
+        let extracted = extract_openai_chat_content(body).expect("decode");
+        let usage = extracted.usage.expect("usage present");
+        assert_eq!(usage.input_tokens, Some(10));
+        assert_eq!(usage.output_tokens, Some(20));
+        assert_eq!(extracted.finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn anthropic_extracts_usage_when_present() {
+        let body = r#"{"stop_reason":"end_turn","content":[{"text":"{\"id\":\"z\"}"}],"usage":{"input_tokens":5,"output_tokens":7}}"#;
+        let extracted = extract_anthropic_content(body).expect("decode");
+        let usage = extracted.usage.expect("usage present");
+        assert_eq!(usage.input_tokens, Some(5));
+        assert_eq!(usage.output_tokens, Some(7));
+    }
+
+    // ---------------------------------------------------------------------
+    // T1.3: configurable `max_output_tokens` propagation.
+    //
+    // These tests verify that a configured `max_output_tokens` appears in the
+    // outbound request body with the provider-specific field name, and that
+    // `None` falls back to the provider default. They capture the raw request
+    // body via an in-process TCP server so no real provider is contacted.
+    // ---------------------------------------------------------------------
+
+    /// Spawns a one-shot TCP server that captures the full request into the
+    /// shared buffer, then replies with `reply_body` (a 200 with the JSON body
+    /// the client expects to decode). Returns the bound address + the join
+    /// handle + the captured request buffer.
+    fn capturing_server(
+        reply_body: String,
+    ) -> (
+        std::net::SocketAddr,
+        std::thread::JoinHandle<()>,
+        std::sync::Arc<std::sync::Mutex<String>>,
+    ) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let captured_clone = captured.clone();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = vec![0u8; 8192];
+            let read = stream.read(&mut buf).expect("read request");
+            let request = String::from_utf8_lossy(&buf[..read]).to_string();
+            *captured_clone.lock().expect("capture lock") = request;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                reply_body.len(),
+                reply_body
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        });
+        (addr, handle, captured)
+    }
+
+    #[test]
+    fn openai_compatible_sends_max_tokens_when_configured() {
+        let reply = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let mut config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        config.max_output_tokens = Some(8192);
+        let request = sample_request(&config);
+        let client = OpenAiCompatibleClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"max_tokens\":8192"),
+            "configured max_output_tokens must appear as max_tokens, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_compatible_omits_max_tokens_when_none() {
+        let reply = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = OpenAiCompatibleClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        // When None, the field must NOT be sent (default left to the upstream).
+        assert!(
+            !body.contains("max_tokens"),
+            "max_tokens must be omitted when None, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_responses_sends_max_output_tokens_when_configured() {
+        let reply = r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let mut config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        config.max_output_tokens = Some(4096);
+        let request = sample_request(&config);
+        let client = OpenAiResponsesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"max_output_tokens\":4096"),
+            "configured value must appear as max_output_tokens, got: {body}"
+        );
+    }
+
+    #[test]
+    fn anthropic_sends_configured_max_tokens() {
+        let reply = r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let mut config = sample_config("anthropic", &format!("http://{addr}"), "TEST_KEY");
+        config.max_output_tokens = Some(2048);
+        let request = sample_request(&config);
+        let client = AnthropicMessagesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"max_tokens\":2048"),
+            "configured value must appear as max_tokens, got: {body}"
+        );
+    }
+
+    #[test]
+    fn anthropic_defaults_max_tokens_to_8192_when_none() {
+        let reply = r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("anthropic", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = AnthropicMessagesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        // Anthropic requires max_tokens; the None default is 8192.
+        assert!(
+            body.contains("\"max_tokens\":8192"),
+            "default max_tokens must be 8192 when None, got: {body}"
         );
     }
 }

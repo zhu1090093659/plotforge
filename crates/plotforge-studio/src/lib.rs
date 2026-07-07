@@ -16,13 +16,13 @@ pub use plotforge_schema::{
     PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
     PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
     ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry,
-    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
-    SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin, SkillSource,
-    StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
-    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
-    VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
-    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
-    redact_trace_text,
+    RemoteModelInfo, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot,
+    RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest,
+    SkillOrigin, SkillSource, StateVariablesEditDocument, SteamSubmissionKitDraft,
+    SteamSubmissionKitRequest, StoryCraftEditDocument, StoryCraftGenerationReport,
+    StoryCraftGenerationRequest, ThinkingLevel, VisualBible, WorkshopDraftVisibility,
+    WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument,
+    WorldGenerationReport, WorldGenerationRequest, redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -505,6 +505,7 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
+        max_output_tokens: entry.max_output_tokens,
     };
     config.validate().map_err(|error| StudioCommandError {
         code: "upsert_provider_invalid".into(),
@@ -593,6 +594,7 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
+        max_output_tokens: entry.max_output_tokens,
     };
     // Issue a tiny completion to verify the credential + endpoint resolve.
     // The request body is a benign probe; the response is discarded.
@@ -621,6 +623,48 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
             message: redact_trace_text(&error.message),
         }),
     }
+}
+
+/// Lists the models a registered provider serves, fetched from the provider's
+/// upstream `/models` (or Anthropic `/v1/models`) endpoint. Results are cached
+/// locally under `~/.plotforge/cache/models/{provider_id}.json` with a 1-hour
+/// TTL so repeated UI lookups do not hammer the upstream.
+///
+/// The provider is resolved by `id` from the user-global registry; an unknown
+/// id surfaces an explicit `provider_not_found` error (no silent fallback).
+/// A missing credential surfaces an explicit error code so the UI can prompt
+/// the user to set their API key — never an empty model list. The returned
+/// `RemoteModelInfo` entries carry only descriptive metadata (id, owned_by,
+/// token caps); no endpoint URL, credential, or raw response body is leaked.
+pub fn list_remote_models(provider_id: String) -> StudioCommandResult<Vec<RemoteModelInfo>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_remote_models_load".into(),
+            message: source.to_string(),
+        })?;
+    let entry = registry
+        .providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .ok_or_else(|| StudioCommandError {
+            code: "provider_not_found".into(),
+            message: format!("no provider with id `{provider_id}`"),
+        })?;
+    plotforge_agent::fetch_provider_models(entry)
+        .map_err(|source| StudioCommandError {
+            code: match source {
+                plotforge_agent::ModelDiscoveryError::MissingCredential { .. } => {
+                    "list_remote_models_missing_credential"
+                }
+                plotforge_agent::ModelDiscoveryError::Http { .. } => "list_remote_models_http",
+                plotforge_agent::ModelDiscoveryError::Cache { .. } => "list_remote_models_cache",
+            }
+            .into(),
+            // `fetch_provider_models` already redacts via `redact_trace_text`;
+            // apply it again as defence-in-depth before the UI sees the
+            // message (mirrors `test_provider_connection`).
+            message: redact_trace_text(&source.to_string()),
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -2068,9 +2112,9 @@ mod tests {
         generate_world_expansion, get_agent_session_config, git_current_branch, git_list_branches,
         git_project_dir_name, git_switch_branch, import_workshop_library_package,
         list_asset_records, list_available_models, list_export_profiles, list_mcp_servers,
-        list_project_prompt_templates, list_providers, list_source_files, list_workshop_library,
-        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
-        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
+        list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
+        list_workshop_library, load_workshop_library_item, open_project, pi_agent_apply_run,
+        pi_agent_capabilities, pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
         play_once_project_from_snapshot, play_once_project_with_save, read_ai_safety_policy,
         read_character_edit_document, read_rules_edit_document, read_source_file,
         read_state_variables_edit_document, read_story_craft_edit_document,
@@ -3271,6 +3315,7 @@ mod tests {
             model: "m".into(),
             credential_env_var: "OPENAI_API_KEY".into(),
             enabled: true,
+            max_output_tokens: None,
         };
         let error = upsert_provider(entry).expect_err("query-string credential rejected");
         assert_eq!(error.code, "upsert_provider_invalid");
@@ -3286,6 +3331,18 @@ mod tests {
         let error = delete_provider("pf-review-sentinel-not-registered-9f3c7a".into())
             .expect_err("missing provider must error");
         assert_eq!(error.code, "provider_not_found");
+    }
+
+    #[test]
+    fn list_remote_models_reports_missing_provider_explicitly() {
+        // T1.2: an unknown provider id surfaces `provider_not_found` — never
+        // an empty list and never a silent fetch attempt. The sentinel id is
+        // guaranteed absent from the user's registry.
+        let error =
+            list_remote_models("pf-review-sentinel-not-registered-4b1e92".into())
+                .expect_err("missing provider must error");
+        assert_eq!(error.code, "provider_not_found");
+        assert!(error.message.contains("pf-review-sentinel-not-registered-4b1e92"));
     }
 
     fn sample_character(id: &str) -> Character {

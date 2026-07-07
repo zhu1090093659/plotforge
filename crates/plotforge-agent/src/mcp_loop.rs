@@ -234,6 +234,9 @@ pub fn complete_with_mcp_tools(
                         crate::TextModelProviderErrorKind::Timeout => {
                             "text_provider_timeout".into()
                         }
+                        crate::TextModelProviderErrorKind::RateLimit { .. } => error.code,
+                        crate::TextModelProviderErrorKind::ContentFiltered { .. } => error.code,
+                        crate::TextModelProviderErrorKind::OutputTruncated { .. } => error.code,
                     },
                     message: error.message,
                 })?;

@@ -29,6 +29,13 @@ pub enum ProviderKind {
 /// A single registered provider entry. `credential_env_var` names the shell
 /// environment variable that holds the credential; the value itself is never
 /// serialized here, in traces, or in any project source.
+///
+/// `max_output_tokens` is an optional override for the provider's output token
+/// cap. When `None`, each HTTP client uses its own default (4096 for OpenAI
+/// variants, 8192 for Anthropic Messages). When `Some`, the value is
+/// propagated into the request body so a user can tune output length per
+/// provider without editing code. The field is `#[serde(default)]` so existing
+/// registries without it still deserialize.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderEntry {
@@ -39,6 +46,8 @@ pub struct ProviderEntry {
     pub model: String,
     pub credential_env_var: String,
     pub enabled: bool,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
 }
 
 /// The persisted registry file (`~/.plotforge/providers.json`). An empty
@@ -48,6 +57,38 @@ pub struct ProviderEntry {
 pub struct ProviderRegistry {
     pub version: String,
     pub providers: Vec<ProviderEntry>,
+}
+
+/// A single model discovered from a provider's upstream `/models` (or
+/// equivalent) endpoint. The fields mirror the union of the OpenAI
+/// (`{ id, owned_by, created }`) and Anthropic
+/// (`{ id, max_input_tokens, max_output_tokens }`) model-list response shapes;
+/// every field except `id` is optional because neither provider returns the
+/// full set. No credential, endpoint, or raw response body is ever stored
+/// here — only the descriptive model metadata.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteModelInfo {
+    pub id: String,
+    #[serde(default)]
+    pub owned_by: Option<String>,
+    #[serde(default)]
+    pub created: Option<u64>,
+    #[serde(default)]
+    pub max_input_tokens: Option<u32>,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+}
+
+/// The cached model list for a single provider, persisted at
+/// `~/.plotforge/cache/models/{provider_id}.json`. `fetched_at` is a Unix
+/// timestamp (seconds); the registry treats a cache entry older than the
+/// discovery TTL (1 hour) as stale and refetches.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteModelList {
+    pub models: Vec<RemoteModelInfo>,
+    pub fetched_at: u64,
 }
 
 #[cfg(test)]
@@ -63,6 +104,7 @@ mod tests {
             model: "glm-4.6".into(),
             credential_env_var: "ZAI_API_KEY".into(),
             enabled: true,
+            max_output_tokens: None,
         }
     }
 
@@ -119,6 +161,7 @@ mod tests {
                     model: "qwen2.5".into(),
                     credential_env_var: String::new(),
                     enabled: false,
+                    max_output_tokens: None,
                 },
             ],
         };
@@ -143,5 +186,90 @@ mod tests {
         let error = serde_json::from_value::<ProviderRegistry>(value)
             .expect_err("unknown registry field should be rejected");
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn provider_entry_roundtrips_max_output_tokens() {
+        let mut entry = sample_entry();
+        entry.max_output_tokens = Some(8192);
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize entry");
+        assert!(encoded.contains("max_output_tokens"));
+        let decoded: ProviderEntry = serde_json::from_str(&encoded).expect("deserialize entry");
+        assert_eq!(decoded, entry);
+        assert_eq!(decoded.max_output_tokens, Some(8192));
+    }
+
+    #[test]
+    fn provider_entry_backward_compatible_without_max_output_tokens() {
+        // An existing registry serialized before `max_output_tokens` was added
+        // must still deserialize with the field defaulting to `None`.
+        let legacy = serde_json::json!({
+            "id": "glm",
+            "kind": "openai_compatible",
+            "label": "GLM 4.6",
+            "endpoint_url": "https://open.bigmodels.cn/api/paas/v4",
+            "model": "glm-4.6",
+            "credential_env_var": "ZAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: ProviderEntry = serde_json::from_value(legacy).expect("legacy deserialize");
+        assert_eq!(decoded.max_output_tokens, None);
+    }
+
+    #[test]
+    fn remote_model_info_roundtrips_openai_shape() {
+        let info = RemoteModelInfo {
+            id: "gpt-4o".into(),
+            owned_by: Some("openai".into()),
+            created: Some(1_700_000_000),
+            max_input_tokens: None,
+            max_output_tokens: None,
+        };
+        let encoded = serde_json::to_string(&info).expect("serialize");
+        let decoded: RemoteModelInfo = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, info);
+    }
+
+    #[test]
+    fn remote_model_info_roundtrips_anthropic_shape() {
+        let info = RemoteModelInfo {
+            id: "claude-3-5-sonnet".into(),
+            owned_by: None,
+            created: None,
+            max_input_tokens: Some(200_000),
+            max_output_tokens: Some(8192),
+        };
+        let encoded = serde_json::to_string(&info).expect("serialize");
+        let decoded: RemoteModelInfo = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, info);
+    }
+
+    #[test]
+    fn remote_model_info_rejects_unknown_fields() {
+        let value = serde_json::json!({
+            "id": "gpt-4o",
+            "secret": "sk-test-secret-marker"
+        });
+        let error = serde_json::from_value::<RemoteModelInfo>(value)
+            .expect_err("unknown remote model field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn remote_model_list_roundtrips() {
+        let list = RemoteModelList {
+            models: vec![RemoteModelInfo {
+                id: "gpt-4o".into(),
+                owned_by: Some("openai".into()),
+                created: None,
+                max_input_tokens: None,
+                max_output_tokens: None,
+            }],
+            fetched_at: 1_700_000_000,
+        };
+        let encoded = serde_json::to_string(&list).expect("serialize");
+        let decoded: RemoteModelList = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, list);
+        assert_eq!(decoded.fetched_at, 1_700_000_000);
     }
 }

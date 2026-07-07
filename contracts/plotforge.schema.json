@@ -2828,7 +2828,7 @@
     },
     "ProviderEntry": {
       "additionalProperties": false,
-      "description": "A single registered provider entry. `credential_env_var` names the shell\nenvironment variable that holds the credential; the value itself is never\nserialized here, in traces, or in any project source.",
+      "description": "A single registered provider entry. `credential_env_var` names the shell\nenvironment variable that holds the credential; the value itself is never\nserialized here, in traces, or in any project source.\n\n`max_output_tokens` is an optional override for the provider's output token\ncap. When `None`, each HTTP client uses its own default (4096 for OpenAI\nvariants, 8192 for Anthropic Messages). When `Some`, the value is\npropagated into the request body so a user can tune output length per\nprovider without editing code. The field is `#[serde(default)]` so existing\nregistries without it still deserialize.",
       "properties": {
         "credential_env_var": {
           "type": "string"
@@ -2847,6 +2847,15 @@
         },
         "label": {
           "type": "string"
+        },
+        "max_output_tokens": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "model": {
           "type": "string"
@@ -3003,6 +3012,75 @@
       "required": [
         "label",
         "summary"
+      ],
+      "type": "object"
+    },
+    "RemoteModelInfo": {
+      "additionalProperties": false,
+      "description": "A single model discovered from a provider's upstream `/models` (or\nequivalent) endpoint. The fields mirror the union of the OpenAI\n(`{ id, owned_by, created }`) and Anthropic\n(`{ id, max_input_tokens, max_output_tokens }`) model-list response shapes;\nevery field except `id` is optional because neither provider returns the\nfull set. No credential, endpoint, or raw response body is ever stored\nhere — only the descriptive model metadata.",
+      "properties": {
+        "created": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "max_input_tokens": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_output_tokens": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "owned_by": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "RemoteModelList": {
+      "additionalProperties": false,
+      "description": "The cached model list for a single provider, persisted at\n`~/.plotforge/cache/models/{provider_id}.json`. `fetched_at` is a Unix\ntimestamp (seconds); the registry treats a cache entry older than the\ndiscovery TTL (1 hour) as stale and refetches.",
+      "properties": {
+        "fetched_at": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/RemoteModelInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "models",
+        "fetched_at"
       ],
       "type": "object"
     },
@@ -4863,6 +4941,12 @@
     "reference_analysis": {
       "$ref": "#/$defs/ReferenceAnalysis"
     },
+    "remote_model_info": {
+      "$ref": "#/$defs/RemoteModelInfo"
+    },
+    "remote_model_list": {
+      "$ref": "#/$defs/RemoteModelList"
+    },
     "reproducibility_metadata": {
       "$ref": "#/$defs/ReproducibilityMetadata"
     },
@@ -4982,6 +5066,8 @@
     "provider_kind",
     "provider_entry",
     "provider_registry",
+    "remote_model_info",
+    "remote_model_list",
     "prompt_scope",
     "prompt_template",
     "prompt_template_file",
