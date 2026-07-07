@@ -867,6 +867,7 @@ dependencies = [
  "plotforge-storage",
  "plotforge-storycraft",
  "reqwest",
+ "schemars",
  "serde",
  "serde_json",
  "serde_yaml",

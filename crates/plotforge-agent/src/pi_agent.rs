@@ -90,6 +90,93 @@ impl PiAgent {
         &self,
         request: PiAgentRunRequest,
     ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
+        self.validate_request(&request)?;
+
+        // Reuse the shared provider pipeline so the pi-Agent benefits from
+        // the same validation path (envelope validation, JSON repair, and
+        // `validate_agent_output_proposal`) as the existing agent pipelines.
+        let envelope = complete_text_agent_output(
+            self.provider.as_ref(),
+            AgentRole::ScenePlanner,
+            request.run_seed,
+            format!("pi-agent-{}-{}", self.agent_id, request.run_seed),
+            format!("pi-agent-{}", self.agent_id),
+            request.prompt_summary.clone(),
+        )
+        .map_err(Self::provider_error)?;
+
+        Ok((self.assemble_result(&envelope, request.run_seed), envelope))
+    }
+
+    /// Run the pi-Agent with assembled project context, using the structured
+    /// prompt-template path (T2.1) so the pi-Agent receives the full project
+    /// context — world bible, characters, story state, current scene, rules,
+    /// and visual style — in its prompt.
+    ///
+    /// `context` is the markdown context block produced by
+    /// [`crate::assemble_context`] (already truncated to the model's context
+    /// budget by the caller). The user message sent to the provider is the
+    /// player's input (`request.prompt_summary`) followed by the context
+    /// block, so the model sees both the per-turn instruction and the
+    /// project state. The system message is the built-in `SCENE_PLANNER_V1`
+    /// template (role + JSON output contract); the reproducibility
+    /// `prompt_version` is therefore the per-role template version
+    /// (`scene_planner_v1`), not the local-mock provider's prompt version —
+    /// this is the additive structured-prompt boundary from T2.1.
+    ///
+    /// The validation + trace-identity contract is identical to
+    /// `run_with_envelope`: the request's `agent_id` must match the facade,
+    /// `prompt_hash` must be non-empty, and `prompt_summary` must not carry a
+    /// secret marker. The context block is additionally redaction-scanned by
+    /// the provider pipeline (`contains_secret_marker_text`) as a defence-
+    /// in-depth measure. The returned `PiAgentRunResult` carries the same
+    /// deterministic `pi-agent-evidence-...` trace id and the same
+    /// redaction-safe evidence summary.
+    pub fn run_with_envelope_with_context(
+        &self,
+        request: PiAgentRunRequest,
+        context: &str,
+    ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
+        self.validate_request(&request)?;
+
+        // The user message is the player's input plus the assembled context
+        // block. When the context is empty (a fresh project with no world
+        // bible yet), the user message is just the player input, mirroring
+        // `run_with_envelope`.
+        let user_message = if context.trim().is_empty() {
+            request.prompt_summary.clone()
+        } else {
+            format!("{}\n\n{}", request.prompt_summary.trim(), context)
+        };
+
+        // Assemble the structured chat messages (system + user) and drive the
+        // structured-prompt pipeline. `complete_text_agent_output_with_
+        // messages` packs the messages into `TextModelRequest.messages` and
+        // overrides `prompt_version` with the ScenePlanner template version.
+        let messages = crate::prompts::PromptAssembler::assemble(
+            &crate::prompts::SCENE_PLANNER_V1,
+            &user_message,
+        );
+        let envelope = crate::pipelines::complete_text_agent_output_with_messages(
+            self.provider.as_ref(),
+            AgentRole::ScenePlanner,
+            request.run_seed,
+            format!("pi-agent-{}-{}", self.agent_id, request.run_seed),
+            format!("pi-agent-{}", self.agent_id),
+            messages,
+            crate::prompts::SCENE_PLANNER_V1.version,
+        )
+        .map_err(Self::provider_error)?;
+
+        Ok((self.assemble_result(&envelope, request.run_seed), envelope))
+    }
+
+    /// Validate the redaction-safe request: `agent_id` must match the facade,
+    /// `prompt_hash` must be non-empty, and `prompt_summary` must not carry a
+    /// secret marker. Shared by both `run_with_envelope` and
+    /// `run_with_envelope_with_context` so the two entry points enforce the
+    /// same redaction boundary.
+    fn validate_request(&self, request: &PiAgentRunRequest) -> Result<(), PiAgentError> {
         // The facade's identity is anchored to `self.agent_id`; the request's
         // `agent_id` must agree with it. A mismatch is an explicit error so the
         // caller never silently observes identity rooted at the facade id while
@@ -106,28 +193,17 @@ impl PiAgent {
         if contains_secret_marker_text(&request.prompt_summary) {
             return Err(PiAgentError::PromptSecretMarker);
         }
+        Ok(())
+    }
 
-        // Reuse the shared provider pipeline so the pi-Agent benefits from
-        // the same validation path (envelope validation, JSON repair, and
-        // `validate_agent_output_proposal`) as the existing agent pipelines.
-        let envelope = complete_text_agent_output(
-            self.provider.as_ref(),
-            AgentRole::ScenePlanner,
-            request.run_seed,
-            format!("pi-agent-{}-{}", self.agent_id, request.run_seed),
-            format!("pi-agent-{}", self.agent_id),
-            request.prompt_summary.clone(),
-        )
-        .map_err(|pipeline_error| {
-            // Route the provider failure through the shared redaction path so
-            // the pi-Agent surface never leaks raw provider text or secrets.
-            let runtime_error = pipeline_error.into_runtime_error();
-            PiAgentError::Provider {
-                code: runtime_error.code,
-                message: runtime_error.message,
-            }
-        })?;
-
+    /// Build the redaction-safe `PiAgentRunResult` from a validated envelope.
+    /// Shared by both `run_with_envelope` and `run_with_envelope_with_context`
+    /// so the trace-identity and evidence-summary contract is identical.
+    fn assemble_result(
+        &self,
+        envelope: &AgentOutputEnvelope,
+        run_seed: u64,
+    ) -> PiAgentRunResult {
         let mut reproducibility = envelope.reproducibility.clone();
         // The pi-Agent facade owns the trace-evidence identity for its results:
         // it derives a deterministic, redaction-safe id from `agent_id:run_seed`
@@ -143,7 +219,7 @@ impl PiAgent {
         // facade's deterministic contract.
         let trace_evidence_id = format!(
             "pi-agent-evidence-{}",
-            crate::shared::stable_sha256_hash(&format!("{}:{}", self.agent_id, request.run_seed))
+            crate::shared::stable_sha256_hash(&format!("{}:{}", self.agent_id, run_seed))
         );
         reproducibility = reproducibility.with_trace_id(&trace_evidence_id);
         let trace_id = reproducibility.trace_id.clone();
@@ -162,13 +238,24 @@ impl PiAgent {
             reproducibility.provider_config_hash,
         );
 
-        let result = PiAgentRunResult {
+        PiAgentRunResult {
             descriptor,
             reproducibility,
             trace_id,
             evidence_summary,
-        };
-        Ok((result, envelope))
+        }
+    }
+
+    /// Route a `ProviderPipelineError` through the shared redaction path so
+    /// the pi-Agent surface never leaks raw provider text or secrets.
+    fn provider_error(
+        pipeline_error: crate::pipelines::ProviderPipelineError,
+    ) -> PiAgentError {
+        let runtime_error = pipeline_error.into_runtime_error();
+        PiAgentError::Provider {
+            code: runtime_error.code,
+            message: runtime_error.message,
+        }
     }
 }
 

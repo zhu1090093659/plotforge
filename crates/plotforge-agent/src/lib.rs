@@ -50,8 +50,9 @@ pub use providers_text::{
 // `MessageRole` are also embedded in the additive `TextModelRequest.messages`
 // field, so downstream consumers build messages through these types.
 pub use prompts::{
-    BEAT_WRITER_V1, PLOT_DOCTOR_V1, SCENE_PLANNER_V1, ChatMessage, MessageRole, PromptAssembler,
-    PromptTemplate, prompt_version_for_role,
+    BEAT_WRITER_V1, PLOT_DOCTOR_V1, SCENE_PLANNER_V1, AssembledContext, ChatMessage,
+    ContextBudget, MessageRole, ProjectContext, PromptAssembler, PromptTemplate, assemble_context,
+    estimate_tokens, prompt_version_for_role,
 };
 pub use providers_tts::{
     FakeTtsProvider, TtsPipeline, TtsPipelineError, TtsPipelineResult, TtsProvider,

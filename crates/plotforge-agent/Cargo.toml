@@ -13,6 +13,7 @@ plotforge-schema.workspace = true
 plotforge-storycraft.workspace = true
 dirs.workspace = true
 reqwest.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
