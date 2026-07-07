@@ -18,6 +18,7 @@ use plotforge_schema::{
     contains_secret_marker_text, redact_trace_text,
 };
 
+use crate::prompts::ChatMessage;
 use crate::shared::{
     FAKE_TEXT_MODEL_VERSION, FAKE_TEXT_PROVIDER_CONFIG_HASH, TEXT_PROMPT_VERSION,
     choice_input_terms, stable_sha256_hash,
@@ -33,6 +34,16 @@ pub struct TextModelRequest {
     pub model_version: String,
     pub provider_config_hash: String,
     pub prompt: String,
+    /// Optional structured chat-message list assembled by the prompt template
+    /// system (`crate::prompts::PromptAssembler`). `None` (the default for all
+    /// legacy constructors) means the caller is using the single `prompt`
+    /// string and the request behaves exactly as before this field was added.
+    /// `Some(messages)` carries the assembled system + user messages so a
+    /// future provider adapter can send a chat-completions body instead of a
+    /// single-prompt completion. This field is strictly additive: the
+    /// `TextModelClient` trait and the three HTTP `complete()` signatures are
+    /// NOT modified, and `None` preserves the current behaviour.
+    pub messages: Option<Vec<ChatMessage>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -476,6 +487,21 @@ where
                 "text_provider_prompt_secret",
                 "text model prompt contained a secret marker",
             ));
+        }
+        // T2.2: the additive `messages` field carries structured chat-message
+        // contents that also leave the process via the provider request body,
+        // so each message content is scanned for a secret marker at the same
+        // redaction boundary. `None` (the legacy single-prompt path) skips this
+        // loop — its content is already covered by the `prompt` scan above.
+        if let Some(messages) = request.messages.as_ref() {
+            for message in messages {
+                if contains_secret_marker_text(&message.content) {
+                    return Err(TextModelProviderError::provider(
+                        "text_provider_prompt_secret",
+                        "text model prompt message contained a secret marker",
+                    ));
+                }
+            }
         }
         let credential = self
             .credential_resolver
@@ -1015,5 +1041,115 @@ mod tests {
         let mut b = base_config();
         b.max_output_tokens = Some(2048);
         assert_eq!(a.provider_config_hash(), b.provider_config_hash());
+    }
+
+    // ---------------------------------------------------------------------
+    // T2.2: message-content secret-marker scan in
+    // `ConfiguredTextModelProvider::complete`. The additive `messages` field
+    // carries structured chat-message contents that leave the process via the
+    // provider request body, so each message content is scanned at the same
+    // redaction boundary as `prompt`. A marker in any message must surface as
+    // `text_provider_prompt_secret` and must never reach the underlying client.
+    // ---------------------------------------------------------------------
+
+    /// A `TextModelClient` that records whether `complete()` was called. Used
+    /// to assert the adapter's secret-marker scan short-circuits before the
+    /// client sees the request.
+    #[derive(Default)]
+    struct CallCountingClient {
+        calls: std::cell::Cell<usize>,
+    }
+
+    impl TextModelClient for CallCountingClient {
+        fn complete(
+            &self,
+            _request: TextModelClientRequest<'_>,
+        ) -> Result<TextModelResponse, TextModelProviderError> {
+            self.calls.set(self.calls.get() + 1);
+            Ok(TextModelResponse::json("{}"))
+        }
+    }
+
+    /// A credential resolver that always returns a fixed token, so the adapter
+    /// reaches the message-scan step (it runs after credential resolution).
+    #[derive(Clone)]
+    struct StaticCredential {
+        token: &'static str,
+    }
+
+    impl ProviderCredentialResolver for StaticCredential {
+        fn resolve(&self, _env_var: &str) -> Result<String, ProviderCredentialError> {
+            Ok(self.token.into())
+        }
+    }
+
+    fn base_request_with_messages(messages: Option<Vec<crate::prompts::ChatMessage>>) -> TextModelRequest {
+        TextModelRequest {
+            call_id: "call-1".into(),
+            agent: plotforge_schema::AgentRole::ScenePlanner,
+            scene_key: "scene-1".into(),
+            run_seed: 1,
+            prompt_version: "v1".into(),
+            model_version: "m".into(),
+            provider_config_hash: "sha256:x".into(),
+            prompt: String::new(),
+            messages,
+        }
+    }
+
+    #[test]
+    fn complete_rejects_secret_marker_in_message_before_client_call() {
+        use crate::prompts::{ChatMessage, MessageRole};
+        let client = CallCountingClient::default();
+        let client_calls = std::cell::Cell::new(0usize);
+        // Share the call counter by wiring the cell through a small wrapper is
+        // overkill; `CallCountingClient` already owns its own cell, so read it
+        // back from the same instance after the call.
+        let _ = client_calls;
+        let provider = ConfiguredTextModelProvider::new(
+            base_config(),
+            client,
+            StaticCredential { token: "tok" },
+        );
+        let request = base_request_with_messages(Some(vec![
+            ChatMessage::new(MessageRole::System, "you are the scene planner"),
+            ChatMessage::new(MessageRole::User, "Authorization: bearer sk-leak-in-message"),
+        ]));
+        let error = provider.complete(&request).expect_err("secret marker must error");
+        assert_eq!(error.code, "text_provider_prompt_secret");
+        assert!(error.message.contains("secret marker"));
+        assert!(
+            !error.message.contains("sk-leak-in-message"),
+            "error message must not echo the secret marker value, got: {error}"
+        );
+        // The adapter must short-circuit at the scan: the client must NOT have
+        // been called (no request body with the marker leaves the process).
+        assert_eq!(
+            provider.client.calls.get(),
+            0,
+            "client must not be called when a message carries a secret marker"
+        );
+    }
+
+    #[test]
+    fn complete_accepts_messages_without_secret_marker() {
+        use crate::prompts::{ChatMessage, MessageRole};
+        let client = CallCountingClient::default();
+        let provider = ConfiguredTextModelProvider::new(
+            base_config(),
+            client,
+            StaticCredential { token: "tok" },
+        );
+        let request = base_request_with_messages(Some(vec![
+            ChatMessage::new(MessageRole::System, "you are the scene planner"),
+            ChatMessage::new(MessageRole::User, "plan the next scene"),
+        ]));
+        let response = provider.complete(&request).expect("clean messages succeed");
+        assert_eq!(response.raw_json, "{}");
+        assert_eq!(
+            provider.client.calls.get(),
+            1,
+            "client must be called exactly once for clean messages"
+        );
     }
 }

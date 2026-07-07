@@ -752,6 +752,7 @@ mod tests {
             model_version: reproducibility.model_version.clone(),
             provider_config_hash: reproducibility.provider_config_hash.clone(),
             prompt: "{}".into(),
+            messages: None,
         };
         let error = provider
             .complete(&request)
@@ -795,6 +796,7 @@ mod tests {
             model_version: reproducibility.model_version.clone(),
             provider_config_hash: reproducibility.provider_config_hash.clone(),
             prompt: "{}".into(),
+            messages: None,
         };
         // No Ollama is running in the test process, so the call must fail —
         // but with an explicit HTTP transport error, NOT a config rejection.

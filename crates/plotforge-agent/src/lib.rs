@@ -11,6 +11,7 @@
 mod mcp_loop;
 mod pi_agent;
 mod pipelines;
+mod prompts;
 mod providers_http;
 mod providers_image;
 mod providers_text;
@@ -45,6 +46,13 @@ pub use providers_text::{
     TextModelProvider, TextModelProviderError, TextModelProviderErrorKind, TextModelRequest,
     TextModelResponse, TextProviderConfig, TextProviderConfigError,
 };
+// Public re-exports of the prompt template system. `ChatMessage` and
+// `MessageRole` are also embedded in the additive `TextModelRequest.messages`
+// field, so downstream consumers build messages through these types.
+pub use prompts::{
+    BEAT_WRITER_V1, PLOT_DOCTOR_V1, SCENE_PLANNER_V1, ChatMessage, MessageRole, PromptAssembler,
+    PromptTemplate, prompt_version_for_role,
+};
 pub use providers_tts::{
     FakeTtsProvider, TtsPipeline, TtsPipelineError, TtsPipelineResult, TtsProvider,
     TtsProviderError, TtsProviderErrorKind, TtsProviderOutput, TtsRequest, TtsTarget,
@@ -78,7 +86,8 @@ pub use validation::{
 // helper through stable `crate::` paths. These do not widen the public API.
 #[allow(unused_imports)] // RetryPolicy + retry variant are test-facing only
 pub(crate) use pipelines::{
-    complete_text_agent_output, complete_text_agent_output_with_retry, RetryPolicy,
+    complete_text_agent_output, complete_text_agent_output_with_messages,
+    complete_text_agent_output_with_retry, RetryPolicy,
 };
 pub(crate) use plotforge_schema::contains_secret_marker_text;
 

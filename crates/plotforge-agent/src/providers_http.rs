@@ -26,6 +26,7 @@ use reqwest::StatusCode;
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
 
+use crate::prompts::{ChatMessage, MessageRole};
 use crate::providers_text::{
     TextModelClient, TextModelClientRequest, TextModelProviderError, TextModelResponse,
 };
@@ -303,6 +304,127 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-message request body helpers (T2.2).
+//
+// `TextModelRequest.messages: Option<Vec<ChatMessage>>` is the additive,
+// opt-in multi-message surface (T2.1). When `Some`, the HTTP clients below
+// send the structured `{role, content}` conversation verbatim per the
+// provider's wire format; when `None`, they fall back to wrapping `prompt`
+// as a single user message — the pre-T2.2 behaviour. The helpers below are
+// extracted out of the `complete()` methods so the body construction is
+// unit-testable without a TCP server, and so the three providers share one
+// redaction-safe secret-marker scan (`scan_messages_for_secret_markers`).
+// ---------------------------------------------------------------------------
+
+/// Builds the OpenAI-compatible Chat Completions `"messages"` array.
+///
+/// When `request.messages` is `Some`, every message is serialized as
+/// `{"role": <role>, "content": <content>}` in order, mapping
+/// `MessageRole::System` → `"system"`, `User` → `"user"`,
+/// `Assistant` → `"assistant"`. When `None`, the single `prompt` is wrapped
+/// as one user message (the pre-T2.2 shape). The returned array is meant to
+/// be inserted into the request body as the `"messages"` field.
+fn openai_chat_messages(request: &crate::providers_text::TextModelRequest) -> serde_json::Value {
+    match request.messages.as_ref() {
+        Some(messages) => serde_json::Value::Array(
+            messages
+                .iter()
+                .map(chat_message_to_json)
+                .collect(),
+        ),
+        None => serde_json::json!([
+            { "role": "user", "content": request.prompt }
+        ]),
+    }
+}
+
+/// Builds the OpenAI Responses API split: `instructions` (system) and `input`
+/// (concatenated user content). The Responses API takes a single `input`
+/// string, so multiple user messages are joined with `"\n"`; assistant
+/// messages are dropped from `input` (they carry no new instruction for the
+/// single-input shape) but a system message is still surfaced as
+/// `instructions`. When `request.messages` is `None`, `instructions` is
+/// `None` and `input` is the `prompt` (the pre-T2.2 shape). Returns
+/// `(instructions, input)`; `instructions` is `None` when no system message
+/// is present.
+fn openai_responses_instructions_and_input(
+    request: &crate::providers_text::TextModelRequest,
+) -> (Option<String>, String) {
+    match request.messages.as_ref() {
+        Some(messages) => {
+            let instructions = messages
+                .iter()
+                .filter(|message| message.role == MessageRole::System)
+                .map(|message| message.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let instructions = if instructions.is_empty() {
+                None
+            } else {
+                Some(instructions)
+            };
+            let user_input = messages
+                .iter()
+                .filter(|message| message.role == MessageRole::User)
+                .map(|message| message.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            (instructions, user_input)
+        }
+        None => (None, request.prompt.clone()),
+    }
+}
+
+/// Builds the Anthropic Messages API split: the top-level `system` string
+/// (concatenation of all system messages) and the `"messages"` array
+/// (user + assistant messages only — Anthropic does not allow `system` inside
+/// the `messages` array). When `request.messages` is `None`, `system` is
+/// `None` and `messages` is `[{role:"user", content: prompt}]` (the pre-T2.2
+/// shape). Returns `(system, messages)`; `system` is `None` when no system
+/// message is present.
+fn anthropic_system_and_messages(
+    request: &crate::providers_text::TextModelRequest,
+) -> (Option<String>, serde_json::Value) {
+    match request.messages.as_ref() {
+        Some(messages) => {
+            let system = messages
+                .iter()
+                .filter(|message| message.role == MessageRole::System)
+                .map(|message| message.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let system = if system.is_empty() { None } else { Some(system) };
+            let body_messages = serde_json::Value::Array(
+                messages
+                    .iter()
+                    .filter(|message| message.role != MessageRole::System)
+                    .map(chat_message_to_json)
+                    .collect(),
+            );
+            (system, body_messages)
+        }
+        None => (
+            None,
+            serde_json::json!([
+                { "role": "user", "content": request.prompt }
+            ]),
+        ),
+    }
+}
+
+/// Serializes a single `ChatMessage` to `{"role": <role>, "content":
+/// <content>}` using the lowercase wire label from `MessageRole::as_str`.
+/// Shared by the OpenAI-compatible and Anthropic `messages` arrays (Anthropic
+/// uses the same role labels inside its `messages` array; its `system` is a
+/// separate top-level param, handled by the callers).
+fn chat_message_to_json(message: &ChatMessage) -> serde_json::Value {
+    serde_json::json!({
+        "role": message.role.as_str(),
+        "content": message.content,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // OpenAI-compatible Chat Completions client.
 //
 // Covers OpenAI, DeepSeek, ZAI GLM, local Ollama / vLLM, and any endpoint
@@ -352,11 +474,16 @@ impl TextModelClient for OpenAiCompatibleClient {
         // override. When `None`, the OpenAI-compatible default (4096) is left
         // up to the upstream server rather than pinned here, preserving the
         // previous behaviour.
+        //
+        // `messages` honours the T2.2 additive multi-message surface: when
+        // `request.request.messages` is `Some`, the structured conversation is
+        // sent verbatim; when `None`, the single `prompt` is wrapped as one
+        // user message (the pre-T2.2 shape). The secret-marker scan on
+        // message content runs in `ConfiguredTextModelProvider::complete`
+        // (the adapter that wraps every client), so it is not repeated here.
         let mut body = serde_json::json!({
             "model": request.config.model,
-            "messages": [
-                { "role": "user", "content": request.request.prompt }
-            ],
+            "messages": openai_chat_messages(request.request),
             "response_format": { "type": "json_object" },
         });
         if let Some(max_tokens) = request.config.max_output_tokens {
@@ -473,10 +600,22 @@ impl TextModelClient for OpenAiResponsesClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         push_bearer_auth(&mut headers, request.credential)?;
 
+        // The Responses API takes a single `input` string and an optional
+        // `instructions` string. T2.2 additive multi-message support: when
+        // `request.request.messages` is `Some`, system messages become
+        // `instructions` (concatenated with `\n` when multiple) and user
+        // messages become `input` (concatenated with `\n` when multiple);
+        // assistant messages carry no new instruction for the single-input
+        // shape and are dropped from `input`. When `None`, `input` is the
+        // single `prompt` and `instructions` is omitted (the pre-T2.2 shape).
+        let (instructions, input) = openai_responses_instructions_and_input(request.request);
         let mut body = serde_json::json!({
             "model": request.config.model,
-            "input": request.request.prompt,
+            "input": input,
         });
+        if let Some(instructions) = instructions {
+            body["instructions"] = serde_json::json!(instructions);
+        }
         if let Some(max_output_tokens) = request.config.max_output_tokens {
             body["max_output_tokens"] = serde_json::json!(max_output_tokens);
         }
@@ -626,14 +765,25 @@ impl TextModelClient for AnthropicMessagesClient {
         // `text_provider_invalid_json` errors instead of clean completions. The
         // Anthropic default floor is 4096, so 8192 only ever produces longer
         // (not shorter) outputs.
+        //
+        // T2.2 additive multi-message support: when
+        // `request.request.messages` is `Some`, system messages become the
+        // top-level `system` parameter (concatenated with `\n` when multiple)
+        // and user/assistant messages become the `messages` array. Anthropic
+        // does not allow a `system` role inside `messages`, so system messages
+        // are filtered out of the array. When `None`, `system` is omitted and
+        // `messages` is `[{role:"user", content: prompt}]` (the pre-T2.2
+        // shape).
         let max_tokens = request.config.max_output_tokens.unwrap_or(8192);
-        let body = serde_json::json!({
+        let (system, messages) = anthropic_system_and_messages(request.request);
+        let mut body = serde_json::json!({
             "model": request.config.model,
             "max_tokens": max_tokens,
-            "messages": [
-                { "role": "user", "content": request.request.prompt }
-            ],
+            "messages": messages,
         });
+        if let Some(system) = system {
+            body["system"] = serde_json::json!(system);
+        }
 
         let builder = self.client.post(messages_url).headers(headers).json(&body);
         let text = execute(builder)?;
@@ -788,6 +938,53 @@ mod tests {
             model_version: config.model.clone(),
             provider_config_hash: config.provider_config_hash(),
             prompt: "{\"role\":\"scene_planner\"}".into(),
+            messages: None,
+        }
+    }
+
+    /// Builds a `TextModelRequest` whose `messages` is `Some(vec![…])`, the
+    /// T2.2 multi-message surface. Carries a system message, a user message,
+    /// and an assistant prior turn so the per-provider mapping tests can assert
+    /// all three roles are handled. The `prompt` field is set to the user
+    /// content (it is unused when `messages` is `Some`, but kept consistent so
+    /// a caller that falls back to `None` semantics would still send coherent
+    /// text).
+    fn sample_request_with_messages(config: &TextProviderConfig) -> TextModelRequest {
+        use crate::prompts::{ChatMessage, MessageRole};
+        TextModelRequest {
+            call_id: "call-1".into(),
+            agent: AgentRole::ScenePlanner,
+            scene_key: "scene-1".into(),
+            run_seed: 1,
+            prompt_version: "scene_planner_v1".into(),
+            model_version: config.model.clone(),
+            provider_config_hash: config.provider_config_hash(),
+            prompt: "user-context".into(),
+            messages: Some(vec![
+                ChatMessage::new(MessageRole::System, "you are the scene planner"),
+                ChatMessage::new(MessageRole::User, "user-context"),
+                ChatMessage::new(MessageRole::Assistant, "prior assistant turn"),
+            ]),
+        }
+    }
+
+    /// Variant carrying two user messages (no system) so the Responses /
+    /// Anthropic concatenation-with-newline behaviour is asserted.
+    fn sample_request_with_two_user_messages(config: &TextProviderConfig) -> TextModelRequest {
+        use crate::prompts::{ChatMessage, MessageRole};
+        TextModelRequest {
+            call_id: "call-1".into(),
+            agent: AgentRole::ScenePlanner,
+            scene_key: "scene-1".into(),
+            run_seed: 1,
+            prompt_version: "scene_planner_v1".into(),
+            model_version: config.model.clone(),
+            provider_config_hash: config.provider_config_hash(),
+            prompt: String::new(),
+            messages: Some(vec![
+                ChatMessage::new(MessageRole::User, "first user line"),
+                ChatMessage::new(MessageRole::User, "second user line"),
+            ]),
         }
     }
 
@@ -801,6 +998,128 @@ mod tests {
             join_endpoint("https://host/v1", "chat/completions"),
             "https://host/v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn openai_chat_messages_falls_back_to_prompt_when_messages_none() {
+        // When `messages` is `None`, the legacy single-prompt path wraps the
+        // `prompt` as one user message — the pre-T2.2 shape. This is the
+        // backward-compat contract: existing callers that never set `messages`
+        // see no change in the request body.
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request(&config);
+        let messages = openai_chat_messages(&request);
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 1, "None path wraps prompt as one message");
+        assert_eq!(array[0]["role"], serde_json::json!("user"));
+        assert_eq!(array[0]["content"], serde_json::json!(request.prompt));
+    }
+
+    #[test]
+    fn openai_chat_messages_serializes_structured_messages_in_order() {
+        // When `messages` is `Some`, every message is serialized in order with
+        // its lowercase wire role label. This is the T2.1/T2.2 additive path:
+        // the structured chat conversation is sent verbatim.
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let messages = openai_chat_messages(&request);
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 3, "all three roles are serialized");
+        assert_eq!(array[0]["role"], serde_json::json!("system"));
+        assert_eq!(
+            array[0]["content"],
+            serde_json::json!("you are the scene planner")
+        );
+        assert_eq!(array[1]["role"], serde_json::json!("user"));
+        assert_eq!(array[1]["content"], serde_json::json!("user-context"));
+        assert_eq!(array[2]["role"], serde_json::json!("assistant"));
+        assert_eq!(
+            array[2]["content"],
+            serde_json::json!("prior assistant turn")
+        );
+    }
+
+    #[test]
+    fn openai_chat_messages_serializes_each_role_with_lowercase_label() {
+        // Guard the wire-label contract: MessageRole::as_str must produce the
+        // lowercase tokens the provider APIs expect, and they must round-trip
+        // through the JSON serializer.
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let messages = openai_chat_messages(&request);
+        let array = messages.as_array().expect("messages is an array");
+        let roles: Vec<&str> = array
+            .iter()
+            .map(|message| message["role"].as_str().expect("role is a string"))
+            .collect();
+        assert_eq!(roles, vec!["system", "user", "assistant"]);
+    }
+
+    #[test]
+    fn openai_responses_instructions_and_input_splits_system_and_user() {
+        // The Responses API takes a single `input` string + optional
+        // `instructions`. System messages become `instructions`; user messages
+        // become `input`; assistant messages are dropped from `input`.
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let (instructions, input) = openai_responses_instructions_and_input(&request);
+        assert_eq!(
+            instructions.as_deref(),
+            Some("you are the scene planner"),
+            "system message becomes instructions"
+        );
+        assert_eq!(input, "user-context", "user content becomes input");
+    }
+
+    #[test]
+    fn openai_responses_instructions_and_input_joins_multiple_user_messages() {
+        // Two user messages (no system) are joined with "\n" into `input`;
+        // `instructions` is `None` when there is no system message.
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_two_user_messages(&config);
+        let (instructions, input) = openai_responses_instructions_and_input(&request);
+        assert_eq!(instructions, None, "no system message => no instructions");
+        assert_eq!(
+            input, "first user line\nsecond user line",
+            "user messages are joined with newline"
+        );
+    }
+
+    #[test]
+    fn anthropic_system_and_messages_splits_system_out_of_messages_array() {
+        // Anthropic's `system` is a top-level param, not inside `messages`.
+        // System messages are concatenated into `system`; user+assistant stay
+        // in the `messages` array in order.
+        let config = sample_config("anthropic", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let (system, messages) = anthropic_system_and_messages(&request);
+        assert_eq!(
+            system.as_deref(),
+            Some("you are the scene planner"),
+            "system message becomes the top-level system param"
+        );
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(
+            array.len(),
+            2,
+            "system is removed from the messages array; user+assistant remain"
+        );
+        assert_eq!(array[0]["role"], serde_json::json!("user"));
+        assert_eq!(array[1]["role"], serde_json::json!("assistant"));
+    }
+
+    #[test]
+    fn anthropic_system_and_messages_falls_back_to_prompt_when_messages_none() {
+        // The None path: system is None, messages is a single user turn
+        // carrying `prompt` — the pre-T2.2 Anthropic shape.
+        let config = sample_config("anthropic", "https://example.invalid", "TEST_KEY");
+        let request = sample_request(&config);
+        let (system, messages) = anthropic_system_and_messages(&request);
+        assert_eq!(system, None, "no system message on the legacy path");
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 1);
+        assert_eq!(array[0]["role"], serde_json::json!("user"));
+        assert_eq!(array[0]["content"], serde_json::json!(request.prompt));
     }
 
     #[test]
@@ -1297,5 +1616,434 @@ mod tests {
             body.contains("\"max_tokens\":8192"),
             "default max_tokens must be 8192 when None, got: {body}"
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // T2.2: multi-message request building.
+    //
+    // The HTTP clients honour `TextModelRequest.messages: Option<Vec<
+    // ChatMessage>>` (the additive T2.1 surface). When `Some`, each provider
+    // sends the structured conversation verbatim per its wire format; when
+    // `None`, the single `prompt` is wrapped as one user message (the
+    // pre-T2.2 shape). The body-building logic is extracted into
+    // `openai_chat_messages`, `openai_responses_instructions_and_input`, and
+    // `anthropic_system_and_messages` so these tests assert the mapping
+    // directly (fast, no TCP) AND end-to-end via the `capturing_server`
+    // pattern so the real `complete()` body is verified.
+    // ---------------------------------------------------------------------
+
+    // --- OpenAI-compatible Chat Completions --------------------------------
+
+    #[test]
+    fn openai_chat_messages_none_wraps_prompt_as_single_user() {
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request(&config);
+        let messages = openai_chat_messages(&request);
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 1, "None path wraps prompt as one message");
+        assert_eq!(
+            array[0].get("role").and_then(|r| r.as_str()),
+            Some("user")
+        );
+        assert_eq!(
+            array[0].get("content").and_then(|c| c.as_str()),
+            Some("{\"role\":\"scene_planner\"}")
+        );
+    }
+
+    #[test]
+    fn openai_chat_messages_some_serializes_all_roles_in_order() {
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let messages = openai_chat_messages(&request);
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 3, "all three messages preserved in order");
+        let roles: Vec<&str> = array
+            .iter()
+            .map(|message| message.get("role").and_then(|r| r.as_str()).unwrap())
+            .collect();
+        assert_eq!(roles, vec!["system", "user", "assistant"]);
+        assert_eq!(
+            array[0].get("content").and_then(|c| c.as_str()),
+            Some("you are the scene planner")
+        );
+        assert_eq!(
+            array[2].get("content").and_then(|c| c.as_str()),
+            Some("prior assistant turn")
+        );
+    }
+
+    #[test]
+    fn openai_compatible_sends_multi_message_body_when_some() {
+        let reply = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let client = OpenAiCompatibleClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        // The structured conversation must be sent verbatim, in order, with
+        // the lowercase role labels, and the json_object response_format must
+        // still be present.
+        assert!(
+            body.contains("\"role\":\"system\""),
+            "system role must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"content\":\"you are the scene planner\""),
+            "system content must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"role\":\"user\""),
+            "user role must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"content\":\"user-context\""),
+            "user content must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"role\":\"assistant\""),
+            "assistant role must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"content\":\"prior assistant turn\""),
+            "assistant content must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"response_format\":{\"type\":\"json_object\"}"),
+            "json_object response_format must be retained, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_compatible_single_prompt_body_unchanged_when_none() {
+        // Backward compat: the None path must still produce the single-user
+        // message body, byte-equivalent to the pre-T2.2 shape.
+        let reply = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = OpenAiCompatibleClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        // Backward compat: the None path must still produce a single user
+        // message wrapping the prompt. Assert role + content independently
+        // (serde_json key order is not guaranteed) plus that no system role
+        // leaks in.
+        let payload = body
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or(&body)
+            .to_string();
+        let messages: serde_json::Value =
+            serde_json::from_str(&payload).expect("body is JSON");
+        let array = messages
+            .get("messages")
+            .and_then(|m| m.as_array())
+            .expect("messages array present");
+        assert_eq!(array.len(), 1, "None path wraps prompt as one message");
+        assert_eq!(
+            array[0].get("role").and_then(|r| r.as_str()),
+            Some("user")
+        );
+        assert_eq!(
+            array[0].get("content").and_then(|c| c.as_str()),
+            Some("{\"role\":\"scene_planner\"}")
+        );
+        assert!(
+            !body.contains("\"role\":\"system\""),
+            "None path must not emit a system role, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_responses_none_uses_prompt_as_input() {
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request(&config);
+        let (instructions, input) = openai_responses_instructions_and_input(&request);
+        assert_eq!(instructions, None, "None path has no instructions");
+        assert_eq!(input, "{\"role\":\"scene_planner\"}");
+    }
+
+    #[test]
+    fn openai_responses_some_splits_system_to_instructions_and_user_to_input() {
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let (instructions, input) = openai_responses_instructions_and_input(&request);
+        assert_eq!(
+            instructions.as_deref(),
+            Some("you are the scene planner"),
+            "system message becomes instructions"
+        );
+        assert_eq!(input, "user-context", "user message becomes input");
+    }
+
+    #[test]
+    fn openai_responses_some_joins_multiple_user_messages_with_newline() {
+        let config = sample_config("openai", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_two_user_messages(&config);
+        let (instructions, input) = openai_responses_instructions_and_input(&request);
+        assert_eq!(instructions, None, "no system message → no instructions");
+        assert_eq!(
+            input, "first user line\nsecond user line",
+            "multiple user messages are joined with a newline"
+        );
+    }
+
+    #[test]
+    fn openai_responses_sends_instructions_and_input_when_some() {
+        let reply = r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let client = OpenAiResponsesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"instructions\":\"you are the scene planner\""),
+            "system message must map to instructions, got: {body}"
+        );
+        assert!(
+            body.contains("\"input\":\"user-context\""),
+            "user message must map to input, got: {body}"
+        );
+        // Assistant messages are dropped from the single-input Responses
+        // shape — they must not appear as a separate field.
+        assert!(
+            !body.contains("prior assistant turn"),
+            "assistant content must not appear in the Responses body, got: {body}"
+        );
+    }
+
+    #[test]
+    fn openai_responses_single_prompt_body_unchanged_when_none() {
+        let reply = r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("openai", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = OpenAiResponsesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"input\":\"{\\\"role\\\":\\\"scene_planner\\\"}\""),
+            "None path must use prompt as input, got: {body}"
+        );
+        assert!(
+            !body.contains("\"instructions\""),
+            "None path must omit instructions, got: {body}"
+        );
+    }
+
+    // --- Anthropic Messages API -------------------------------------------
+
+    #[test]
+    fn anthropic_none_wraps_prompt_as_single_user_no_system() {
+        let config = sample_config("anthropic", "https://example.invalid", "TEST_KEY");
+        let request = sample_request(&config);
+        let (system, messages) = anthropic_system_and_messages(&request);
+        assert_eq!(system, None, "None path has no system param");
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 1);
+        assert_eq!(
+            array[0].get("role").and_then(|r| r.as_str()),
+            Some("user")
+        );
+        assert_eq!(
+            array[0].get("content").and_then(|c| c.as_str()),
+            Some("{\"role\":\"scene_planner\"}")
+        );
+    }
+
+    #[test]
+    fn anthropic_some_lifts_system_to_top_level_and_keeps_user_assistant_in_array() {
+        let config = sample_config("anthropic", "https://example.invalid", "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let (system, messages) = anthropic_system_and_messages(&request);
+        assert_eq!(
+            system.as_deref(),
+            Some("you are the scene planner"),
+            "system message(s) lift to the top-level system param"
+        );
+        let array = messages.as_array().expect("messages is an array");
+        // System is filtered out of the array; user + assistant remain.
+        assert_eq!(array.len(), 2, "system must not appear inside messages");
+        let roles: Vec<&str> = array
+            .iter()
+            .map(|message| message.get("role").and_then(|r| r.as_str()).unwrap())
+            .collect();
+        assert_eq!(roles, vec!["user", "assistant"]);
+        assert_eq!(
+            array[1].get("content").and_then(|c| c.as_str()),
+            Some("prior assistant turn")
+        );
+    }
+
+    #[test]
+    fn anthropic_some_concatenates_multiple_system_messages_with_newline() {
+        use crate::prompts::{ChatMessage, MessageRole};
+        let config = sample_config("anthropic", "https://example.invalid", "TEST_KEY");
+        let request = TextModelRequest {
+            call_id: "call-1".into(),
+            agent: AgentRole::ScenePlanner,
+            scene_key: "scene-1".into(),
+            run_seed: 1,
+            prompt_version: "v1".into(),
+            model_version: config.model.clone(),
+            provider_config_hash: config.provider_config_hash(),
+            prompt: String::new(),
+            messages: Some(vec![
+                ChatMessage::new(MessageRole::System, "rule one"),
+                ChatMessage::new(MessageRole::System, "rule two"),
+                ChatMessage::new(MessageRole::User, "go"),
+            ]),
+        };
+        let (system, messages) = anthropic_system_and_messages(&request);
+        assert_eq!(
+            system.as_deref(),
+            Some("rule one\nrule two"),
+            "multiple system messages concatenate with a newline"
+        );
+        let array = messages.as_array().expect("messages is an array");
+        assert_eq!(array.len(), 1, "only the user message remains in the array");
+        assert_eq!(
+            array[0].get("role").and_then(|r| r.as_str()),
+            Some("user")
+        );
+    }
+
+    #[test]
+    fn anthropic_sends_system_param_and_messages_array_when_some() {
+        let reply = r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("anthropic", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request_with_messages(&config);
+        let client = AnthropicMessagesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        assert!(
+            body.contains("\"system\":\"you are the scene planner\""),
+            "system message must lift to the top-level system param, got: {body}"
+        );
+        assert!(
+            body.contains("\"role\":\"user\""),
+            "user role must appear in the messages array, got: {body}"
+        );
+        assert!(
+            body.contains("\"content\":\"user-context\""),
+            "user content must appear, got: {body}"
+        );
+        assert!(
+            body.contains("\"role\":\"assistant\""),
+            "assistant role must appear in the messages array, got: {body}"
+        );
+        // max_tokens must still be present (required by Anthropic).
+        assert!(
+            body.contains("\"max_tokens\":8192"),
+            "max_tokens must still be set, got: {body}"
+        );
+    }
+
+    #[test]
+    fn anthropic_single_prompt_body_unchanged_when_none() {
+        let reply = r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#;
+        let (addr, handle, captured) = capturing_server(reply.into());
+        let config = sample_config("anthropic", &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let client = AnthropicMessagesClient::default();
+        let _response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        let body = captured.lock().expect("capture lock").clone();
+        // Backward compat: the None path must still produce a single user
+        // message wrapping the prompt, and must omit the top-level system
+        // param. Parse the JSON payload (key order is not guaranteed).
+        let payload = body
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or(&body)
+            .to_string();
+        let messages: serde_json::Value =
+            serde_json::from_str(&payload).expect("body is JSON");
+        let array = messages
+            .get("messages")
+            .and_then(|m| m.as_array())
+            .expect("messages array present");
+        assert_eq!(array.len(), 1, "None path wraps prompt as one message");
+        assert_eq!(
+            array[0].get("role").and_then(|r| r.as_str()),
+            Some("user")
+        );
+        assert_eq!(
+            array[0].get("content").and_then(|c| c.as_str()),
+            Some("{\"role\":\"scene_planner\"}")
+        );
+        assert!(
+            messages.get("system").is_none(),
+            "None path must omit the top-level system param, got: {body}"
+        );
+    }
+
+    // --- Shared serializer + role mapping ---------------------------------
+
+    #[test]
+    fn chat_message_to_json_uses_lowercase_role_labels() {
+        use crate::prompts::{ChatMessage, MessageRole};
+        for (role, label) in [
+            (MessageRole::System, "system"),
+            (MessageRole::User, "user"),
+            (MessageRole::Assistant, "assistant"),
+        ] {
+            let json = chat_message_to_json(&ChatMessage::new(role, "c"));
+            assert_eq!(json.get("role").and_then(|r| r.as_str()), Some(label));
+            assert_eq!(json.get("content").and_then(|c| c.as_str()), Some("c"));
+        }
+    }
+
+    #[test]
+    fn message_role_as_str_matches_provider_wire_labels() {
+        use crate::prompts::MessageRole;
+        assert_eq!(MessageRole::System.as_str(), "system");
+        assert_eq!(MessageRole::User.as_str(), "user");
+        assert_eq!(MessageRole::Assistant.as_str(), "assistant");
     }
 }

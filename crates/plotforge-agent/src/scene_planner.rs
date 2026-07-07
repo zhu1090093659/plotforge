@@ -445,6 +445,9 @@ where
         model_version: reproducibility.model_version.clone(),
         provider_config_hash: reproducibility.provider_config_hash.clone(),
         prompt,
+        // The scene-planner orchestration path uses the legacy single-prompt
+        // form; structured chat messages are not assembled here.
+        messages: None,
     };
     let response = provider
         .complete(&model_request)

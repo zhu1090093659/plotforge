@@ -607,6 +607,7 @@ pub fn test_provider_connection(id: String) -> StudioCommandResult<ProviderTestR
         model_version: entry.model.clone(),
         provider_config_hash: probe_config.provider_config_hash(),
         prompt: "{\"probe\": true}".into(),
+        messages: None,
     };
     match built.complete(&request) {
         Ok(_) => Ok(ProviderTestResult {

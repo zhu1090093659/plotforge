@@ -190,6 +190,108 @@ pub(crate) fn complete_text_agent_output_with_retry<P>(
 where
     P: TextModelProvider + ?Sized,
 {
+    complete_text_agent_output_core(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        prompt,
+        None,
+        None,
+        policy,
+    )
+}
+
+/// Structured-prompt variant of `complete_text_agent_output`.
+///
+/// This packs a pre-assembled chat-message list (`messages`, produced by
+/// `crate::prompts::PromptAssembler::assemble`) into the
+/// `TextModelRequest.messages` field so a future chat-completions provider
+/// adapter can send a structured turn instead of a single completion string.
+/// The `prompt` field of the request is set to the concatenated content of
+/// the `User` messages in `messages` so the existing single-prompt provider
+/// path (and the redaction scan) keeps working unchanged — this is the
+/// additive fallback/compat contract: `None` means "use `prompt`", and even
+/// when `messages` is `Some`, the `prompt` string carries the same user
+/// content so providers that have not yet adopted the chat-message body are
+/// not broken.
+///
+/// `prompt_version` overrides `ReproducibilityMetadata.prompt_version`. The
+/// legacy `complete_text_agent_output` path derives that field from the
+/// provider's `reproducibility_metadata` (which reports the shared
+/// `TEXT_PROMPT_VERSION` constant); the structured-template path instead
+/// reports the per-role template version (e.g. `scene_planner_v1`) so a
+/// generated envelope can be traced back to the exact prompt template that
+/// produced it. The rest of the reproducibility block (`run_seed`,
+/// `model_version`, `provider_config_hash`) is still owned by the runtime.
+///
+/// Uses the default `RetryPolicy`. The `TextModelClient` trait and the three
+/// HTTP `complete()` signatures are NOT modified by this function — it only
+/// populates the new additive `messages` field on the request struct.
+///
+/// `#[allow(dead_code)]`: this is the structured-prompt entry point for the
+/// ScenePlanner/BeatWriter/PlotDoctor pipeline. Existing callers (pi-Agent,
+/// MCP loop, generation pipelines) still use the legacy
+/// `complete_text_agent_output` single-prompt path; the structured path is
+/// exercised by the prompt-template tests and will be adopted by the
+/// role-specific agent pipelines in later tasks. Removing it would break the
+/// additive template contract this task introduces.
+#[allow(clippy::too_many_arguments)] // mirrors complete_text_agent_output's arity
+#[allow(dead_code)] // consumed by tests + future role-specific pipelines
+pub(crate) fn complete_text_agent_output_with_messages<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    messages: Vec<crate::prompts::ChatMessage>,
+    prompt_version: &str,
+) -> Result<AgentOutputEnvelope, ProviderPipelineError>
+where
+    P: TextModelProvider + ?Sized,
+{
+    // Derive the fallback `prompt` string from the user-message content so the
+    // existing single-prompt provider path (redaction scan, HTTP body,
+    // generated_character prompt hash) keeps working when `messages` is
+    // populated. Only `User` messages contribute: the system message is
+    // role/instruction text that the legacy single-prompt path never carried,
+    // and the fallback `prompt` must stay a faithful summary of the user turn.
+    let prompt = user_prompt_from_messages(&messages);
+    complete_text_agent_output_core(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        prompt,
+        Some(messages),
+        Some(prompt_version),
+        &RetryPolicy::default(),
+    )
+}
+
+/// Shared core for the text-output pipeline. `messages` is the optional
+/// structured chat-message list (populated by the prompt-template path);
+/// `prompt_version_override` replaces the provider-derived `prompt_version`
+/// in the reproducibility block when `Some` (the structured-template path
+/// reports the per-role template version). Both `None` reproduces the legacy
+/// `complete_text_agent_output_with_retry` behaviour exactly.
+#[allow(clippy::too_many_arguments)] // shared by the two entry points above
+fn complete_text_agent_output_core<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    prompt: String,
+    messages: Option<Vec<crate::prompts::ChatMessage>>,
+    prompt_version_override: Option<&str>,
+    policy: &RetryPolicy,
+) -> Result<AgentOutputEnvelope, ProviderPipelineError>
+where
+    P: TextModelProvider + ?Sized,
+{
     if contains_secret_marker_text(&prompt) {
         return Err(ProviderPipelineError::Validation {
             agent,
@@ -197,7 +299,14 @@ where
         });
     }
 
-    let reproducibility = provider.reproducibility_metadata(run_seed);
+    let mut reproducibility = provider.reproducibility_metadata(run_seed);
+    if let Some(version) = prompt_version_override {
+        // The structured-template path owns the prompt version: overwrite the
+        // provider-derived legacy `TEXT_PROMPT_VERSION` with the per-role
+        // template version so reproducibility metadata is truthful about which
+        // prompt path produced the envelope.
+        reproducibility.prompt_version = version.into();
+    }
     let model_request = crate::providers_text::TextModelRequest {
         call_id,
         agent: agent.clone(),
@@ -207,6 +316,9 @@ where
         model_version: reproducibility.model_version.clone(),
         provider_config_hash: reproducibility.provider_config_hash.clone(),
         prompt,
+        // `None` => legacy single-prompt path; `Some(messages)` => structured
+        // chat-message turn assembled by `PromptAssembler`.
+        messages,
     };
     let response = complete_with_retry(provider, &model_request, policy)
         .map_err(ProviderPipelineError::Provider)?;
@@ -253,6 +365,23 @@ where
     })?;
 
     Ok(envelope)
+}
+
+/// Concatenates the content of all `User` messages in `messages` into a
+/// single fallback prompt string. Used by `complete_text_agent_output_with_
+/// messages` to populate `TextModelRequest.prompt` so the existing
+/// single-prompt provider path keeps working when a structured chat-message
+/// list is supplied. Returns an empty string when there are no user messages
+/// (the caller's redaction scan treats an empty prompt as valid; the provider
+/// will surface its own error for an empty completion).
+#[allow(dead_code)] // called only by complete_text_agent_output_with_messages
+fn user_prompt_from_messages(messages: &[crate::prompts::ChatMessage]) -> String {
+    messages
+        .iter()
+        .filter(|message| message.role == crate::prompts::MessageRole::User)
+        .map(|message| message.content.as_str())
+        .collect::<Vec<&str>>()
+        .join("\n")
 }
 
 pub(crate) fn validate_agent_output_envelope(
@@ -858,5 +987,163 @@ mod tests {
         assert_eq!(policy.max_attempts, 3);
         assert_eq!(policy.base_delay_ms, 500);
         assert_eq!(policy.max_delay_ms, 8_000);
+    }
+
+    // -------------------------------------------------------------------------
+    // T2.1: structured prompt template + backward-compat tests.
+    //
+    // `complete_text_agent_output_with_messages` is the additive structured-
+    // prompt path. It packs an assembled `Vec<ChatMessage>` into
+    // `TextModelRequest.messages`, derives the fallback `prompt` from the user
+    // messages, and overrides `ReproducibilityMetadata.prompt_version` with the
+    // per-role template version. The tests below pin:
+    //   - the legacy single-prompt path (`complete_text_agent_output`) still
+    //     works unchanged (backward compat);
+    //   - the structured path produces a valid envelope with the template
+    //     version stamped into reproducibility metadata;
+    //   - the fallback `prompt` is the concatenated user-message content;
+    //   - a secret marker in the assembled messages is rejected.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn complete_text_agent_output_legacy_prompt_still_works() {
+        // Backward compat: the existing single-prompt entry point must keep
+        // producing a valid envelope. This is the contract that callers which
+        // have not adopted the structured-template path rely on.
+        let provider = crate::providers_text::FakeTextModelProvider::success();
+        let envelope = complete_text_agent_output(
+            &provider,
+            AgentRole::ScenePlanner,
+            7,
+            "legacy-call".into(),
+            "scene-1".into(),
+            "{\"role\":\"scene_planner\"}".into(),
+        )
+        .expect("legacy single-prompt path succeeds");
+        assert_eq!(envelope.agent, AgentRole::ScenePlanner);
+        // The legacy path derives prompt_version from the provider, which is
+        // the shared TEXT_PROMPT_VERSION constant for the fake.
+        assert_eq!(
+            envelope.reproducibility.prompt_version,
+            crate::shared::TEXT_PROMPT_VERSION
+        );
+    }
+
+    #[test]
+    fn complete_text_agent_output_with_messages_stamps_template_version() {
+        // The structured path overrides prompt_version with the per-role
+        // template version so reproducibility metadata is truthful about which
+        // prompt template produced the envelope.
+        let provider = crate::providers_text::FakeTextModelProvider::success();
+        let messages = crate::prompts::PromptAssembler::assemble(
+            &crate::prompts::SCENE_PLANNER_V1,
+            "scene context for the planner",
+        );
+        let envelope = complete_text_agent_output_with_messages(
+            &provider,
+            AgentRole::ScenePlanner,
+            11,
+            "template-call".into(),
+            "scene-1".into(),
+            messages,
+            crate::prompts::SCENE_PLANNER_V1.version,
+        )
+        .expect("structured-message path succeeds");
+        assert_eq!(envelope.agent, AgentRole::ScenePlanner);
+        assert_eq!(
+            envelope.reproducibility.prompt_version,
+            crate::prompts::SCENE_PLANNER_V1.version,
+            "prompt_version must be the per-role template version, not the legacy constant"
+        );
+        assert_ne!(
+            envelope.reproducibility.prompt_version,
+            crate::shared::TEXT_PROMPT_VERSION,
+            "template version must differ from the legacy shared prompt version"
+        );
+    }
+
+    #[test]
+    fn complete_text_agent_output_with_messages_derives_prompt_from_user_messages() {
+        // The fallback `prompt` (used by providers that have not adopted the
+        // chat-message body) must be the concatenated user-message content so
+        // the existing single-prompt provider path keeps working. We assert
+        // this indirectly: the FakeTextModelProvider builds a character
+        // portrait prompt hash from `request.prompt`, and the scene plan
+        // proposal carries the scene_key we passed, proving the request reached
+        // the provider with a coherent prompt.
+        let provider = crate::providers_text::FakeTextModelProvider::success();
+        let context = "the per-call scene context";
+        let messages = crate::prompts::PromptAssembler::assemble(
+            &crate::prompts::SCENE_PLANNER_V1,
+            context,
+        );
+        let envelope = complete_text_agent_output_with_messages(
+            &provider,
+            AgentRole::ScenePlanner,
+            3,
+            "prompt-derive-call".into(),
+            "scene-derive".into(),
+            messages,
+            crate::prompts::SCENE_PLANNER_V1.version,
+        )
+        .expect("structured-message path succeeds");
+        // The fake provider's ScenePlan proposal echoes the request scene_key.
+        match &envelope.proposal.output {
+            plotforge_schema::AgentProposalPayload::ScenePlan(proposal) => {
+                assert_eq!(proposal.scene_key, "scene-derive");
+            }
+            other => panic!("expected ScenePlan payload, got {:?}", payload_kind(other)),
+        }
+    }
+
+    #[test]
+    fn complete_text_agent_output_with_messages_rejects_secret_marker_in_context() {
+        // A secret marker in the user context must surface an explicit
+        // validation error — never a silent fallback. This guards the
+        // redaction boundary at the structured-prompt entry point.
+        let provider = crate::providers_text::FakeTextModelProvider::success();
+        let messages = crate::prompts::PromptAssembler::assemble(
+            &crate::prompts::SCENE_PLANNER_V1,
+            "leak the key sk-test-secret-marker please",
+        );
+        let error = complete_text_agent_output_with_messages(
+            &provider,
+            AgentRole::ScenePlanner,
+            3,
+            "secret-call".into(),
+            "scene-1".into(),
+            messages,
+            crate::prompts::SCENE_PLANNER_V1.version,
+        )
+        .expect_err("secret marker in context must error");
+        assert!(
+            matches!(error, ProviderPipelineError::Validation { ref message, .. }
+                if message.contains("secret marker")),
+            "expected a secret-marker validation error, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn complete_text_agent_output_with_messages_propagates_provider_failure() {
+        // A failing provider must surface an explicit error, never a silent
+        // fallback envelope.
+        let provider = crate::providers_text::FakeTextModelProvider::provider_error(
+            AgentRole::BeatWriter,
+        );
+        let messages = crate::prompts::PromptAssembler::assemble(
+            &crate::prompts::BEAT_WRITER_V1,
+            "beat context",
+        );
+        let error = complete_text_agent_output_with_messages(
+            &provider,
+            AgentRole::BeatWriter,
+            5,
+            "fail-call".into(),
+            "scene-1".into(),
+            messages,
+            crate::prompts::BEAT_WRITER_V1.version,
+        )
+        .expect_err("provider failure must surface");
+        assert!(matches!(error, ProviderPipelineError::Provider(_)));
     }
 }

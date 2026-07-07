@@ -224,6 +224,9 @@ pub fn complete_with_mcp_tools(
             model_version: reproducibility.model_version.clone(),
             provider_config_hash: reproducibility.provider_config_hash.clone(),
             prompt: prompt.clone(),
+            // The MCP loop reuses the legacy single-prompt path; structured
+            // chat messages are not assembled here.
+            messages: None,
         };
         let response =
             provider
