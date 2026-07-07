@@ -1629,6 +1629,43 @@
       ],
       "type": "object"
     },
+    "ImageProviderEntry": {
+      "additionalProperties": false,
+      "description": "A single registered image provider entry. Like `ProviderEntry`, this is\na routing record only — `credential_env_var` names the shell environment\nvariable that holds the credential; the value itself is never serialized\nhere, in traces, or in any project source.\n\n`model` selects the upstream image model (e.g. `gpt-image-1`,\n`gpt-image-2`). `default_size` is the requested image dimensions\n(e.g. `1024x1024`) and `default_quality` is the generation quality tier\n(e.g. `medium`). All three are forwarded into the OpenAI Images API\nrequest body. Both `default_size` and `default_quality` are\n`#[serde(default)]` so existing registries without them still deserialize.",
+      "properties": {
+        "credential_env_var": {
+          "type": "string"
+        },
+        "default_quality": {
+          "default": "medium",
+          "type": "string"
+        },
+        "default_size": {
+          "default": "1024x1024",
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "endpoint_url": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "endpoint_url",
+        "model",
+        "credential_env_var",
+        "enabled"
+      ],
+      "type": "object"
+    },
     "JobCost": {
       "additionalProperties": false,
       "properties": {
@@ -2374,7 +2411,7 @@
     },
     "PiAgentApplyResult": {
       "additionalProperties": false,
-      "description": "The result of a `pi_agent_apply_run`: the redaction-safe pi-Agent evidence\nenvelope plus the runtime-visible outcome (committed scene + trace + optional\nsnapshot). This embeds the same shape `AgentChatRail` renders for a playtest\nturn (`scene` + `trace`), so the rail can drive `pi_agent_apply_run` without\na separate `PlayOnceReport` (which lives in the Studio layer, not in\nschema). `trace_path` and `snapshot_path` are absolute paths written by the\nStudio layer; they never enter export packages.",
+      "description": "The result of a `pi_agent_apply_run`: the redaction-safe pi-Agent evidence\nenvelope plus the runtime-visible outcome (committed scene + trace + optional\nsnapshot). This embeds the same shape `AgentChatRail` renders for a playtest\nturn (`scene` + `trace`), so the rail can drive `pi_agent_apply_run` without\na separate `PlayOnceReport` (which lives in the Studio layer, not in\nschema). `trace_path` and `snapshot_path` are absolute paths written by the\nStudio layer; they never enter export packages.\n\n`image_generation_failed` carries a redaction-safe error message when the\noptional scene background image generation step failed but the turn still\nsucceeded (failure isolation: an image provider outage never fails the\nturn). It is `None` when no image provider was configured, when image\ngeneration was skipped (e.g. a cached asset was reused), or when it\nsucceeded. The message is redaction-safe (no credentials, no raw provider\nresponse bodies) and trace-visible so the user can diagnose the outage\nrather than seeing a silent missing image. Per AGENTS.md: no silent\nfallback — the field makes the image failure explicit even though the turn\nsucceeds.",
       "properties": {
         "delta_summary": {
           "default": [],
@@ -2383,6 +2420,13 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "image_generation_failed": {
+          "description": "Redaction-safe image-generation failure message. `None` when image\ngeneration was not attempted, was skipped (cache hit), or succeeded.\n`Some(message)` when image generation failed but the turn still\nsucceeded — the failure is explicit and trace-visible, never silent.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "run": {
           "$ref": "#/$defs/PiAgentRunResult"
@@ -2883,8 +2927,15 @@
     },
     "ProviderRegistry": {
       "additionalProperties": false,
-      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.",
+      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.\n\n`image_providers` is `#[serde(default)]` so an existing registry serialized\nbefore image providers were introduced still deserializes (backward\ncompatible). Text and image providers are independent lists: a model id\nresolves against `providers` via `resolve_provider_for_model`, while the\npi-Agent image pipeline resolves the first enabled `image_providers` entry.",
       "properties": {
+        "image_providers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ImageProviderEntry"
+          },
+          "type": "array"
+        },
         "providers": {
           "default": [],
           "items": {
@@ -4857,6 +4908,9 @@
     "git_switch_result": {
       "$ref": "#/$defs/GitSwitchResult"
     },
+    "image_provider_entry": {
+      "$ref": "#/$defs/ImageProviderEntry"
+    },
     "job_record": {
       "$ref": "#/$defs/JobRecord"
     },
@@ -5065,6 +5119,7 @@
     "agent_session_config",
     "provider_kind",
     "provider_entry",
+    "image_provider_entry",
     "provider_registry",
     "remote_model_info",
     "remote_model_list",

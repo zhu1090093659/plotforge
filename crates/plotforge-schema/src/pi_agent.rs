@@ -96,6 +96,17 @@ pub struct PiAgentApplyRequest {
 /// a separate `PlayOnceReport` (which lives in the Studio layer, not in
 /// schema). `trace_path` and `snapshot_path` are absolute paths written by the
 /// Studio layer; they never enter export packages.
+///
+/// `image_generation_failed` carries a redaction-safe error message when the
+/// optional scene background image generation step failed but the turn still
+/// succeeded (failure isolation: an image provider outage never fails the
+/// turn). It is `None` when no image provider was configured, when image
+/// generation was skipped (e.g. a cached asset was reused), or when it
+/// succeeded. The message is redaction-safe (no credentials, no raw provider
+/// response bodies) and trace-visible so the user can diagnose the outage
+/// rather than seeing a silent missing image. Per AGENTS.md: no silent
+/// fallback — the field makes the image failure explicit even though the turn
+/// succeeds.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PiAgentApplyResult {
@@ -115,6 +126,12 @@ pub struct PiAgentApplyResult {
     pub snapshot: Option<RuntimeSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_path: Option<String>,
+    /// Redaction-safe image-generation failure message. `None` when image
+    /// generation was not attempted, was skipped (cache hit), or succeeded.
+    /// `Some(message)` when image generation failed but the turn still
+    /// succeeded — the failure is explicit and trace-visible, never silent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_generation_failed: Option<String>,
 }
 
 #[cfg(test)]
@@ -392,6 +409,7 @@ mod tests {
             delta_summary: Vec::new(),
             snapshot: None,
             snapshot_path: None,
+            image_generation_failed: None,
         };
 
         let encoded = serde_json::to_string_pretty(&result).expect("serialize apply result");
@@ -476,6 +494,7 @@ mod tests {
             delta_summary: Vec::new(),
             snapshot: None,
             snapshot_path: None,
+            image_generation_failed: None,
         };
         let mut value = serde_json::to_value(&result).expect("apply result value");
         value["raw_provider_response"] =
@@ -483,5 +502,182 @@ mod tests {
         let error = serde_json::from_value::<PiAgentApplyResult>(value)
             .expect_err("raw provider response should be rejected");
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn pi_agent_apply_result_carries_image_generation_failure() {
+        // The image_generation_failed field carries a redaction-safe message
+        // when image gen failed but the turn succeeded. It must round-trip
+        // and skip-serialize when None.
+        let result = PiAgentApplyResult {
+            run: PiAgentRunResult {
+                descriptor: sample_descriptor(),
+                reproducibility: ReproducibilityMetadata::local_mock(11),
+                trace_id: None,
+                evidence_summary: "redacted".into(),
+            },
+            scene_key: "provider-scene-011".into(),
+            scene: Scene {
+                key: "provider-scene-011".into(),
+                title: "Witness Stand".into(),
+                location: "Courthouse".into(),
+                dramatic_purpose: "Pressure".into(),
+                hook: "A crack".into(),
+                background_asset: String::new(),
+                audio_refs: Vec::new(),
+                character_ids: Vec::new(),
+                plot_thread_updates: Default::default(),
+                beats: Vec::new(),
+                entry_beat_id: None,
+            },
+            trace: RuntimeTrace {
+                id: "trace-011".into(),
+                timestamp_ms: 11,
+                reproducibility: ReproducibilityMetadata::local_mock(11),
+                player_input: None,
+                selected_choice: None,
+                action_intent: None,
+                rule_result: None,
+                planner_result: None,
+                diagnostics: Vec::new(),
+                world_state_before: crate::WorldState {
+                    resources: Default::default(),
+                    flags: Default::default(),
+                    triggered_events: Vec::new(),
+                },
+                world_state_delta: crate::WorldDelta {
+                    resource_changes: Default::default(),
+                    resource_sets: Default::default(),
+                    flags: Default::default(),
+                    triggered_events: Vec::new(),
+                },
+                world_state_after: crate::WorldState {
+                    resources: Default::default(),
+                    flags: Default::default(),
+                    triggered_events: Vec::new(),
+                },
+                story_state_before: crate::StoryState {
+                    current_scene_key: "scene-001".into(),
+                    current_beat_id: None,
+                    completed_scene_keys: Vec::new(),
+                    turn: 10,
+                },
+                story_state_after: crate::StoryState {
+                    current_scene_key: "provider-scene-011".into(),
+                    current_beat_id: None,
+                    completed_scene_keys: Vec::new(),
+                    turn: 11,
+                },
+                narrative_review: None,
+                media_references: Vec::new(),
+                errors: Vec::new(),
+                fallback_used: false,
+            },
+            trace_path: "/tmp/traces/trace-011.json".into(),
+            delta_summary: Vec::new(),
+            snapshot: None,
+            snapshot_path: None,
+            image_generation_failed: Some(
+                "image provider timed out: connection refused".into(),
+            ),
+        };
+        let encoded = serde_json::to_string_pretty(&result).expect("serialize");
+        assert!(
+            encoded.contains("image_generation_failed"),
+            "field must serialize when Some: {encoded}"
+        );
+        let decoded: PiAgentApplyResult = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, result);
+        assert_eq!(
+            decoded.image_generation_failed.as_deref(),
+            Some("image provider timed out: connection refused")
+        );
+    }
+
+    #[test]
+    fn pi_agent_apply_result_omits_image_generation_failed_when_none() {
+        // When None, the field is skip-serialized so existing consumers that
+        // never set it see no change in the wire shape.
+        let mut result = PiAgentApplyResult {
+            run: PiAgentRunResult {
+                descriptor: sample_descriptor(),
+                reproducibility: ReproducibilityMetadata::local_mock(11),
+                trace_id: None,
+                evidence_summary: "redacted".into(),
+            },
+            scene_key: "scene-1".into(),
+            scene: Scene {
+                key: "scene-1".into(),
+                title: "T".into(),
+                location: "L".into(),
+                dramatic_purpose: "D".into(),
+                hook: "H".into(),
+                background_asset: String::new(),
+                audio_refs: Vec::new(),
+                character_ids: Vec::new(),
+                plot_thread_updates: Default::default(),
+                beats: Vec::new(),
+                entry_beat_id: None,
+            },
+            trace: RuntimeTrace {
+                id: "t".into(),
+                timestamp_ms: 0,
+                reproducibility: ReproducibilityMetadata::local_mock(0),
+                player_input: None,
+                selected_choice: None,
+                action_intent: None,
+                rule_result: None,
+                planner_result: None,
+                diagnostics: Vec::new(),
+                world_state_before: crate::WorldState {
+                    resources: Default::default(),
+                    flags: Default::default(),
+                    triggered_events: Vec::new(),
+                },
+                world_state_delta: crate::WorldDelta {
+                    resource_changes: Default::default(),
+                    resource_sets: Default::default(),
+                    flags: Default::default(),
+                    triggered_events: Vec::new(),
+                },
+                world_state_after: crate::WorldState {
+                    resources: Default::default(),
+                    flags: Default::default(),
+                    triggered_events: Vec::new(),
+                },
+                story_state_before: crate::StoryState {
+                    current_scene_key: "scene-1".into(),
+                    current_beat_id: None,
+                    completed_scene_keys: Vec::new(),
+                    turn: 0,
+                },
+                story_state_after: crate::StoryState {
+                    current_scene_key: "scene-1".into(),
+                    current_beat_id: None,
+                    completed_scene_keys: Vec::new(),
+                    turn: 1,
+                },
+                narrative_review: None,
+                media_references: Vec::new(),
+                errors: Vec::new(),
+                fallback_used: false,
+            },
+            trace_path: "/tmp/t.json".into(),
+            delta_summary: Vec::new(),
+            snapshot: None,
+            snapshot_path: None,
+            image_generation_failed: None,
+        };
+        let encoded = serde_json::to_string(&result).expect("serialize");
+        assert!(
+            !encoded.contains("image_generation_failed"),
+            "field must be omitted when None: {encoded}"
+        );
+        // Backward compat: a payload without the field deserializes to None.
+        let legacy: PiAgentApplyResult =
+            serde_json::from_str(&encoded).expect("deserialize legacy");
+        assert_eq!(legacy.image_generation_failed, None);
+        result.image_generation_failed = None;
+        assert_eq!(legacy, result);
     }
 }

@@ -50,13 +50,54 @@ pub struct ProviderEntry {
     pub max_output_tokens: Option<u32>,
 }
 
+/// A single registered image provider entry. Like `ProviderEntry`, this is
+/// a routing record only — `credential_env_var` names the shell environment
+/// variable that holds the credential; the value itself is never serialized
+/// here, in traces, or in any project source.
+///
+/// `model` selects the upstream image model (e.g. `gpt-image-1`,
+/// `gpt-image-2`). `default_size` is the requested image dimensions
+/// (e.g. `1024x1024`) and `default_quality` is the generation quality tier
+/// (e.g. `medium`). All three are forwarded into the OpenAI Images API
+/// request body. Both `default_size` and `default_quality` are
+/// `#[serde(default)]` so existing registries without them still deserialize.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ImageProviderEntry {
+    pub id: String,
+    pub endpoint_url: String,
+    pub model: String,
+    pub credential_env_var: String,
+    pub enabled: bool,
+    #[serde(default = "default_image_size")]
+    pub default_size: String,
+    #[serde(default = "default_image_quality")]
+    pub default_quality: String,
+}
+
+fn default_image_size() -> String {
+    "1024x1024".into()
+}
+
+fn default_image_quality() -> String {
+    "medium".into()
+}
+
 /// The persisted registry file (`~/.plotforge/providers.json`). An empty
 /// registry is the default for fresh installs; provider wiring is opt-in.
+///
+/// `image_providers` is `#[serde(default)]` so an existing registry serialized
+/// before image providers were introduced still deserializes (backward
+/// compatible). Text and image providers are independent lists: a model id
+/// resolves against `providers` via `resolve_provider_for_model`, while the
+/// pi-Agent image pipeline resolves the first enabled `image_providers` entry.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProviderRegistry {
     pub version: String,
     pub providers: Vec<ProviderEntry>,
+    #[serde(default)]
+    pub image_providers: Vec<ImageProviderEntry>,
 }
 
 /// A single model discovered from a provider's upstream `/models` (or
@@ -164,6 +205,7 @@ mod tests {
                     max_output_tokens: None,
                 },
             ],
+            image_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -271,5 +313,107 @@ mod tests {
         let decoded: RemoteModelList = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(decoded, list);
         assert_eq!(decoded.fetched_at, 1_700_000_000);
+    }
+
+    fn sample_image_entry() -> ImageProviderEntry {
+        ImageProviderEntry {
+            id: "openai-image".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-image-1".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            default_size: "1024x1024".into(),
+            default_quality: "medium".into(),
+        }
+    }
+
+    #[test]
+    fn image_provider_entry_roundtrips_json() {
+        let entry = sample_image_entry();
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize image entry");
+        let decoded: ImageProviderEntry =
+            serde_json::from_str(&encoded).expect("deserialize image entry");
+        assert_eq!(decoded, entry);
+    }
+
+    #[test]
+    fn image_provider_entry_rejects_secret_fields() {
+        let entry = sample_image_entry();
+        let mut value = serde_json::to_value(&entry).expect("image entry value");
+        value["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<ImageProviderEntry>(value)
+            .expect_err("api_key field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn image_provider_entry_defaults_size_and_quality_when_absent() {
+        // An entry serialized without default_size/default_quality must
+        // deserialize with the documented defaults (1024x1024 / medium).
+        let legacy = serde_json::json!({
+            "id": "openai-image",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "gpt-image-1",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: ImageProviderEntry =
+            serde_json::from_value(legacy).expect("legacy image entry deserialize");
+        assert_eq!(decoded.default_size, "1024x1024");
+        assert_eq!(decoded.default_quality, "medium");
+    }
+
+    #[test]
+    fn image_provider_entry_preserves_custom_size_and_quality() {
+        let entry = ImageProviderEntry {
+            id: "openai-image".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-image-1".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            default_size: "1536x1024".into(),
+            default_quality: "high".into(),
+        };
+        let encoded = serde_json::to_string(&entry).expect("serialize");
+        let decoded: ImageProviderEntry = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded.default_size, "1536x1024");
+        assert_eq!(decoded.default_quality, "high");
+    }
+
+    #[test]
+    fn provider_registry_with_image_providers_roundtrips() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: vec![sample_entry()],
+            image_providers: vec![sample_image_entry()],
+        };
+        let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
+        let decoded: ProviderRegistry =
+            serde_json::from_str(&encoded).expect("deserialize registry");
+        assert_eq!(decoded, registry);
+        assert_eq!(decoded.image_providers.len(), 1);
+        assert_eq!(decoded.image_providers[0].model, "gpt-image-1");
+    }
+
+    #[test]
+    fn provider_registry_backward_compatible_without_image_providers() {
+        // An existing registry serialized before `image_providers` was added
+        // must still deserialize with an empty image_providers list.
+        let legacy = serde_json::json!({
+            "version": "1",
+            "providers": [{
+                "id": "glm",
+                "kind": "openai_compatible",
+                "label": "GLM 4.6",
+                "endpoint_url": "https://open.bigmodels.cn/api/paas/v4",
+                "model": "glm-4.6",
+                "credential_env_var": "ZAI_API_KEY",
+                "enabled": true
+            }]
+        });
+        let decoded: ProviderRegistry =
+            serde_json::from_value(legacy).expect("legacy registry deserialize");
+        assert_eq!(decoded.providers.len(), 1);
+        assert!(decoded.image_providers.is_empty());
     }
 }

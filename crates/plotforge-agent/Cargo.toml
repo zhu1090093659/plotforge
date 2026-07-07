@@ -11,6 +11,7 @@ plotforge-media.workspace = true
 plotforge-mcp.workspace = true
 plotforge-schema.workspace = true
 plotforge-storycraft.workspace = true
+base64.workspace = true
 dirs.workspace = true
 reqwest.workspace = true
 schemars.workspace = true

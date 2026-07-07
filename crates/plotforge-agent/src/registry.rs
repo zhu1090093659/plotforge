@@ -16,10 +16,12 @@
 use std::path::PathBuf;
 
 use plotforge_schema::{
-    ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo, RemoteModelList, redact_trace_text,
+    ImageProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
+    RemoteModelList, redact_trace_text,
 };
 
 use crate::providers_http::{AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient};
+use crate::providers_image::{ImageProvider, OpenAiImageClient};
 use crate::providers_text::{
     ConfiguredTextModelProvider, EnvCredentialResolver, FakeTextModelProvider,
     ProviderCredentialError, ProviderCredentialResolver, TextModelClient, TextModelProvider,
@@ -192,6 +194,53 @@ pub fn build_text_provider(
             EnvCredentialResolver,
         )))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Image provider registry + construction.
+//
+// `build_image_provider` constructs an `OpenAiImageClient` from an
+// `ImageProviderEntry`, dispatching by endpoint shape. Today every image
+// entry routes to the OpenAI Images API; the dispatch is structured so a
+// future non-OpenAI image provider can add a branch without touching callers.
+// `resolve_image_provider` picks the first enabled image entry from a loaded
+// registry so the pi-Agent apply flow can decide whether to attempt image
+// generation without owning the registry's selection policy.
+//
+// Credentials are resolved through the same strict/optional resolver split as
+// text providers: a non-empty `credential_env_var` uses `EnvCredentialResolver`
+// (a missing/empty env var surfaces an explicit error), and an empty
+// `credential_env_var` uses `OptionalEnvCredentialResolver` (local no-auth
+// endpoint). The credential value never enters the returned client struct,
+// traces, or the persisted registry.
+// ---------------------------------------------------------------------------
+
+/// Builds the `ImageProvider` for a single image provider entry. Dispatches to
+/// `OpenAiImageClient` for OpenAI-compatible image endpoints. Credential
+/// resolution follows the same strict/optional split as `build_text_provider`.
+pub fn build_image_provider(
+    entry: &ImageProviderEntry,
+) -> Result<Box<dyn ImageProvider>, ProviderBuildError> {
+    let client = OpenAiImageClient::new(entry, EnvCredentialResolver).map_err(|error| {
+        ProviderBuildError::ClientConstruction {
+            provider_id: entry.id.clone(),
+            message: error.message,
+        }
+    })?;
+    Ok(Box::new(client))
+}
+
+/// Returns the first enabled image provider entry in `registry`, or `None`
+/// when no image provider is configured. The pi-Agent apply flow uses this to
+/// decide whether to attempt scene image generation: when `None`, image
+/// generation is skipped (the turn succeeds without a background image, never
+/// fails). A disabled entry is treated the same as absent (no silent degraded
+/// run from a provider the user explicitly turned off).
+pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProviderEntry> {
+    registry
+        .image_providers
+        .iter()
+        .find(|entry| entry.enabled)
 }
 
 // ---------------------------------------------------------------------------
@@ -629,6 +678,7 @@ mod tests {
                 enabled: true,
                 max_output_tokens: None,
             }],
+            image_providers: Vec::new(),
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");
         let loaded = load_provider_registry_from(&registry_path).expect("read via public API");
@@ -665,6 +715,7 @@ mod tests {
                     max_output_tokens: None,
                 },
             ],
+            image_providers: Vec::new(),
         };
         let resolved = resolve_provider_for_model("glm", &registry).expect("glm entry");
         assert_eq!(resolved.id, "glm");
@@ -1107,5 +1158,108 @@ mod tests {
         assert!(matches!(error, ModelDiscoveryError::Http { .. }));
         assert!(error.to_string().contains("401"));
         unsafe { std::env::remove_var(env_var) };
+    }
+
+    // -----------------------------------------------------------------------
+    // T3.1: image provider registry + construction.
+    // -----------------------------------------------------------------------
+
+    fn sample_image_entry(id: &str, env_var: &str, enabled: bool) -> ImageProviderEntry {
+        ImageProviderEntry {
+            id: id.into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-image-1".into(),
+            credential_env_var: env_var.into(),
+            enabled,
+            default_size: "1024x1024".into(),
+            default_quality: "medium".into(),
+        }
+    }
+
+    #[test]
+    fn build_image_provider_dispatches_to_openai_image_client() {
+        // build_image_provider must construct an OpenAiImageClient for an
+        // image entry. The client is returned as Box<dyn ImageProvider>; we
+        // exercise it with a Fake-free call against an unreachable endpoint
+        // to confirm it is a real HTTP client (it errors with a transport
+        // error, not a panic).
+        let entry = sample_image_entry("openai-image", "PLOTFORGE_T31_BUILD_KEY", true);
+        let provider = build_image_provider(&entry).expect("image provider builds");
+        let request = crate::providers_image::ImageGenerationRequest {
+            scene_key: "scene-1".into(),
+            prompt: "test".into(),
+            output_path: "assets/generated/scene-1.png".into(),
+        };
+        let error = provider
+            .generate(&request)
+            .expect_err("unreachable endpoint must error");
+        // The error must be an explicit HTTP transport/timeout error, never a
+        // silent success or a build failure.
+        assert!(
+            error.code.contains("image_provider_http")
+                || error.code.contains("image_provider_missing_credential"),
+            "expected an http error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_image_provider_returns_first_enabled_entry() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: Vec::new(),
+            image_providers: vec![
+                sample_image_entry("disabled-image", "OFF_KEY", false),
+                sample_image_entry("enabled-image", "ON_KEY", true),
+                sample_image_entry("second-enabled", "ON2_KEY", true),
+            ],
+        };
+        let resolved = resolve_image_provider(&registry).expect("an enabled entry exists");
+        assert_eq!(resolved.id, "enabled-image");
+        assert_eq!(resolved.model, "gpt-image-1");
+    }
+
+    #[test]
+    fn resolve_image_provider_returns_none_when_all_disabled() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: Vec::new(),
+            image_providers: vec![sample_image_entry("off", "OFF_KEY", false)],
+        };
+        assert!(resolve_image_provider(&registry).is_none());
+    }
+
+    #[test]
+    fn resolve_image_provider_returns_none_when_empty() {
+        let registry = ProviderRegistry::default();
+        assert!(resolve_image_provider(&registry).is_none());
+    }
+
+    #[test]
+    fn write_and_load_registry_roundtrips_image_providers() {
+        let dir = TempDir::new().expect("temp dir");
+        let registry_path = dir.path().join("providers.json");
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: vec![ProviderEntry {
+                id: "glm".into(),
+                kind: ProviderKind::OpenAiCompatible,
+                label: "GLM 4.6".into(),
+                endpoint_url: "https://open.bigmodels.cn/api/paas/v4".into(),
+                model: "glm-4.6".into(),
+                credential_env_var: "ZAI_API_KEY".into(),
+                enabled: true,
+                max_output_tokens: None,
+            }],
+            image_providers: vec![sample_image_entry("openai-image", "OPENAI_API_KEY", true)],
+        };
+        write_provider_registry_to(&registry_path, &registry).expect("write via public API");
+        let loaded = load_provider_registry_from(&registry_path).expect("read via public API");
+        assert_eq!(loaded, registry);
+        assert_eq!(loaded.image_providers.len(), 1);
+        assert_eq!(loaded.image_providers[0].model, "gpt-image-1");
+        // Redaction safety: the persisted file must not carry credentials.
+        let raw = std::fs::read_to_string(&registry_path).expect("read raw");
+        assert!(!raw.contains("api_key"));
+        assert!(!raw.contains("sk-"));
     }
 }
