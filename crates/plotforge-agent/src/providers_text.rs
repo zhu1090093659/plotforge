@@ -1101,11 +1101,6 @@ mod tests {
     fn complete_rejects_secret_marker_in_message_before_client_call() {
         use crate::prompts::{ChatMessage, MessageRole};
         let client = CallCountingClient::default();
-        let client_calls = std::cell::Cell::new(0usize);
-        // Share the call counter by wiring the cell through a small wrapper is
-        // overkill; `CallCountingClient` already owns its own cell, so read it
-        // back from the same instance after the call.
-        let _ = client_calls;
         let provider = ConfiguredTextModelProvider::new(
             base_config(),
             client,
