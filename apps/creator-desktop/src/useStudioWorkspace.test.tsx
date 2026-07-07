@@ -518,6 +518,9 @@ function workspaceTestDataSource(
     async listImageProviders() {
       return [];
     },
+    async listTtsProviders() {
+      return [];
+    },
     async listUserPromptTemplates() {
       return [];
     },

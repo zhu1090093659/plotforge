@@ -55,16 +55,16 @@ pub use prompts::{
     estimate_tokens, prompt_version_for_role,
 };
 pub use providers_tts::{
-    FakeTtsProvider, TtsPipeline, TtsPipelineError, TtsPipelineResult, TtsProvider,
-    TtsProviderError, TtsProviderErrorKind, TtsProviderOutput, TtsRequest, TtsTarget,
+    FakeTtsProvider, OpenAiTtsClient, TtsPipeline, TtsPipelineError, TtsPipelineResult,
+    TtsProvider, TtsProviderError, TtsProviderErrorKind, TtsProviderOutput, TtsRequest, TtsTarget,
 };
 pub use registry::{
     LOCAL_PI_MODEL_ID, ModelDiscoveryError, OptionalEnvCredentialResolver, ProviderBuildError,
     ProviderRegistryError, build_image_provider, build_provider_client, build_text_provider,
-    fetch_provider_models, fetch_provider_models_to, load_provider_registry,
-    load_provider_registry_from, local_pi_provider, provider_registry_path,
-    resolve_image_provider, resolve_provider_for_model, user_config_dir,
-    write_provider_registry, write_provider_registry_to,
+    build_tts_provider, fetch_provider_models, fetch_provider_models_to, load_provider_registry,
+    load_provider_registry_from, local_pi_provider, provider_registry_path, resolve_image_provider,
+    resolve_provider_for_model, resolve_tts_provider, user_config_dir, write_provider_registry,
+    write_provider_registry_to,
 };
 pub use scene_planner::{
     ImageProviderAgentPipeline, MockAgentPipeline, ProviderAgentPipeline, ScenePlan,

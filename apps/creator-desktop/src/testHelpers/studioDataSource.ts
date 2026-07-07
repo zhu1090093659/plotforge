@@ -10,6 +10,7 @@ import type {
   PiAgentApplyResult,
   ProviderEntry,
   ImageProviderEntry,
+  TtsProviderEntry,
   PromptTemplate,
   RemoteModelInfo,
   SkillIndex,
@@ -203,6 +204,14 @@ export async function mockListUserPromptTemplates(): Promise<PromptTemplate[]> {
  * can be exercised in tests without a live registry.
  */
 export async function mockListImageProviders(): Promise<ImageProviderEntry[]> {
+  return [];
+}
+
+/**
+ * Mock `listTtsProviders`: returns an empty list so the Settings → Agent →
+ * TTS providers area can be exercised in tests without a live registry.
+ */
+export async function mockListTtsProviders(): Promise<TtsProviderEntry[]> {
   return [];
 }
 

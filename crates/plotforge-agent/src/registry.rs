@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use plotforge_schema::{
     ImageProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
-    RemoteModelList, redact_trace_text,
+    RemoteModelList, TtsProviderEntry, redact_trace_text,
 };
 
 use crate::providers_http::{AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient};
@@ -27,6 +27,7 @@ use crate::providers_text::{
     ProviderCredentialError, ProviderCredentialResolver, TextModelClient, TextModelProvider,
     TextProviderConfig,
 };
+use crate::providers_tts::OpenAiTtsClient;
 
 /// The reserved model id for the offline local pi-Agent mock. Real providers
 /// are opt-in: a fresh install resolves every model id to this default until
@@ -241,6 +242,34 @@ pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProvi
         .image_providers
         .iter()
         .find(|entry| entry.enabled)
+}
+
+// ---------------------------------------------------------------------------
+// TTS provider construction.
+//
+// `build_tts_provider` constructs an `OpenAiTtsClient` from a registered
+// `TtsProviderEntry`. Credentials are resolved at call-time inside the
+// client's `synthesize` method via `EnvCredentialResolver`; the credential
+// value never enters the client struct, traces, or the persisted registry.
+// ---------------------------------------------------------------------------
+
+/// Constructs an `OpenAiTtsClient` from a registered `TtsProviderEntry`.
+pub fn build_tts_provider(
+    entry: &TtsProviderEntry,
+) -> Result<OpenAiTtsClient, ProviderBuildError> {
+    OpenAiTtsClient::from_entry(entry).map_err(|error| ProviderBuildError::ClientConstruction {
+        provider_id: entry.id.clone(),
+        message: error.message,
+    })
+}
+
+/// Returns the first enabled TTS provider entry in `registry`, or `None`
+/// when no TTS provider is configured. The TTS pipeline uses this to decide
+/// whether to attempt audio synthesis: when `None`, TTS is skipped (the
+/// pipeline falls back to `FakeTtsProvider` or produces no audio, never
+/// fails the turn).
+pub fn resolve_tts_provider(registry: &ProviderRegistry) -> Option<&TtsProviderEntry> {
+    registry.tts_providers.iter().find(|entry| entry.enabled)
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +708,7 @@ mod tests {
                 max_output_tokens: None,
             }],
             image_providers: Vec::new(),
+            tts_providers: Vec::new(),
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");
         let loaded = load_provider_registry_from(&registry_path).expect("read via public API");
@@ -716,6 +746,7 @@ mod tests {
                 },
             ],
             image_providers: Vec::new(),
+            tts_providers: Vec::new(),
         };
         let resolved = resolve_provider_for_model("glm", &registry).expect("glm entry");
         assert_eq!(resolved.id, "glm");
@@ -1207,6 +1238,7 @@ mod tests {
         let registry = ProviderRegistry {
             version: "1".into(),
             providers: Vec::new(),
+            tts_providers: Vec::new(),
             image_providers: vec![
                 sample_image_entry("disabled-image", "OFF_KEY", false),
                 sample_image_entry("enabled-image", "ON_KEY", true),
@@ -1223,6 +1255,7 @@ mod tests {
         let registry = ProviderRegistry {
             version: "1".into(),
             providers: Vec::new(),
+            tts_providers: Vec::new(),
             image_providers: vec![sample_image_entry("off", "OFF_KEY", false)],
         };
         assert!(resolve_image_provider(&registry).is_none());
@@ -1250,6 +1283,7 @@ mod tests {
                 enabled: true,
                 max_output_tokens: None,
             }],
+            tts_providers: Vec::new(),
             image_providers: vec![sample_image_entry("openai-image", "OPENAI_API_KEY", true)],
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");

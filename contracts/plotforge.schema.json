@@ -2927,7 +2927,7 @@
     },
     "ProviderRegistry": {
       "additionalProperties": false,
-      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.\n\n`image_providers` is `#[serde(default)]` so an existing registry serialized\nbefore image providers were introduced still deserializes (backward\ncompatible). Text and image providers are independent lists: a model id\nresolves against `providers` via `resolve_provider_for_model`, while the\npi-Agent image pipeline resolves the first enabled `image_providers` entry.",
+      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.\n\n`image_providers` and `tts_providers` are `#[serde(default)]` so an\nexisting registry serialized before image/TTS providers were introduced\nstill deserializes (backward compatible). Text, image, and TTS providers\nare independent lists: a model id resolves against `providers` via\n`resolve_provider_for_model`, while the pi-Agent image pipeline resolves\nthe first enabled `image_providers` entry and the TTS pipeline resolves\nthe first enabled `tts_providers` entry.",
       "properties": {
         "image_providers": {
           "default": [],
@@ -2940,6 +2940,13 @@
           "default": [],
           "items": {
             "$ref": "#/$defs/ProviderEntry"
+          },
+          "type": "array"
+        },
+        "tts_providers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TtsProviderEntry"
           },
           "type": "array"
         },
@@ -4476,6 +4483,43 @@
       ],
       "type": "string"
     },
+    "TtsProviderEntry": {
+      "additionalProperties": false,
+      "description": "A registered TTS (text-to-speech) provider entry. Mirrors the\n`ImageProviderEntry` shape for audio providers. `credential_env_var` names\nthe shell environment variable holding the credential; the value is never\nserialized here, in traces, or in any project source. `voice` is the\ndefault voice for synthesis (the request may override); `format` is the\naudio output format (mp3, wav, opus, aac, flac, pcm). Both `voice` and\n`format` are `#[serde(default)]` so existing registries without them still\ndeserialize.",
+      "properties": {
+        "credential_env_var": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "endpoint_url": {
+          "type": "string"
+        },
+        "format": {
+          "default": "mp3",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "voice": {
+          "default": "coral",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "endpoint_url",
+        "model",
+        "credential_env_var",
+        "enabled"
+      ],
+      "type": "object"
+    },
     "VisualBible": {
       "additionalProperties": false,
       "properties": {
@@ -5052,6 +5096,9 @@
     "story_craft_generation_request": {
       "$ref": "#/$defs/StoryCraftGenerationRequest"
     },
+    "tts_provider_entry": {
+      "$ref": "#/$defs/TtsProviderEntry"
+    },
     "visual_bible": {
       "$ref": "#/$defs/VisualBible"
     },
@@ -5120,6 +5167,7 @@
     "provider_kind",
     "provider_entry",
     "image_provider_entry",
+    "tts_provider_entry",
     "provider_registry",
     "remote_model_info",
     "remote_model_list",

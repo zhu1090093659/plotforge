@@ -20,7 +20,8 @@ pub use plotforge_schema::{
     RuntimeSnapshot, RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface,
     SkillManifest, SkillOrigin, SkillSource, StateVariablesEditDocument,
     SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, VisualBible,
+    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, TtsProviderEntry,
+    VisualBible,
     WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft,
     WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, redact_trace_text,
 };
@@ -660,6 +661,19 @@ pub fn list_image_providers() -> StudioCommandResult<Vec<ImageProviderEntry>> {
             message: source.to_string(),
         })?;
     Ok(registry.image_providers)
+}
+
+/// Lists all registered TTS providers from the user-global registry. These
+/// entries drive the TTS pipeline: when an enabled TTS provider exists, the
+/// pipeline routes to the real `OpenAiTtsClient`; otherwise it falls back to
+/// the fake provider.
+pub fn list_tts_providers() -> StudioCommandResult<Vec<TtsProviderEntry>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_tts_providers".into(),
+            message: source.to_string(),
+        })?;
+    Ok(registry.tts_providers)
 }
 
 /// Adds or updates (by `id`) a provider entry in the user-global registry.

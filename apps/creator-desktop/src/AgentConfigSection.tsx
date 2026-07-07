@@ -4,6 +4,7 @@ import type {
   ProviderEntry,
   ProviderKind,
   ImageProviderEntry,
+  TtsProviderEntry,
   PromptScope,
   PromptTemplate,
 } from "../../../contracts/plotforge";
@@ -83,6 +84,10 @@ export function AgentConfigSection({
     null,
   );
 
+  const [ttsProviders, setTtsProviders] = useState<TtsProviderEntry[]>([]);
+  const [ttsProvidersLoading, setTtsProvidersLoading] = useState(false);
+  const [ttsProviderError, setTtsProviderError] = useState<string | null>(null);
+
   const reloadProviders = useCallback(async () => {
     setProvidersLoading(true);
     setProviderError(null);
@@ -111,6 +116,21 @@ export function AgentConfigSection({
     }
   }, [dataSource]);
 
+  const reloadTtsProviders = useCallback(async () => {
+    setTtsProvidersLoading(true);
+    setTtsProviderError(null);
+    try {
+      const list = await dataSource.listTtsProviders();
+      setTtsProviders(list);
+    } catch (error) {
+      setTtsProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setTtsProvidersLoading(false);
+    }
+  }, [dataSource]);
+
   const reloadPrompts = useCallback(async () => {
     try {
       const [user, project] = await Promise.all([
@@ -129,8 +149,9 @@ export function AgentConfigSection({
   useEffect(() => {
     void reloadProviders();
     void reloadImageProviders();
+    void reloadTtsProviders();
     void reloadPrompts();
-  }, [reloadProviders, reloadImageProviders, reloadPrompts]);
+  }, [reloadProviders, reloadImageProviders, reloadTtsProviders, reloadPrompts]);
 
   const handleSaveEntry = async (entry: ProviderEntry) => {
     try {
@@ -193,6 +214,11 @@ export function AgentConfigSection({
         providers={imageProviders}
         loading={imageProvidersLoading}
         error={imageProviderError}
+      />
+      <TtsProvidersArea
+        providers={ttsProviders}
+        loading={ttsProvidersLoading}
+        error={ttsProviderError}
       />
       <PromptsArea
         userPrompts={userPrompts}
@@ -605,6 +631,85 @@ function ImageProvidersArea({
                     {t("agent.imageProvider.quality")}
                   </dt>
                   <dd className="inline"> {provider.default_quality}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+    </StudioPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TTS providers area (T4.1 — read-only display; TTS providers are
+// configured via ~/.plotforge/providers.json in v1)
+// ---------------------------------------------------------------------------
+
+interface TtsProvidersAreaProps {
+  providers: TtsProviderEntry[];
+  loading: boolean;
+  error: string | null;
+}
+
+function TtsProvidersArea({
+  providers,
+  loading,
+  error,
+}: TtsProvidersAreaProps) {
+  const { t } = useStudioI18n();
+  return (
+    <StudioPanel>
+      <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
+        {t("agent.ttsProvider.title")}
+      </h4>
+      {loading ? (
+        <p className="text-sm text-ink-faint">{t("agent.provider.loading")}</p>
+      ) : error ? (
+        <p className="text-sm text-danger">{error}</p>
+      ) : providers.length === 0 ? (
+        <p className="text-sm text-ink-faint">{t("agent.ttsProvider.empty")}</p>
+      ) : (
+        <ul className="grid gap-2">
+          {providers.map((provider) => (
+            <li
+              key={provider.id}
+              className="rounded-md border border-canvas-200/70 bg-canvas-100/40 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <strong className="font-semibold text-ink">
+                  {provider.id}
+                </strong>
+                <span
+                  className={
+                    provider.enabled
+                      ? "text-xs font-medium text-success"
+                      : "text-xs font-medium text-ink-faint"
+                  }
+                >
+                  {provider.enabled
+                    ? t("agent.provider.enabled")
+                    : t("agent.provider.disabled")}
+                </span>
+              </div>
+              <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-ink-faint">
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.ttsProvider.model")}
+                  </dt>
+                  <dd className="inline"> {provider.model}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.ttsProvider.voice")}
+                  </dt>
+                  <dd className="inline"> {provider.voice}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.ttsProvider.format")}
+                  </dt>
+                  <dd className="inline"> {provider.format}</dd>
                 </div>
               </dl>
             </li>

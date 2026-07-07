@@ -83,14 +83,46 @@ fn default_image_quality() -> String {
     "medium".into()
 }
 
+/// A registered TTS (text-to-speech) provider entry. Mirrors the
+/// `ImageProviderEntry` shape for audio providers. `credential_env_var` names
+/// the shell environment variable holding the credential; the value is never
+/// serialized here, in traces, or in any project source. `voice` is the
+/// default voice for synthesis (the request may override); `format` is the
+/// audio output format (mp3, wav, opus, aac, flac, pcm). Both `voice` and
+/// `format` are `#[serde(default)]` so existing registries without them still
+/// deserialize.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TtsProviderEntry {
+    pub id: String,
+    pub endpoint_url: String,
+    pub model: String,
+    pub credential_env_var: String,
+    pub enabled: bool,
+    #[serde(default = "default_tts_voice")]
+    pub voice: String,
+    #[serde(default = "default_tts_format")]
+    pub format: String,
+}
+
+fn default_tts_voice() -> String {
+    "coral".into()
+}
+
+fn default_tts_format() -> String {
+    "mp3".into()
+}
+
 /// The persisted registry file (`~/.plotforge/providers.json`). An empty
 /// registry is the default for fresh installs; provider wiring is opt-in.
 ///
-/// `image_providers` is `#[serde(default)]` so an existing registry serialized
-/// before image providers were introduced still deserializes (backward
-/// compatible). Text and image providers are independent lists: a model id
-/// resolves against `providers` via `resolve_provider_for_model`, while the
-/// pi-Agent image pipeline resolves the first enabled `image_providers` entry.
+/// `image_providers` and `tts_providers` are `#[serde(default)]` so an
+/// existing registry serialized before image/TTS providers were introduced
+/// still deserializes (backward compatible). Text, image, and TTS providers
+/// are independent lists: a model id resolves against `providers` via
+/// `resolve_provider_for_model`, while the pi-Agent image pipeline resolves
+/// the first enabled `image_providers` entry and the TTS pipeline resolves
+/// the first enabled `tts_providers` entry.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProviderRegistry {
@@ -98,6 +130,8 @@ pub struct ProviderRegistry {
     pub providers: Vec<ProviderEntry>,
     #[serde(default)]
     pub image_providers: Vec<ImageProviderEntry>,
+    #[serde(default)]
+    pub tts_providers: Vec<TtsProviderEntry>,
 }
 
 /// A single model discovered from a provider's upstream `/models` (or
@@ -206,6 +240,7 @@ mod tests {
                 },
             ],
             image_providers: Vec::new(),
+            tts_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -219,6 +254,7 @@ mod tests {
         let registry = ProviderRegistry::default();
         assert!(registry.providers.is_empty());
         assert!(registry.version.is_empty());
+        assert!(registry.tts_providers.is_empty());
     }
 
     #[test]
@@ -386,6 +422,7 @@ mod tests {
             version: "1".into(),
             providers: vec![sample_entry()],
             image_providers: vec![sample_image_entry()],
+            tts_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -415,5 +452,78 @@ mod tests {
             serde_json::from_value(legacy).expect("legacy registry deserialize");
         assert_eq!(decoded.providers.len(), 1);
         assert!(decoded.image_providers.is_empty());
+    }
+
+    fn sample_tts_entry() -> TtsProviderEntry {
+        TtsProviderEntry {
+            id: "openai-tts".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-4o-mini-tts".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            voice: "coral".into(),
+            format: "mp3".into(),
+        }
+    }
+
+    #[test]
+    fn tts_provider_entry_roundtrips_json() {
+        let entry = sample_tts_entry();
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize entry");
+        let decoded: TtsProviderEntry = serde_json::from_str(&encoded).expect("deserialize entry");
+        assert_eq!(decoded, entry);
+    }
+
+    #[test]
+    fn tts_provider_entry_rejects_unknown_fields() {
+        let entry = sample_tts_entry();
+        let mut value = serde_json::to_value(&entry).expect("entry value");
+        value["api_key"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<TtsProviderEntry>(value)
+            .expect_err("api_key field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn tts_provider_entry_defaults_voice_and_format_when_absent() {
+        let legacy = serde_json::json!({
+            "id": "openai-tts",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini-tts",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: TtsProviderEntry =
+            serde_json::from_value(legacy).expect("legacy tts entry deserialize");
+        assert_eq!(decoded.voice, "coral");
+        assert_eq!(decoded.format, "mp3");
+    }
+
+    #[test]
+    fn provider_registry_with_tts_providers_roundtrips() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: vec![sample_entry()],
+            image_providers: Vec::new(),
+            tts_providers: vec![sample_tts_entry()],
+        };
+        let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
+        let decoded: ProviderRegistry =
+            serde_json::from_str(&encoded).expect("deserialize registry");
+        assert_eq!(decoded, registry);
+        assert_eq!(decoded.tts_providers.len(), 1);
+        assert_eq!(decoded.tts_providers[0].model, "gpt-4o-mini-tts");
+    }
+
+    #[test]
+    fn provider_registry_backward_compatible_without_tts_providers() {
+        let legacy = serde_json::json!({
+            "version": "1",
+            "providers": [],
+            "image_providers": []
+        });
+        let decoded: ProviderRegistry =
+            serde_json::from_value(legacy).expect("legacy registry deserialize");
+        assert!(decoded.tts_providers.is_empty());
     }
 }
