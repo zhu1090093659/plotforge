@@ -2316,6 +2316,7 @@ dependencies = [
 name = "plotforge-agent"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "dirs 5.0.1",
  "plotforge-job",
  "plotforge-mcp",
@@ -2441,7 +2442,9 @@ version = "0.1.0"
 dependencies = [
  "plotforge-agent",
  "plotforge-export",
+ "plotforge-job",
  "plotforge-mcp",
+ "plotforge-media",
  "plotforge-runtime",
  "plotforge-schema",
  "plotforge-storage",

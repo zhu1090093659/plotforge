@@ -515,6 +515,9 @@ function workspaceTestDataSource(
     async listRemoteModels(_providerId: string) {
       return [];
     },
+    async listImageProviders() {
+      return [];
+    },
     async listUserPromptTemplates() {
       return [];
     },

@@ -3,6 +3,7 @@ import type {
   AgentSessionConfig,
   ProviderEntry,
   ProviderKind,
+  ImageProviderEntry,
   PromptScope,
   PromptTemplate,
 } from "../../../contracts/plotforge";
@@ -76,6 +77,12 @@ export function AgentConfigSection({
   const [projectPrompts, setProjectPrompts] = useState<PromptTemplate[]>([]);
   const [promptScope, setPromptScope] = useState<PromptScope>("user");
 
+  const [imageProviders, setImageProviders] = useState<ImageProviderEntry[]>([]);
+  const [imageProvidersLoading, setImageProvidersLoading] = useState(false);
+  const [imageProviderError, setImageProviderError] = useState<string | null>(
+    null,
+  );
+
   const reloadProviders = useCallback(async () => {
     setProvidersLoading(true);
     setProviderError(null);
@@ -86,6 +93,21 @@ export function AgentConfigSection({
       setProviderError(error instanceof Error ? error.message : String(error));
     } finally {
       setProvidersLoading(false);
+    }
+  }, [dataSource]);
+
+  const reloadImageProviders = useCallback(async () => {
+    setImageProvidersLoading(true);
+    setImageProviderError(null);
+    try {
+      const list = await dataSource.listImageProviders();
+      setImageProviders(list);
+    } catch (error) {
+      setImageProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setImageProvidersLoading(false);
     }
   }, [dataSource]);
 
@@ -106,8 +128,9 @@ export function AgentConfigSection({
 
   useEffect(() => {
     void reloadProviders();
+    void reloadImageProviders();
     void reloadPrompts();
-  }, [reloadProviders, reloadPrompts]);
+  }, [reloadProviders, reloadImageProviders, reloadPrompts]);
 
   const handleSaveEntry = async (entry: ProviderEntry) => {
     try {
@@ -165,6 +188,11 @@ export function AgentConfigSection({
         agentConfig={agentConfig}
         onAgentConfigChange={onAgentConfigChange}
         saveError={configSaveError}
+      />
+      <ImageProvidersArea
+        providers={imageProviders}
+        loading={imageProvidersLoading}
+        error={imageProviderError}
       />
       <PromptsArea
         userPrompts={userPrompts}
@@ -502,6 +530,87 @@ function ModelArea({ agentConfig, onAgentConfigChange, saveError }: ModelAreaPro
           </div>
         )}
       </div>
+    </StudioPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Image providers area (T3.3 — read-only display; image providers are
+// configured via ~/.plotforge/providers.json in v1)
+// ---------------------------------------------------------------------------
+
+interface ImageProvidersAreaProps {
+  providers: ImageProviderEntry[];
+  loading: boolean;
+  error: string | null;
+}
+
+function ImageProvidersArea({
+  providers,
+  loading,
+  error,
+}: ImageProvidersAreaProps) {
+  const { t } = useStudioI18n();
+  return (
+    <StudioPanel>
+      <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
+        {t("agent.imageProvider.title")}
+      </h4>
+      {loading ? (
+        <p className="text-sm text-ink-faint">{t("agent.provider.loading")}</p>
+      ) : error ? (
+        <p className="text-sm text-danger">{error}</p>
+      ) : providers.length === 0 ? (
+        <p className="text-sm text-ink-faint">
+          {t("agent.imageProvider.empty")}
+        </p>
+      ) : (
+        <ul className="grid gap-2">
+          {providers.map((provider) => (
+            <li
+              key={provider.id}
+              className="rounded-md border border-canvas-200/70 bg-canvas-100/40 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <strong className="font-semibold text-ink">
+                  {provider.id}
+                </strong>
+                <span
+                  className={
+                    provider.enabled
+                      ? "text-xs font-medium text-success"
+                      : "text-xs font-medium text-ink-faint"
+                  }
+                >
+                  {provider.enabled
+                    ? t("agent.provider.enabled")
+                    : t("agent.provider.disabled")}
+                </span>
+              </div>
+              <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-ink-faint">
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.imageProvider.model")}
+                  </dt>
+                  <dd className="inline"> {provider.model}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.imageProvider.size")}
+                  </dt>
+                  <dd className="inline"> {provider.default_size}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-medium text-ink">
+                    {t("agent.imageProvider.quality")}
+                  </dt>
+                  <dd className="inline"> {provider.default_quality}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
     </StudioPanel>
   );
 }

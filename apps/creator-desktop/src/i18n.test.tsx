@@ -200,6 +200,8 @@ describe("creator desktop i18n", () => {
       "page",
       "project",
       "provider",
+      "providers",
+      "image",
       "resource",
       "review",
       "rules",

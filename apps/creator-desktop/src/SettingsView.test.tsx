@@ -13,6 +13,7 @@ import type { StudioDataSource } from "./studioDataSource";
 import {
   mockDeleteProvider,
   mockImportSkill,
+  mockListImageProviders,
   mockListProjectPromptTemplates,
   mockListProviders,
   mockListRemoteModels,
@@ -116,6 +117,7 @@ function settingsTestDataSource(
     deleteProvider: mockDeleteProvider,
     testProviderConnection: mockTestProviderConnection,
     listRemoteModels: mockListRemoteModels,
+    listImageProviders: mockListImageProviders,
     listUserPromptTemplates: mockListUserPromptTemplates,
     listProjectPromptTemplates: mockListProjectPromptTemplates,
     listSkills: mockListSkills,

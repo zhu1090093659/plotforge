@@ -9,6 +9,7 @@ import type {
   PiAgentApplyRequest,
   PiAgentApplyResult,
   ProviderEntry,
+  ImageProviderEntry,
   PromptTemplate,
   RemoteModelInfo,
   SkillIndex,
@@ -193,6 +194,15 @@ export async function mockListRemoteModels(
 }
 
 export async function mockListUserPromptTemplates(): Promise<PromptTemplate[]> {
+  return [];
+}
+
+/**
+ * Mock `listImageProviders`: returns a small, sensible list of contract-typed
+ * `ImageProviderEntry` entries so the Settings → Agent → Image providers area
+ * can be exercised in tests without a live registry.
+ */
+export async function mockListImageProviders(): Promise<ImageProviderEntry[]> {
   return [];
 }
 

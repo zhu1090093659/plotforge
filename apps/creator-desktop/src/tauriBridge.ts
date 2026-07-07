@@ -27,6 +27,7 @@ import type {
   ProjectData,
   ProviderEntry,
   ProviderKind,
+  ImageProviderEntry,
   PromptTemplate,
   RemoteModelInfo,
   ResourceDefinition,
@@ -99,6 +100,7 @@ export const studioCommandNames = {
   deleteProvider: "delete_provider",
   testProviderConnection: "test_provider_connection",
   listRemoteModels: "list_remote_models",
+  listImageProviders: "list_image_providers",
   listUserPromptTemplates: "list_user_prompt_templates",
   listProjectPromptTemplates: "list_project_prompt_templates",
   upsertUserPromptTemplate: "upsert_user_prompt_template",
@@ -613,6 +615,11 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<RemoteModelInfo[]>(
         studioCommandNames.listRemoteModels,
         { provider_id: providerId },
+      );
+    },
+    listImageProviders(): Promise<ImageProviderEntry[]> {
+      return invokeCommand<ImageProviderEntry[]>(
+        studioCommandNames.listImageProviders,
       );
     },
     listUserPromptTemplates(): Promise<PromptTemplate[]> {
