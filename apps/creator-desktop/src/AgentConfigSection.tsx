@@ -525,6 +525,29 @@ function PromptsArea({ userPrompts, projectPrompts, scope, onScopeChange }: Prom
       <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
         {t("agent.tab.prompts")}
       </h4>
+      {/* Built-in prompt template versions — read-only, code-managed (T2.5).
+          These are the structured prompt templates the pi-Agent uses for
+          scene planning, beat writing, and narrative review. They are
+          versioned for reproducibility and not user-editable in v1. */}
+      <div className="mb-4 rounded-md border border-canvas-200/70 bg-canvas-50/60 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          {t("agent.prompt.builtin.title")}
+        </p>
+        <dl className="grid grid-cols-1 gap-1 text-sm text-ink sm:grid-cols-3">
+          <div>
+            <dt className="inline font-medium">{t("agent.prompt.builtin.scene_planner")}</dt>
+            <dd className="inline text-ink-faint"> scene_planner_v1</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">{t("agent.prompt.builtin.beat_writer")}</dt>
+            <dd className="inline text-ink-faint"> beat_writer_v1</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">{t("agent.prompt.builtin.plot_doctor")}</dt>
+            <dd className="inline text-ink-faint"> plot_doctor_v1</dd>
+          </div>
+        </dl>
+      </div>
       <div className="mb-3 flex gap-2">
         <StudioButton
           variant={scope === "user" ? "primary" : "secondary"}
