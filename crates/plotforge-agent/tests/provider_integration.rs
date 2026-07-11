@@ -43,19 +43,22 @@ use std::time::Duration;
 
 use plotforge_agent::{
     ConfiguredTextModelProvider, EnvCredentialResolver, ImageGenerationRequest, ImageProvider,
-    ModerationProvider, ModerationProviderErrorKind, ModerationRequest, OpenAiCompatibleClient,
-    OpenAiImageClient, OpenAiTtsClient, OptionalEnvCredentialResolver, TextModelClient,
+    ModerationProvider, ModerationProviderErrorKind, ModerationRequest, ModerationScreen,
+    OpenAiCompatibleClient, OpenAiImageClient, OpenAiTtsClient, OptionalEnvCredentialResolver,
+    PiAgent, ProviderUsageIdentity, SceneImagePipeline, SceneImageRequest, TextModelClient,
     TextModelClientRequest, TextModelProvider, TextModelProviderErrorKind, TextModelRequest,
-    TextProviderConfig, TtsProvider, TtsRequest, TtsTarget, build_image_provider,
+    TextProviderConfig, TtsPipeline, TtsProvider, TtsRequest, TtsTarget, build_image_provider,
     build_moderation_provider, build_text_provider, build_tts_provider,
+    screen_with_moderation_with_usage_reporter,
 };
+use plotforge_job::{JobQueue, SystemJobClock, UsageLedger};
 use plotforge_media::{AssetRecordInput, AssetRegistry};
 use plotforge_schema::{
     AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind,
     AssetProviderMetadata, AssetReference, AssetReferenceKind, AssetSourceKind,
     CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, Choice, ImageProviderEntry, ModerationProviderEntry,
-    NarrativeFunction, ProviderEntry, ProviderKind, ReproducibilityMetadata, ScenePlanProposal,
-    TtsProviderEntry,
+    NarrativeFunction, PiAgentRunRequest, ProviderEntry, ProviderKind, ReproducibilityMetadata,
+    ScenePlanProposal, TtsProviderEntry,
 };
 
 // ---------------------------------------------------------------------------
@@ -916,7 +919,7 @@ fn image_generation_returns_bytes_and_records_asset() {
         response.bytes, bytes,
         "decoded bytes round-trip the mock body"
     );
-    assert_eq!(response.provider, "openai-image");
+    assert_eq!(response.provider, "openai-image-test");
     assert_eq!(response.model.as_deref(), Some("gpt-image-test"));
     assert_eq!(response.spent_cost_units, 1);
 
@@ -952,7 +955,7 @@ fn image_generation_returns_bytes_and_records_asset() {
     assert_eq!(record.byte_length, bytes.len() as u64);
     assert_eq!(
         record.provider_metadata.as_ref().unwrap().provider,
-        "openai-image"
+        "openai-image-test"
     );
     assert!(!record.provider_metadata.as_ref().unwrap().fallback_used);
 
@@ -1063,7 +1066,7 @@ fn tts_generation_returns_audio_bytes() {
     let output = client.synthesize(&request).expect("tts synthesis succeeds");
 
     assert_eq!(output.bytes, audio, "audio bytes round-trip the mock body");
-    assert_eq!(output.provider, "openai_tts");
+    assert_eq!(output.provider, "openai-tts-test");
     assert_eq!(output.model.as_deref(), Some("gpt-tts-test"));
     assert_eq!(output.spent_cost_units, 1);
 
@@ -1372,6 +1375,140 @@ fn text_present_credential_succeeds_through_full_pipeline_adapter() {
     );
 
     unsafe { std::env::remove_var(env_var) };
+}
+
+// ===========================================================================
+// Coverage audit: all provider families report through the shared usage port.
+//
+// This is a composition assertion only: provider-specific decoding and job
+// behavior live in their lower-layer tests above. Here one request per family
+// crosses the public HTTP adapter/pipeline boundary and lands in the same
+// request-scoped reporter with stable registry ids.
+// ===========================================================================
+#[test]
+#[ignore]
+fn provider_families_report_usage_with_stable_registry_ids() {
+    let moderation_server = capturing_server(http_response(
+        "HTTP/1.1 200 OK",
+        "application/json",
+        r#"{"id":"modr-audit","model":"omni-moderation-latest","results":[{"flagged":false,"categories":{"violence":false},"category_scores":{}}]}"#,
+    ));
+    let text_server = capturing_server(http_response(
+        "HTTP/1.1 200 OK",
+        "application/json",
+        &openai_chat_body(&valid_envelope_json()),
+    ));
+    let image_payload = format!(
+        r#"{{"data":[{{"b64_json":"{}"}}]}}"#,
+        base64_image_field(&image_bytes())
+    );
+    let image_server = capturing_server(http_response(
+        "HTTP/1.1 200 OK",
+        "application/json",
+        &image_payload,
+    ));
+    let tts_server = capturing_server(http_binary_response(
+        "audio/mpeg",
+        b"ID3-provider-usage-audit",
+    ));
+
+    let moderation_entry = moderation_entry(&format!("http://{}/v1", moderation_server.addr), "");
+    let moderation_provider =
+        build_moderation_provider(&moderation_entry).expect("moderation provider");
+    let text_entry = text_entry(&format!("http://{}", text_server.addr));
+    let text_provider = build_text_provider(&text_entry).expect("text provider");
+    let image_entry = image_entry(&format!("http://{}", image_server.addr), "");
+    let image_provider = OpenAiImageClient::new(&image_entry, OptionalEnvCredentialResolver)
+        .expect("image provider");
+    let tts_entry = tts_entry(
+        &format!("http://{}", tts_server.addr),
+        "PFIT_USAGE_TTS_TOKEN",
+    );
+    unsafe { std::env::set_var("PFIT_USAGE_TTS_TOKEN", "usage-audit-token") };
+    let tts_provider =
+        OpenAiTtsClient::from_entry(&tts_entry, EnvCredentialResolver).expect("TTS provider");
+
+    let mut usage = UsageLedger::new(SystemJobClock);
+    screen_with_moderation_with_usage_reporter(
+        Some(ModerationScreen {
+            provider: moderation_provider.as_ref(),
+            config_hash: "sha256:provider-usage-audit",
+            usage_identity: ProviderUsageIdentity::new(
+                moderation_entry.id.clone(),
+                moderation_entry.model.clone(),
+            ),
+        }),
+        &ModerationRequest {
+            call_id: "moderation-usage-audit".into(),
+            prompt: "safe integration input".into(),
+        },
+        Some(&mut usage),
+    )
+    .expect("moderation usage");
+
+    PiAgent::new(text_provider, "provider-usage-audit")
+        .run_with_envelope_with_usage_reporter(
+            PiAgentRunRequest {
+                agent_id: "provider-usage-audit".into(),
+                run_seed: 41,
+                prompt_summary: "safe integration input".into(),
+                prompt_hash: "sha256:provider-usage-audit".into(),
+            },
+            Some(&mut usage),
+        )
+        .expect("text usage");
+
+    let mut image_registry = AssetRegistry::new();
+    let mut image_jobs = JobQueue::new(SystemJobClock);
+    SceneImagePipeline::new(image_provider)
+        .generate_scene_background_with_usage_reporter(
+            SceneImageRequest {
+                scene_key: "scene-usage-audit".into(),
+                prompt: "usage audit background".into(),
+                output_path: "assets/generated/usage-audit.png".into(),
+            },
+            &mut image_registry,
+            &mut image_jobs,
+            Some(&mut usage),
+        )
+        .expect("image usage");
+
+    let mut tts_registry = AssetRegistry::new();
+    let mut tts_jobs = JobQueue::new(SystemJobClock);
+    TtsPipeline::new(tts_provider)
+        .synthesize_with_usage_reporter(
+            TtsRequest {
+                target: TtsTarget::Scene {
+                    scene_key: "scene-usage-audit".into(),
+                },
+                text: "Usage audit narration".into(),
+                voice: String::new(),
+                output_path: "assets/generated/usage-audit.mp3".into(),
+                asset_kind: AssetKind::Audio,
+            },
+            &mut tts_registry,
+            &mut tts_jobs,
+            Some(&mut usage),
+        )
+        .expect("TTS usage");
+    unsafe { std::env::remove_var("PFIT_USAGE_TTS_TOKEN") };
+
+    let summary = usage.summary();
+    assert_eq!(summary.total_input_tokens, 10);
+    assert_eq!(summary.total_output_tokens, 20);
+    assert_eq!(summary.total_spent_cost_units, 2);
+    assert_eq!(
+        summary.by_provider["openai-moderation-test"].moderation_calls,
+        1
+    );
+    assert_eq!(summary.by_provider["openai-test"].text_calls, 1);
+    assert_eq!(summary.by_provider["openai-image-test"].image_calls, 1);
+    assert_eq!(summary.by_provider["openai-tts-test"].tts_calls, 1);
+
+    assert!(join_and_full_request(moderation_server).starts_with("POST /v1/moderations "));
+    assert!(join_and_full_request(text_server).starts_with("POST /chat/completions "));
+    assert!(join_and_full_request(image_server).starts_with("POST /images/generations "));
+    assert!(join_and_full_request(tts_server).starts_with("POST /audio/speech "));
 }
 
 // ===========================================================================

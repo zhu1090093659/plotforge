@@ -684,12 +684,17 @@ fn cli_studio_pi_agent_apply_run_persists_passing_moderation_hash() {
         }]
     })));
     let text = MockHttpServer::new(json_http_response(&openai_scene_plan_body()));
+    let image = MockHttpServer::new(json_http_response(&serde_json::json!({
+        "data": [{"b64_json": "iVBORw0KGgo="}]
+    })));
+    unsafe { std::env::set_var("PF_CLI_E2E_IMAGE_TOKEN", "cli-image-token") };
     configure_real_apply(
         &home.home,
         &project,
         &format!("http://{}/v1", moderation.addr()),
         &format!("http://{}/v1", text.addr()),
     );
+    configure_real_apply_image(&home.home, &format!("http://{}/v1", image.addr()));
 
     let result = run_with_stdin_home(
         &home.home,
@@ -697,13 +702,15 @@ fn cli_studio_pi_agent_apply_run_persists_passing_moderation_hash() {
         &pi_agent_apply_payload(&project, "safe player input"),
     )
     .stdout_json();
+    unsafe { std::env::remove_var("PF_CLI_E2E_IMAGE_TOKEN") };
 
     assert_eq!(moderation.request_count(), 1);
     assert_eq!(text.request_count(), 1);
+    assert_eq!(image.request_count(), 1);
     assert_eq!(result["moderation_outcome"]["flagged"], false);
     assert_eq!(result["turn_usage"]["total_input_tokens"], 10);
     assert_eq!(result["turn_usage"]["total_output_tokens"], 20);
-    assert_eq!(result["turn_usage"]["total_spent_cost_units"], 0);
+    assert_eq!(result["turn_usage"]["total_spent_cost_units"], 1);
     let moderation_hash = result["run"]["reproducibility"]["moderation_config_hash"]
         .as_str()
         .filter(|hash| !hash.is_empty())
@@ -1806,6 +1813,26 @@ fn configure_real_apply(
                 "model": "omni-moderation-test",
                 "credential_env_var": "",
                 "enabled": true
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+}
+
+fn configure_real_apply_image(home: &std::path::Path, image_endpoint: &str) {
+    run_with_stdin_home(
+        home,
+        ["studio", "upsert_image_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-e2e-image",
+                "endpoint_url": image_endpoint,
+                "model": "gpt-image-test",
+                "credential_env_var": "PF_CLI_E2E_IMAGE_TOKEN",
+                "enabled": true,
+                "default_size": "1024x1024",
+                "default_quality": "medium"
             }
         })
         .to_string(),

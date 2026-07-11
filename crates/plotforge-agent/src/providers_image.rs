@@ -634,6 +634,7 @@ struct OpenAiImageResponse {
 /// (fetched).
 #[derive(Clone)]
 pub struct OpenAiImageClient<R> {
+    provider_id: String,
     endpoint_url: String,
     model: String,
     default_size: String,
@@ -658,6 +659,7 @@ where
     ) -> Result<Self, ImageProviderError> {
         let client = image_blocking_client()?;
         Ok(Self {
+            provider_id: entry.id.clone(),
             endpoint_url: entry.endpoint_url.clone(),
             model: entry.model.clone(),
             default_size: entry.default_size.clone(),
@@ -781,7 +783,7 @@ where
 
         Ok(ImageGenerationResponse::png(
             bytes,
-            "openai-image",
+            self.provider_id.clone(),
             Some(self.model.clone()),
             None,
             1,

@@ -564,6 +564,7 @@ const TTS_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60)
 /// instead of mutating process-global env state.
 #[derive(Clone, Debug)]
 pub struct OpenAiTtsClient<R> {
+    provider_id: String,
     endpoint_url: String,
     model: String,
     default_voice: String,
@@ -585,7 +586,8 @@ where
         entry: &plotforge_schema::TtsProviderEntry,
         credential_resolver: R,
     ) -> Result<Self, TtsProviderError> {
-        Self::new(
+        Self::new_with_provider_id(
+            &entry.id,
             &entry.endpoint_url,
             &entry.model,
             &entry.voice,
@@ -597,6 +599,27 @@ where
 
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        endpoint_url: &str,
+        model: &str,
+        default_voice: &str,
+        format: &str,
+        credential_env_var: &str,
+        credential_resolver: R,
+    ) -> Result<Self, TtsProviderError> {
+        Self::new_with_provider_id(
+            "openai_tts",
+            endpoint_url,
+            model,
+            default_voice,
+            format,
+            credential_env_var,
+            credential_resolver,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_provider_id(
+        provider_id: &str,
         endpoint_url: &str,
         model: &str,
         default_voice: &str,
@@ -616,6 +639,7 @@ where
                 )
             })?;
         Ok(Self {
+            provider_id: provider_id.into(),
             endpoint_url: endpoint_url.into(),
             model: model.into(),
             default_voice: default_voice.into(),
@@ -748,7 +772,7 @@ where
         }
         Ok(TtsProviderOutput::audio(
             bytes.to_vec(),
-            "openai_tts",
+            self.provider_id.clone(),
             Some(self.model.clone()),
             None,
             1,
