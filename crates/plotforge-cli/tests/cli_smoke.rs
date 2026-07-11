@@ -1648,17 +1648,30 @@ where
 /// a temp `HOME` instead of the real user home. This is the hermetic test hook
 /// for the studio commands that read/write user-global state: the binary
 /// already links `dirs::config_dir()`, which on macOS resolves to
-/// `$HOME/Library/Application Support` and on Linux to `$HOME/.config`, both of
-/// which honor an overridden `HOME`. The external skill roots (`~/.claude`,
-/// `~/.codex`, ...) likewise resolve from `HOME`. With `HOME` pointed at a
-/// fresh temp dir, none of these paths exist, so the commands see a clean
-/// install and any writes land under the temp dir (never the real
-/// `~/.plotforge/`). This keeps provider/prompt/skill upsert + delete tests
-/// hermetic and safe to run on a developer's real machine.
+/// `$HOME/Library/Application Support` and on Linux to `$XDG_CONFIG_HOME` when
+/// that variable is present. CI runners can provide a shared
+/// `XDG_CONFIG_HOME`, so overriding only `HOME` lets otherwise independent
+/// tests leak registry and usage state into one another. Pin both variables to
+/// the fresh temp home. External skill roots (`~/.claude`, `~/.codex`, ...)
+/// still resolve from `HOME`, so every user-global path remains isolated.
 fn cli_with_home(home: &std::path::Path) -> Command {
     let mut cmd = cli();
     cmd.env("HOME", home);
+    cmd.env("XDG_CONFIG_HOME", home.join(".config"));
     cmd
+}
+
+#[test]
+fn cli_with_home_pins_xdg_config_to_the_hermetic_home() {
+    let home = hermetic_home();
+    let command = cli_with_home(&home.home);
+    let configured_xdg = command
+        .get_envs()
+        .find(|(key, _)| *key == "XDG_CONFIG_HOME")
+        .and_then(|(_, value)| value);
+    let expected = home.home.join(".config");
+
+    assert_eq!(configured_xdg, Some(expected.as_os_str()));
 }
 
 fn run_with_stdin_home<I, S>(home: &std::path::Path, args: I, stdin: &str) -> CommandOutput
