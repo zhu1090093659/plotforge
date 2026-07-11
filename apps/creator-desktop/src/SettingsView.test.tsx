@@ -40,6 +40,7 @@ import type {
   AgentSessionConfig,
   ImageProviderEntry,
   McpServerEntry,
+  ModerationProviderEntry,
   PromptTemplate,
   ProviderEntry,
   SkillManifest,
@@ -98,6 +99,17 @@ const savedTtsProvider: TtsProviderEntry = {
   enabled: true,
   voice: "coral",
   format: "mp3",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
+};
+
+const savedModerationProvider: ModerationProviderEntry = {
+  id: "moderation-prod",
+  endpoint_url: "https://api.openai.com/v1",
+  model: "omni-moderation-latest",
+  credential_env_var: "OPENAI_API_KEY",
+  enabled: true,
   max_concurrency: null,
   requests_per_minute: null,
   daily_token_budget: null,
@@ -738,6 +750,126 @@ describe("SettingsView", () => {
 
     fireEvent.click(within(section).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith("tts-prod"));
+  });
+
+  it("manages moderation providers inside the Agent tab", async () => {
+    const upsert = vi.fn(async (entry: ModerationProviderEntry) => entry);
+    const remove = vi.fn(async (_id: string) => savedModerationProvider);
+    const probe = vi.fn(async (_id: string) => ({
+      ok: true,
+      message: "Moderation probe completed",
+    }));
+    const dataSource = settingsTestDataSource({
+      async listModerationProviders() {
+        return [
+          { ...savedModerationProvider, id: "moderation-off", enabled: false },
+          savedModerationProvider,
+        ];
+      },
+      async upsertModerationProvider(entry) {
+        return upsert(entry);
+      },
+      async deleteModerationProvider(id) {
+        return remove(id);
+      },
+      async testModerationProvider(id) {
+        return probe(id);
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    const heading = await screen.findByRole("heading", {
+      name: "Moderation providers",
+    });
+    const section = heading.closest("section") as HTMLElement;
+    expect(
+      within(section).getByText("First enabled provider: moderation-prod"),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(section).getByRole("button", {
+        name: "Add moderation provider",
+      }),
+    );
+    fireEvent.change(within(section).getByLabelText("Provider id"), {
+      target: { value: "moderation-new" },
+    });
+    fireEvent.change(within(section).getByLabelText("Endpoint URL"), {
+      target: { value: "https://moderation.example/v1" },
+    });
+    fireEvent.change(within(section).getByLabelText("Model"), {
+      target: { value: "moderation-v2" },
+    });
+    fireEvent.change(within(section).getByLabelText("Credential env var"), {
+      target: { value: "MODERATION_API_KEY" },
+    });
+    fireEvent.change(
+      within(section).getByLabelText("Max concurrency (optional)"),
+      { target: { value: "2" } },
+    );
+    fireEvent.change(
+      within(section).getByLabelText("Requests per minute (optional)"),
+      { target: { value: "15" } },
+    );
+    expect(
+      (
+        within(section).getByLabelText(
+          "Daily token budget (optional)",
+        ) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      within(section).getByText(
+        /moderation usage does not report output tokens/,
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Save provider" }),
+    );
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    expect(upsert.mock.calls[0][0]).toMatchObject({
+      id: "moderation-new",
+      endpoint_url: "https://moderation.example/v1",
+      model: "moderation-v2",
+      credential_env_var: "MODERATION_API_KEY",
+      enabled: true,
+      max_concurrency: 2,
+      requests_per_minute: 15,
+      daily_token_budget: null,
+    });
+
+    expect(await within(section).findByText("moderation-prod")).toBeTruthy();
+    const savedCard = within(section)
+      .getByText("moderation-prod")
+      .closest("li") as HTMLElement;
+    fireEvent.click(
+      within(savedCard).getByRole("button", { name: "Edit" }),
+    );
+    expect(
+      (within(section).getByLabelText("Provider id") as HTMLInputElement).value,
+    ).toBe("moderation-prod");
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Cancel" }),
+    );
+
+    const restoredCard = within(section)
+      .getByText("moderation-prod")
+      .closest("li") as HTMLElement;
+    fireEvent.click(
+      within(restoredCard).getByRole("button", { name: "Test connection" }),
+    );
+    await waitFor(() => expect(probe).toHaveBeenCalledWith("moderation-prod"));
+    expect(
+      await within(section).findByText(/Moderation probe completed/),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(restoredCard).getByRole("button", { name: "Delete" }),
+    );
+    await waitFor(() =>
+      expect(remove).toHaveBeenCalledWith("moderation-prod"),
+    );
   });
 
   it("renders the Prompts user/project scope toggle buttons inside the Agent tab", async () => {
