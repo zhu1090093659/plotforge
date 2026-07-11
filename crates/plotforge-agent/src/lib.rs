@@ -33,6 +33,9 @@ pub use mcp_loop::{
     McpLoopError, complete_with_mcp_tools, complete_with_mcp_tools_with_usage_reporter,
     parse_mcp_tool_calls,
 };
+pub use moderation_loop::{
+    ModerationLoopError, ModerationOutcome, ModerationScreen, screen_with_moderation,
+};
 pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities, pi_agent_capabilities_with_mcp};
 pub use pipelines::{
     generate_character, generate_character_with_provider, generate_story_craft,

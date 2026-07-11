@@ -1683,5 +1683,22 @@ mod tests {
             moderation_config_hash(&entry),
             moderation_config_hash(&model_edit)
         );
+        assert!(!plotforge_schema::contains_secret_marker_text(
+            &moderation_config_hash(&entry)
+        ));
+
+        for edit in [
+            |entry: &mut ModerationProviderEntry| entry.id.push_str("-other"),
+            |entry: &mut ModerationProviderEntry| entry.endpoint_url.push_str("/other"),
+            |entry: &mut ModerationProviderEntry| entry.credential_env_var.push_str("_OTHER"),
+            |entry: &mut ModerationProviderEntry| entry.enabled = !entry.enabled,
+        ] {
+            let mut changed = entry.clone();
+            edit(&mut changed);
+            assert_ne!(
+                moderation_config_hash(&entry),
+                moderation_config_hash(&changed)
+            );
+        }
     }
 }

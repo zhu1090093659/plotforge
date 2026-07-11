@@ -155,26 +155,6 @@ pub(crate) fn join_provider_endpoint(base: &str, suffix: &str) -> Result<String,
     Ok(url.to_string())
 }
 
-#[cfg(test)]
-mod provider_endpoint_tests {
-    use super::join_provider_endpoint;
-
-    #[test]
-    fn joins_provider_endpoint_without_dropping_base_path() {
-        assert_eq!(
-            join_provider_endpoint("https://api.openai.com/v1/", "/moderations/")
-                .expect("valid endpoint"),
-            "https://api.openai.com/v1/moderations"
-        );
-    }
-
-    #[test]
-    fn rejects_provider_endpoint_credentials_and_query() {
-        assert!(join_provider_endpoint("https://user:pass@example.com/v1", "moderations").is_err());
-        assert!(join_provider_endpoint("https://example.com/v1?key=value", "moderations").is_err());
-    }
-}
-
 pub(crate) fn choice_input_terms(action_type: &str) -> Vec<String> {
     let terms: &[&str] = match action_type {
         "continue" => &["continue", "hear", "minister", "听", "继续", "陈情"],
@@ -195,5 +175,25 @@ pub(crate) fn insert_media_bytes(
     match project_root {
         Some(project_root) => registry.insert_project_bytes(project_root, input, bytes),
         None => registry.insert_bytes(input, bytes),
+    }
+}
+
+#[cfg(test)]
+mod provider_endpoint_tests {
+    use super::join_provider_endpoint;
+
+    #[test]
+    fn joins_provider_endpoint_without_dropping_base_path() {
+        assert_eq!(
+            join_provider_endpoint("https://api.openai.com/v1/", "/moderations/")
+                .expect("valid endpoint"),
+            "https://api.openai.com/v1/moderations"
+        );
+    }
+
+    #[test]
+    fn rejects_provider_endpoint_credentials_and_query() {
+        assert!(join_provider_endpoint("https://user:pass@example.com/v1", "moderations").is_err());
+        assert!(join_provider_endpoint("https://example.com/v1?key=value", "moderations").is_err());
     }
 }
