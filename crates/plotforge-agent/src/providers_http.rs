@@ -11,8 +11,9 @@
 //! Ollama endpoint with no auth), the client omits the auth header rather
 //! than failing.
 //!
-//! The response is always surfaced as `TextModelResponse { raw_json }`,
-//! where `raw_json` is the model's text content. The shared
+//! The response is surfaced as `TextModelResponse { raw_json, usage }`, where
+//! `raw_json` is the model's text content and `usage` carries optional,
+//! redaction-safe token counts. The shared
 //! `complete_text_agent_output` pipeline then JSON-repairs, validates, and
 //! re-derives the `AgentOutputEnvelope` from that text. Network failures map
 //! to `TextModelProviderError::provider` (with a redacted code/message) and
@@ -44,7 +45,7 @@ const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The decoded payload shared by every provider's `extract_*_content` step.
 /// `content` is the model's text (the field `complete()` wraps in
-/// `TextModelResponse::json`). `finish_reason` and `usage` are surfaced so
+/// `TextModelResponse::json_with_usage`). `finish_reason` and `usage` are surfaced so
 /// the pipeline can detect content-filter / truncation *before* attempting
 /// JSON repair — otherwise a content-filtered or max-tokens-truncated
 /// partial body would masquerade as opaque `text_provider_invalid_json`.
@@ -426,7 +427,10 @@ impl TextModelClient for OpenAiCompatibleClient {
         let builder = self.client.post(chat_url).headers(headers).json(&body);
         let text = execute(builder)?;
         let extracted = extract_openai_chat_content(&text)?;
-        Ok(TextModelResponse::json(extracted.content))
+        Ok(TextModelResponse::json_with_usage(
+            extracted.content,
+            extracted.usage,
+        ))
     }
 }
 
@@ -568,7 +572,10 @@ impl TextModelClient for OpenAiResponsesClient {
         let builder = self.client.post(responses_url).headers(headers).json(&body);
         let text = execute(builder)?;
         let extracted = extract_openai_responses_content(&text)?;
-        Ok(TextModelResponse::json(extracted.content))
+        Ok(TextModelResponse::json_with_usage(
+            extracted.content,
+            extracted.usage,
+        ))
     }
 }
 
@@ -747,7 +754,10 @@ impl TextModelClient for AnthropicMessagesClient {
         let builder = self.client.post(messages_url).headers(headers).json(&body);
         let text = execute(builder)?;
         let extracted = extract_anthropic_content(&text)?;
-        Ok(TextModelResponse::json(extracted.content))
+        Ok(TextModelResponse::json_with_usage(
+            extracted.content,
+            extracted.usage,
+        ))
     }
 }
 
@@ -1506,7 +1516,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_chat_extracts_usage_when_present() {
+    fn openai_chat_extract_surfaces_usage() {
         let body = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":20}}"#;
         let extracted = extract_openai_chat_content(body).expect("decode");
         let usage = extracted.usage.expect("usage present");
@@ -1568,6 +1578,91 @@ mod tests {
             let _ = stream.flush();
         });
         (addr, handle, captured)
+    }
+
+    fn complete_against_server(
+        client: &dyn TextModelClient,
+        provider: &str,
+        reply_body: &str,
+    ) -> TextModelResponse {
+        let (addr, handle, _captured) = capturing_server(reply_body.into());
+        let config = sample_config(provider, &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        response
+    }
+
+    #[test]
+    fn real_http_clients_surface_usage() {
+        let openai_chat = complete_against_server(
+            &OpenAiCompatibleClient::default(),
+            "openai",
+            r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}],"usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
+        );
+        assert_eq!(
+            openai_chat.usage,
+            Some(UsageInfo {
+                input_tokens: Some(10),
+                output_tokens: Some(20),
+            })
+        );
+
+        let openai_responses = complete_against_server(
+            &OpenAiResponsesClient::default(),
+            "openai",
+            r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}],"usage":{"input_tokens":11,"output_tokens":21}}"#,
+        );
+        assert_eq!(
+            openai_responses.usage,
+            Some(UsageInfo {
+                input_tokens: Some(11),
+                output_tokens: Some(21),
+            })
+        );
+
+        let anthropic = complete_against_server(
+            &AnthropicMessagesClient::default(),
+            "anthropic",
+            r#"{"content":[{"text":"{\"id\":\"z\"}"}],"usage":{"input_tokens":12,"output_tokens":22}}"#,
+        );
+        assert_eq!(
+            anthropic.usage,
+            Some(UsageInfo {
+                input_tokens: Some(12),
+                output_tokens: Some(22),
+            })
+        );
+    }
+
+    #[test]
+    fn real_http_clients_default_usage_to_none_when_absent() {
+        let openai_chat = complete_against_server(
+            &OpenAiCompatibleClient::default(),
+            "openai",
+            r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#,
+        );
+        assert_eq!(openai_chat.usage, None);
+
+        let openai_responses = complete_against_server(
+            &OpenAiResponsesClient::default(),
+            "openai",
+            r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#,
+        );
+        assert_eq!(openai_responses.usage, None);
+
+        let anthropic = complete_against_server(
+            &AnthropicMessagesClient::default(),
+            "anthropic",
+            r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#,
+        );
+        assert_eq!(anthropic.usage, None);
     }
 
     #[test]

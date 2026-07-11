@@ -14,7 +14,7 @@ use plotforge_schema::{
     BeatDraftsProposal, CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, Character,
     CharacterPortraitRequest, CharacterProposal, Choice, EmotionalArcPoint, NarrativeFunction,
     NarrativeReview, PlotThread, PlotThreadStatus, PlotThreadType, ReproducibilityMetadata,
-    ReviewProposal, ScenePlanProposal, StoryCraftPlanProposal, WorldExpansionProposal,
+    ReviewProposal, ScenePlanProposal, StoryCraftPlanProposal, UsageInfo, WorldExpansionProposal,
     contains_secret_marker_text, redact_trace_text,
 };
 
@@ -49,12 +49,23 @@ pub struct TextModelRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextModelResponse {
     pub raw_json: String,
+    /// Redaction-safe provider token counts for this completion. Legacy,
+    /// local-fake, and JSON-only response paths leave this as `None`.
+    pub usage: Option<UsageInfo>,
 }
 
 impl TextModelResponse {
     pub fn json(raw_json: impl Into<String>) -> Self {
         Self {
             raw_json: raw_json.into(),
+            usage: None,
+        }
+    }
+
+    pub fn json_with_usage(raw_json: impl Into<String>, usage: Option<UsageInfo>) -> Self {
+        Self {
+            raw_json: raw_json.into(),
+            usage,
         }
     }
 }
@@ -1031,6 +1042,30 @@ mod tests {
 
     fn base_config() -> TextProviderConfig {
         TextProviderConfig::openai_compatible("p", "m", "https://x", "ENV")
+    }
+
+    #[test]
+    fn text_model_response_usage_defaults_none() {
+        let response = TextModelResponse::json("{}");
+        assert_eq!(response.usage, None);
+
+        let request = base_request_with_messages(None);
+        let fake_response = FakeTextModelProvider::success()
+            .complete(&request)
+            .expect("fake response");
+        assert_eq!(fake_response.usage, None);
+    }
+
+    #[test]
+    fn text_model_response_json_with_usage_preserves_usage() {
+        let usage = UsageInfo {
+            input_tokens: Some(10),
+            output_tokens: Some(20),
+        };
+        let response = TextModelResponse::json_with_usage("{}", Some(usage.clone()));
+
+        assert_eq!(response.raw_json, "{}");
+        assert_eq!(response.usage, Some(usage));
     }
 
     #[test]
