@@ -5,10 +5,10 @@ use plotforge_studio::{
     McpToolCallRequest, McpToolCallResult, McpToolManifest, ModelOption, PiAgentApplyRequest,
     PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, PlayOnceReport,
     ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData, ProviderEntry,
-    ProviderTestResult, PromptTemplate, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft,
-    RulesEditDocument, SkillIndex, SkillManifest, SourceFileContent, SourceFileSummary,
-    StateVariablesEditDocument, StaticExportReport, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StudioCommandError, TtsProviderEntry, VisualBible,
+    ProviderCostReport, ProviderTestResult, PromptTemplate, RemoteModelInfo, ResourceDefinition,
+    Rule, RuleDraft, RulesEditDocument, SkillIndex, SkillManifest, SourceFileContent,
+    SourceFileSummary, StateVariablesEditDocument, StaticExportReport, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StudioCommandError, TtsProviderEntry, UsageSummary, VisualBible,
     WorldEditDocument, WorldGenerationReport,
 };
 
@@ -355,6 +355,18 @@ pub fn pi_agent_apply_run(
 #[tauri::command(rename_all = "snake_case")]
 pub fn list_providers() -> Result<Vec<ProviderEntry>, StudioCommandError> {
     plotforge_studio::list_providers()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_usage_summary() -> Result<UsageSummary, StudioCommandError> {
+    plotforge_studio::get_usage_summary()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_provider_cost_report(
+    provider_id: String,
+) -> Result<ProviderCostReport, StudioCommandError> {
+    plotforge_studio::get_provider_cost_report(provider_id)
 }
 
 #[tauri::command(rename_all = "snake_case")]

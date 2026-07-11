@@ -20,12 +20,16 @@ mod registry;
 mod scene_planner;
 mod shared;
 mod skills;
+mod usage_reporter;
 mod validation;
 
 // Re-export the public API so downstream consumers (and the crate's own
 // `crate::` paths used by the pi-Agent facade) keep resolving at the crate
 // root with the same names.
-pub use mcp_loop::{McpLoopError, complete_with_mcp_tools, parse_mcp_tool_calls};
+pub use mcp_loop::{
+    McpLoopError, complete_with_mcp_tools, complete_with_mcp_tools_with_usage_reporter,
+    parse_mcp_tool_calls,
+};
 pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities, pi_agent_capabilities_with_mcp};
 pub use pipelines::{
     generate_character, generate_character_with_provider, generate_story_craft,
@@ -76,6 +80,7 @@ pub use skills::{
     read_cached_skill_index, read_skill_index_from, scan_all_skills, scan_skill, skill_index_path,
     write_skill_index, write_skill_index_to,
 };
+pub use usage_reporter::{ProviderUsageIdentity, UsageReporter};
 pub use validation::{
     AgentProposalValidationError, scene_from_proposals, validate_agent_output_proposal,
     validate_beat_drafts_proposal, validate_character_proposal, validate_review_proposal,

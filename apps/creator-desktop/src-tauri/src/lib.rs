@@ -51,6 +51,8 @@ pub fn run() {
             commands::get_agent_session_config,
             commands::set_agent_session_config,
             commands::pi_agent_apply_run,
+            commands::get_usage_summary,
+            commands::get_provider_cost_report,
             commands::list_providers,
             commands::upsert_provider,
             commands::delete_provider,

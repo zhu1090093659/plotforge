@@ -6,7 +6,9 @@
 
 use std::path::Path;
 
-use plotforge_job::{JobClock, JobQueue, JobQueueError, JobRequest};
+use plotforge_job::{
+    JobClock, JobQueue, JobQueueError, JobRequest, UsageKind, UsageLedgerError, UsageReport,
+};
 use plotforge_media::{AssetRegistry, MediaError};
 use plotforge_schema::{
     AssetKind, AssetProviderMetadata, AssetRecord, AssetReference, AssetReferenceKind,
@@ -248,7 +250,21 @@ impl std::fmt::Display for TtsProviderError {
 impl std::error::Error for TtsProviderError {}
 
 pub trait TtsProvider {
+    fn reports_usage(&self) -> bool {
+        false
+    }
+
     fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError>;
+}
+
+impl TtsProvider for Box<dyn TtsProvider> {
+    fn reports_usage(&self) -> bool {
+        (**self).reports_usage()
+    }
+
+    fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError> {
+        (**self).synthesize(request)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -265,6 +281,7 @@ pub enum TtsPipelineError {
     Job(JobQueueError),
     Media(MediaError),
     MissingAssetRecord(String),
+    Usage(UsageLedgerError),
 }
 
 impl std::fmt::Display for TtsPipelineError {
@@ -278,6 +295,7 @@ impl std::fmt::Display for TtsPipelineError {
                     "asset registry did not return inserted record {id}"
                 )
             }
+            Self::Usage(error) => write!(formatter, "failed to report TTS usage: {error}"),
         }
     }
 }
@@ -320,7 +338,20 @@ where
     where
         C: JobClock,
     {
-        self.synthesize_with_project_root(request, None, registry, jobs)
+        self.synthesize_with_project_root(request, None, registry, jobs, None)
+    }
+
+    pub fn synthesize_with_usage_reporter<C>(
+        &self,
+        request: TtsRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+        reporter: Option<&mut dyn crate::UsageReporter>,
+    ) -> Result<TtsPipelineResult, TtsPipelineError>
+    where
+        C: JobClock,
+    {
+        self.synthesize_with_project_root(request, None, registry, jobs, reporter)
     }
 
     pub fn synthesize_for_project<C>(
@@ -333,7 +364,33 @@ where
     where
         C: JobClock,
     {
-        self.synthesize_with_project_root(request, Some(project_root.as_ref()), registry, jobs)
+        self.synthesize_with_project_root(
+            request,
+            Some(project_root.as_ref()),
+            registry,
+            jobs,
+            None,
+        )
+    }
+
+    pub fn synthesize_for_project_with_usage_reporter<C>(
+        &self,
+        project_root: impl AsRef<Path>,
+        request: TtsRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+        reporter: Option<&mut dyn crate::UsageReporter>,
+    ) -> Result<TtsPipelineResult, TtsPipelineError>
+    where
+        C: JobClock,
+    {
+        self.synthesize_with_project_root(
+            request,
+            Some(project_root.as_ref()),
+            registry,
+            jobs,
+            reporter,
+        )
     }
 
     fn synthesize_with_project_root<C>(
@@ -342,6 +399,7 @@ where
         project_root: Option<&Path>,
         registry: &mut AssetRegistry,
         jobs: &mut JobQueue<C>,
+        reporter: Option<&mut dyn crate::UsageReporter>,
     ) -> Result<TtsPipelineResult, TtsPipelineError>
     where
         C: JobClock,
@@ -372,6 +430,20 @@ where
 
         match self.provider.synthesize(&request) {
             Ok(output) => {
+                if self.provider.reports_usage()
+                    && let Some(reporter) = reporter
+                {
+                    reporter
+                        .report_usage(UsageReport {
+                            provider_id: output.provider.clone(),
+                            kind: UsageKind::Tts,
+                            model: output.model.clone().unwrap_or_else(|| "unknown".into()),
+                            input_tokens: 0,
+                            output_tokens: 0,
+                            spent_cost_units: output.spent_cost_units,
+                        })
+                        .map_err(TtsPipelineError::Usage)?;
+                }
                 let asset_id = insert_media_bytes(
                     registry,
                     project_root,
@@ -546,6 +618,10 @@ impl<R> TtsProvider for OpenAiTtsClient<R>
 where
     R: crate::providers_text::ProviderCredentialResolver,
 {
+    fn reports_usage(&self) -> bool {
+        true
+    }
+
     fn synthesize(&self, request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError> {
         // Resolve the credential at call time. A missing/empty credential for
         // an auth-required provider surfaces an explicit error (no silent

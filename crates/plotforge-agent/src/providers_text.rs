@@ -23,6 +23,7 @@ use crate::shared::{
     FAKE_TEXT_MODEL_VERSION, FAKE_TEXT_PROVIDER_CONFIG_HASH, TEXT_PROMPT_VERSION,
     choice_input_terms, stable_sha256_hash,
 };
+use crate::usage_reporter::ProviderUsageIdentity;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextModelRequest {
@@ -183,6 +184,12 @@ impl std::error::Error for TextModelProviderError {}
 pub trait TextModelProvider {
     fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
         ReproducibilityMetadata::local_mock(run_seed)
+    }
+
+    /// Redaction-safe accounting identity for real providers. Local fakes and
+    /// test doubles default to `None`, so they never produce usage records.
+    fn usage_identity(&self) -> Option<ProviderUsageIdentity> {
+        None
     }
 
     fn complete(
@@ -504,6 +511,13 @@ where
 {
     fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
         self.config.reproducibility_metadata(run_seed)
+    }
+
+    fn usage_identity(&self) -> Option<ProviderUsageIdentity> {
+        Some(ProviderUsageIdentity::new(
+            self.config.provider.clone(),
+            self.config.model.clone(),
+        ))
     }
 
     fn complete(

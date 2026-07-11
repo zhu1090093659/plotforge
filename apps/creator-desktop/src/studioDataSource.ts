@@ -24,9 +24,11 @@ import type {
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
+  ProviderCostReport,
   ProviderEntry,
   ImageProviderEntry,
   TtsProviderEntry,
+  UsageSummary,
   PromptTemplate,
   RemoteModelInfo,
   ResourceDefinition,
@@ -172,6 +174,8 @@ export interface StudioDataSource {
     config: AgentSessionConfig,
   ): Promise<AgentSessionConfig>;
   piAgentApplyRun(request: PiAgentApplyRequest): Promise<PiAgentApplyResult>;
+  getUsageSummary(): Promise<UsageSummary>;
+  getProviderCostReport(providerId: string): Promise<ProviderCostReport>;
   listProviders(): Promise<ProviderEntry[]>;
   upsertProvider(entry: ProviderEntry): Promise<ProviderEntry>;
   deleteProvider(id: string): Promise<ProviderEntry>;
@@ -296,6 +300,8 @@ function createStudioDataSource(
     getAgentSessionConfig: bridge.getAgentSessionConfig,
     setAgentSessionConfig: bridge.setAgentSessionConfig,
     piAgentApplyRun: bridge.piAgentApplyRun,
+    getUsageSummary: bridge.getUsageSummary,
+    getProviderCostReport: bridge.getProviderCostReport,
     listProviders: bridge.listProviders,
     upsertProvider: bridge.upsertProvider,
     deleteProvider: bridge.deleteProvider,

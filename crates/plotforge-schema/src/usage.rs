@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +11,27 @@ use serde::{Deserialize, Serialize};
 pub struct UsageInfo {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderCostReport {
+    pub provider_id: String,
+    pub text_calls: u64,
+    pub image_calls: u64,
+    pub tts_calls: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub spent_cost_units: u64,
+}
+
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UsageSummary {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_spent_cost_units: u64,
+    pub by_provider: BTreeMap<String, ProviderCostReport>,
 }
 
 #[cfg(test)]
@@ -45,5 +68,56 @@ mod tests {
                 "unexpected error for {field}: {error}"
             );
         }
+    }
+
+    #[test]
+    fn usage_summary_roundtrips_json() {
+        let report = ProviderCostReport {
+            provider_id: "provider-a".into(),
+            text_calls: 2,
+            image_calls: 1,
+            tts_calls: 1,
+            input_tokens: 1_024,
+            output_tokens: 256,
+            spent_cost_units: 12,
+        };
+        let summary = UsageSummary {
+            total_input_tokens: report.input_tokens,
+            total_output_tokens: report.output_tokens,
+            total_spent_cost_units: report.spent_cost_units,
+            by_provider: BTreeMap::from([(report.provider_id.clone(), report)]),
+        };
+
+        let encoded = serde_json::to_string(&summary).expect("serialize usage summary");
+        let decoded: UsageSummary =
+            serde_json::from_str(&encoded).expect("deserialize usage summary");
+
+        assert_eq!(decoded, summary);
+    }
+
+    #[test]
+    fn usage_summary_and_provider_report_reject_unknown_fields() {
+        let summary_error = serde_json::from_value::<UsageSummary>(serde_json::json!({
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_spent_cost_units": 0,
+            "by_provider": {},
+            "api_key": "must-not-be-accepted"
+        }))
+        .expect_err("usage summary must reject unknown fields");
+        assert!(summary_error.to_string().contains("unknown field"));
+
+        let report_error = serde_json::from_value::<ProviderCostReport>(serde_json::json!({
+            "provider_id": "provider-a",
+            "text_calls": 0,
+            "image_calls": 0,
+            "tts_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "spent_cost_units": 0,
+            "secret": "must-not-be-accepted"
+        }))
+        .expect_err("provider report must reject unknown fields");
+        assert!(report_error.to_string().contains("unknown field"));
     }
 }

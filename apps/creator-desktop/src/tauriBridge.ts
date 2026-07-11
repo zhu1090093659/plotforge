@@ -25,10 +25,12 @@ import type {
   ProjectCreationReport,
   ProjectCreationRequest,
   ProjectData,
+  ProviderCostReport,
   ProviderEntry,
   ProviderKind,
   ImageProviderEntry,
   TtsProviderEntry,
+  UsageSummary,
   PromptTemplate,
   RemoteModelInfo,
   ResourceDefinition,
@@ -96,6 +98,8 @@ export const studioCommandNames = {
   getAgentSessionConfig: "get_agent_session_config",
   setAgentSessionConfig: "set_agent_session_config",
   piAgentApplyRun: "pi_agent_apply_run",
+  getUsageSummary: "get_usage_summary",
+  getProviderCostReport: "get_provider_cost_report",
   listProviders: "list_providers",
   upsertProvider: "upsert_provider",
   deleteProvider: "delete_provider",
@@ -598,6 +602,15 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
       return invokeCommand<PiAgentApplyResult>(
         studioCommandNames.piAgentApplyRun,
         { request },
+      );
+    },
+    getUsageSummary(): Promise<UsageSummary> {
+      return invokeCommand<UsageSummary>(studioCommandNames.getUsageSummary);
+    },
+    getProviderCostReport(providerId: string): Promise<ProviderCostReport> {
+      return invokeCommand<ProviderCostReport>(
+        studioCommandNames.getProviderCostReport,
+        { provider_id: providerId },
       );
     },
     listProviders(): Promise<ProviderEntry[]> {

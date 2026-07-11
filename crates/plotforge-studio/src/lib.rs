@@ -15,14 +15,15 @@ pub use plotforge_schema::{
     Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ImageProviderEntry, ModelOption,
     PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
     PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
-    ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry,
-    RemoteModelInfo, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot,
-    RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin,
-    SkillSource, StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
-    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
-    TtsProviderEntry, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
-    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
-    WorldGenerationRequest, redact_trace_text,
+    ProjectTemplateId, PromptScope, PromptTemplate, ProviderCostReport, ProviderEntry,
+    ProviderKind, ProviderRegistry, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft,
+    RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene, SkillFrontmatter, SkillIndex,
+    SkillInterface, SkillManifest, SkillOrigin, SkillSource, StateVariablesEditDocument,
+    SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, TtsProviderEntry,
+    UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
+    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
+    redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -51,6 +52,7 @@ use plotforge_storage::{
 use serde::Serialize;
 
 pub type StudioCommandResult<T> = Result<T, StudioCommandError>;
+type SystemUsageLedger = plotforge_job::UsageLedger<plotforge_job::SystemJobClock>;
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct StudioCommandError {
@@ -330,13 +332,19 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     // turns. When empty, the existing one-shot path is taken byte-for-byte
     // (the agent is constructed and `run_with_envelope` is called as before).
     let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
+    let mut usage_ledger = load_apply_usage_ledger(model_id, None)?;
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
         // Empty list → existing one-shot path. Construct the agent and call
         // `run_with_envelope` exactly as before (byte-identical regression
         // guard: this branch must not change the existing behavior).
         let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
         agent
-            .run_with_envelope(run_request)
+            .run_with_envelope_with_usage_reporter(
+                run_request,
+                usage_ledger
+                    .as_mut()
+                    .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
+            )
             .map_err(|error| StudioCommandError {
                 code: match &error {
                     plotforge_agent::PiAgentError::Provider { code, .. } => {
@@ -377,13 +385,16 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                 ),
             });
         }
-        plotforge_agent::complete_with_mcp_tools(
+        plotforge_agent::complete_with_mcp_tools_with_usage_reporter(
             provider.as_ref(),
             &request.agent_id,
             run_request,
             &mcp_registry,
             enabled_mcp_servers,
             &hash_inputs,
+            usage_ledger
+                .as_mut()
+                .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
         )
         .map_err(|error| StudioCommandError {
             code: match &error {
@@ -410,6 +421,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                         "pi_agent_apply_run".into()
                     }
                 }
+                plotforge_agent::McpLoopError::UsageReport { .. } => "pi_agent_usage_ledger".into(),
             },
             message: error.to_string(),
         })?
@@ -486,8 +498,13 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     // -----------------------------------------------------------------------
     let mut scene = report.scene.clone();
     let committed_scene = scene.clone();
-    let image_generation_failed =
-        attempt_scene_image_generation(project_path, &visual_style, &committed_scene, &mut scene);
+    let image_generation_failed = attempt_scene_image_generation(
+        project_path,
+        &visual_style,
+        &committed_scene,
+        &mut scene,
+        &mut usage_ledger,
+    );
     let usage = run_result.usage.clone();
 
     Ok(PiAgentApplyResult {
@@ -508,22 +525,6 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     })
 }
 
-/// A `JobClock` backed by `SystemTime`, used by the scene image pipeline so
-/// job records carry real timestamps. The pi-Agent apply flow constructs a
-/// fresh `JobQueue` per turn (image jobs are not long-lived), so this is the
-/// only place a real clock is needed in the studio layer.
-#[derive(Clone, Debug, Default)]
-struct SystemJobClock;
-
-impl plotforge_job::JobClock for SystemJobClock {
-    fn now_ms(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
-    }
-}
-
 /// Attempts to generate a scene background image when an enabled image
 /// provider is registered. Returns `None` when image generation was not
 /// attempted (no provider configured) or succeeded; returns `Some(message)`
@@ -540,6 +541,7 @@ fn attempt_scene_image_generation(
     visual_style: &str,
     committed_scene: &Scene,
     result_scene: &mut Scene,
+    usage_ledger: &mut Option<SystemUsageLedger>,
 ) -> Option<String> {
     // Resolve the image provider. When none is configured (or all are
     // disabled), image generation is skipped — not an error. The turn
@@ -567,6 +569,19 @@ fn attempt_scene_image_generation(
             )));
         }
     };
+    if usage_ledger.is_none() {
+        match plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock) {
+            Ok(ledger) => *usage_ledger = Some(ledger),
+            Err(error) => {
+                return Some(redact_trace_text(&format!(
+                    "image generation skipped: usage ledger load failed: {error}"
+                )));
+            }
+        }
+    }
+    let Some(usage_reporter) = usage_ledger.as_mut() else {
+        return Some("image generation skipped: usage ledger unavailable".into());
+    };
 
     // Build the image prompt from scene title + description + project visual
     // style. The scene description is the scene summary the planner produced;
@@ -582,12 +597,13 @@ fn attempt_scene_image_generation(
 
     let pipeline = plotforge_agent::SceneImagePipeline::new(image_provider);
     let mut asset_registry = plotforge_media::AssetRegistry::new();
-    let mut job_queue = plotforge_job::JobQueue::new(SystemJobClock);
-    match pipeline.generate_scene_background_for_project(
+    let mut job_queue = plotforge_job::JobQueue::new(plotforge_job::SystemJobClock);
+    match pipeline.generate_scene_background_for_project_with_usage_reporter(
         project_path,
         request,
         &mut asset_registry,
         &mut job_queue,
+        Some(usage_reporter),
     ) {
         Ok(result) => {
             // Update the returned scene + persist the background_asset path
@@ -639,6 +655,69 @@ fn scene_image_prompt(scene: &Scene, visual_style: &str) -> String {
 // project-scoped prompt store (`<project>/.plotforge/prompts.json`). They
 // never carry credentials, raw provider responses, or secret markers.
 // ---------------------------------------------------------------------------
+
+/// Returns the redaction-safe aggregate of the user-global usage ledger.
+/// A missing ledger is the fresh-install state and therefore returns an empty
+/// summary. Parse/read failures remain explicit Studio command errors.
+pub fn get_usage_summary() -> StudioCommandResult<UsageSummary> {
+    load_usage_ledger(None, "get_usage_summary").map(|ledger| ledger.summary())
+}
+
+/// Hermetic path-based seam used by crate tests and local adapters that must
+/// not read the real user-global `~/.plotforge/usage.json`.
+pub fn get_usage_summary_from_path(path: impl AsRef<Path>) -> StudioCommandResult<UsageSummary> {
+    load_usage_ledger(Some(path.as_ref()), "get_usage_summary").map(|ledger| ledger.summary())
+}
+
+/// Returns the usage/cost rollup for one provider id. Unknown providers are
+/// represented by a zero-valued typed report carrying the requested id.
+pub fn get_provider_cost_report(provider_id: String) -> StudioCommandResult<ProviderCostReport> {
+    load_usage_ledger(None, "get_provider_cost_report")
+        .map(|ledger| ledger.provider_cost_report(&provider_id))
+}
+
+/// Hermetic path-based counterpart to `get_provider_cost_report`.
+pub fn get_provider_cost_report_from_path(
+    path: impl AsRef<Path>,
+    provider_id: String,
+) -> StudioCommandResult<ProviderCostReport> {
+    load_usage_ledger(Some(path.as_ref()), "get_provider_cost_report")
+        .map(|ledger| ledger.provider_cost_report(&provider_id))
+}
+
+fn load_usage_ledger(
+    path: Option<&Path>,
+    command: &'static str,
+) -> StudioCommandResult<SystemUsageLedger> {
+    open_usage_ledger(path).map_err(|source| StudioCommandError {
+        code: format!("{command}_load"),
+        message: source.to_string(),
+    })
+}
+
+fn load_apply_usage_ledger(
+    model_id: &str,
+    path: Option<&Path>,
+) -> StudioCommandResult<Option<SystemUsageLedger>> {
+    if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        return Ok(None);
+    }
+    open_usage_ledger(path)
+        .map(Some)
+        .map_err(|source| StudioCommandError {
+            code: "pi_agent_usage_ledger".into(),
+            message: source.to_string(),
+        })
+}
+
+fn open_usage_ledger(
+    path: Option<&Path>,
+) -> Result<SystemUsageLedger, plotforge_job::UsageLedgerError> {
+    match path {
+        Some(path) => plotforge_job::UsageLedger::load_from(path, plotforge_job::SystemJobClock),
+        None => plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock),
+    }
+}
 
 /// Lists every registered provider entry from the user-global registry.
 /// An absent registry returns an empty list (fresh install).
@@ -2550,27 +2629,87 @@ mod tests {
         delete_tts_provider, delete_workshop_library_item, enable_mcp_server_for_project,
         enable_skill_for_project, export_static_project, export_static_project_zip,
         generate_character, generate_story_craft, generate_world_expansion,
-        get_agent_session_config, git_current_branch, git_list_branches, git_project_dir_name,
-        git_switch_branch, import_workshop_library_package, list_asset_records,
-        list_available_models, list_export_profiles, list_mcp_servers,
-        list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
-        list_workshop_library, load_workshop_library_item, open_project, pi_agent_apply_run,
-        pi_agent_capabilities, pi_agent_run, play_once_project,
-        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
-        play_once_project_with_save, probe_image_provider, probe_tts_provider,
-        read_ai_safety_policy, read_character_edit_document, read_rules_edit_document,
-        read_source_file, read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, upsert_image_provider, upsert_image_provider_entry,
-        upsert_project_prompt_template, upsert_provider, upsert_tts_provider,
-        upsert_tts_provider_entry, validate_media_provider_fields, validate_workshop_package,
-        write_source_file, write_steam_submission_kit, write_workshop_publish_draft,
+        get_agent_session_config, get_provider_cost_report_from_path, get_usage_summary_from_path,
+        git_current_branch, git_list_branches, git_project_dir_name, git_switch_branch,
+        import_workshop_library_package, list_asset_records, list_available_models,
+        list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
+        list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
+        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
+        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
+        play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
+        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, set_agent_session_config, update_ai_safety_policy,
+        update_story_craft_edit_document, update_world_edit_document, upsert_image_provider,
+        upsert_image_provider_entry, upsert_project_prompt_template, upsert_provider,
+        upsert_tts_provider, upsert_tts_provider_entry, validate_media_provider_fields,
+        validate_workshop_package, write_source_file, write_steam_submission_kit,
+        write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
         contains_secret_marker_text,
     };
+
+    #[test]
+    fn get_usage_summary_empty_when_no_ledger() {
+        let dir = tempdir().expect("temp dir");
+        let summary = get_usage_summary_from_path(dir.path().join("usage.json"))
+            .expect("missing ledger is an empty summary");
+
+        assert_eq!(summary.total_input_tokens, 0);
+        assert_eq!(summary.total_output_tokens, 0);
+        assert_eq!(summary.total_spent_cost_units, 0);
+        assert!(summary.by_provider.is_empty());
+    }
+
+    #[test]
+    fn get_usage_summary_and_provider_report_load_typed_rollups() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("usage.json");
+        fs::write(
+            &path,
+            r#"{
+  "version": 1,
+  "entries": [
+    {
+      "provider_id": "provider-a",
+      "kind": "text",
+      "model": "model-a",
+      "input_tokens": 120,
+      "output_tokens": 30,
+      "spent_cost_units": 7,
+      "timestamp_ms": 1000
+    }
+  ]
+}"#,
+        )
+        .expect("write ledger fixture");
+
+        let summary = get_usage_summary_from_path(&path).expect("load usage summary");
+        let report = get_provider_cost_report_from_path(&path, "provider-a".into())
+            .expect("load provider report");
+
+        assert_eq!(summary.total_input_tokens, 120);
+        assert_eq!(summary.total_output_tokens, 30);
+        assert_eq!(summary.total_spent_cost_units, 7);
+        assert_eq!(report.provider_id, "provider-a");
+        assert_eq!(report.text_calls, 1);
+        assert_eq!(report.input_tokens, 120);
+    }
+
+    #[test]
+    fn get_usage_summary_reports_corrupt_ledger_explicitly() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("usage.json");
+        fs::write(&path, "not-json").expect("write corrupt ledger");
+
+        let error = get_usage_summary_from_path(path).expect_err("corrupt ledger must fail");
+
+        assert_eq!(error.code, "get_usage_summary_load");
+        assert!(error.message.contains("failed to parse usage ledger"));
+    }
 
     #[test]
     fn pi_agent_run_returns_local_pi_marker() {
@@ -3479,6 +3618,21 @@ mod tests {
 
     fn create_starter_project(project_path: &Path) {
         create_project(project_path, sample_creation_request(), false).expect("create project");
+    }
+
+    #[test]
+    fn local_pi_apply_does_not_load_corrupt_usage_ledger() {
+        let temp = tempdir().expect("tempdir");
+        let corrupt_path = temp.path().join("usage.json");
+        fs::write(&corrupt_path, "not-json").expect("write corrupt ledger");
+
+        let ledger = load_apply_usage_ledger(
+            plotforge_agent::LOCAL_PI_MODEL_ID,
+            Some(corrupt_path.as_path()),
+        )
+        .expect("local-pi does not require the usage ledger");
+
+        assert!(ledger.is_none());
     }
 
     #[test]

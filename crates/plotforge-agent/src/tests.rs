@@ -1,6 +1,6 @@
 use std::{cell::RefCell, fs, rc::Rc};
 
-use plotforge_job::{JobClock, JobQueue};
+use plotforge_job::{JobClock, JobQueue, UsageLedger};
 use plotforge_media::AssetRegistry;
 use plotforge_schema::{
     AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind, AssetReferenceKind,
@@ -13,14 +13,57 @@ use plotforge_schema::{
 
 use super::{
     AgentProposalValidationError, ConfiguredTextModelProvider, FakeImageProvider,
-    FakeTextModelProvider, FakeTtsProvider, ImageProviderAgentPipeline, MockAgentPipeline,
+    FakeTextModelProvider, FakeTtsProvider, ImageGenerationRequest, ImageGenerationResponse,
+    ImageProvider, ImageProviderAgentPipeline, ImageProviderError, MockAgentPipeline,
     ProviderAgentPipeline, ProviderCredentialError, ProviderCredentialResolver, SceneImagePipeline,
     SceneImageRequest, ScenePlanRequest, ScenePlanner, TextModelClient, TextModelClientRequest,
-    TextModelProviderError, TextModelResponse, TextProviderConfig, TtsPipeline, TtsRequest,
-    fake_success_response, generate_character, generate_character_with_provider,
-    generate_story_craft, generate_story_craft_with_provider, generate_world_expansion,
-    generate_world_expansion_with_provider, scene_from_proposals, validate_agent_output_proposal,
+    TextModelProviderError, TextModelResponse, TextProviderConfig, TtsPipeline, TtsProvider,
+    TtsProviderError, TtsProviderOutput, TtsRequest, fake_success_response, generate_character,
+    generate_character_with_provider, generate_story_craft, generate_story_craft_with_provider,
+    generate_world_expansion, generate_world_expansion_with_provider, scene_from_proposals,
+    validate_agent_output_proposal,
 };
+
+#[derive(Clone, Debug)]
+struct ReportingImageProvider;
+
+impl ImageProvider for ReportingImageProvider {
+    fn reports_usage(&self) -> bool {
+        true
+    }
+
+    fn generate(
+        &self,
+        request: &ImageGenerationRequest,
+    ) -> Result<ImageGenerationResponse, ImageProviderError> {
+        Ok(ImageGenerationResponse::png(
+            vec![1, 2, 3],
+            "real-image",
+            Some("image-model".into()),
+            Some(format!("request-{}", request.scene_key)),
+            17,
+        ))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ReportingTtsProvider;
+
+impl TtsProvider for ReportingTtsProvider {
+    fn reports_usage(&self) -> bool {
+        true
+    }
+
+    fn synthesize(&self, _request: &TtsRequest) -> Result<TtsProviderOutput, TtsProviderError> {
+        Ok(TtsProviderOutput::audio(
+            vec![4, 5, 6],
+            "real-tts",
+            Some("tts-model".into()),
+            Some("tts-request".into()),
+            23,
+        ))
+    }
+}
 
 fn agent_test_project() -> plotforge_schema::ProjectData {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -817,6 +860,27 @@ fn fake_image_provider_registers_generated_asset_and_successful_job() {
 }
 
 #[test]
+fn image_provider_reports_spent_cost_units_to_usage_ledger() {
+    let mut registry = AssetRegistry::new();
+    let mut jobs = JobQueue::new(FakeClock::new(101));
+    let mut ledger = UsageLedger::new(FakeClock::new(102));
+    let pipeline = SceneImagePipeline::new(ReportingImageProvider);
+
+    pipeline
+        .generate_scene_background_with_usage_reporter(
+            scene_image_request(),
+            &mut registry,
+            &mut jobs,
+            Some(&mut ledger),
+        )
+        .expect("image generation reports usage");
+
+    let summary = ledger.summary();
+    assert_eq!(summary.total_spent_cost_units, 17);
+    assert_eq!(summary.by_provider["real-image"].image_calls, 1);
+}
+
+#[test]
 fn fake_image_provider_failure_registers_placeholder_and_failed_job() {
     let mut registry = AssetRegistry::new();
     let mut jobs = JobQueue::new(FakeClock::new(200));
@@ -939,6 +1003,29 @@ fn fake_tts_provider_registers_scene_audio_and_successful_job() {
     assert_eq!(job.kind, plotforge_schema::JobKind::TtsGeneration);
     assert_eq!(job.status, JobStatus::Succeeded);
     assert_eq!(job.cost.spent_units, 1);
+}
+
+#[test]
+fn tts_provider_reports_spent_cost_units_to_usage_ledger() {
+    let project = agent_test_project();
+    let scene = &project.scenes[0];
+    let mut registry = AssetRegistry::new();
+    let mut jobs = JobQueue::new(FakeClock::new(361));
+    let mut ledger = UsageLedger::new(FakeClock::new(362));
+    let pipeline = TtsPipeline::new(ReportingTtsProvider);
+
+    pipeline
+        .synthesize_with_usage_reporter(
+            TtsRequest::scene_narration(scene, scene.hook.clone(), "calm narrator"),
+            &mut registry,
+            &mut jobs,
+            Some(&mut ledger),
+        )
+        .expect("TTS generation reports usage");
+
+    let summary = ledger.summary();
+    assert_eq!(summary.total_spent_cost_units, 23);
+    assert_eq!(summary.by_provider["real-tts"].tts_calls, 1);
 }
 
 #[test]

@@ -623,3 +623,28 @@ describe("createStudioBridge image and TTS provider commands", () => {
     ]);
   });
 });
+
+describe("createStudioBridge usage commands", () => {
+  it("maps usage rollups to their snake_case commands", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: StudioInvoke = async <T>(
+      command: string,
+      args?: Record<string, unknown>,
+    ) => {
+      calls.push({ command, args });
+      return {} as T;
+    };
+    const bridge = createStudioBridge(invoke);
+
+    await bridge.getUsageSummary();
+    await bridge.getProviderCostReport("openai-prod");
+
+    expect(calls).toEqual([
+      { command: "get_usage_summary", args: undefined },
+      {
+        command: "get_provider_cost_report",
+        args: { provider_id: "openai-prod" },
+      },
+    ]);
+  });
+});

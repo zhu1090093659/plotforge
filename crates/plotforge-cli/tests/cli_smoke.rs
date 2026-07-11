@@ -631,6 +631,63 @@ fn cli_studio_lists_providers_on_fresh_home() {
 }
 
 #[test]
+fn cli_usage_command_group_reports_empty_fresh_home() {
+    let home = hermetic_home();
+
+    run_with_home(&home.home, ["usage", "summary"])
+        .assert_success_contains("usage summary")
+        .assert_contains("input tokens: 0")
+        .assert_contains("cost units: 0")
+        .assert_contains("no usage recorded");
+
+    let summary = run_with_home(&home.home, ["usage", "summary", "--json"])
+        .assert_no_ansi()
+        .stdout_json();
+    assert_eq!(summary["total_input_tokens"], 0);
+    assert_eq!(summary["total_output_tokens"], 0);
+    assert_eq!(summary["total_spent_cost_units"], 0);
+    assert!(summary["by_provider"].as_object().unwrap().is_empty());
+
+    run_with_home(&home.home, ["usage", "provider", "--id", "provider-a"])
+        .assert_success_contains("provider usage: provider-a")
+        .assert_contains("text calls: 0")
+        .assert_contains("cost units: 0");
+
+    let provider = run_with_home(
+        &home.home,
+        ["usage", "provider", "--id", "provider-a", "--json"],
+    )
+    .assert_no_ansi()
+    .stdout_json();
+    assert_eq!(provider["provider_id"], "provider-a");
+    assert_eq!(provider["text_calls"], 0);
+    assert_eq!(provider["spent_cost_units"], 0);
+}
+
+#[test]
+fn cli_studio_usage_dispatch_returns_contract_shapes() {
+    let home = hermetic_home();
+
+    let summary = run_with_stdin_home(
+        &home.home,
+        ["studio", "get_usage_summary"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(summary["total_input_tokens"], 0);
+    assert!(summary["by_provider"].is_object());
+
+    let report = run_with_stdin_home(
+        &home.home,
+        ["studio", "get_provider_cost_report"],
+        &serde_json::json!({ "provider_id": "provider-a" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(report["provider_id"], "provider-a");
+    assert_eq!(report["spent_cost_units"], 0);
+}
+
+#[test]
 fn cli_studio_provider_crud_round_trip_against_temp_home() {
     // upsert/delete/test_provider_connection all mutate the user-global
     // registry. Pointing HOME at a temp dir keeps every write under that temp
@@ -1716,5 +1773,14 @@ impl CommandOutput {
             String::from_utf8_lossy(&self.output.stderr)
         );
         serde_json::from_slice(&self.output.stdout).expect("stdout json")
+    }
+
+    fn assert_no_ansi(self) -> Self {
+        let stdout = String::from_utf8_lossy(&self.output.stdout);
+        assert!(
+            !stdout.contains("\x1b["),
+            "machine-readable stdout must not contain ANSI escapes: {stdout}"
+        );
+        self
     }
 }
