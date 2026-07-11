@@ -528,6 +528,9 @@ function workspaceTestDataSource(
         model: "",
         credential_env_var: "",
         enabled: false,
+        max_concurrency: null,
+        requests_per_minute: null,
+        daily_token_budget: null,
       };
     },
     async testProviderConnection(_id: string) {
@@ -551,6 +554,9 @@ function workspaceTestDataSource(
         enabled: false,
         default_size: "1024x1024",
         default_quality: "medium",
+        max_concurrency: null,
+        requests_per_minute: null,
+        daily_token_budget: null,
       };
     },
     async testImageProvider(_id: string) {
@@ -571,6 +577,9 @@ function workspaceTestDataSource(
         enabled: false,
         voice: "coral",
         format: "mp3",
+        max_concurrency: null,
+        requests_per_minute: null,
+        daily_token_budget: null,
       };
     },
     async testTtsProvider(_id: string) {

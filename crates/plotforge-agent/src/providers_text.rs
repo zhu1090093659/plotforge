@@ -75,6 +75,14 @@ impl TextModelResponse {
 pub enum TextModelProviderErrorKind {
     Provider,
     Timeout,
+    /// Local pre-flight throttle configuration, state, or usage-ledger error.
+    /// Non-retryable because repeating the same call cannot repair local state.
+    ThrottlePreflight,
+    /// Local daily output-token budget has been reached. Non-retryable.
+    BudgetExceeded {
+        spent: u64,
+        budget: u64,
+    },
     /// Upstream returned a 429 (Too Many Requests). `retry_after_ms` carries
     /// the server-advised delay parsed from the `Retry-After` header (seconds
     /// or HTTP-date), in milliseconds, when present. It is `None` if the
@@ -132,6 +140,24 @@ impl TextModelProviderError {
             kind: TextModelProviderErrorKind::Timeout,
             code: "text_provider_timeout".into(),
             message: message.into(),
+        }
+    }
+
+    fn throttle_preflight(message: impl Into<String>) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::ThrottlePreflight,
+            code: "text_provider_throttle_preflight".into(),
+            message: message.into(),
+        }
+    }
+
+    fn budget_exceeded(spent: u64, budget: u64) -> Self {
+        Self {
+            kind: TextModelProviderErrorKind::BudgetExceeded { spent, budget },
+            code: "text_provider_budget_exceeded".into(),
+            message: format!(
+                "provider daily token budget exceeded: spent={spent}, budget={budget}"
+            ),
         }
     }
 
@@ -488,6 +514,7 @@ pub struct ConfiguredTextModelProvider<C, R> {
     config: TextProviderConfig,
     client: C,
     credential_resolver: R,
+    throttle: Option<crate::throttle::ProviderThrottle>,
 }
 
 impl<C, R> ConfiguredTextModelProvider<C, R> {
@@ -496,7 +523,16 @@ impl<C, R> ConfiguredTextModelProvider<C, R> {
             config,
             client,
             credential_resolver,
+            throttle: None,
         }
+    }
+
+    pub(crate) fn with_throttle(
+        mut self,
+        throttle: Option<crate::throttle::ProviderThrottle>,
+    ) -> Self {
+        self.throttle = throttle;
+        self
     }
 
     pub fn config(&self) -> &TextProviderConfig {
@@ -563,6 +599,12 @@ where
                     error.to_string(),
                 )
             })?;
+        let _permit = self
+            .throttle
+            .as_ref()
+            .map(crate::throttle::ProviderThrottle::acquire)
+            .transpose()
+            .map_err(map_text_throttle_error)?;
         let response = self
             .client
             .complete(TextModelClientRequest {
@@ -573,6 +615,23 @@ where
             .map_err(redact_text_provider_error)?;
 
         Ok(response)
+    }
+}
+
+fn map_text_throttle_error(
+    error: crate::throttle::ProviderThrottleError,
+) -> TextModelProviderError {
+    match error.into_failure() {
+        crate::throttle::ThrottleFailure::RateLimit {
+            retry_after_ms,
+            message,
+        } => TextModelProviderError::rate_limit(retry_after_ms, message),
+        crate::throttle::ThrottleFailure::BudgetExceeded { spent, budget } => {
+            TextModelProviderError::budget_exceeded(spent, budget)
+        }
+        crate::throttle::ThrottleFailure::Preflight { message } => {
+            TextModelProviderError::throttle_preflight(redact_trace_text(&message))
+        }
     }
 }
 
@@ -1206,6 +1265,84 @@ mod tests {
             0,
             "client must not be called when a message carries a secret marker"
         );
+    }
+
+    #[test]
+    fn daily_budget_exceeded_is_explicit_and_non_retryable() {
+        use plotforge_job::{SystemJobClock, ThrottleConfig, UsageKind, UsageLedger, UsageReport};
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("usage.json");
+        let mut ledger = UsageLedger::load_from(&path, SystemJobClock).expect("load ledger");
+        ledger
+            .report_usage(UsageReport {
+                provider_id: "p".into(),
+                kind: UsageKind::Text,
+                model: "m".into(),
+                input_tokens: 1,
+                output_tokens: 10,
+                spent_cost_units: 0,
+            })
+            .expect("persist usage");
+        let throttle = crate::throttle::ProviderThrottle::from_config_with_usage_path(
+            ThrottleConfig {
+                provider_id: "p".into(),
+                daily_token_budget: Some(10),
+                ..ThrottleConfig::default()
+            },
+            path,
+        )
+        .expect("valid throttle");
+        let provider = ConfiguredTextModelProvider::new(
+            base_config(),
+            CallCountingClient::default(),
+            StaticCredential { token: "tok" },
+        )
+        .with_throttle(throttle);
+
+        let error = provider
+            .complete(&base_request_with_messages(None))
+            .expect_err("budget reached");
+
+        assert_eq!(
+            error.kind,
+            TextModelProviderErrorKind::BudgetExceeded {
+                spent: 10,
+                budget: 10
+            }
+        );
+        assert!(!error.kind.is_retryable());
+        assert_eq!(error.code, "text_provider_budget_exceeded");
+    }
+
+    #[test]
+    fn corrupt_daily_budget_ledger_is_explicit_and_non_retryable() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("usage.json");
+        std::fs::write(&path, "{not-json").expect("write corrupt usage");
+        let throttle = crate::throttle::ProviderThrottle::from_config_with_usage_path(
+            plotforge_job::ThrottleConfig {
+                provider_id: "p".into(),
+                daily_token_budget: Some(10),
+                ..plotforge_job::ThrottleConfig::default()
+            },
+            path,
+        )
+        .expect("valid throttle");
+        let provider = ConfiguredTextModelProvider::new(
+            base_config(),
+            CallCountingClient::default(),
+            StaticCredential { token: "tok" },
+        )
+        .with_throttle(throttle);
+
+        let error = provider
+            .complete(&base_request_with_messages(None))
+            .expect_err("corrupt ledger fails");
+
+        assert_eq!(error.kind, TextModelProviderErrorKind::ThrottlePreflight);
+        assert!(!error.kind.is_retryable());
+        assert!(error.message.contains("failed to parse usage ledger"));
     }
 
     #[test]

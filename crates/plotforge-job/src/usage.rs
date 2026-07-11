@@ -7,6 +7,7 @@ use thiserror::Error;
 use crate::JobClock;
 
 const USAGE_LEDGER_VERSION: u32 = 1;
+const UTC_EPOCH_DAY_MS: u64 = 86_400_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -174,6 +175,16 @@ where
             add_entry(&mut report, entry);
         }
         report
+    }
+
+    pub fn provider_output_tokens_for_utc_day(&self, provider_id: &str, at_ms: u64) -> u64 {
+        let target_day = at_ms / UTC_EPOCH_DAY_MS;
+        self.entries
+            .iter()
+            .filter(|entry| entry.provider_id == provider_id)
+            .filter(|entry| entry.timestamp_ms / UTC_EPOCH_DAY_MS == target_day)
+            .map(|entry| entry.output_tokens)
+            .sum()
     }
 
     pub fn report_usage(
@@ -346,6 +357,32 @@ mod tests {
         assert_eq!(report.input_tokens, 100);
         assert_eq!(report.output_tokens, 25);
         assert_eq!(report.spent_cost_units, 3);
+    }
+
+    #[test]
+    fn usage_ledger_provider_output_tokens_filters_by_utc_epoch_day() {
+        const DAY_MS: u64 = 86_400_000;
+        let clock = FakeClock::new(DAY_MS - 1);
+        let mut ledger = UsageLedger::new(clock.clone());
+        ledger
+            .report_usage(report("provider-a", UsageKind::Text, "model-a"))
+            .expect("previous day report");
+        clock.set(DAY_MS);
+        ledger
+            .report_usage(report("provider-a", UsageKind::Text, "model-a"))
+            .expect("current day report");
+        ledger
+            .report_usage(report("provider-b", UsageKind::Text, "model-b"))
+            .expect("other provider report");
+
+        assert_eq!(
+            ledger.provider_output_tokens_for_utc_day("provider-a", DAY_MS + 1),
+            25
+        );
+        assert_eq!(
+            ledger.provider_output_tokens_for_utc_day("provider-a", DAY_MS - 1),
+            25
+        );
     }
 
     #[test]

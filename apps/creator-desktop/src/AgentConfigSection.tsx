@@ -49,6 +49,9 @@ const EMPTY_ENTRY: ProviderEntry = {
   model: "",
   credential_env_var: "",
   enabled: true,
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const EMPTY_IMAGE_ENTRY: ImageProviderEntry = {
@@ -59,6 +62,9 @@ const EMPTY_IMAGE_ENTRY: ImageProviderEntry = {
   enabled: true,
   default_size: "1024x1024",
   default_quality: "medium",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const EMPTY_TTS_ENTRY: TtsProviderEntry = {
@@ -69,6 +75,9 @@ const EMPTY_TTS_ENTRY: TtsProviderEntry = {
   enabled: true,
   voice: "coral",
   format: "mp3",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 export interface AgentConfigSectionProps {
@@ -591,6 +600,15 @@ function ProviderEditor({ dataSource, entry, onCancel, onSave }: ProviderEditorP
           />
           <small className="text-xs text-ink/55">{t("agent.provider.maxOutputTokensHint")}</small>
         </label>
+        <QuotaFields
+          maxConcurrency={draft.max_concurrency ?? null}
+          requestsPerMinute={draft.requests_per_minute ?? null}
+          dailyTokenBudget={draft.daily_token_budget ?? null}
+          onMaxConcurrencyChange={(value) => update("max_concurrency", value)}
+          onRequestsPerMinuteChange={(value) => update("requests_per_minute", value)}
+          onDailyTokenBudgetChange={(value) => update("daily_token_budget", value)}
+          supportsDailyTokenBudget
+        />
         <label className="inline-flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
@@ -813,7 +831,7 @@ function ImageProviderEditor({
   onSave: (entry: ImageProviderEntry) => void;
 }) {
   const { t } = useStudioI18n();
-  const [draft, setDraft] = useState(entry);
+  const [draft, setDraft] = useState({ ...entry, daily_token_budget: null });
   const update = <K extends keyof ImageProviderEntry>(
     key: K,
     value: ImageProviderEntry[K],
@@ -861,6 +879,15 @@ function ImageProviderEditor({
         ariaLabel={t("agent.imageProvider.qualityLabel")}
         value={draft.default_quality}
         onChange={(value) => update("default_quality", value)}
+      />
+      <QuotaFields
+        maxConcurrency={draft.max_concurrency ?? null}
+        requestsPerMinute={draft.requests_per_minute ?? null}
+        dailyTokenBudget={draft.daily_token_budget}
+        onMaxConcurrencyChange={(value) => update("max_concurrency", value)}
+        onRequestsPerMinuteChange={(value) => update("requests_per_minute", value)}
+        onDailyTokenBudgetChange={(value) => update("daily_token_budget", value)}
+        supportsDailyTokenBudget={false}
       />
       <label className="inline-flex items-center gap-2 text-sm text-ink">
         <input
@@ -1011,7 +1038,7 @@ function TtsProviderEditor({
   onSave: (entry: TtsProviderEntry) => void;
 }) {
   const { t } = useStudioI18n();
-  const [draft, setDraft] = useState(entry);
+  const [draft, setDraft] = useState({ ...entry, daily_token_budget: null });
   const update = <K extends keyof TtsProviderEntry>(
     key: K,
     value: TtsProviderEntry[K],
@@ -1060,6 +1087,15 @@ function TtsProviderEditor({
         value={draft.format}
         onChange={(value) => update("format", value)}
       />
+      <QuotaFields
+        maxConcurrency={draft.max_concurrency ?? null}
+        requestsPerMinute={draft.requests_per_minute ?? null}
+        dailyTokenBudget={draft.daily_token_budget}
+        onMaxConcurrencyChange={(value) => update("max_concurrency", value)}
+        onRequestsPerMinuteChange={(value) => update("requests_per_minute", value)}
+        onDailyTokenBudgetChange={(value) => update("daily_token_budget", value)}
+        supportsDailyTokenBudget={false}
+      />
       <label className="inline-flex items-center gap-2 text-sm text-ink">
         <input
           type="checkbox"
@@ -1077,6 +1113,79 @@ function TtsProviderEditor({
         </StudioButton>
       </div>
     </div>
+  );
+}
+
+function QuotaFields({
+  maxConcurrency,
+  requestsPerMinute,
+  dailyTokenBudget,
+  onMaxConcurrencyChange,
+  onRequestsPerMinuteChange,
+  onDailyTokenBudgetChange,
+  supportsDailyTokenBudget,
+}: {
+  maxConcurrency: number | null;
+  requestsPerMinute: number | null;
+  dailyTokenBudget: number | null;
+  onMaxConcurrencyChange: (value: number | null) => void;
+  onRequestsPerMinuteChange: (value: number | null) => void;
+  onDailyTokenBudgetChange: (value: number | null) => void;
+  supportsDailyTokenBudget: boolean;
+}) {
+  const { t } = useStudioI18n();
+  const optionalNumber = (value: string) => (value === "" ? null : Number(value));
+  return (
+    <fieldset className="grid gap-3 rounded-md border border-canvas-200/70 p-3">
+      <legend className="px-1 text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+        {t("agent.provider.quota.title")}
+      </legend>
+      <label className="grid gap-1">
+        <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+          {t("agent.provider.quota.maxConcurrency")}
+        </span>
+        <input
+          type="number"
+          min={1}
+          aria-label={t("agent.provider.quota.maxConcurrency")}
+          value={maxConcurrency ?? ""}
+          onChange={(event) => onMaxConcurrencyChange(optionalNumber(event.target.value))}
+          className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+        />
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+          {t("agent.provider.quota.requestsPerMinute")}
+        </span>
+        <input
+          type="number"
+          min={1}
+          aria-label={t("agent.provider.quota.requestsPerMinute")}
+          value={requestsPerMinute ?? ""}
+          onChange={(event) => onRequestsPerMinuteChange(optionalNumber(event.target.value))}
+          className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
+        />
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
+          {t("agent.provider.quota.dailyTokenBudget")}
+        </span>
+        <input
+          type="number"
+          min={1}
+          disabled={!supportsDailyTokenBudget}
+          aria-label={t("agent.provider.quota.dailyTokenBudget")}
+          value={supportsDailyTokenBudget ? dailyTokenBudget ?? "" : ""}
+          onChange={(event) => onDailyTokenBudgetChange(optionalNumber(event.target.value))}
+          className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30 disabled:cursor-not-allowed disabled:opacity-55"
+        />
+        {!supportsDailyTokenBudget && (
+          <small className="text-xs text-ink/55">
+            {t("agent.provider.quota.dailyTokenBudgetTextOnly")}
+          </small>
+        )}
+      </label>
+    </fieldset>
   );
 }
 

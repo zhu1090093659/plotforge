@@ -15,6 +15,7 @@
 
 use std::path::PathBuf;
 
+use plotforge_job::ThrottleConfig;
 use plotforge_schema::{
     ImageProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
     RemoteModelList, TtsProviderEntry, redact_trace_text,
@@ -30,6 +31,7 @@ use crate::providers_text::{
     TextProviderConfig,
 };
 use crate::providers_tts::OpenAiTtsClient;
+use crate::throttle::ProviderThrottleScope;
 
 /// The reserved model id for the offline local pi-Agent mock. Real providers
 /// are opt-in: a fresh install resolves every model id to this default until
@@ -177,25 +179,38 @@ pub fn build_text_provider(
     );
     let config = TextProviderConfig {
         enabled: entry.enabled,
-        provider: entry.label.clone(),
+        provider: entry.id.clone(),
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
         max_output_tokens: entry.max_output_tokens,
         supports_json_schema,
     };
+    let throttle = build_throttle(
+        ProviderThrottleScope::Text,
+        throttle_config_hash(&[
+            provider_kind_key(entry.kind),
+            &entry.endpoint_url,
+            &entry.model,
+            &entry.credential_env_var,
+        ]),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: entry.daily_token_budget,
+        },
+    )?;
     if entry.credential_env_var.trim().is_empty() {
-        Ok(Box::new(ConfiguredTextModelProvider::new(
-            config,
-            client,
-            OptionalEnvCredentialResolver,
-        )))
+        Ok(Box::new(
+            ConfiguredTextModelProvider::new(config, client, OptionalEnvCredentialResolver)
+                .with_throttle(throttle),
+        ))
     } else {
-        Ok(Box::new(ConfiguredTextModelProvider::new(
-            config,
-            client,
-            EnvCredentialResolver,
-        )))
+        Ok(Box::new(
+            ConfiguredTextModelProvider::new(config, client, EnvCredentialResolver)
+                .with_throttle(throttle),
+        ))
     }
 }
 
@@ -224,12 +239,23 @@ pub fn build_text_provider(
 pub fn build_image_provider(
     entry: &ImageProviderEntry,
 ) -> Result<Box<dyn ImageProvider>, ProviderBuildError> {
-    let client = OpenAiImageClient::new(entry, EnvCredentialResolver).map_err(|error| {
-        ProviderBuildError::ClientConstruction {
+    reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Image,
+        throttle_config_hash(&[&entry.endpoint_url, &entry.model, &entry.credential_env_var]),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: None,
+        },
+    )?;
+    let client = OpenAiImageClient::new(entry, EnvCredentialResolver)
+        .map_err(|error| ProviderBuildError::ClientConstruction {
             provider_id: entry.id.clone(),
             message: error.message,
-        }
-    })?;
+        })?
+        .with_throttle(throttle);
     Ok(Box::new(client))
 }
 
@@ -259,12 +285,64 @@ pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProvi
 pub fn build_tts_provider(
     entry: &TtsProviderEntry,
 ) -> Result<OpenAiTtsClient<EnvCredentialResolver>, ProviderBuildError> {
-    OpenAiTtsClient::from_entry(entry, EnvCredentialResolver).map_err(|error| {
-        ProviderBuildError::ClientConstruction {
+    reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Tts,
+        throttle_config_hash(&[&entry.endpoint_url, &entry.model, &entry.credential_env_var]),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: None,
+        },
+    )?;
+    OpenAiTtsClient::from_entry(entry, EnvCredentialResolver)
+        .map(|client| client.with_throttle(throttle))
+        .map_err(|error| ProviderBuildError::ClientConstruction {
             provider_id: entry.id.clone(),
             message: error.message,
-        }
-    })
+        })
+}
+
+fn build_throttle(
+    scope: ProviderThrottleScope,
+    provider_config_hash: String,
+    config: ThrottleConfig,
+) -> Result<Option<crate::throttle::ProviderThrottle>, ProviderBuildError> {
+    let provider_id = config.provider_id.clone();
+    crate::throttle::ProviderThrottle::shared_from_config(scope, provider_config_hash, config)
+        .map_err(|error| ProviderBuildError::InvalidThrottle {
+            provider_id,
+            message: error.to_string(),
+        })
+}
+
+fn throttle_config_hash(parts: &[&str]) -> String {
+    format!(
+        "sha256:{}",
+        crate::shared::stable_sha256_hash(&parts.join("\n"))
+    )
+}
+
+fn provider_kind_key(kind: ProviderKind) -> &'static str {
+    match kind {
+        ProviderKind::OpenAiCompatible => "openai_compatible",
+        ProviderKind::OpenAiResponses => "openai_responses",
+        ProviderKind::AnthropicMessages => "anthropic_messages",
+    }
+}
+
+fn reject_media_daily_token_budget(
+    provider_id: &str,
+    daily_token_budget: Option<u64>,
+) -> Result<(), ProviderBuildError> {
+    if daily_token_budget.is_some() {
+        return Err(ProviderBuildError::UnsupportedQuota {
+            provider_id: provider_id.to_string(),
+            message: "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens".into(),
+        });
+    }
+    Ok(())
 }
 
 /// Returns the first enabled TTS provider entry in `registry`, or `None`
@@ -657,6 +735,16 @@ pub enum ProviderBuildError {
         provider_id: String,
         message: String,
     },
+    #[error("invalid throttle configuration for provider `{provider_id}`: {message}")]
+    InvalidThrottle {
+        provider_id: String,
+        message: String,
+    },
+    #[error("unsupported quota configuration for provider `{provider_id}`: {message}")]
+    UnsupportedQuota {
+        provider_id: String,
+        message: String,
+    },
 }
 
 /// Convenience used by tests and the local-pi default path: returns the
@@ -709,6 +797,9 @@ mod tests {
                 credential_env_var: "ZAI_API_KEY".into(),
                 enabled: true,
                 max_output_tokens: None,
+                max_concurrency: None,
+                requests_per_minute: None,
+                daily_token_budget: None,
             }],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
@@ -736,6 +827,9 @@ mod tests {
                     credential_env_var: "ZAI_API_KEY".into(),
                     enabled: true,
                     max_output_tokens: None,
+                    max_concurrency: None,
+                    requests_per_minute: None,
+                    daily_token_budget: None,
                 },
                 ProviderEntry {
                     id: "claude".into(),
@@ -746,6 +840,9 @@ mod tests {
                     credential_env_var: "ANTHROPIC_API_KEY".into(),
                     enabled: false,
                     max_output_tokens: None,
+                    max_concurrency: None,
+                    requests_per_minute: None,
+                    daily_token_budget: None,
                 },
             ],
             image_providers: Vec::new(),
@@ -772,6 +869,9 @@ mod tests {
             credential_env_var: "ZAI_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let _client = build_provider_client(&entry).expect("openai client");
         let anthropic_entry = ProviderEntry {
@@ -783,6 +883,9 @@ mod tests {
             credential_env_var: "ANTHROPIC_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let _client = build_provider_client(&anthropic_entry).expect("anthropic client");
         let responses_entry = ProviderEntry {
@@ -794,6 +897,9 @@ mod tests {
             credential_env_var: "OPENAI_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let _client = build_provider_client(&responses_entry).expect("responses client");
     }
@@ -833,6 +939,9 @@ mod tests {
             credential_env_var: "PLOTFORGE_H2_TEST_UNSET_VAR".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let provider = build_text_provider(&entry).expect("provider builds");
         // The env var is not set in the test process, so the strict resolver
@@ -880,6 +989,9 @@ mod tests {
             credential_env_var: String::new(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let provider = build_text_provider(&entry).expect("no-auth provider builds");
         let reproducibility = provider.reproducibility_metadata(1);
@@ -912,6 +1024,104 @@ mod tests {
         );
     }
 
+    #[test]
+    fn build_text_provider_uses_stable_registry_id_for_usage_identity() {
+        let entry = ProviderEntry {
+            id: "stable-provider-id".into(),
+            kind: ProviderKind::OpenAiCompatible,
+            label: "Editable display label".into(),
+            endpoint_url: "http://localhost:11434/v1".into(),
+            model: "model-a".into(),
+            credential_env_var: String::new(),
+            enabled: true,
+            max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        };
+
+        let provider = build_text_provider(&entry).expect("provider builds");
+        let identity = provider
+            .usage_identity()
+            .expect("registered provider identity");
+        assert_eq!(identity.provider_id, entry.id);
+        assert_ne!(identity.provider_id, entry.label);
+    }
+
+    #[test]
+    fn rebuilding_provider_throttle_reuses_process_state() {
+        let first_config = ThrottleConfig {
+            provider_id: "registry-rebuild-throttle-test".into(),
+            max_concurrency: Some(1),
+            requests_per_minute: Some(2),
+            ..ThrottleConfig::default()
+        };
+        let first = build_throttle(
+            ProviderThrottleScope::Text,
+            "sha256:registry-rebuild".into(),
+            first_config,
+        )
+        .expect("first provider build")
+        .expect("quota creates throttle");
+        let permit = first.acquire().expect("first build consumes capacity");
+
+        let second = build_throttle(
+            ProviderThrottleScope::Text,
+            "sha256:registry-rebuild".into(),
+            ThrottleConfig {
+                provider_id: "registry-rebuild-throttle-test".into(),
+                max_concurrency: Some(1),
+                requests_per_minute: Some(1),
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("second provider build")
+        .expect("quota creates throttle");
+        let failure = second
+            .acquire()
+            .expect_err("rebuilt provider must observe the in-flight permit")
+            .into_failure();
+        assert!(matches!(
+            failure,
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
+        drop(permit);
+        let failure = second
+            .acquire()
+            .expect_err("quota update must not refill the consumed bucket")
+            .into_failure();
+        assert!(matches!(
+            failure,
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
+    }
+
+    #[test]
+    fn provider_kinds_with_the_same_id_do_not_share_throttle_state() {
+        let config = ThrottleConfig {
+            provider_id: "cross-kind-throttle-test".into(),
+            requests_per_minute: Some(1),
+            ..ThrottleConfig::default()
+        };
+        let text = build_throttle(
+            ProviderThrottleScope::Text,
+            "sha256:cross-kind".into(),
+            config.clone(),
+        )
+        .expect("text build")
+        .expect("text throttle");
+        let image = build_throttle(
+            ProviderThrottleScope::Image,
+            "sha256:cross-kind".into(),
+            config,
+        )
+        .expect("image build")
+        .expect("image throttle");
+
+        drop(text.acquire().expect("text token"));
+        drop(image.acquire().expect("independent image token"));
+    }
+
     // -----------------------------------------------------------------------
     // T1.2: Dynamic model discovery (`fetch_provider_models`).
     //
@@ -940,6 +1150,9 @@ mod tests {
             credential_env_var: env_var.into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
     }
 
@@ -1207,7 +1420,23 @@ mod tests {
             enabled,
             default_size: "1024x1024".into(),
             default_quality: "medium".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
+    }
+
+    #[test]
+    fn media_daily_token_budget_is_rejected_as_unsupported() {
+        let error = reject_media_daily_token_budget("image-a", Some(1))
+            .expect_err("media daily tokens unsupported");
+        assert!(matches!(error, ProviderBuildError::UnsupportedQuota { .. }));
+        assert!(
+            error
+                .to_string()
+                .contains("supported only by text providers")
+        );
+        reject_media_daily_token_budget("image-a", None).expect("no budget remains supported");
     }
 
     #[test]
@@ -1285,6 +1514,9 @@ mod tests {
                 credential_env_var: "ZAI_API_KEY".into(),
                 enabled: true,
                 max_output_tokens: None,
+                max_concurrency: None,
+                requests_per_minute: None,
+                daily_token_budget: None,
             }],
             tts_providers: Vec::new(),
             image_providers: vec![sample_image_entry("openai-image", "OPENAI_API_KEY", true)],

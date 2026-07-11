@@ -170,6 +170,9 @@ export async function mockDeleteProvider(id: string): Promise<ProviderEntry> {
     model: "",
     credential_env_var: "",
     enabled: false,
+    max_concurrency: null,
+    requests_per_minute: null,
+    daily_token_budget: null,
   };
 }
 
@@ -234,6 +237,9 @@ export async function mockDeleteImageProvider(
     enabled: false,
     default_size: "1024x1024",
     default_quality: "medium",
+    max_concurrency: null,
+    requests_per_minute: null,
+    daily_token_budget: null,
   };
 }
 
@@ -268,6 +274,9 @@ export async function mockDeleteTtsProvider(
     enabled: false,
     voice: "coral",
     format: "mp3",
+    max_concurrency: null,
+    requests_per_minute: null,
+    daily_token_budget: null,
   };
 }
 

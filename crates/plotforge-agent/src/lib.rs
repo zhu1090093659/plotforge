@@ -20,6 +20,7 @@ mod registry;
 mod scene_planner;
 mod shared;
 mod skills;
+mod throttle;
 mod usage_reporter;
 mod validation;
 

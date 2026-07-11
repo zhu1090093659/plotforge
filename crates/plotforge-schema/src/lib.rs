@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 20;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 21;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -2116,9 +2116,9 @@ export type ThinkingLevel = "high" | "medium" | "low" | "off";
 export interface ModelOption { id: string; label: string; provider: string; }
 export interface AgentSessionConfig { model_id: string; permission_level: PermissionLevel; thinking_level: ThinkingLevel; enabled_skills: string[]; enabled_mcp_servers: string[]; }
 export type ProviderKind = "openai_compatible" | "openai_responses" | "anthropic_messages";
-export interface ProviderEntry { id: string; kind: ProviderKind; label: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; max_output_tokens?: number | null; }
-export interface ImageProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; default_size: string; default_quality: string; }
-export interface TtsProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; voice: string; format: string; }
+export interface ProviderEntry { id: string; kind: ProviderKind; label: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; max_output_tokens?: number | null; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
+export interface ImageProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; default_size: string; default_quality: string; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
+export interface TtsProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; voice: string; format: string; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
 export interface ProviderRegistry { version: string; providers: ProviderEntry[]; image_providers: ImageProviderEntry[]; tts_providers: TtsProviderEntry[]; }
 export interface RemoteModelInfo { id: string; owned_by?: string | null; created?: number | null; max_input_tokens?: number | null; max_output_tokens?: number | null; }
 export interface RemoteModelList { models: RemoteModelInfo[]; fetched_at: number; }
@@ -2643,7 +2643,7 @@ mod tests {
     fn contract_bundle_uses_current_version_envelope() {
         let bundle = contract_bundle();
 
-        assert_eq!(CONTRACT_SCHEMA_VERSION, 20);
+        assert_eq!(CONTRACT_SCHEMA_VERSION, 21);
         assert_eq!(bundle.contract_version, CONTRACT_VERSION);
         assert_eq!(bundle.schema_version, CONTRACT_SCHEMA_VERSION);
         assert_eq!(bundle.generated_by, CONTRACT_GENERATOR);

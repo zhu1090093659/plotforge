@@ -60,6 +60,7 @@ impl ImageGenerationResponse {
 pub enum ImageProviderErrorKind {
     Provider,
     Timeout,
+    ThrottlePreflight,
     /// Upstream returned a 429 (Too Many Requests). `retry_after_ms` carries
     /// the server-advised delay parsed from the `Retry-After` header, in
     /// milliseconds, when present. It is `None` if the header was absent or
@@ -96,6 +97,14 @@ impl ImageProviderError {
         Self {
             kind: ImageProviderErrorKind::Timeout,
             code: "image_provider_timeout".into(),
+            message: message.into(),
+        }
+    }
+
+    fn throttle_preflight(message: impl Into<String>) -> Self {
+        Self {
+            kind: ImageProviderErrorKind::ThrottlePreflight,
+            code: "image_provider_throttle_preflight".into(),
             message: message.into(),
         }
     }
@@ -140,6 +149,9 @@ impl ImageProviderError {
                 format!("image provider timed out: {}", self.message),
             ),
             ImageProviderErrorKind::RateLimit { .. } => {
+                RuntimeError::redacted(self.code, self.message)
+            }
+            ImageProviderErrorKind::ThrottlePreflight => {
                 RuntimeError::redacted(self.code, self.message)
             }
             ImageProviderErrorKind::ContentFiltered { .. } => {
@@ -629,6 +641,7 @@ pub struct OpenAiImageClient<R> {
     credential_env_var: String,
     credential_resolver: R,
     client: reqwest::blocking::Client,
+    throttle: Option<crate::throttle::ProviderThrottle>,
 }
 
 impl<R> OpenAiImageClient<R>
@@ -652,7 +665,16 @@ where
             credential_env_var: entry.credential_env_var.clone(),
             credential_resolver,
             client,
+            throttle: None,
         })
+    }
+
+    pub(crate) fn with_throttle(
+        mut self,
+        throttle: Option<crate::throttle::ProviderThrottle>,
+    ) -> Self {
+        self.throttle = throttle;
+        self
     }
 
     /// The endpoint-relative path for the OpenAI Images API generations
@@ -720,6 +742,12 @@ where
             .post(self.generations_url())
             .headers(headers)
             .json(&body);
+        let _permit = self
+            .throttle
+            .as_ref()
+            .map(crate::throttle::ProviderThrottle::acquire)
+            .transpose()
+            .map_err(map_image_throttle_error)?;
         let text = execute_image(builder)?;
         let parsed: OpenAiImageResponse = serde_json::from_str(&text).map_err(|error| {
             ImageProviderError::provider(
@@ -758,6 +786,23 @@ where
             None,
             1,
         ))
+    }
+}
+
+fn map_image_throttle_error(error: crate::throttle::ProviderThrottleError) -> ImageProviderError {
+    match error.into_failure() {
+        crate::throttle::ThrottleFailure::RateLimit {
+            retry_after_ms,
+            message,
+        } => ImageProviderError::rate_limit(retry_after_ms, message),
+        crate::throttle::ThrottleFailure::BudgetExceeded { spent, budget } => {
+            ImageProviderError::throttle_preflight(format!(
+                "unsupported image-provider daily token budget state: spent={spent}, budget={budget}"
+            ))
+        }
+        crate::throttle::ThrottleFailure::Preflight { message } => {
+            ImageProviderError::throttle_preflight(redact_trace_text(&message))
+        }
     }
 }
 
@@ -987,6 +1032,9 @@ mod tests {
             enabled: true,
             default_size: "1024x1024".into(),
             default_quality: "medium".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
     }
 
