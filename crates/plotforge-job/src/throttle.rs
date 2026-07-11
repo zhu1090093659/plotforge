@@ -138,9 +138,11 @@ where
         state.available_token_units = match (previous_rpm, config.requests_per_minute) {
             (_, None) => 0,
             (None, Some(requests_per_minute)) => token_capacity_units(requests_per_minute),
-            (Some(_), Some(requests_per_minute)) => state
-                .available_token_units
-                .min(token_capacity_units(requests_per_minute)),
+            (Some(previous_rpm), Some(requests_per_minute)) => {
+                let consumed_units =
+                    token_capacity_units(previous_rpm).saturating_sub(state.available_token_units);
+                token_capacity_units(requests_per_minute).saturating_sub(consumed_units)
+            }
         };
         state.last_refill_ms = now_ms;
         state.config = config;
@@ -375,7 +377,7 @@ mod tests {
         let gate = gate(
             ThrottleConfig {
                 max_concurrency: Some(1),
-                requests_per_minute: Some(1),
+                requests_per_minute: Some(2),
                 ..config()
             },
             clock,
@@ -384,7 +386,7 @@ mod tests {
 
         gate.reconfigure(ThrottleConfig {
             max_concurrency: Some(1),
-            requests_per_minute: Some(2),
+            requests_per_minute: Some(1),
             ..config()
         })
         .expect("quota hot update");

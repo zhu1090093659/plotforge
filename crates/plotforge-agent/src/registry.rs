@@ -1053,7 +1053,7 @@ mod tests {
         let first_config = ThrottleConfig {
             provider_id: "registry-rebuild-throttle-test".into(),
             max_concurrency: Some(1),
-            requests_per_minute: Some(1),
+            requests_per_minute: Some(2),
             ..ThrottleConfig::default()
         };
         let first = build_throttle(
@@ -1071,7 +1071,7 @@ mod tests {
             ThrottleConfig {
                 provider_id: "registry-rebuild-throttle-test".into(),
                 max_concurrency: Some(1),
-                requests_per_minute: Some(2),
+                requests_per_minute: Some(1),
                 ..ThrottleConfig::default()
             },
         )
