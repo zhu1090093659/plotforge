@@ -1,4 +1,15 @@
-use std::{fs, io::Write, process::Command};
+use std::{
+    fs,
+    io::{Read, Write},
+    net::TcpListener,
+    process::Command,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    thread,
+    time::Duration,
+};
 
 use plotforge_schema::{
     AI_USAGE_MANIFEST_FILE, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
@@ -609,6 +620,107 @@ fn cli_studio_pi_agent_apply_run_commits_local_pi_scene_plan() {
 }
 
 #[test]
+fn cli_studio_pi_agent_apply_run_blocks_flagged_input_before_text_request() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let home = hermetic_home();
+    let project = check_project_path(&temp);
+    create_starter_project_with_home(&home.home, &project)
+        .assert_success_contains("created project Starter Project");
+
+    let moderation = MockHttpServer::new(json_http_response(&serde_json::json!({
+        "id": "moderation-flagged",
+        "model": "omni-moderation-test",
+        "results": [{
+            "flagged": true,
+            "categories": {"violence": true},
+            "category_scores": {}
+        }]
+    })));
+    let text = MockHttpServer::new(json_http_response(&openai_scene_plan_body()));
+    configure_real_apply(
+        &home.home,
+        &project,
+        &format!("http://{}/v1", moderation.addr()),
+        &format!("http://{}/v1", text.addr()),
+    );
+
+    let output = run_with_stdin_home(
+        &home.home,
+        ["studio", "pi_agent_apply_run"],
+        &pi_agent_apply_payload(&project, "blocked player input"),
+    );
+    assert!(
+        !output.output.status.success(),
+        "flagged apply must fail explicitly"
+    );
+    let stderr = String::from_utf8_lossy(&output.output.stderr);
+    assert!(
+        stderr.contains("pi_agent_moderation_flagged"),
+        "expected moderation error code, got: {stderr}"
+    );
+    assert_eq!(moderation.request_count(), 1);
+    assert_eq!(
+        text.request_count(),
+        0,
+        "flagged input must never reach the text provider"
+    );
+}
+
+#[test]
+fn cli_studio_pi_agent_apply_run_persists_passing_moderation_hash() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let home = hermetic_home();
+    let project = check_project_path(&temp);
+    create_starter_project_with_home(&home.home, &project)
+        .assert_success_contains("created project Starter Project");
+
+    let moderation = MockHttpServer::new(json_http_response(&serde_json::json!({
+        "id": "moderation-pass",
+        "model": "omni-moderation-test",
+        "results": [{
+            "flagged": false,
+            "categories": {"violence": false},
+            "category_scores": {}
+        }]
+    })));
+    let text = MockHttpServer::new(json_http_response(&openai_scene_plan_body()));
+    configure_real_apply(
+        &home.home,
+        &project,
+        &format!("http://{}/v1", moderation.addr()),
+        &format!("http://{}/v1", text.addr()),
+    );
+
+    let result = run_with_stdin_home(
+        &home.home,
+        ["studio", "pi_agent_apply_run"],
+        &pi_agent_apply_payload(&project, "safe player input"),
+    )
+    .stdout_json();
+
+    assert_eq!(moderation.request_count(), 1);
+    assert_eq!(text.request_count(), 1);
+    assert_eq!(result["moderation_outcome"]["flagged"], false);
+    let moderation_hash = result["run"]["reproducibility"]["moderation_config_hash"]
+        .as_str()
+        .filter(|hash| !hash.is_empty())
+        .expect("run moderation hash");
+    assert_eq!(
+        result["trace"]["reproducibility"]["moderation_config_hash"],
+        moderation_hash
+    );
+
+    let persisted_trace: serde_json::Value = serde_json::from_slice(
+        &fs::read(project.join("traces/latest.json")).expect("persisted latest trace"),
+    )
+    .expect("persisted trace JSON");
+    assert_eq!(
+        persisted_trace["reproducibility"]["moderation_config_hash"],
+        moderation_hash
+    );
+}
+
+#[test]
 fn cli_studio_lists_providers_on_fresh_home() {
     // `list_providers` reads the user-global registry. A fresh install has no
     // `providers.json`, so the list must be an empty JSON array (not an error).
@@ -651,6 +763,7 @@ fn cli_usage_command_group_reports_empty_fresh_home() {
     run_with_home(&home.home, ["usage", "provider", "--id", "provider-a"])
         .assert_success_contains("provider usage: provider-a")
         .assert_contains("text calls: 0")
+        .assert_contains("moderation calls: 0")
         .assert_contains("cost units: 0");
 
     let provider = run_with_home(
@@ -661,6 +774,7 @@ fn cli_usage_command_group_reports_empty_fresh_home() {
     .stdout_json();
     assert_eq!(provider["provider_id"], "provider-a");
     assert_eq!(provider["text_calls"], 0);
+    assert_eq!(provider["moderation_calls"], 0);
     assert_eq!(provider["spent_cost_units"], 0);
 }
 
@@ -684,6 +798,7 @@ fn cli_studio_usage_dispatch_returns_contract_shapes() {
     )
     .stdout_json();
     assert_eq!(report["provider_id"], "provider-a");
+    assert_eq!(report["moderation_calls"], 0);
     assert_eq!(report["spent_cost_units"], 0);
 }
 
@@ -900,6 +1015,53 @@ fn cli_studio_tts_provider_commands_round_trip_against_temp_home() {
         removed["id"].is_string(),
         "delete object must carry string id"
     );
+}
+
+#[test]
+fn cli_studio_moderation_provider_commands_round_trip_against_temp_home() {
+    let home = hermetic_home();
+    let entry = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_moderation_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-smoke-moderation",
+                "endpoint_url": "https://example.invalid/v1",
+                "model": "omni-moderation-test",
+                "credential_env_var": "PLOTFORGE_CLI_SMOKE_MODERATION_KEY_9F3C7A",
+                "enabled": false
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert!(entry.is_object(), "upsert must return a JSON object");
+    assert_eq!(entry["id"], "cli-smoke-moderation");
+
+    let listed = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_moderation_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+
+    let tested = run_with_stdin_home(
+        &home.home,
+        ["studio", "test_moderation_provider"],
+        &serde_json::json!({ "id": "cli-smoke-moderation" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(tested["ok"], false);
+    assert!(tested["message"].is_string());
+
+    let removed = run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_moderation_provider"],
+        &serde_json::json!({ "id": "cli-smoke-moderation" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(removed["id"], "cli-smoke-moderation");
 }
 
 #[test]
@@ -1486,17 +1648,30 @@ where
 /// a temp `HOME` instead of the real user home. This is the hermetic test hook
 /// for the studio commands that read/write user-global state: the binary
 /// already links `dirs::config_dir()`, which on macOS resolves to
-/// `$HOME/Library/Application Support` and on Linux to `$HOME/.config`, both of
-/// which honor an overridden `HOME`. The external skill roots (`~/.claude`,
-/// `~/.codex`, ...) likewise resolve from `HOME`. With `HOME` pointed at a
-/// fresh temp dir, none of these paths exist, so the commands see a clean
-/// install and any writes land under the temp dir (never the real
-/// `~/.plotforge/`). This keeps provider/prompt/skill upsert + delete tests
-/// hermetic and safe to run on a developer's real machine.
+/// `$HOME/Library/Application Support` and on Linux to `$XDG_CONFIG_HOME` when
+/// that variable is present. CI runners can provide a shared
+/// `XDG_CONFIG_HOME`, so overriding only `HOME` lets otherwise independent
+/// tests leak registry and usage state into one another. Pin both variables to
+/// the fresh temp home. External skill roots (`~/.claude`, `~/.codex`, ...)
+/// still resolve from `HOME`, so every user-global path remains isolated.
 fn cli_with_home(home: &std::path::Path) -> Command {
     let mut cmd = cli();
     cmd.env("HOME", home);
+    cmd.env("XDG_CONFIG_HOME", home.join(".config"));
     cmd
+}
+
+#[test]
+fn cli_with_home_pins_xdg_config_to_the_hermetic_home() {
+    let home = hermetic_home();
+    let command = cli_with_home(&home.home);
+    let configured_xdg = command
+        .get_envs()
+        .find(|(key, _)| *key == "XDG_CONFIG_HOME")
+        .and_then(|(_, value)| value);
+    let expected = home.home.join(".config");
+
+    assert_eq!(configured_xdg, Some(expected.as_os_str()));
 }
 
 fn run_with_stdin_home<I, S>(home: &std::path::Path, args: I, stdin: &str) -> CommandOutput
@@ -1557,6 +1732,212 @@ fn create_starter_project(project: &std::path::Path) -> CommandOutput {
         "--initial-scene",
         "A creator opens a fresh PlotForge project.",
     ])
+}
+
+fn create_starter_project_with_home(
+    home: &std::path::Path,
+    project: &std::path::Path,
+) -> CommandOutput {
+    run_with_home(
+        home,
+        [
+            "new",
+            "project",
+            "--path",
+            project.to_str().unwrap(),
+            "--force",
+            "--concept",
+            "A local starter project for tests.",
+            "--visual-style",
+            "clear readable test style",
+            "--initial-scene",
+            "A creator opens a fresh PlotForge project.",
+        ],
+    )
+}
+
+fn configure_real_apply(
+    home: &std::path::Path,
+    project: &std::path::Path,
+    moderation_endpoint: &str,
+    text_endpoint: &str,
+) {
+    fs::create_dir_all(project.join(".plotforge")).expect("project config dir");
+    fs::write(
+        project.join(".plotforge/agent-config.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "model_id": "cli-e2e-text",
+            "permission_level": "ask_every_time",
+            "thinking_level": "medium",
+            "enabled_skills": [],
+            "enabled_mcp_servers": []
+        }))
+        .expect("agent config JSON"),
+    )
+    .expect("write agent config");
+
+    run_with_stdin_home(
+        home,
+        ["studio", "upsert_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-e2e-text",
+                "kind": "openai_compatible",
+                "label": "CLI E2E text",
+                "endpoint_url": text_endpoint,
+                "model": "cli-e2e-model",
+                "credential_env_var": "",
+                "enabled": true
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    run_with_stdin_home(
+        home,
+        ["studio", "upsert_moderation_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-e2e-moderation",
+                "endpoint_url": moderation_endpoint,
+                "model": "omni-moderation-test",
+                "credential_env_var": "",
+                "enabled": true
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+}
+
+fn pi_agent_apply_payload(project: &std::path::Path, player_input: &str) -> String {
+    serde_json::json!({
+        "request": {
+            "agent_id": "scene-planner",
+            "run_seed": 99,
+            "project_path": project.to_string_lossy(),
+            "player_input": player_input
+        }
+    })
+    .to_string()
+}
+
+fn openai_scene_plan_body() -> serde_json::Value {
+    let envelope = serde_json::json!({
+        "id": "cli-e2e-envelope",
+        "contract_version": plotforge_schema::CONTRACT_VERSION,
+        "schema_version": plotforge_schema::CONTRACT_SCHEMA_VERSION,
+        "agent": "scene_planner",
+        "reproducibility": {
+            "run_seed": 99,
+            "prompt_version": "provider-emitted",
+            "model_version": "cli-e2e-model",
+            "provider_config_hash": "sha256:provider-emitted"
+        },
+        "proposal": {
+            "id": "cli-e2e-scene-plan",
+            "agent": "scene_planner",
+            "output": {
+                "kind": "scene_plan",
+                "payload": {
+                    "scene_key": "cli-e2e-scene",
+                    "title": "CLI E2E Scene",
+                    "location": "Mock provider",
+                    "scene_summary": "A safe scene returned by the local TCP mock.",
+                    "dramatic_purpose": "Exercise the public CLI apply path.",
+                    "hook": "The moderation hash survives into the trace.",
+                    "emotional_goal": null,
+                    "cast": [],
+                    "entry_beat_id": "cli-e2e-scene-beat-001",
+                    "background_asset": null
+                }
+            }
+        }
+    })
+    .to_string();
+    serde_json::json!({
+        "choices": [{
+            "message": {"content": envelope},
+            "finish_reason": "stop"
+        }],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20}
+    })
+}
+
+fn json_http_response(body: &serde_json::Value) -> Vec<u8> {
+    let body = body.to_string();
+    format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .into_bytes()
+}
+
+struct MockHttpServer {
+    addr: std::net::SocketAddr,
+    stop: Arc<AtomicBool>,
+    request_count: Arc<AtomicUsize>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl MockHttpServer {
+    fn new(reply: Vec<u8>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock HTTP server");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking mock HTTP server");
+        let addr = listener.local_addr().expect("mock HTTP server addr");
+        let stop = Arc::new(AtomicBool::new(false));
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let thread_stop = stop.clone();
+        let thread_request_count = request_count.clone();
+        let handle = thread::spawn(move || {
+            while !thread_stop.load(Ordering::Acquire) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        thread_request_count.fetch_add(1, Ordering::AcqRel);
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(1)))
+                            .expect("mock HTTP read timeout");
+                        let mut request = vec![0; 65_536];
+                        let _ = stream.read(&mut request);
+                        stream.write_all(&reply).expect("mock HTTP response");
+                        stream.flush().expect("flush mock HTTP response");
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(error) => panic!("accept mock HTTP request: {error}"),
+                }
+            }
+        });
+        Self {
+            addr,
+            stop,
+            request_count,
+            handle: Some(handle),
+        }
+    }
+
+    fn addr(&self) -> std::net::SocketAddr {
+        self.addr
+    }
+
+    fn request_count(&self) -> usize {
+        self.request_count.load(Ordering::Acquire)
+    }
+}
+
+impl Drop for MockHttpServer {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(handle) = self.handle.take() {
+            let result = handle.join();
+            if !thread::panicking() {
+                result.expect("join mock HTTP server");
+            }
+        }
+    }
 }
 
 fn extract_zip(archive_path: &std::path::Path, output_dir: &std::path::Path) {

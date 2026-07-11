@@ -132,6 +132,29 @@ pub fn stable_sha256_hash(value: &str) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Joins a provider base URL with one API path segment without allowing
+/// credentials or query parameters to hitch a ride in registry config.
+pub(crate) fn join_provider_endpoint(base: &str, suffix: &str) -> Result<String, String> {
+    let mut url = reqwest::Url::parse(base.trim())
+        .map_err(|error| format!("invalid provider endpoint URL: {error}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("provider endpoint URL must use http or https".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("provider endpoint URL must not contain credentials".into());
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err("provider endpoint URL must not contain a query or fragment".into());
+    }
+    let suffix = suffix.trim_matches('/');
+    if suffix.is_empty() {
+        return Err("provider endpoint suffix must not be empty".into());
+    }
+    let path = format!("{}/{}", url.path().trim_end_matches('/'), suffix);
+    url.set_path(&path);
+    Ok(url.to_string())
+}
+
 pub(crate) fn choice_input_terms(action_type: &str) -> Vec<String> {
     let terms: &[&str] = match action_type {
         "continue" => &["continue", "hear", "minister", "听", "继续", "陈情"],
@@ -152,5 +175,25 @@ pub(crate) fn insert_media_bytes(
     match project_root {
         Some(project_root) => registry.insert_project_bytes(project_root, input, bytes),
         None => registry.insert_bytes(input, bytes),
+    }
+}
+
+#[cfg(test)]
+mod provider_endpoint_tests {
+    use super::join_provider_endpoint;
+
+    #[test]
+    fn joins_provider_endpoint_without_dropping_base_path() {
+        assert_eq!(
+            join_provider_endpoint("https://api.openai.com/v1/", "/moderations/")
+                .expect("valid endpoint"),
+            "https://api.openai.com/v1/moderations"
+        );
+    }
+
+    #[test]
+    fn rejects_provider_endpoint_credentials_and_query() {
+        assert!(join_provider_endpoint("https://user:pass@example.com/v1", "moderations").is_err());
+        assert!(join_provider_endpoint("https://example.com/v1?key=value", "moderations").is_err());
     }
 }

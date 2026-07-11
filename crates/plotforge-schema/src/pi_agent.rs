@@ -92,6 +92,16 @@ pub struct PiAgentApplyRequest {
     pub restore_id: Option<String>,
 }
 
+/// Redaction-safe moderation result exposed to Studio consumers. Categories
+/// are provider-normalized labels only; raw provider responses never enter
+/// this contract.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModerationOutcomeSummary {
+    pub flagged: bool,
+    pub categories: Vec<String>,
+}
+
 /// The result of a `pi_agent_apply_run`: the redaction-safe pi-Agent evidence
 /// envelope plus the runtime-visible outcome (committed scene + trace + optional
 /// snapshot). This embeds the same shape `AgentChatRail` renders for a playtest
@@ -117,6 +127,8 @@ pub struct PiAgentApplyResult {
     pub run: PiAgentRunResult,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moderation_outcome: Option<ModerationOutcomeSummary>,
     pub scene_key: String,
     pub scene: Scene,
     pub trace: RuntimeTrace,
@@ -429,6 +441,7 @@ mod tests {
         PiAgentApplyResult {
             run: run.clone(),
             usage: None,
+            moderation_outcome: None,
             scene_key: scene.key.clone(),
             scene: scene.clone(),
             trace: trace.clone(),
@@ -481,6 +494,7 @@ mod tests {
                 evidence_summary: "redacted".into(),
             },
             usage: None,
+            moderation_outcome: None,
             scene_key: "provider-scene-011".into(),
             scene: Scene {
                 key: "provider-scene-011".into(),
@@ -566,6 +580,7 @@ mod tests {
                 evidence_summary: "redacted".into(),
             },
             usage: None,
+            moderation_outcome: None,
             scene_key: "provider-scene-011".into(),
             scene: Scene {
                 key: "provider-scene-011".into(),
@@ -655,6 +670,7 @@ mod tests {
                 evidence_summary: "redacted".into(),
             },
             usage: None,
+            moderation_outcome: None,
             scene_key: "scene-1".into(),
             scene: Scene {
                 key: "scene-1".into(),
@@ -729,5 +745,51 @@ mod tests {
         assert_eq!(legacy.image_generation_failed, None);
         result.image_generation_failed = None;
         assert_eq!(legacy, result);
+    }
+
+    #[test]
+    fn moderation_outcome_summary_roundtrips_and_rejects_unknown_fields() {
+        let outcome = ModerationOutcomeSummary {
+            flagged: true,
+            categories: vec!["violence".into(), "harassment".into()],
+        };
+        let encoded = serde_json::to_string(&outcome).expect("serialize moderation outcome");
+        let decoded: ModerationOutcomeSummary =
+            serde_json::from_str(&encoded).expect("deserialize moderation outcome");
+        assert_eq!(decoded, outcome);
+
+        let mut value = serde_json::to_value(outcome).expect("moderation outcome value");
+        value["raw_response"] = serde_json::json!("sk-test-secret-marker");
+        let error = serde_json::from_value::<ModerationOutcomeSummary>(value)
+            .expect_err("unknown moderation outcome field should be rejected");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn pi_agent_apply_result_roundtrips_moderation_outcome() {
+        let mut result = sample_apply_result();
+        result.moderation_outcome = Some(ModerationOutcomeSummary {
+            flagged: false,
+            categories: Vec::new(),
+        });
+
+        let encoded = serde_json::to_string(&result).expect("serialize apply result");
+        let decoded: PiAgentApplyResult =
+            serde_json::from_str(&encoded).expect("deserialize apply result");
+        assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn pi_agent_apply_result_backward_compatible_without_moderation_outcome() {
+        let result = sample_apply_result();
+        let mut value = serde_json::to_value(result).expect("serialize legacy apply result");
+        value
+            .as_object_mut()
+            .expect("apply result object")
+            .remove("moderation_outcome");
+
+        let decoded: PiAgentApplyResult =
+            serde_json::from_value(value).expect("legacy apply result deserialize");
+        assert!(decoded.moderation_outcome.is_none());
     }
 }

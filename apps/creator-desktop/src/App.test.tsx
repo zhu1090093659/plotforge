@@ -29,6 +29,7 @@ import type {
   McpToolCallRequest,
   McpToolCallResult,
   McpToolManifest,
+  ModerationProviderEntry,
   PiAgentApplyResult,
   ProviderEntry,
   PromptTemplate,
@@ -1316,6 +1317,7 @@ function appTestDataSource(
         text_calls: 0,
         image_calls: 0,
         tts_calls: 0,
+        moderation_calls: 0,
         input_tokens: 0,
         output_tokens: 0,
         spent_cost_units: 0,
@@ -1391,6 +1393,27 @@ function appTestDataSource(
       };
     },
     async testTtsProvider(_id: string) {
+      return { ok: true, message: "" };
+    },
+    async listModerationProviders() {
+      return [];
+    },
+    async upsertModerationProvider(entry: ModerationProviderEntry) {
+      return entry;
+    },
+    async deleteModerationProvider(id: string) {
+      return {
+        id,
+        endpoint_url: "",
+        model: "",
+        credential_env_var: "",
+        enabled: false,
+        max_concurrency: null,
+        requests_per_minute: null,
+        daily_token_budget: null,
+      };
+    },
+    async testModerationProvider(_id: string) {
       return { ok: true, message: "" };
     },
     async listUserPromptTemplates() {

@@ -13,17 +13,17 @@ pub use plotforge_schema::{
     AiUsageManifest, AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Condition,
     Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ImageProviderEntry, ModelOption,
-    PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
-    PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
-    ProjectTemplateId, PromptScope, PromptTemplate, ProviderCostReport, ProviderEntry,
-    ProviderKind, ProviderRegistry, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft,
-    RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene, SkillFrontmatter, SkillIndex,
-    SkillInterface, SkillManifest, SkillOrigin, SkillSource, StateVariablesEditDocument,
-    SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, TtsProviderEntry,
-    UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
-    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
-    redact_trace_text,
+    ModerationProviderEntry, PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult,
+    PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, ProjectCreationReport,
+    ProjectCreationRequest, ProjectData, ProjectTemplateId, PromptScope, PromptTemplate,
+    ProviderCostReport, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
+    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
+    SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin, SkillSource,
+    StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
+    TtsProviderEntry, UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
+    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
+    WorldGenerationRequest, redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -254,97 +254,108 @@ pub fn pi_agent_capabilities() -> StudioCommandResult<Vec<PiAgentCapability>> {
     Ok(plotforge_agent::pi_agent_capabilities())
 }
 
-/// Run the pi-Agent against a project, generate a `ScenePlan` proposal via
-/// the configured provider, evaluate rules, commit the proposal as a runtime
-/// state change, and return the resulting scene + trace. This is the
-/// "describe a change / run a turn" path the desktop `AgentChatRail` drives
-/// when a real provider is configured; when `model_id == "local-pi"` it falls
-/// back to the deterministic mock provider.
-///
-/// Failure modes are explicit (never silent):
-/// - `pi_agent_missing_credential`: the provider's `credential_env_var`
-///   names an env var that is missing or empty.
-/// - `pi_agent_provider_timeout`: the HTTP call timed out.
-/// - `pi_agent_unsupported_payload`: the provider returned a payload kind
-///   other than `scene_plan` (only scene plans are committable today).
-pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
-    let project_path = Path::new(&request.project_path);
-    let project = load_project(project_path)
-        .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
-    let agent_config = get_agent_session_config(project_path)?;
-    let model_id = agent_config.model_id.as_str();
+struct ApplyTextOutput {
+    run_result: PiAgentRunResult,
+    envelope: plotforge_schema::AgentOutputEnvelope,
+}
 
-    // Capture the project's visual style before `project` is moved into the
-    // runtime session. The visual style lives in
-    // `story_craft.bible.prose_style_guide` (where the storage layer persists
-    // the creator's `visual_style`) and feeds the scene image prompt.
-    let visual_style = project
-        .story_craft
-        .bible
-        .prose_style_guide
-        .clone()
-        .unwrap_or_default();
+/// Owns the non-local apply pre-flight ordering and the single usage ledger
+/// shared by moderation and the downstream text/MCP path. Loading the ledger
+/// first is intentional: a corrupt or unsupported ledger must stop the flow
+/// before any paid provider request leaves the process.
+fn screen_then_apply<T>(
+    load_ledger: impl FnOnce() -> StudioCommandResult<SystemUsageLedger>,
+    screen: Option<plotforge_agent::ModerationScreen<'_>>,
+    request: &plotforge_agent::ModerationRequest,
+    downstream: impl FnOnce(&mut SystemUsageLedger) -> StudioCommandResult<T>,
+) -> StudioCommandResult<(
+    Option<plotforge_agent::ModerationOutcome>,
+    T,
+    SystemUsageLedger,
+)> {
+    let mut usage_ledger = load_ledger()?;
+    let outcome = plotforge_agent::screen_with_moderation_with_usage_reporter(
+        screen,
+        request,
+        Some(&mut usage_ledger),
+    )
+    .map_err(map_moderation_loop_error)?;
+    let value = downstream(&mut usage_ledger)?;
+    Ok((outcome, value, usage_ledger))
+}
 
-    // Resolve the provider. `local-pi` keeps the deterministic mock; any
-    // other model id must resolve to a registered, enabled provider entry.
-    // Both branches yield `Box<dyn TextModelProvider>` so the agent facade
-    // receives a single type-erased provider regardless of whether the
-    // registry picked a strict or optional credential resolver.
-    let provider: Box<dyn plotforge_agent::TextModelProvider> =
-        if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
-            Box::new(plotforge_agent::FakeTextModelProvider::local_pi())
-                as Box<dyn plotforge_agent::TextModelProvider>
-        } else {
-            let registry =
-                plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-                    code: "pi_agent_apply_registry".into(),
-                    message: source.to_string(),
-                })?;
-            let entry = plotforge_agent::resolve_provider_for_model(model_id, &registry)
-                .ok_or_else(|| StudioCommandError {
-                    code: "pi_agent_apply_no_provider".into(),
-                    message: format!("no enabled provider registered for model id `{model_id}`"),
-                })?;
-            plotforge_agent::build_text_provider(entry).map_err(|source| StudioCommandError {
-                code: "pi_agent_apply_build".into(),
-                message: source.to_string(),
-            })?
-        };
-
-    // Build the redaction-safe run request the pi-Agent expects. The prompt
-    // summary carries the player input (local-only); the hash anchors the
-    // reproducibility identity.
-    let run_request = PiAgentRunRequest {
-        agent_id: request.agent_id.clone(),
-        run_seed: request.run_seed,
-        prompt_summary: request.player_input.clone(),
-        prompt_hash: format!(
-            "sha256:{}",
-            plotforge_agent::stable_sha256_hash(&request.player_input)
-        ),
+fn map_moderation_loop_error(error: plotforge_agent::ModerationLoopError) -> StudioCommandError {
+    let code = match &error {
+        plotforge_agent::ModerationLoopError::ContentFlagged { .. } => {
+            "pi_agent_moderation_flagged"
+        }
+        plotforge_agent::ModerationLoopError::ResponseSecretMarker => {
+            "pi_agent_moderation_secret_marker"
+        }
+        plotforge_agent::ModerationLoopError::UsageReport { .. } => "pi_agent_usage_ledger",
+        plotforge_agent::ModerationLoopError::Provider(source) => match &source.kind {
+            plotforge_agent::ModerationProviderErrorKind::Timeout => "pi_agent_moderation_timeout",
+            plotforge_agent::ModerationProviderErrorKind::RateLimit { .. } => {
+                "pi_agent_moderation_rate_limit"
+            }
+            _ if source.code.contains("missing_credential") => {
+                "pi_agent_moderation_missing_credential"
+            }
+            _ => "pi_agent_moderation_provider",
+        },
     };
+    StudioCommandError {
+        code: code.into(),
+        message: redact_trace_text(&error.to_string()),
+    }
+}
 
-    // Branch on MCP enablement. When `AgentSessionConfig.enabled_mcp_servers`
-    // is non-empty, drive the multi-turn tool-call loop via
-    // `complete_with_mcp_tools` instead of the one-shot
-    // `PiAgent::run_with_envelope`. The provider is borrowed for the loop
-    // (not moved into a `PiAgent`) so the loop can drive multiple `complete()`
-    // turns. When empty, the existing one-shot path is taken byte-for-byte
-    // (the agent is constructed and `run_with_envelope` is called as before).
-    let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
-    let mut usage_ledger = load_apply_usage_ledger(model_id, None)?;
+fn moderation_request_for_apply(
+    request: &PiAgentApplyRequest,
+) -> plotforge_agent::ModerationRequest {
+    plotforge_agent::ModerationRequest {
+        call_id: format!(
+            "pi-agent-moderation-{}-{}",
+            request.agent_id, request.run_seed
+        ),
+        prompt: request.player_input.clone(),
+    }
+}
+
+fn stamp_moderation_outcome(
+    outcome: Option<plotforge_agent::ModerationOutcome>,
+    run_result: &mut PiAgentRunResult,
+    envelope: &mut plotforge_schema::AgentOutputEnvelope,
+) -> Option<plotforge_schema::ModerationOutcomeSummary> {
+    outcome.map(|outcome| {
+        let config_hash = outcome.moderation_config_hash;
+        run_result.reproducibility.moderation_config_hash = Some(config_hash.clone());
+        envelope.reproducibility.moderation_config_hash = Some(config_hash);
+        outcome.summary
+    })
+}
+
+fn load_provider_registry_for_apply(
+    model_id: &str,
+    loader: impl FnOnce() -> StudioCommandResult<ProviderRegistry>,
+) -> StudioCommandResult<Option<ProviderRegistry>> {
+    if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        return Ok(None);
+    }
+    loader().map(Some)
+}
+
+fn run_apply_text_provider(
+    provider: Box<dyn plotforge_agent::TextModelProvider>,
+    agent_id: &str,
+    run_request: PiAgentRunRequest,
+    enabled_mcp_servers: &[String],
+    reporter: Option<&mut dyn plotforge_agent::UsageReporter>,
+) -> StudioCommandResult<ApplyTextOutput> {
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
-        // Empty list → existing one-shot path. Construct the agent and call
-        // `run_with_envelope` exactly as before (byte-identical regression
-        // guard: this branch must not change the existing behavior).
-        let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
+        let agent = plotforge_agent::PiAgent::new(provider, agent_id);
         agent
-            .run_with_envelope_with_usage_reporter(
-                run_request,
-                usage_ledger
-                    .as_mut()
-                    .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
-            )
+            .run_with_envelope_with_usage_reporter(run_request, reporter)
             .map_err(|error| StudioCommandError {
                 code: match &error {
                     plotforge_agent::PiAgentError::Provider { code, .. } => {
@@ -361,21 +372,12 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                 message: error.to_string(),
             })?
     } else {
-        // Non-empty list → MCP tool-use loop. Load the MCP registry + build
-        // the blocking `McpToolClient` façade, derive the redaction-safe
-        // `mcp_tool_call_hash` inputs, and drive `complete_with_mcp_tools`.
-        // Transport/registry failures surface as explicit errors
-        // (`mcp_apply_registry` / `mcp_apply_tool_error`); no silent fallback
-        // to the no-MCP path (AGENTS.md:144).
         let mcp_registry =
             plotforge_mcp::McpToolRegistry::load().map_err(|source| StudioCommandError {
                 code: "mcp_apply_registry".into(),
                 message: format!("failed to load MCP registry: {source}"),
             })?;
         let hash_inputs = mcp_registry.hash_inputs_for(enabled_mcp_servers);
-        // If none of the enabled servers resolve to registry entries, surface
-        // an explicit error rather than silently running with an empty hash
-        // (which would look like a no-MCP turn to downstream consumers).
         if hash_inputs.is_empty() {
             return Err(StudioCommandError {
                 code: "mcp_apply_no_server".into(),
@@ -387,14 +389,12 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
         }
         plotforge_agent::complete_with_mcp_tools_with_usage_reporter(
             provider.as_ref(),
-            &request.agent_id,
+            agent_id,
             run_request,
             &mcp_registry,
             enabled_mcp_servers,
             &hash_inputs,
-            usage_ledger
-                .as_mut()
-                .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
+            reporter,
         )
         .map_err(|error| StudioCommandError {
             code: match &error {
@@ -426,6 +426,160 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             message: error.to_string(),
         })?
     };
+    Ok(ApplyTextOutput {
+        run_result,
+        envelope,
+    })
+}
+
+/// Run the pi-Agent against a project, generate a `ScenePlan` proposal via
+/// the configured provider, evaluate rules, commit the proposal as a runtime
+/// state change, and return the resulting scene + trace. This is the
+/// "describe a change / run a turn" path the desktop `AgentChatRail` drives
+/// when a real provider is configured; when `model_id == "local-pi"` it falls
+/// back to the deterministic mock provider.
+///
+/// Failure modes are explicit (never silent):
+/// - `pi_agent_missing_credential`: the provider's `credential_env_var`
+///   names an env var that is missing or empty.
+/// - `pi_agent_provider_timeout`: the HTTP call timed out.
+/// - `pi_agent_unsupported_payload`: the provider returned a payload kind
+///   other than `scene_plan` (only scene plans are committable today).
+pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
+    let project_path = Path::new(&request.project_path);
+    let project = load_project(project_path)
+        .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
+    let agent_config = get_agent_session_config(project_path)?;
+    let model_id = agent_config.model_id.as_str();
+
+    // Capture the project's visual style before `project` is moved into the
+    // runtime session. The visual style lives in
+    // `story_craft.bible.prose_style_guide` (where the storage layer persists
+    // the creator's `visual_style`) and feeds the scene image prompt.
+    let visual_style = project
+        .story_craft
+        .bible
+        .prose_style_guide
+        .clone()
+        .unwrap_or_default();
+
+    // Build the redaction-safe run request the pi-Agent expects. The prompt
+    // summary carries the player input (local-only); the hash anchors the
+    // reproducibility identity.
+    let run_request = PiAgentRunRequest {
+        agent_id: request.agent_id.clone(),
+        run_seed: request.run_seed,
+        prompt_summary: request.player_input.clone(),
+        prompt_hash: format!(
+            "sha256:{}",
+            plotforge_agent::stable_sha256_hash(&request.player_input)
+        ),
+    };
+
+    let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
+    let provider_registry = load_provider_registry_for_apply(model_id, || {
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "pi_agent_apply_registry".into(),
+            message: source.to_string(),
+        })
+    })?;
+    let (moderation, text_output, mut usage_ledger) = if model_id
+        == plotforge_agent::LOCAL_PI_MODEL_ID
+    {
+        // The deterministic local path never loads or resolves the provider
+        // registry for moderation and never performs a moderation network
+        // call. This preserves the existing offline local-pi contract.
+        let provider = Box::new(plotforge_agent::FakeTextModelProvider::local_pi())
+            as Box<dyn plotforge_agent::TextModelProvider>;
+        (
+            None,
+            run_apply_text_provider(
+                provider,
+                &request.agent_id,
+                run_request,
+                enabled_mcp_servers,
+                None,
+            )?,
+            None,
+        )
+    } else {
+        // One registry load owns both text and moderation resolution. The
+        // exact player input is screened once before text provider
+        // construction and before either the one-shot or MCP branch runs.
+        let registry = provider_registry
+            .as_ref()
+            .ok_or_else(|| StudioCommandError {
+                code: "pi_agent_apply_registry".into(),
+                message: "non-local apply path did not load the provider registry".into(),
+            })?;
+        let text_entry = plotforge_agent::resolve_provider_for_model(model_id, registry)
+            .ok_or_else(|| StudioCommandError {
+                code: "pi_agent_apply_no_provider".into(),
+                message: format!("no enabled provider registered for model id `{model_id}`"),
+            })?;
+        let moderation_provider = plotforge_agent::resolve_moderation_provider(registry)
+            .map(|entry| {
+                let config_hash = plotforge_agent::moderation_config_hash(entry);
+                plotforge_agent::build_moderation_provider(entry)
+                    .map(|provider| {
+                        (
+                            provider,
+                            config_hash,
+                            plotforge_agent::ProviderUsageIdentity::new(
+                                entry.id.clone(),
+                                entry.model.clone(),
+                            ),
+                        )
+                    })
+                    .map_err(|source| StudioCommandError {
+                        code: "pi_agent_moderation_build".into(),
+                        message: redact_trace_text(&source.to_string()),
+                    })
+            })
+            .transpose()?;
+        let moderation_request = moderation_request_for_apply(&request);
+        let screen = moderation_provider
+            .as_ref()
+            .map(
+                |(provider, config_hash, usage_identity)| plotforge_agent::ModerationScreen {
+                    provider: provider.as_ref(),
+                    config_hash,
+                    usage_identity: usage_identity.clone(),
+                },
+            );
+        let (moderation, text_output, usage_ledger) = screen_then_apply(
+            || {
+                load_apply_usage_ledger(model_id, None)?.ok_or_else(|| StudioCommandError {
+                    code: "pi_agent_usage_ledger".into(),
+                    message: "non-local apply path did not load the usage ledger".into(),
+                })
+            },
+            screen,
+            &moderation_request,
+            |usage_ledger| {
+                let provider =
+                    plotforge_agent::build_text_provider(text_entry).map_err(|source| {
+                        StudioCommandError {
+                            code: "pi_agent_apply_build".into(),
+                            message: source.to_string(),
+                        }
+                    })?;
+                run_apply_text_provider(
+                    provider,
+                    &request.agent_id,
+                    run_request,
+                    enabled_mcp_servers,
+                    Some(usage_ledger),
+                )
+            },
+        )?;
+        (moderation, text_output, Some(usage_ledger))
+    };
+    let ApplyTextOutput {
+        mut run_result,
+        mut envelope,
+    } = text_output;
+    let moderation_outcome = stamp_moderation_outcome(moderation, &mut run_result, &mut envelope);
 
     // Extract the ScenePlan payload. Other payload kinds are not committable
     // today; surface an explicit error rather than silently skipping.
@@ -510,6 +664,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     Ok(PiAgentApplyResult {
         run: run_result,
         usage,
+        moderation_outcome,
         scene_key,
         scene,
         trace: report.trace.clone(),
@@ -719,6 +874,44 @@ fn open_usage_ledger(
     }
 }
 
+/// Runs a Studio provider-registry mutation through the agent-owned locked
+/// transaction. `path` exists only for hermetic adapter tests; production
+/// always resolves the user-global registry through `mutate_provider_registry`.
+fn mutate_studio_provider_registry<T>(
+    path: Option<&Path>,
+    command: &'static str,
+    mutator: impl FnOnce(&mut ProviderRegistry) -> StudioCommandResult<T>,
+) -> StudioCommandResult<T> {
+    let result = match path {
+        Some(path) => plotforge_agent::mutate_provider_registry_at(path, mutator),
+        None => plotforge_agent::mutate_provider_registry(mutator),
+    };
+    result.map_err(|source| map_provider_registry_mutation_error(command, source))
+}
+
+fn map_provider_registry_mutation_error(
+    command: &'static str,
+    source: plotforge_agent::ProviderRegistryMutationError<StudioCommandError>,
+) -> StudioCommandError {
+    match source {
+        plotforge_agent::ProviderRegistryMutationError::Mutation(error) => error,
+        plotforge_agent::ProviderRegistryMutationError::Registry(error) => {
+            let stage = match &error {
+                plotforge_agent::ProviderRegistryError::ReadFailed { .. }
+                | plotforge_agent::ProviderRegistryError::ParseFailed { .. } => "load",
+                plotforge_agent::ProviderRegistryError::NoConfigDir
+                | plotforge_agent::ProviderRegistryError::WriteFailed { .. }
+                | plotforge_agent::ProviderRegistryError::SerializeFailed { .. }
+                | plotforge_agent::ProviderRegistryError::LockFailed { .. } => "write",
+            };
+            StudioCommandError {
+                code: format!("{command}_{stage}"),
+                message: error.to_string(),
+            }
+        }
+    }
+}
+
 /// Lists every registered provider entry from the user-global registry.
 /// An absent registry returns an empty list (fresh install).
 pub fn list_providers() -> StudioCommandResult<Vec<ProviderEntry>> {
@@ -756,12 +949,24 @@ pub fn list_tts_providers() -> StudioCommandResult<Vec<TtsProviderEntry>> {
     Ok(registry.tts_providers)
 }
 
+/// Lists all registered moderation providers from the user-global registry.
+/// Entries contain only redaction-safe routing metadata and credential
+/// environment-variable names, never credential values.
+pub fn list_moderation_providers() -> StudioCommandResult<Vec<ModerationProviderEntry>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_moderation_providers".into(),
+            message: source.to_string(),
+        })?;
+    Ok(registry.moderation_providers)
+}
+
 /// Adds or updates (by `id`) an image provider entry in the user-global
 /// registry. The same provider-config validator used by text providers owns
 /// the endpoint and credential-env-var rules, so Studio does not grow a
 /// second implementation of the secret-marker boundary.
 pub fn upsert_image_provider(entry: ImageProviderEntry) -> StudioCommandResult<ImageProviderEntry> {
-    validate_media_provider_fields(
+    validate_provider_endpoint_fields(
         &entry.id,
         &entry.endpoint_url,
         &entry.model,
@@ -783,41 +988,26 @@ pub fn upsert_image_provider(entry: ImageProviderEntry) -> StudioCommandResult<I
         message,
     })?;
 
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_image_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    upsert_image_provider_entry(&mut registry, entry.clone());
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_image_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_image_provider", move |registry| {
+        upsert_image_provider_entry(registry, entry.clone());
+        Ok(entry)
+    })
 }
 
 /// Removes an image provider by id, returning the removed entry. Unknown ids
 /// fail explicitly instead of becoming a silent no-op.
 pub fn delete_image_provider(id: String) -> StudioCommandResult<ImageProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_image_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let position = registry
-        .image_providers
-        .iter()
-        .position(|provider| provider.id == id)
-        .ok_or_else(|| StudioCommandError {
-            code: "image_provider_not_found".into(),
-            message: format!("no image provider with id `{id}`"),
-        })?;
-    let removed = registry.image_providers.remove(position);
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_image_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_image_provider", move |registry| {
+        let position = registry
+            .image_providers
+            .iter()
+            .position(|provider| provider.id == id)
+            .ok_or_else(|| StudioCommandError {
+                code: "image_provider_not_found".into(),
+                message: format!("no image provider with id `{id}`"),
+            })?;
+        Ok(registry.image_providers.remove(position))
+    })
 }
 
 /// Sends a minimal real image-generation request through the registered
@@ -855,7 +1045,7 @@ pub fn test_image_provider(id: String) -> StudioCommandResult<ProviderTestResult
 /// registry. Credentials remain indirect: only the validated environment
 /// variable name is persisted.
 pub fn upsert_tts_provider(entry: TtsProviderEntry) -> StudioCommandResult<TtsProviderEntry> {
-    validate_media_provider_fields(
+    validate_provider_endpoint_fields(
         &entry.id,
         &entry.endpoint_url,
         &entry.model,
@@ -877,41 +1067,26 @@ pub fn upsert_tts_provider(entry: TtsProviderEntry) -> StudioCommandResult<TtsPr
         message,
     })?;
 
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_tts_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    upsert_tts_provider_entry(&mut registry, entry.clone());
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_tts_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_tts_provider", move |registry| {
+        upsert_tts_provider_entry(registry, entry.clone());
+        Ok(entry)
+    })
 }
 
 /// Removes a TTS provider by id, returning the removed entry. Unknown ids
 /// surface a typed error.
 pub fn delete_tts_provider(id: String) -> StudioCommandResult<TtsProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_tts_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let position = registry
-        .tts_providers
-        .iter()
-        .position(|provider| provider.id == id)
-        .ok_or_else(|| StudioCommandError {
-            code: "tts_provider_not_found".into(),
-            message: format!("no TTS provider with id `{id}`"),
-        })?;
-    let removed = registry.tts_providers.remove(position);
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_tts_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_tts_provider", move |registry| {
+        let position = registry
+            .tts_providers
+            .iter()
+            .position(|provider| provider.id == id)
+            .ok_or_else(|| StudioCommandError {
+                code: "tts_provider_not_found".into(),
+                message: format!("no TTS provider with id `{id}`"),
+            })?;
+        Ok(registry.tts_providers.remove(position))
+    })
 }
 
 /// Sends a minimal real speech-synthesis request through the registered TTS
@@ -945,7 +1120,81 @@ pub fn test_tts_provider(id: String) -> StudioCommandResult<ProviderTestResult> 
     Ok(probe_tts_provider(&provider))
 }
 
-fn validate_media_provider_fields(
+/// Adds or updates (by `id`) a moderation provider entry in the user-global
+/// registry. Daily token budgets are rejected explicitly because moderation
+/// responses do not provide the output-token accounting that budget
+/// enforcement requires.
+pub fn upsert_moderation_provider(
+    entry: ModerationProviderEntry,
+) -> StudioCommandResult<ModerationProviderEntry> {
+    validate_provider_endpoint_fields(
+        &entry.id,
+        &entry.endpoint_url,
+        &entry.model,
+        &entry.credential_env_var,
+        entry.enabled,
+    )
+    .map_err(|error| StudioCommandError {
+        code: "upsert_moderation_provider_invalid".into(),
+        message: error.to_string(),
+    })?;
+    validate_provider_quotas(
+        entry.max_concurrency,
+        entry.requests_per_minute,
+        entry.daily_token_budget,
+        false,
+    )
+    .map_err(|message| StudioCommandError {
+        code: "upsert_moderation_provider_invalid".into(),
+        message,
+    })?;
+
+    mutate_studio_provider_registry(None, "upsert_moderation_provider", move |registry| {
+        upsert_moderation_provider_entry(registry, entry.clone());
+        Ok(entry)
+    })
+}
+
+/// Removes a moderation provider by id. Unknown ids fail explicitly rather
+/// than becoming a silent no-op.
+pub fn delete_moderation_provider(id: String) -> StudioCommandResult<ModerationProviderEntry> {
+    mutate_studio_provider_registry(None, "delete_moderation_provider", move |registry| {
+        delete_moderation_provider_entry(registry, &id)
+    })
+}
+
+/// Sends a benign moderation request through a registered provider. The
+/// provider response body and category details are discarded; callers receive
+/// only a redaction-safe connectivity result.
+pub fn test_moderation_provider(id: String) -> StudioCommandResult<ProviderTestResult> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "test_moderation_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    let entry = registry
+        .moderation_providers
+        .iter()
+        .find(|provider| provider.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "moderation_provider_not_found".into(),
+            message: format!("no moderation provider with id `{id}`"),
+        })?;
+    if !entry.enabled {
+        return Ok(ProviderTestResult {
+            ok: false,
+            message: "moderation provider is disabled; enable it before testing".into(),
+        });
+    }
+    let provider =
+        plotforge_agent::build_moderation_provider(entry).map_err(|source| StudioCommandError {
+            code: "test_moderation_provider_build".into(),
+            message: redact_trace_text(&source.to_string()),
+        })?;
+    Ok(probe_moderation_provider(provider.as_ref()))
+}
+
+fn validate_provider_endpoint_fields(
     id: &str,
     endpoint_url: &str,
     model: &str,
@@ -981,7 +1230,7 @@ fn validate_provider_quotas(
     }
     if daily_token_budget.is_some() && !supports_daily_token_budget {
         return Err(
-            "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens"
+            "daily_token_budget is supported only by text providers because image, TTS, and moderation usage does not report output tokens"
                 .into(),
         );
     }
@@ -1010,6 +1259,36 @@ fn upsert_tts_provider_entry(registry: &mut ProviderRegistry, entry: TtsProvider
     } else {
         registry.tts_providers.push(entry);
     }
+}
+
+fn upsert_moderation_provider_entry(
+    registry: &mut ProviderRegistry,
+    entry: ModerationProviderEntry,
+) {
+    if let Some(existing) = registry
+        .moderation_providers
+        .iter_mut()
+        .find(|provider| provider.id == entry.id)
+    {
+        *existing = entry;
+    } else {
+        registry.moderation_providers.push(entry);
+    }
+}
+
+fn delete_moderation_provider_entry(
+    registry: &mut ProviderRegistry,
+    id: &str,
+) -> StudioCommandResult<ModerationProviderEntry> {
+    let position = registry
+        .moderation_providers
+        .iter()
+        .position(|provider| provider.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "moderation_provider_not_found".into(),
+            message: format!("no moderation provider with id `{id}`"),
+        })?;
+    Ok(registry.moderation_providers.remove(position))
 }
 
 fn probe_image_provider(provider: &dyn plotforge_agent::ImageProvider) -> ProviderTestResult {
@@ -1052,6 +1331,25 @@ fn probe_tts_provider(provider: &dyn plotforge_agent::TtsProvider) -> ProviderTe
     }
 }
 
+fn probe_moderation_provider(
+    provider: &dyn plotforge_agent::ModerationProvider,
+) -> ProviderTestResult {
+    let request = plotforge_agent::ModerationRequest {
+        call_id: "connection-test".into(),
+        prompt: "A calm village morning.".into(),
+    };
+    match provider.moderate(&request) {
+        Ok(_) => ProviderTestResult {
+            ok: true,
+            message: "minimal moderation request completed".into(),
+        },
+        Err(error) => ProviderTestResult {
+            ok: false,
+            message: redact_trace_text(&error.message),
+        },
+    }
+}
+
 /// Adds or updates (by `id`) a provider entry in the user-global registry.
 pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntry> {
     // Validate the entry before it is persisted. This catches credential
@@ -1082,45 +1380,30 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
         code: "upsert_provider_invalid".into(),
         message,
     })?;
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    if let Some(existing) = registry.providers.iter_mut().find(|p| p.id == entry.id) {
-        *existing = entry.clone();
-    } else {
-        registry.providers.push(entry.clone());
-    }
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_provider", move |registry| {
+        if let Some(existing) = registry.providers.iter_mut().find(|p| p.id == entry.id) {
+            *existing = entry.clone();
+        } else {
+            registry.providers.push(entry.clone());
+        }
+        Ok(entry)
+    })
 }
 
 /// Removes a provider entry by id. Returns the removed entry, or an explicit
 /// `provider_not_found` error if no entry matches.
 pub fn delete_provider(id: String) -> StudioCommandResult<ProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let position = registry
-        .providers
-        .iter()
-        .position(|p| p.id == id)
-        .ok_or_else(|| StudioCommandError {
-            code: "provider_not_found".into(),
-            message: format!("no provider with id `{id}`"),
-        })?;
-    let removed = registry.providers.remove(position);
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_provider", move |registry| {
+        let position = registry
+            .providers
+            .iter()
+            .position(|provider| provider.id == id)
+            .ok_or_else(|| StudioCommandError {
+                code: "provider_not_found".into(),
+                message: format!("no provider with id `{id}`"),
+            })?;
+        Ok(registry.providers.remove(position))
+    })
 }
 
 /// The result of a `test_provider_connection` ping: ok/failed + a
@@ -2667,19 +2950,25 @@ fn is_editable_source_file(path: &Path, kind: &SourceFileKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{
+        cell::Cell,
+        fs,
+        path::Path,
+        sync::{Arc, Barrier},
+    };
 
     use tempfile::tempdir;
 
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
         AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, GIT_NOT_A_REPO_CODE,
-        ImageProviderEntry, PromptScope, PromptTemplate, ProviderEntry, ProviderKind,
-        ProviderRegistry, ResourceDefinition, Rule, RuleDraft, SteamSubmissionKitRequest,
-        TtsProviderEntry, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
-        block_workshop_library_item, check_project, create_character, create_character_from_draft,
-        create_project, create_resource, create_rule, create_rule_from_draft,
-        delete_image_provider, delete_mcp_server, delete_project_prompt_template, delete_provider,
+        ImageProviderEntry, ModerationProviderEntry, PromptScope, PromptTemplate, ProviderEntry,
+        ProviderKind, ProviderRegistry, ResourceDefinition, Rule, RuleDraft,
+        SteamSubmissionKitRequest, SystemUsageLedger, TtsProviderEntry, WorkshopDraftVisibility,
+        WorkshopItemPackage, WorkshopPackageFile, block_workshop_library_item, check_project,
+        create_character, create_character_from_draft, create_project, create_resource,
+        create_rule, create_rule_from_draft, delete_image_provider, delete_mcp_server,
+        delete_moderation_provider_entry, delete_project_prompt_template, delete_provider,
         delete_tts_provider, delete_workshop_library_item, enable_mcp_server_for_project,
         enable_skill_for_project, export_static_project, export_static_project_zip,
         generate_character, generate_story_craft, generate_world_expansion,
@@ -2688,16 +2977,20 @@ mod tests {
         import_workshop_library_package, list_asset_records, list_available_models,
         list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
         list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
-        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
+        load_provider_registry_for_apply, load_workshop_library_item,
+        map_provider_registry_mutation_error, moderation_request_for_apply,
+        mutate_studio_provider_registry, open_project, pi_agent_apply_run, pi_agent_capabilities,
         pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
         play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
-        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
-        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
-        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
-        report_workshop_library_item, set_agent_session_config, update_ai_safety_policy,
-        update_story_craft_edit_document, update_world_edit_document, upsert_image_provider,
-        upsert_image_provider_entry, upsert_project_prompt_template, upsert_provider,
-        upsert_tts_provider, upsert_tts_provider_entry, validate_media_provider_fields,
+        probe_moderation_provider, probe_tts_provider, read_ai_safety_policy,
+        read_character_edit_document, read_rules_edit_document, read_source_file,
+        read_state_variables_edit_document, read_story_craft_edit_document,
+        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
+        screen_then_apply, set_agent_session_config, stamp_moderation_outcome,
+        update_ai_safety_policy, update_story_craft_edit_document, update_world_edit_document,
+        upsert_image_provider, upsert_image_provider_entry, upsert_moderation_provider,
+        upsert_moderation_provider_entry, upsert_project_prompt_template, upsert_provider,
+        upsert_tts_provider, upsert_tts_provider_entry, validate_provider_endpoint_fields,
         validate_provider_quotas, validate_workshop_package, write_source_file,
         write_steam_submission_kit, write_workshop_publish_draft,
     };
@@ -2735,6 +3028,15 @@ mod tests {
       "output_tokens": 30,
       "spent_cost_units": 7,
       "timestamp_ms": 1000
+    },
+    {
+      "provider_id": "provider-a",
+      "kind": "moderation",
+      "model": "moderation-a",
+      "input_tokens": 5,
+      "output_tokens": 0,
+      "spent_cost_units": 2,
+      "timestamp_ms": 1001
     }
   ]
 }"#,
@@ -2745,12 +3047,13 @@ mod tests {
         let report = get_provider_cost_report_from_path(&path, "provider-a".into())
             .expect("load provider report");
 
-        assert_eq!(summary.total_input_tokens, 120);
+        assert_eq!(summary.total_input_tokens, 125);
         assert_eq!(summary.total_output_tokens, 30);
-        assert_eq!(summary.total_spent_cost_units, 7);
+        assert_eq!(summary.total_spent_cost_units, 9);
         assert_eq!(report.provider_id, "provider-a");
         assert_eq!(report.text_calls, 1);
-        assert_eq!(report.input_tokens, 120);
+        assert_eq!(report.moderation_calls, 1);
+        assert_eq!(report.input_tokens, 125);
     }
 
     #[test]
@@ -3674,6 +3977,25 @@ mod tests {
         create_project(project_path, sample_creation_request(), false).expect("create project");
     }
 
+    fn test_moderation_screen(
+        provider: &dyn plotforge_agent::ModerationProvider,
+    ) -> plotforge_agent::ModerationScreen<'_> {
+        plotforge_agent::ModerationScreen {
+            provider,
+            config_hash: "sha256:moderation",
+            usage_identity: plotforge_agent::ProviderUsageIdentity::new(
+                "stable-moderation-id",
+                "moderation-model",
+            ),
+        }
+    }
+
+    fn fresh_apply_usage_ledger() -> super::StudioCommandResult<SystemUsageLedger> {
+        Ok(plotforge_job::UsageLedger::new(
+            plotforge_job::SystemJobClock,
+        ))
+    }
+
     #[test]
     fn local_pi_apply_does_not_load_corrupt_usage_ledger() {
         let temp = tempdir().expect("tempdir");
@@ -3687,6 +4009,394 @@ mod tests {
         .expect("local-pi does not require the usage ledger");
 
         assert!(ledger.is_none());
+    }
+
+    #[test]
+    fn non_local_apply_validates_ledger_before_moderation_or_text() {
+        let temp = tempdir().expect("tempdir");
+        let corrupt_path = temp.path().join("usage.json");
+        fs::write(&corrupt_path, "not-json").expect("write corrupt ledger");
+        let provider = plotforge_agent::FakeModerationProvider::pass();
+        let text_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "corrupt-ledger".into(),
+            prompt: "safe input".into(),
+        };
+
+        let error = screen_then_apply(
+            || {
+                load_apply_usage_ledger("remote-model", Some(&corrupt_path))?.ok_or_else(|| {
+                    super::StudioCommandError {
+                        code: "pi_agent_usage_ledger".into(),
+                        message: "non-local usage ledger missing".into(),
+                    }
+                })
+            },
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                text_calls.set(text_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("corrupt ledger must stop before providers");
+
+        assert_eq!(error.code, "pi_agent_usage_ledger");
+        assert_eq!(provider.call_count(), 0);
+        assert_eq!(text_calls.get(), 0);
+    }
+
+    #[test]
+    fn moderation_request_uses_exact_player_input() {
+        let request = PiAgentApplyRequest {
+            agent_id: "scene-planner".into(),
+            run_seed: 17,
+            project_path: "/tmp/project".into(),
+            player_input: "  Preserve this exact input.\n".into(),
+            save_id: None,
+            restore_id: None,
+        };
+
+        let moderation_request = moderation_request_for_apply(&request);
+
+        assert_eq!(moderation_request.prompt, request.player_input);
+        assert_eq!(
+            moderation_request.call_id,
+            "pi-agent-moderation-scene-planner-17"
+        );
+    }
+
+    #[test]
+    fn local_pi_apply_does_not_load_configured_moderation_registry() {
+        let registry_loads = Cell::new(0);
+        let mut moderation_entry = sample_moderation_provider_entry("global-moderation");
+        moderation_entry.enabled = true;
+        let configured_registry = ProviderRegistry {
+            moderation_providers: vec![moderation_entry],
+            ..ProviderRegistry::default()
+        };
+
+        let registry = load_provider_registry_for_apply(plotforge_agent::LOCAL_PI_MODEL_ID, || {
+            registry_loads.set(registry_loads.get() + 1);
+            Ok(configured_registry)
+        })
+        .expect("local registry bypass");
+
+        assert!(registry.is_none());
+        assert_eq!(registry_loads.get(), 0);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_surfaces_moderation_flagged_without_downstream_call() {
+        let provider = plotforge_agent::FakeModerationProvider::flagged(["violence"]);
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "flagged".into(),
+            prompt: "flagged player input".into(),
+        };
+
+        let error = screen_then_apply(
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("flagged content must stop the apply flow");
+
+        assert_eq!(error.code, "pi_agent_moderation_flagged");
+        assert_eq!(provider.call_count(), 1, "moderation runs exactly once");
+        assert_eq!(
+            downstream_calls.get(),
+            0,
+            "neither the text nor MCP downstream may run"
+        );
+    }
+
+    #[test]
+    fn pi_agent_apply_run_moderation_pass_calls_downstream_once() {
+        let provider = plotforge_agent::FakeModerationProvider::pass();
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "pass".into(),
+            prompt: "safe player input".into(),
+        };
+
+        let (outcome, value, _usage_ledger) = screen_then_apply(
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(42)
+            },
+        )
+        .expect("moderation pass");
+
+        assert_eq!(value, 42);
+        assert_eq!(provider.call_count(), 1);
+        assert_eq!(downstream_calls.get(), 1);
+        assert_eq!(
+            outcome.expect("moderation outcome").moderation_config_hash,
+            "sha256:moderation"
+        );
+    }
+
+    #[test]
+    fn pi_agent_apply_run_without_moderation_calls_downstream_once() {
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "no-provider".into(),
+            prompt: "safe player input".into(),
+        };
+
+        let (outcome, value, _usage_ledger) =
+            screen_then_apply(fresh_apply_usage_ledger, None, &request, |_usage_ledger| {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(42)
+            })
+            .expect("no-provider pass-through");
+
+        assert_eq!(value, 42);
+        assert!(outcome.is_none());
+        assert_eq!(downstream_calls.get(), 1);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_surfaces_moderation_provider_error_without_fallback() {
+        let provider = plotforge_agent::FakeModerationProvider::with_error(
+            plotforge_agent::ModerationProviderError::provider(
+                "moderation_upstream_failed",
+                "upstream echoed sk-moderation-secret",
+            ),
+        );
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "provider-error".into(),
+            prompt: "safe input".into(),
+        };
+
+        let error = screen_then_apply(
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("provider failure must not pass through");
+
+        assert_eq!(error.code, "pi_agent_moderation_provider");
+        assert!(!error.message.contains("sk-moderation-secret"));
+        assert_eq!(downstream_calls.get(), 0);
+    }
+
+    struct SecretCategoryModerationProvider;
+
+    impl plotforge_agent::ModerationProvider for SecretCategoryModerationProvider {
+        fn moderate(
+            &self,
+            _request: &plotforge_agent::ModerationRequest,
+        ) -> Result<plotforge_agent::ModerationResponse, plotforge_agent::ModerationProviderError>
+        {
+            Ok(plotforge_agent::ModerationResponse {
+                flagged: false,
+                categories: vec!["OPENAI_API_KEY=sk-secret".into()],
+                usage: None,
+                spent_cost_units: 0,
+            })
+        }
+    }
+
+    struct UsageModerationProvider {
+        flagged: bool,
+    }
+
+    impl plotforge_agent::ModerationProvider for UsageModerationProvider {
+        fn moderate(
+            &self,
+            _request: &plotforge_agent::ModerationRequest,
+        ) -> Result<plotforge_agent::ModerationResponse, plotforge_agent::ModerationProviderError>
+        {
+            Ok(plotforge_agent::ModerationResponse {
+                flagged: self.flagged,
+                categories: self
+                    .flagged
+                    .then(|| "violence".into())
+                    .into_iter()
+                    .collect(),
+                usage: Some(plotforge_schema::UsageInfo {
+                    input_tokens: Some(29),
+                    output_tokens: Some(4),
+                }),
+                spent_cost_units: 7,
+            })
+        }
+    }
+
+    #[test]
+    fn screened_apply_rolls_up_nonzero_moderation_usage_on_pass() {
+        let temp = tempdir().expect("tempdir");
+        let usage_path = temp.path().join("usage.json");
+        let provider = UsageModerationProvider { flagged: false };
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "usage-pass".into(),
+            prompt: "safe input".into(),
+        };
+
+        let (_outcome, (), ledger) = screen_then_apply(
+            || {
+                load_apply_usage_ledger("remote-model", Some(&usage_path))?.ok_or_else(|| {
+                    super::StudioCommandError {
+                        code: "pi_agent_usage_ledger".into(),
+                        message: "non-local usage ledger missing".into(),
+                    }
+                })
+            },
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| Ok(()),
+        )
+        .expect("screened apply");
+
+        let report = ledger.provider_cost_report("stable-moderation-id");
+        assert_eq!(report.moderation_calls, 1);
+        assert_eq!(report.text_calls, 0);
+        assert_eq!(report.input_tokens, 29);
+        assert_eq!(report.output_tokens, 4);
+        assert_eq!(report.spent_cost_units, 7);
+    }
+
+    #[test]
+    fn screened_apply_rolls_up_nonzero_moderation_usage_when_flagged() {
+        let temp = tempdir().expect("tempdir");
+        let usage_path = temp.path().join("usage.json");
+        let provider = UsageModerationProvider { flagged: true };
+        let text_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "usage-flagged".into(),
+            prompt: "flagged input".into(),
+        };
+
+        let error = screen_then_apply(
+            || {
+                load_apply_usage_ledger("remote-model", Some(&usage_path))?.ok_or_else(|| {
+                    super::StudioCommandError {
+                        code: "pi_agent_usage_ledger".into(),
+                        message: "non-local usage ledger missing".into(),
+                    }
+                })
+            },
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                text_calls.set(text_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("flagged response");
+
+        assert_eq!(error.code, "pi_agent_moderation_flagged");
+        assert_eq!(text_calls.get(), 0);
+        let report = get_provider_cost_report_from_path(&usage_path, "stable-moderation-id".into())
+            .expect("persisted moderation report");
+        assert_eq!(report.moderation_calls, 1);
+        assert_eq!(report.input_tokens, 29);
+        assert_eq!(report.output_tokens, 4);
+        assert_eq!(report.spent_cost_units, 7);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_rejects_moderation_secret_marker_without_fallback() {
+        let downstream_calls = Cell::new(0);
+        let provider = SecretCategoryModerationProvider;
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "secret-marker".into(),
+            prompt: "safe input".into(),
+        };
+
+        let error = screen_then_apply(
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("secret marker must stop the apply flow");
+
+        assert_eq!(error.code, "pi_agent_moderation_secret_marker");
+        assert!(!contains_secret_marker_text(&error.message));
+        assert_eq!(downstream_calls.get(), 0);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_stamps_moderation_hash_on_run_envelope_and_final_trace() {
+        let provider = Box::new(plotforge_agent::FakeTextModelProvider::local_pi());
+        let agent = plotforge_agent::PiAgent::new(provider, "scene-planner");
+        let (mut run_result, mut envelope) = agent
+            .run_with_envelope(PiAgentRunRequest {
+                agent_id: "scene-planner".into(),
+                run_seed: 23,
+                prompt_summary: "safe input".into(),
+                prompt_hash: "sha256:safe-input".into(),
+            })
+            .expect("local envelope");
+        let outcome = plotforge_agent::ModerationOutcome {
+            summary: plotforge_schema::ModerationOutcomeSummary {
+                flagged: false,
+                categories: Vec::new(),
+            },
+            moderation_config_hash: "sha256:moderation-config".into(),
+            usage: None,
+            spent_cost_units: 0,
+        };
+
+        let summary = stamp_moderation_outcome(Some(outcome), &mut run_result, &mut envelope)
+            .expect("moderation summary");
+
+        assert!(!summary.flagged);
+        assert_eq!(
+            run_result.reproducibility.moderation_config_hash.as_deref(),
+            Some("sha256:moderation-config")
+        );
+        assert_eq!(
+            envelope.reproducibility.moderation_config_hash.as_deref(),
+            Some("sha256:moderation-config")
+        );
+
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("moderation-trace-hash");
+        create_starter_project(&project_path);
+        let project = super::load_project(&project_path).expect("load project");
+        let proposal = match &envelope.proposal.output {
+            plotforge_schema::AgentProposalPayload::ScenePlan(proposal) => proposal,
+            other => panic!(
+                "expected scene plan, got {}",
+                plotforge_agent::payload_kind(other)
+            ),
+        };
+        let scene_plan =
+            plotforge_agent::ScenePlan::from_proposal(proposal, envelope.reproducibility.clone())
+                .expect("scene plan");
+        let mut session = super::RuntimeSession::new(project);
+        let step = session
+            .apply_agent_scene_plan(scene_plan, "safe input")
+            .expect("commit scene plan");
+        let report = super::assemble_play_once_report(&project_path, step, None, &session)
+            .expect("assemble report");
+        assert_eq!(
+            report
+                .trace
+                .reproducibility
+                .moderation_config_hash
+                .as_deref(),
+            Some("sha256:moderation-config")
+        );
     }
 
     #[test]
@@ -3719,6 +4429,9 @@ mod tests {
         assert!(result.run.descriptor.is_local_pi);
         assert_eq!(result.usage, result.run.usage);
         assert_eq!(result.usage, None, "local pi-Agent apply reports no usage");
+        assert_eq!(result.moderation_outcome, None);
+        assert_eq!(result.run.reproducibility.moderation_config_hash, None);
+        assert_eq!(result.trace.reproducibility.moderation_config_hash, None);
         assert!(
             result
                 .run
@@ -4035,10 +4748,108 @@ mod tests {
         }
     }
 
+    fn sample_moderation_provider_entry(id: &str) -> ModerationProviderEntry {
+        ModerationProviderEntry {
+            id: id.into(),
+            endpoint_url: "https://example.invalid/v1".into(),
+            model: "omni-moderation-test".into(),
+            credential_env_var: "PLOTFORGE_MODERATION_TEST_KEY".into(),
+            enabled: false,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        }
+    }
+
+    #[test]
+    fn provider_family_mutations_share_one_serialized_transaction() {
+        let temp = tempdir().expect("tempdir");
+        let registry_path = temp.path().join("providers.json");
+        let barrier = Arc::new(Barrier::new(3));
+
+        let image_path = registry_path.clone();
+        let image_barrier = Arc::clone(&barrier);
+        let image_handle = std::thread::spawn(move || {
+            let entry = sample_image_provider_entry("serialized-image");
+            image_barrier.wait();
+            mutate_studio_provider_registry(
+                Some(&image_path),
+                "upsert_image_provider",
+                |registry| {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    upsert_image_provider_entry(registry, entry);
+                    Ok(())
+                },
+            )
+            .expect("image transaction");
+        });
+
+        let tts_path = registry_path.clone();
+        let tts_barrier = Arc::clone(&barrier);
+        let tts_handle = std::thread::spawn(move || {
+            let entry = sample_tts_provider_entry("serialized-tts");
+            tts_barrier.wait();
+            mutate_studio_provider_registry(Some(&tts_path), "upsert_tts_provider", |registry| {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+                upsert_tts_provider_entry(registry, entry);
+                Ok(())
+            })
+            .expect("TTS transaction");
+        });
+
+        barrier.wait();
+        image_handle.join().expect("image thread");
+        tts_handle.join().expect("TTS thread");
+
+        let registry = plotforge_agent::load_provider_registry_from(&registry_path)
+            .expect("load serialized registry");
+        assert_eq!(registry.image_providers.len(), 1);
+        assert_eq!(registry.image_providers[0].id, "serialized-image");
+        assert_eq!(registry.tts_providers.len(), 1);
+        assert_eq!(registry.tts_providers[0].id, "serialized-tts");
+    }
+
+    #[test]
+    fn provider_mutation_maps_corrupt_registry_to_existing_load_code() {
+        let temp = tempdir().expect("tempdir");
+        let registry_path = temp.path().join("providers.json");
+        fs::write(&registry_path, "not-json").expect("write corrupt registry");
+
+        let error =
+            mutate_studio_provider_registry(Some(&registry_path), "delete_provider", |_registry| {
+                Ok(())
+            })
+            .expect_err("corrupt registry");
+
+        assert_eq!(error.code, "delete_provider_load");
+        assert!(error.message.contains("failed to parse provider registry"));
+    }
+
+    #[test]
+    fn provider_mutation_preserves_no_config_write_and_typed_delete_errors() {
+        let upsert_error = map_provider_registry_mutation_error(
+            "upsert_provider",
+            plotforge_agent::ProviderRegistryMutationError::Registry(
+                plotforge_agent::ProviderRegistryError::NoConfigDir,
+            ),
+        );
+        assert_eq!(upsert_error.code, "upsert_provider_write");
+
+        let delete_error = map_provider_registry_mutation_error(
+            "delete_provider",
+            plotforge_agent::ProviderRegistryMutationError::Mutation(super::StudioCommandError {
+                code: "provider_not_found".into(),
+                message: "no provider with id `absent`".into(),
+            }),
+        );
+        assert_eq!(delete_error.code, "provider_not_found");
+        assert_eq!(delete_error.message, "no provider with id `absent`");
+    }
+
     #[test]
     fn upsert_image_provider_succeeds() {
         let entry = sample_image_provider_entry("image-test");
-        validate_media_provider_fields(
+        validate_provider_endpoint_fields(
             &entry.id,
             &entry.endpoint_url,
             &entry.model,
@@ -4069,7 +4880,7 @@ mod tests {
     }
 
     #[test]
-    fn media_provider_upsert_rejects_daily_token_budget_before_persistence() {
+    fn non_text_provider_upsert_rejects_daily_token_budget_before_persistence() {
         let mut image = sample_image_provider_entry("image-budget");
         image.daily_token_budget = Some(100);
         let error = upsert_image_provider(image).expect_err("image token budget unsupported");
@@ -4080,6 +4891,13 @@ mod tests {
         tts.daily_token_budget = Some(100);
         let error = upsert_tts_provider(tts).expect_err("TTS token budget unsupported");
         assert_eq!(error.code, "upsert_tts_provider_invalid");
+        assert!(error.message.contains("supported only by text providers"));
+
+        let mut moderation = sample_moderation_provider_entry("moderation-budget");
+        moderation.daily_token_budget = Some(100);
+        let error = upsert_moderation_provider(moderation)
+            .expect_err("moderation token budget unsupported");
+        assert_eq!(error.code, "upsert_moderation_provider_invalid");
         assert!(error.message.contains("supported only by text providers"));
     }
 
@@ -4118,7 +4936,7 @@ mod tests {
     #[test]
     fn upsert_tts_provider_succeeds() {
         let entry = sample_tts_provider_entry("tts-test");
-        validate_media_provider_fields(
+        validate_provider_endpoint_fields(
             &entry.id,
             &entry.endpoint_url,
             &entry.model,
@@ -4176,6 +4994,62 @@ mod tests {
         assert!(!result.ok);
         assert!(!result.message.contains("sk-tts-secret"));
         assert!(contains_secret_marker_text("sk-tts-secret"));
+        assert!(!contains_secret_marker_text(&result.message));
+    }
+
+    #[test]
+    fn list_moderation_providers_empty_when_no_entry() {
+        assert!(ProviderRegistry::default().moderation_providers.is_empty());
+    }
+
+    #[test]
+    fn upsert_moderation_provider_succeeds() {
+        let entry = sample_moderation_provider_entry("moderation-test");
+        validate_provider_endpoint_fields(
+            &entry.id,
+            &entry.endpoint_url,
+            &entry.model,
+            &entry.credential_env_var,
+            entry.enabled,
+        )
+        .expect("valid moderation provider fields");
+        let mut registry = ProviderRegistry::default();
+
+        upsert_moderation_provider_entry(&mut registry, entry.clone());
+
+        assert_eq!(registry.moderation_providers, vec![entry]);
+    }
+
+    #[test]
+    fn delete_moderation_provider_not_found() {
+        let mut registry = ProviderRegistry::default();
+        let error = delete_moderation_provider_entry(&mut registry, "absent-moderation")
+            .expect_err("unknown moderation provider must fail explicitly");
+        assert_eq!(error.code, "moderation_provider_not_found");
+    }
+
+    struct SecretLeakingModerationProvider;
+
+    impl plotforge_agent::ModerationProvider for SecretLeakingModerationProvider {
+        fn moderate(
+            &self,
+            _request: &plotforge_agent::ModerationRequest,
+        ) -> Result<plotforge_agent::ModerationResponse, plotforge_agent::ModerationProviderError>
+        {
+            Err(plotforge_agent::ModerationProviderError::provider(
+                "probe_failed",
+                "upstream echoed sk-moderation-secret",
+            ))
+        }
+    }
+
+    #[test]
+    fn test_moderation_provider_redacts_error() {
+        let result = probe_moderation_provider(&SecretLeakingModerationProvider);
+
+        assert!(!result.ok);
+        assert!(!result.message.contains("sk-moderation-secret"));
+        assert!(contains_secret_marker_text("sk-moderation-secret"));
         assert!(!contains_secret_marker_text(&result.message));
     }
 

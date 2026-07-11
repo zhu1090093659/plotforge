@@ -360,6 +360,7 @@ impl TextProviderConfig {
             model_version: self.model.clone(),
             provider_config_hash: self.provider_config_hash(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         }
@@ -729,6 +730,7 @@ impl TextModelProvider for FakeTextModelProvider {
             model_version: self.reproducibility.model_version.into(),
             provider_config_hash: self.reproducibility.provider_config_hash.into(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         }
@@ -1008,6 +1010,7 @@ fn encode_fake_response(
             model_version: request.model_version.clone(),
             provider_config_hash: request.provider_config_hash.clone(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         },

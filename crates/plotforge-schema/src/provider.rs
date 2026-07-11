@@ -134,6 +134,31 @@ pub struct TtsProviderEntry {
     pub daily_token_budget: Option<u64>,
 }
 
+/// A registered moderation provider entry. This is a routing record only:
+/// `credential_env_var` names the shell environment variable holding the
+/// credential, while the credential value itself is never serialized here,
+/// in traces, or in project source. The optional quota fields are pre-flight
+/// throttle inputs owned by `plotforge-job`; absent fields preserve the legacy
+/// unthrottled behaviour.
+#[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModerationProviderEntry {
+    pub id: String,
+    pub endpoint_url: String,
+    pub model: String,
+    pub credential_env_var: String,
+    pub enabled: bool,
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    pub max_concurrency: Option<u32>,
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    pub requests_per_minute: Option<u32>,
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    pub daily_token_budget: Option<u64>,
+}
+
 fn default_tts_voice() -> String {
     "coral".into()
 }
@@ -145,13 +170,10 @@ fn default_tts_format() -> String {
 /// The persisted registry file (`~/.plotforge/providers.json`). An empty
 /// registry is the default for fresh installs; provider wiring is opt-in.
 ///
-/// `image_providers` and `tts_providers` are `#[serde(default)]` so an
-/// existing registry serialized before image/TTS providers were introduced
-/// still deserializes (backward compatible). Text, image, and TTS providers
-/// are independent lists: a model id resolves against `providers` via
-/// `resolve_provider_for_model`, while the pi-Agent image pipeline resolves
-/// the first enabled `image_providers` entry and the TTS pipeline resolves
-/// the first enabled `tts_providers` entry.
+/// `image_providers`, `tts_providers`, and `moderation_providers` are
+/// `#[serde(default)]` so registries written before those provider families
+/// were introduced still deserialize. Each provider family is an independent
+/// list with its own resolver in the agent adapter.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProviderRegistry {
@@ -161,6 +183,8 @@ pub struct ProviderRegistry {
     pub image_providers: Vec<ImageProviderEntry>,
     #[serde(default)]
     pub tts_providers: Vec<TtsProviderEntry>,
+    #[serde(default)]
+    pub moderation_providers: Vec<ModerationProviderEntry>,
 }
 
 /// A single model discovered from a provider's upstream `/models` (or
@@ -247,6 +271,8 @@ mod tests {
             serde_json::to_value(schemars::schema_for!(ProviderEntry)).expect("provider schema"),
             serde_json::to_value(schemars::schema_for!(ImageProviderEntry)).expect("image schema"),
             serde_json::to_value(schemars::schema_for!(TtsProviderEntry)).expect("TTS schema"),
+            serde_json::to_value(schemars::schema_for!(ModerationProviderEntry))
+                .expect("moderation schema"),
         ] {
             for field in [
                 "max_concurrency",
@@ -311,6 +337,7 @@ mod tests {
             ],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -325,6 +352,7 @@ mod tests {
         assert!(registry.providers.is_empty());
         assert!(registry.version.is_empty());
         assert!(registry.tts_providers.is_empty());
+        assert!(registry.moderation_providers.is_empty());
     }
 
     #[test]
@@ -544,6 +572,7 @@ mod tests {
             providers: vec![sample_entry()],
             image_providers: vec![sample_image_entry()],
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -654,6 +683,7 @@ mod tests {
             providers: vec![sample_entry()],
             image_providers: Vec::new(),
             tts_providers: vec![sample_tts_entry()],
+            moderation_providers: Vec::new(),
         };
         let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
         let decoded: ProviderRegistry =
@@ -673,5 +703,83 @@ mod tests {
         let decoded: ProviderRegistry =
             serde_json::from_value(legacy).expect("legacy registry deserialize");
         assert!(decoded.tts_providers.is_empty());
+    }
+
+    fn sample_moderation_entry() -> ModerationProviderEntry {
+        ModerationProviderEntry {
+            id: "openai-moderation".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "omni-moderation-latest".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            max_concurrency: Some(2),
+            requests_per_minute: Some(45),
+            daily_token_budget: Some(80_000),
+        }
+    }
+
+    #[test]
+    fn moderation_provider_entry_roundtrips_json() {
+        let entry = sample_moderation_entry();
+        let encoded = serde_json::to_string_pretty(&entry).expect("serialize moderation entry");
+        let decoded: ModerationProviderEntry =
+            serde_json::from_str(&encoded).expect("deserialize moderation entry");
+        assert_eq!(decoded, entry);
+    }
+
+    #[test]
+    fn moderation_provider_entry_rejects_secret_fields() {
+        for field in ["api_key", "secret_token"] {
+            let mut value =
+                serde_json::to_value(sample_moderation_entry()).expect("moderation entry value");
+            value[field] = serde_json::json!("sk-test-secret-marker");
+            let error = serde_json::from_value::<ModerationProviderEntry>(value)
+                .expect_err("secret-bearing field should be rejected");
+            assert!(error.to_string().contains("unknown field"));
+        }
+    }
+
+    #[test]
+    fn moderation_provider_entry_backward_compatible_without_quota_fields() {
+        let legacy = serde_json::json!({
+            "id": "openai-moderation",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "omni-moderation-latest",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true
+        });
+        let decoded: ModerationProviderEntry =
+            serde_json::from_value(legacy).expect("legacy moderation entry deserialize");
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
+    }
+
+    #[test]
+    fn provider_registry_with_moderation_providers_roundtrips() {
+        let registry = ProviderRegistry {
+            version: "1".into(),
+            providers: Vec::new(),
+            image_providers: Vec::new(),
+            tts_providers: Vec::new(),
+            moderation_providers: vec![sample_moderation_entry()],
+        };
+        let encoded = serde_json::to_string_pretty(&registry).expect("serialize registry");
+        let decoded: ProviderRegistry =
+            serde_json::from_str(&encoded).expect("deserialize registry");
+        assert_eq!(decoded, registry);
+    }
+
+    #[test]
+    fn provider_registry_backward_compatible_without_moderation_providers() {
+        let legacy = serde_json::json!({
+            "version": "1",
+            "providers": [],
+            "image_providers": [],
+            "tts_providers": []
+        });
+        let decoded: ProviderRegistry =
+            serde_json::from_value(legacy).expect("legacy registry deserialize");
+        assert!(decoded.moderation_providers.is_empty());
     }
 }

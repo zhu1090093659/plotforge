@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 21;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 23;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -784,6 +784,12 @@ pub struct ReproducibilityMetadata {
     /// carve-out; raw tool-call arguments/results never enter this field.
     #[serde(default)]
     pub mcp_tool_call_hash: Option<String>,
+    /// Reproducibility hash for the moderation provider config that screened a
+    /// turn. Derived only from redaction-safe provider registry fields; `None`
+    /// when moderation did not run. Raw prompts, responses, and credentials
+    /// never enter this field.
+    #[serde(default)]
+    pub moderation_config_hash: Option<String>,
     #[serde(default)]
     pub trace_id: Option<String>,
     #[serde(default)]
@@ -804,6 +810,7 @@ impl ReproducibilityMetadata {
             model_version: "plotforge-local-mock-model-v1".into(),
             provider_config_hash: "sha256:plotforge-local-mock-provider-config-v1".into(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         }
@@ -1319,6 +1326,7 @@ pub enum JobKind {
     TextGeneration,
     ImageGeneration,
     TtsGeneration,
+    ModerationGeneration,
     ExportPackage,
     ReferenceAnalysis,
 }
@@ -1910,6 +1918,7 @@ pub struct ContractRootSchemas {
     pub provider_entry: ProviderEntry,
     pub image_provider_entry: ImageProviderEntry,
     pub tts_provider_entry: TtsProviderEntry,
+    pub moderation_provider_entry: ModerationProviderEntry,
     pub provider_registry: ProviderRegistry,
     pub remote_model_info: RemoteModelInfo,
     pub remote_model_list: RemoteModelList,
@@ -1932,6 +1941,7 @@ pub struct ContractRootSchemas {
     pub mcp_tool_content_block: McpToolContentBlock,
     pub mcp_server_test_result: McpServerTestResult,
     pub pi_agent_apply_request: PiAgentApplyRequest,
+    pub moderation_outcome_summary: ModerationOutcomeSummary,
     pub pi_agent_apply_result: PiAgentApplyResult,
 }
 
@@ -2053,7 +2063,7 @@ export interface Choice { id: string; label: string; action_type: string; input_
 
 export type AgentRole = "story_architect" | "story_craft_planner" | "character_designer" | "scene_planner" | "beat_writer" | "plot_doctor" | "consistency_checker" | "deslop_refiner";
 export interface AgentOutputProposal { id: string; agent: AgentRole; output: AgentProposalPayload; }
-export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; mcp_tool_call_hash?: string | null; trace_id?: string | null; snapshot_id?: string | null; }
+export interface ReproducibilityMetadata { run_seed: number; prompt_version: string; model_version: string; provider_config_hash: string; mcp_tool_call_hash?: string | null; moderation_config_hash?: string | null; trace_id?: string | null; snapshot_id?: string | null; }
 export interface AgentOutputEnvelope { id: string; contract_version: string; schema_version: number; agent: AgentRole; reproducibility: ReproducibilityMetadata; proposal: AgentOutputProposal; }
 export type AgentProposalPayload = { kind: "world_expansion"; payload: WorldExpansionProposal } | { kind: "story_craft_plan"; payload: StoryCraftPlanProposal } | { kind: "character_profile"; payload: CharacterProposal } | { kind: "scene_plan"; payload: ScenePlanProposal } | { kind: "beat_drafts"; payload: BeatDraftsProposal } | { kind: "review"; payload: ReviewProposal };
 export interface WorldGenerationRequest { expansion_goal: string; document: WorldEditDocument; }
@@ -2093,14 +2103,14 @@ export type RuntimeTraceStageStatus = "completed" | "fallback" | "skipped" | "er
 export interface RuntimeTrace { id: string; timestamp_ms: number; reproducibility: ReproducibilityMetadata; player_input?: string | null; selected_choice?: string | null; action_intent?: ActionIntent | null; rule_result?: RuntimeRuleResult | null; planner_result?: RuntimePlannerResult | null; diagnostics: RuntimeTraceDiagnostic[]; world_state_before: WorldState; world_state_delta: WorldDelta; world_state_after: WorldState; story_state_before: StoryState; story_state_after: StoryState; narrative_review?: NarrativeReview | null; media_references: RuntimeMediaReference[]; errors: RuntimeError[]; fallback_used: boolean; }
 export interface RuntimeSnapshot { id: string; timestamp_ms: number; reproducibility: ReproducibilityMetadata; project_id: string; project_version: string; story_state: StoryState; world_state: WorldState; scenes: Scene[]; }
 
-export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "export_package" | "reference_analysis";
+export type JobKind = "text_generation" | "image_generation" | "tts_generation" | "moderation_generation" | "export_package" | "reference_analysis";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "timed_out";
 export interface JobProgress { completed_units: number; total_units: number; message?: string | null; }
 export interface JobCost { estimated_units: number; spent_units: number; }
 export interface JobFailure { code: string; message: string; retryable: boolean; }
 export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
 export interface UsageInfo { input_tokens?: number | null; output_tokens?: number | null; }
-export interface ProviderCostReport { provider_id: string; text_calls: number; image_calls: number; tts_calls: number; input_tokens: number; output_tokens: number; spent_cost_units: number; }
+export interface ProviderCostReport { provider_id: string; text_calls: number; image_calls: number; tts_calls: number; moderation_calls: number; input_tokens: number; output_tokens: number; spent_cost_units: number; }
 export interface UsageSummary { total_input_tokens: number; total_output_tokens: number; total_spent_cost_units: number; by_provider: Record<string, ProviderCostReport>; }
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; visual_bible: VisualBible; audio_bible: AudioBible; asset_records: AssetRecord[]; ai_safety_policy: AiSafetyPolicy; }
@@ -2119,7 +2129,8 @@ export type ProviderKind = "openai_compatible" | "openai_responses" | "anthropic
 export interface ProviderEntry { id: string; kind: ProviderKind; label: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; max_output_tokens?: number | null; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
 export interface ImageProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; default_size: string; default_quality: string; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
 export interface TtsProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; voice: string; format: string; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
-export interface ProviderRegistry { version: string; providers: ProviderEntry[]; image_providers: ImageProviderEntry[]; tts_providers: TtsProviderEntry[]; }
+export interface ModerationProviderEntry { id: string; endpoint_url: string; model: string; credential_env_var: string; enabled: boolean; max_concurrency?: number | null; requests_per_minute?: number | null; daily_token_budget?: number | null; }
+export interface ProviderRegistry { version: string; providers: ProviderEntry[]; image_providers: ImageProviderEntry[]; tts_providers: TtsProviderEntry[]; moderation_providers: ModerationProviderEntry[]; }
 export interface RemoteModelInfo { id: string; owned_by?: string | null; created?: number | null; max_input_tokens?: number | null; max_output_tokens?: number | null; }
 export interface RemoteModelList { models: RemoteModelInfo[]; fetched_at: number; }
 export type PromptScope = "user" | "project";
@@ -2147,8 +2158,9 @@ export type McpToolContentBlock =
 export interface McpToolCallResult { ok: boolean; content: McpToolContentBlock[]; is_error: boolean; }
 export interface McpServerTestResult { ok: boolean; message: string; tools_count: number; }
 export interface PiAgentApplyRequest { agent_id: string; run_seed: number; project_path: string; player_input: string; save_id?: string | null; restore_id?: string | null; }
-export interface PiAgentApplyResult { run: PiAgentRunResult; usage?: UsageInfo | null; scene_key: string; scene: Scene; trace: RuntimeTrace; trace_path: string; delta_summary: string[]; snapshot?: RuntimeSnapshot | null; snapshot_path?: string | null; image_generation_failed?: string | null; }
-export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; usage_info: UsageInfo; usage_summary: UsageSummary; provider_cost_report: ProviderCostReport; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; provider_kind: ProviderKind; provider_entry: ProviderEntry; image_provider_entry: ImageProviderEntry; tts_provider_entry: TtsProviderEntry; provider_registry: ProviderRegistry; remote_model_info: RemoteModelInfo; remote_model_list: RemoteModelList; prompt_scope: PromptScope; prompt_template: PromptTemplate; prompt_template_file: PromptTemplateFile; skill_origin: SkillOrigin; skill_source: SkillSource; skill_frontmatter: SkillFrontmatter; skill_interface: SkillInterface; skill_manifest: SkillManifest; skill_index: SkillIndex; mcp_transport_kind: McpTransportKind; mcp_transport_config: McpTransportConfig; mcp_server_entry: McpServerEntry; mcp_server_registry: McpServerRegistry; mcp_tool_manifest: McpToolManifest; mcp_tool_call_request: McpToolCallRequest; mcp_tool_call_result: McpToolCallResult; mcp_tool_content_block: McpToolContentBlock; mcp_server_test_result: McpServerTestResult; pi_agent_apply_request: PiAgentApplyRequest; pi_agent_apply_result: PiAgentApplyResult; }
+export interface ModerationOutcomeSummary { flagged: boolean; categories: string[]; }
+export interface PiAgentApplyResult { run: PiAgentRunResult; usage?: UsageInfo | null; moderation_outcome?: ModerationOutcomeSummary | null; scene_key: string; scene: Scene; trace: RuntimeTrace; trace_path: string; delta_summary: string[]; snapshot?: RuntimeSnapshot | null; snapshot_path?: string | null; image_generation_failed?: string | null; }
+export interface ContractRootSchemas { project_creation_request: ProjectCreationRequest; project_creation_report: ProjectCreationReport; world_edit_document: WorldEditDocument; story_craft_edit_document: StoryCraftEditDocument; character_edit_document: CharacterEditDocument; state_variables_edit_document: StateVariablesEditDocument; rules_edit_document: RulesEditDocument; project_data: ProjectData; runtime_trace: RuntimeTrace; runtime_snapshot: RuntimeSnapshot; job_record: JobRecord; usage_info: UsageInfo; usage_summary: UsageSummary; provider_cost_report: ProviderCostReport; agent_output_proposal: AgentOutputProposal; agent_output_envelope: AgentOutputEnvelope; reproducibility_metadata: ReproducibilityMetadata; generation_evidence: GenerationEvidence; world_generation_request: WorldGenerationRequest; world_generation_report: WorldGenerationReport; story_craft_generation_request: StoryCraftGenerationRequest; story_craft_generation_report: StoryCraftGenerationReport; character_generation_request: CharacterGenerationRequest; character_generation_report: CharacterGenerationReport; character_portrait_request: CharacterPortraitRequest; character_draft: CharacterDraft; rule_draft: RuleDraft; reference_analysis: ReferenceAnalysis; asset_record: AssetRecord; media_asset_reference: MediaAssetReference; visual_bible: VisualBible; audio_bible: AudioBible; ai_safety_policy: AiSafetyPolicy; ai_usage_manifest: AiUsageManifest; desktop_runtime_draft: DesktopRuntimeDraft; workshop_item_package: WorkshopItemPackage; workshop_publish_draft: WorkshopPublishDraft; steam_submission_kit_request: SteamSubmissionKitRequest; steam_submission_kit_draft: SteamSubmissionKitDraft; export_manifest: ExportManifest; pi_agent_capability: PiAgentCapability; pi_agent_descriptor: PiAgentDescriptor; pi_agent_run_request: PiAgentRunRequest; pi_agent_run_result: PiAgentRunResult; git_branch_info: GitBranchInfo; git_switch_result: GitSwitchResult; model_option: ModelOption; agent_session_config: AgentSessionConfig; provider_kind: ProviderKind; provider_entry: ProviderEntry; image_provider_entry: ImageProviderEntry; tts_provider_entry: TtsProviderEntry; moderation_provider_entry: ModerationProviderEntry; provider_registry: ProviderRegistry; remote_model_info: RemoteModelInfo; remote_model_list: RemoteModelList; prompt_scope: PromptScope; prompt_template: PromptTemplate; prompt_template_file: PromptTemplateFile; skill_origin: SkillOrigin; skill_source: SkillSource; skill_frontmatter: SkillFrontmatter; skill_interface: SkillInterface; skill_manifest: SkillManifest; skill_index: SkillIndex; mcp_transport_kind: McpTransportKind; mcp_transport_config: McpTransportConfig; mcp_server_entry: McpServerEntry; mcp_server_registry: McpServerRegistry; mcp_tool_manifest: McpToolManifest; mcp_tool_call_request: McpToolCallRequest; mcp_tool_call_result: McpToolCallResult; mcp_tool_content_block: McpToolContentBlock; mcp_server_test_result: McpServerTestResult; pi_agent_apply_request: PiAgentApplyRequest; moderation_outcome_summary: ModerationOutcomeSummary; pi_agent_apply_result: PiAgentApplyResult; }
 "#,
     );
     output
@@ -2337,6 +2349,46 @@ mod tests {
             decoded.mcp_tool_call_hash.as_deref(),
             Some("sha256:mcp-server-local-fs")
         );
+    }
+
+    #[test]
+    fn reproducibility_metadata_roundtrips_moderation_config_hash() {
+        let mut metadata = ReproducibilityMetadata::local_mock(42);
+        metadata.moderation_config_hash = Some("sha256:moderation-config".into());
+
+        let encoded = serde_json::to_string(&metadata).expect("serialize");
+        let decoded: ReproducibilityMetadata = serde_json::from_str(&encoded).expect("deserialize");
+
+        assert_eq!(decoded, metadata);
+        assert_eq!(
+            decoded.moderation_config_hash.as_deref(),
+            Some("sha256:moderation-config")
+        );
+    }
+
+    #[test]
+    fn reproducibility_metadata_backward_compatible_without_moderation_config_hash() {
+        let legacy = r#"{
+            "run_seed": 7,
+            "prompt_version": "plotforge-agent-text-prompt-v1",
+            "model_version": "fake-text-model-v1",
+            "provider_config_hash": "sha256:fake-text-provider-config",
+            "mcp_tool_call_hash": null,
+            "trace_id": "trace-1",
+            "snapshot_id": "snap-1"
+        }"#;
+
+        let decoded: ReproducibilityMetadata =
+            serde_json::from_str(legacy).expect("legacy metadata deserialize");
+        assert!(decoded.moderation_config_hash.is_none());
+    }
+
+    #[test]
+    fn job_kind_moderation_generation_serializes_snake_case() {
+        let encoded = serde_json::to_string(&JobKind::ModerationGeneration).expect("serialize");
+        assert_eq!(encoded, "\"moderation_generation\"");
+        let decoded: JobKind = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, JobKind::ModerationGeneration);
     }
 
     #[test]
@@ -2643,7 +2695,7 @@ mod tests {
     fn contract_bundle_uses_current_version_envelope() {
         let bundle = contract_bundle();
 
-        assert_eq!(CONTRACT_SCHEMA_VERSION, 21);
+        assert_eq!(CONTRACT_SCHEMA_VERSION, 23);
         assert_eq!(bundle.contract_version, CONTRACT_VERSION);
         assert_eq!(bundle.schema_version, CONTRACT_SCHEMA_VERSION);
         assert_eq!(bundle.generated_by, CONTRACT_GENERATOR);
@@ -3330,6 +3382,7 @@ mod tests {
             model_version: "fake-text-model-v1".into(),
             provider_config_hash: "sha256:fake-text-provider-config".into(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         }

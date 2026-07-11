@@ -1736,6 +1736,7 @@
         "text_generation",
         "image_generation",
         "tts_generation",
+        "moderation_generation",
         "export_package",
         "reference_analysis"
       ],
@@ -2215,6 +2216,82 @@
       ],
       "type": "object"
     },
+    "ModerationOutcomeSummary": {
+      "additionalProperties": false,
+      "description": "Redaction-safe moderation result exposed to Studio consumers. Categories\nare provider-normalized labels only; raw provider responses never enter\nthis contract.",
+      "properties": {
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "flagged": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "flagged",
+        "categories"
+      ],
+      "type": "object"
+    },
+    "ModerationProviderEntry": {
+      "additionalProperties": false,
+      "description": "A registered moderation provider entry. This is a routing record only:\n`credential_env_var` names the shell environment variable holding the\ncredential, while the credential value itself is never serialized here,\nin traces, or in project source. The optional quota fields are pre-flight\nthrottle inputs owned by `plotforge-job`; absent fields preserve the legacy\nunthrottled behaviour.",
+      "properties": {
+        "credential_env_var": {
+          "type": "string"
+        },
+        "daily_token_budget": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "endpoint_url": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "max_concurrency": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "requests_per_minute": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "endpoint_url",
+        "model",
+        "credential_env_var",
+        "enabled"
+      ],
+      "type": "object"
+    },
     "NarrativeFunction": {
       "enum": [
         "hook",
@@ -2453,6 +2530,16 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "moderation_outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModerationOutcomeSummary"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "run": {
@@ -2930,6 +3017,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "moderation_calls": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "output_tokens": {
           "format": "uint64",
           "minimum": 0,
@@ -3049,12 +3142,19 @@
     },
     "ProviderRegistry": {
       "additionalProperties": false,
-      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.\n\n`image_providers` and `tts_providers` are `#[serde(default)]` so an\nexisting registry serialized before image/TTS providers were introduced\nstill deserializes (backward compatible). Text, image, and TTS providers\nare independent lists: a model id resolves against `providers` via\n`resolve_provider_for_model`, while the pi-Agent image pipeline resolves\nthe first enabled `image_providers` entry and the TTS pipeline resolves\nthe first enabled `tts_providers` entry.",
+      "description": "The persisted registry file (`~/.plotforge/providers.json`). An empty\nregistry is the default for fresh installs; provider wiring is opt-in.\n\n`image_providers`, `tts_providers`, and `moderation_providers` are\n`#[serde(default)]` so registries written before those provider families\nwere introduced still deserialize. Each provider family is an independent\nlist with its own resolver in the agent adapter.",
       "properties": {
         "image_providers": {
           "default": [],
           "items": {
             "$ref": "#/$defs/ImageProviderEntry"
+          },
+          "type": "array"
+        },
+        "moderation_providers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModerationProviderEntry"
           },
           "type": "array"
         },
@@ -3277,6 +3377,14 @@
         },
         "model_version": {
           "type": "string"
+        },
+        "moderation_config_hash": {
+          "default": null,
+          "description": "Reproducibility hash for the moderation provider config that screened a\nturn. Derived only from redaction-safe provider registry fields; `None`\nwhen moderation did not run. Raw prompts, responses, and credentials\nnever enter this field.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "prompt_version": {
           "type": "string"
@@ -3561,6 +3669,7 @@
           "default": {
             "mcp_tool_call_hash": null,
             "model_version": "plotforge-local-mock-model-v1",
+            "moderation_config_hash": null,
             "prompt_version": "plotforge-local-mock-prompt-v1",
             "provider_config_hash": "sha256:plotforge-local-mock-provider-config-v1",
             "run_seed": 0,
@@ -3668,6 +3777,7 @@
           "default": {
             "mcp_tool_call_hash": null,
             "model_version": "plotforge-local-mock-model-v1",
+            "moderation_config_hash": null,
             "prompt_version": "plotforge-local-mock-prompt-v1",
             "provider_config_hash": "sha256:plotforge-local-mock-provider-config-v1",
             "run_seed": 0,
@@ -5196,6 +5306,12 @@
     "model_option": {
       "$ref": "#/$defs/ModelOption"
     },
+    "moderation_outcome_summary": {
+      "$ref": "#/$defs/ModerationOutcomeSummary"
+    },
+    "moderation_provider_entry": {
+      "$ref": "#/$defs/ModerationProviderEntry"
+    },
     "pi_agent_apply_request": {
       "$ref": "#/$defs/PiAgentApplyRequest"
     },
@@ -5385,6 +5501,7 @@
     "provider_entry",
     "image_provider_entry",
     "tts_provider_entry",
+    "moderation_provider_entry",
     "provider_registry",
     "remote_model_info",
     "remote_model_list",
@@ -5407,6 +5524,7 @@
     "mcp_tool_content_block",
     "mcp_server_test_result",
     "pi_agent_apply_request",
+    "moderation_outcome_summary",
     "pi_agent_apply_result"
   ],
   "title": "ContractRootSchemas",

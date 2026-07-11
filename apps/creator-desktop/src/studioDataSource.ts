@@ -16,6 +16,7 @@ import type {
   McpToolCallResult,
   McpToolManifest,
   ModelOption,
+  ModerationProviderEntry,
   PiAgentApplyRequest,
   PiAgentApplyResult,
   PiAgentCapability,
@@ -189,6 +190,12 @@ export interface StudioDataSource {
   upsertTtsProvider(entry: TtsProviderEntry): Promise<TtsProviderEntry>;
   deleteTtsProvider(id: string): Promise<TtsProviderEntry>;
   testTtsProvider(id: string): Promise<ProviderTestResult>;
+  listModerationProviders(): Promise<ModerationProviderEntry[]>;
+  upsertModerationProvider(
+    entry: ModerationProviderEntry,
+  ): Promise<ModerationProviderEntry>;
+  deleteModerationProvider(id: string): Promise<ModerationProviderEntry>;
+  testModerationProvider(id: string): Promise<ProviderTestResult>;
   listUserPromptTemplates(): Promise<PromptTemplate[]>;
   listProjectPromptTemplates(projectPath: string): Promise<PromptTemplate[]>;
   upsertUserPromptTemplate(template: PromptTemplate): Promise<PromptTemplate>;
@@ -315,6 +322,10 @@ function createStudioDataSource(
     upsertTtsProvider: bridge.upsertTtsProvider,
     deleteTtsProvider: bridge.deleteTtsProvider,
     testTtsProvider: bridge.testTtsProvider,
+    listModerationProviders: bridge.listModerationProviders,
+    upsertModerationProvider: bridge.upsertModerationProvider,
+    deleteModerationProvider: bridge.deleteModerationProvider,
+    testModerationProvider: bridge.testModerationProvider,
     listUserPromptTemplates: bridge.listUserPromptTemplates,
     listProjectPromptTemplates: bridge.listProjectPromptTemplates,
     upsertUserPromptTemplate: bridge.upsertUserPromptTemplate,

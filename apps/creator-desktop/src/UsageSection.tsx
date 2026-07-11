@@ -94,6 +94,9 @@ export function UsageSection({ dataSource }: { dataSource: StudioDataSource }) {
                     <th className="px-2 py-2 text-right">{t("agent.usage.textCalls")}</th>
                     <th className="px-2 py-2 text-right">{t("agent.usage.imageCalls")}</th>
                     <th className="px-2 py-2 text-right">{t("agent.usage.ttsCalls")}</th>
+                    <th className="px-2 py-2 text-right">
+                      {t("agent.usage.moderationCalls")}
+                    </th>
                     <th className="px-2 py-2 text-right">{t("agent.usage.cost")}</th>
                   </tr>
                 </thead>
@@ -120,6 +123,9 @@ export function UsageSection({ dataSource }: { dataSource: StudioDataSource }) {
                       </td>
                       <td className="px-2 py-3 text-right tabular-nums text-ink/70">
                         {number.format(provider.tts_calls)}
+                      </td>
+                      <td className="px-2 py-3 text-right tabular-nums text-ink/70">
+                        {number.format(provider.moderation_calls)}
                       </td>
                       <td className="px-2 py-3 text-right font-semibold tabular-nums text-ink">
                         {number.format(provider.spent_cost_units)}

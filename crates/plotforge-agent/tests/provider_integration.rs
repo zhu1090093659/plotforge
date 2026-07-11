@@ -43,17 +43,19 @@ use std::time::Duration;
 
 use plotforge_agent::{
     ConfiguredTextModelProvider, EnvCredentialResolver, ImageGenerationRequest, ImageProvider,
-    OpenAiCompatibleClient, OpenAiImageClient, OpenAiTtsClient, OptionalEnvCredentialResolver,
-    TextModelClient, TextModelClientRequest, TextModelProvider, TextModelProviderErrorKind,
-    TextModelRequest, TextProviderConfig, TtsProvider, TtsRequest, TtsTarget, build_image_provider,
-    build_text_provider, build_tts_provider,
+    ModerationProvider, ModerationProviderErrorKind, ModerationRequest, OpenAiCompatibleClient,
+    OpenAiImageClient, OpenAiTtsClient, OptionalEnvCredentialResolver, TextModelClient,
+    TextModelClientRequest, TextModelProvider, TextModelProviderErrorKind, TextModelRequest,
+    TextProviderConfig, TtsProvider, TtsRequest, TtsTarget, build_image_provider,
+    build_moderation_provider, build_text_provider, build_tts_provider,
 };
 use plotforge_media::{AssetRecordInput, AssetRegistry};
 use plotforge_schema::{
     AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind,
     AssetProviderMetadata, AssetReference, AssetReferenceKind, AssetSourceKind,
-    CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, Choice, ImageProviderEntry, NarrativeFunction,
-    ProviderEntry, ProviderKind, ReproducibilityMetadata, ScenePlanProposal, TtsProviderEntry,
+    CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, Choice, ImageProviderEntry, ModerationProviderEntry,
+    NarrativeFunction, ProviderEntry, ProviderKind, ReproducibilityMetadata, ScenePlanProposal,
+    TtsProviderEntry,
 };
 
 // ---------------------------------------------------------------------------
@@ -163,6 +165,17 @@ fn http_binary_response(content_type: &str, body: &[u8]) -> Vec<u8> {
     response
 }
 
+fn http_chunked_response(content_type: &str, body: &[u8]) -> Vec<u8> {
+    let mut response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nTransfer-Encoding: chunked\r\n\r\n{:X}\r\n",
+        body.len()
+    )
+    .into_bytes();
+    response.extend_from_slice(body);
+    response.extend_from_slice(b"\r\n0\r\n\r\n");
+    response
+}
+
 // ---------------------------------------------------------------------------
 // Fixture builders (mirror the unit-test helpers in providers_http::tests).
 // ---------------------------------------------------------------------------
@@ -267,6 +280,7 @@ fn valid_envelope_json() -> String {
             model_version: "test-model".into(),
             provider_config_hash: "sha256:integration".into(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         },
@@ -313,6 +327,19 @@ fn tts_entry(endpoint: &str, credential_env_var: &str) -> TtsProviderEntry {
         enabled: true,
         voice: "coral".into(),
         format: "mp3".into(),
+        max_concurrency: None,
+        requests_per_minute: None,
+        daily_token_budget: None,
+    }
+}
+
+fn moderation_entry(endpoint: &str, credential_env_var: &str) -> ModerationProviderEntry {
+    ModerationProviderEntry {
+        id: "openai-moderation-test".into(),
+        endpoint_url: endpoint.into(),
+        model: "omni-moderation-latest".into(),
+        credential_env_var: credential_env_var.into(),
+        enabled: true,
         max_concurrency: None,
         requests_per_minute: None,
         daily_token_budget: None,
@@ -1121,6 +1148,132 @@ fn throttle_tts_rate_limit_surfaces_before_a_second_http_request() {
         1
     );
     unsafe { std::env::remove_var(env_var) };
+}
+
+// ===========================================================================
+// Moderation provider composition: wire shape, response parsing, and adapter
+// redaction. No real provider is contacted and the client performs no retry.
+// ===========================================================================
+
+#[test]
+#[ignore]
+fn moderation_request_uses_expected_wire_shape_and_decodes_categories() {
+    let body = r#"{"id":"modr-test","model":"omni-moderation-latest","results":[{"flagged":true,"categories":{"violence":true,"hate":true,"sexual":false},"category_scores":{}}]}"#;
+    let server = capturing_server(http_response("HTTP/1.1 200 OK", "application/json", body));
+    let env_var = "PFIT_MODERATION_WIRE_TOKEN";
+    unsafe { std::env::set_var(env_var, "test-moderation-credential") };
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), env_var);
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let response = provider
+        .moderate(&ModerationRequest {
+            call_id: "wire-test".into(),
+            prompt: "classify this input".into(),
+        })
+        .expect("moderation succeeds");
+    assert!(response.flagged);
+    assert_eq!(response.categories, vec!["hate", "violence"]);
+    assert_eq!(response.usage, None);
+    server.handle.join().expect("server thread");
+    let captured = server.captured.lock().expect("capture").clone();
+    assert!(captured.starts_with("POST /v1/moderations "));
+    assert!(
+        captured
+            .to_lowercase()
+            .contains("authorization: bearer test-moderation-credential")
+    );
+    let request_body = captured.split("\r\n\r\n").nth(1).expect("request body");
+    let request_json: serde_json::Value = serde_json::from_str(request_body).expect("JSON body");
+    assert_eq!(request_json["model"], "omni-moderation-latest");
+    assert_eq!(request_json["input"], "classify this input");
+    assert_eq!(request_json.as_object().expect("object").len(), 2);
+    unsafe { std::env::remove_var(env_var) };
+}
+
+#[test]
+#[ignore]
+fn moderation_429_surfaces_exact_retry_after_without_retry() {
+    let server = capturing_server(http_response_with_headers(
+        "HTTP/1.1 429 Too Many Requests",
+        "Retry-After: 2\r\n",
+        "",
+    ));
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), "");
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let error = provider
+        .moderate(&ModerationRequest {
+            call_id: "rate-limit".into(),
+            prompt: "safe input".into(),
+        })
+        .expect_err("429");
+    assert!(matches!(
+        error.kind,
+        ModerationProviderErrorKind::RateLimit {
+            retry_after_ms: Some(2_000)
+        }
+    ));
+    server.handle.join().expect("server thread");
+    assert_eq!(
+        server
+            .captured
+            .lock()
+            .expect("capture")
+            .matches("POST ")
+            .count(),
+        1,
+        "moderation provider must not retry"
+    );
+}
+
+#[test]
+#[ignore]
+fn moderation_raw_response_secret_marker_is_rejected_before_parse() {
+    let body = r#"{"api_key":"sk-provider-secret","results":[{"flagged":false,"categories":{}}]}"#;
+    let server = capturing_server(http_response("HTTP/1.1 200 OK", "application/json", body));
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), "");
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let error = provider
+        .moderate(&ModerationRequest {
+            call_id: "secret-response".into(),
+            prompt: "safe input".into(),
+        })
+        .expect_err("secret response rejected");
+    assert_eq!(error.code, "moderation_provider_response_secret");
+    assert!(!error.message.contains("sk-provider-secret"));
+    server.handle.join().expect("server thread");
+}
+
+#[test]
+#[ignore]
+fn moderation_fixed_length_response_over_limit_is_rejected() {
+    let body = "x".repeat(1024 * 1024 + 1);
+    let server = capturing_server(http_response("HTTP/1.1 200 OK", "application/json", &body));
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), "");
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let error = provider
+        .moderate(&ModerationRequest {
+            call_id: "oversized-fixed".into(),
+            prompt: "safe input".into(),
+        })
+        .expect_err("oversized response rejected");
+    assert_eq!(error.code, "moderation_provider_response_too_large");
+    server.handle.join().expect("server thread");
+}
+
+#[test]
+#[ignore]
+fn moderation_chunked_response_over_limit_is_rejected() {
+    let body = vec![b'x'; 1024 * 1024 + 1];
+    let server = capturing_server(http_chunked_response("application/json", &body));
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), "");
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let error = provider
+        .moderate(&ModerationRequest {
+            call_id: "oversized-chunked".into(),
+            prompt: "safe input".into(),
+        })
+        .expect_err("oversized chunked response rejected");
+    assert_eq!(error.code, "moderation_provider_response_too_large");
+    server.handle.join().expect("server thread");
 }
 
 // ===========================================================================

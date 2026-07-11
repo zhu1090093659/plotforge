@@ -154,24 +154,26 @@ pub fn render_usage_summary(language: OutputLanguage, summary: &UsageSummary) {
     }
 
     println!(
-        "{:<24} {:>10} {:>10} {:>8} {:>8} {:>8} {:>12}",
+        "{:<24} {:>10} {:>10} {:>8} {:>8} {:>8} {:>10} {:>12}",
         usage_label(language, "provider"),
         usage_label(language, "input"),
         usage_label(language, "output"),
         usage_label(language, "text"),
         usage_label(language, "image"),
         usage_label(language, "tts"),
+        usage_label(language, "moderation"),
         usage_label(language, "cost units")
     );
     for report in summary.by_provider.values() {
         println!(
-            "{:<24} {:>10} {:>10} {:>8} {:>8} {:>8} {:>12}",
+            "{:<24} {:>10} {:>10} {:>8} {:>8} {:>8} {:>10} {:>12}",
             report.provider_id,
             report.input_tokens,
             report.output_tokens,
             report.text_calls,
             report.image_calls,
             report.tts_calls,
+            report.moderation_calls,
             report.spent_cost_units
         );
     }
@@ -188,6 +190,7 @@ pub fn render_provider_cost_report(language: OutputLanguage, report: &ProviderCo
         ("text calls", report.text_calls),
         ("image calls", report.image_calls),
         ("tts calls", report.tts_calls),
+        ("moderation calls", report.moderation_calls),
         ("input tokens", report.input_tokens),
         ("output tokens", report.output_tokens),
         ("cost units", report.spent_cost_units),
@@ -207,11 +210,13 @@ fn usage_label(language: OutputLanguage, label: &'static str) -> &'static str {
         "text" => "文本",
         "image" => "图片",
         "tts" => "语音",
+        "moderation" => "审核",
         "input tokens" => "输入令牌",
         "output tokens" => "输出令牌",
         "text calls" => "文本调用",
         "image calls" => "图片调用",
         "tts calls" => "语音调用",
+        "moderation calls" => "审核调用",
         "cost units" => "成本单位",
         "no usage recorded" => "尚无用量记录",
         _ => label,

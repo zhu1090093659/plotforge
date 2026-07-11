@@ -10,6 +10,7 @@ import type {
   PiAgentApplyResult,
   ProviderEntry,
   ImageProviderEntry,
+  ModerationProviderEntry,
   TtsProviderEntry,
   UsageSummary,
   PromptTemplate,
@@ -281,6 +282,39 @@ export async function mockDeleteTtsProvider(
 }
 
 export async function mockTestTtsProvider(
+  _id: string,
+): Promise<ProviderTestResult> {
+  return { ok: true, message: "" };
+}
+
+export async function mockListModerationProviders(): Promise<
+  ModerationProviderEntry[]
+> {
+  return [];
+}
+
+export async function mockUpsertModerationProvider(
+  entry: ModerationProviderEntry,
+): Promise<ModerationProviderEntry> {
+  return entry;
+}
+
+export async function mockDeleteModerationProvider(
+  id: string,
+): Promise<ModerationProviderEntry> {
+  return {
+    id,
+    endpoint_url: "",
+    model: "",
+    credential_env_var: "",
+    enabled: false,
+    max_concurrency: null,
+    requests_per_minute: null,
+    daily_token_budget: null,
+  };
+}
+
+export async function mockTestModerationProvider(
   _id: string,
 ): Promise<ProviderTestResult> {
   return { ok: true, message: "" };

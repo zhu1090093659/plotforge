@@ -45,6 +45,7 @@ pub(crate) enum ProviderThrottleScope {
     Text,
     Image,
     Tts,
+    Moderation,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

@@ -13,18 +13,25 @@
 //! instead of erroring, and the HTTP clients omit the auth header when the
 //! credential is empty.
 
-use std::path::PathBuf;
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use plotforge_job::ThrottleConfig;
 use plotforge_schema::{
-    ImageProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
-    RemoteModelList, TtsProviderEntry, redact_trace_text,
+    ImageProviderEntry, ModerationProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry,
+    RemoteModelInfo, RemoteModelList, TtsProviderEntry, redact_trace_text,
 };
 
 use crate::providers_http::{
     AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient,
 };
 use crate::providers_image::{ImageProvider, OpenAiImageClient};
+use crate::providers_moderation::{
+    ModerationProvider, OpenAiModerationClient, validate_moderation_provider_entry,
+};
 use crate::providers_text::{
     ConfiguredTextModelProvider, EnvCredentialResolver, FakeTextModelProvider,
     ProviderCredentialError, ProviderCredentialResolver, TextModelClient, TextModelProvider,
@@ -105,18 +112,143 @@ pub fn write_provider_registry_to(
     path: &std::path::Path,
     registry: &ProviderRegistry,
 ) -> Result<(), ProviderRegistryError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| ProviderRegistryError::WriteFailed {
+    write_provider_registry_atomic(path, registry, |_| Ok(()))
+}
+
+/// Runs one provider-registry mutation under a cross-process lock covering
+/// the complete load-modify-write transaction.
+pub fn mutate_provider_registry<T, E>(
+    mutator: impl FnOnce(&mut ProviderRegistry) -> Result<T, E>,
+) -> Result<T, ProviderRegistryMutationError<E>> {
+    let path = provider_registry_path();
+    mutate_provider_registry_with_resolved_path(path.as_deref(), mutator)
+}
+
+/// Applies the same missing-path semantics as the user-global transaction
+/// without requiring tests to mutate HOME or platform config environment.
+/// A mutation error wins over the later persistence failure, matching the
+/// legacy load-default-then-write flow; a successful in-memory mutation cannot
+/// be persisted and therefore returns `NoConfigDir`.
+fn mutate_provider_registry_with_resolved_path<T, E>(
+    path: Option<&Path>,
+    mutator: impl FnOnce(&mut ProviderRegistry) -> Result<T, E>,
+) -> Result<T, ProviderRegistryMutationError<E>> {
+    let Some(path) = path else {
+        let mut registry = ProviderRegistry::default();
+        let _ = mutator(&mut registry).map_err(ProviderRegistryMutationError::Mutation)?;
+        return Err(ProviderRegistryMutationError::Registry(
+            ProviderRegistryError::NoConfigDir,
+        ));
+    };
+    mutate_provider_registry_at(path, mutator)
+}
+
+/// Path-injected counterpart for adapters and hermetic concurrency tests.
+pub fn mutate_provider_registry_at<T, E>(
+    path: &Path,
+    mutator: impl FnOnce(&mut ProviderRegistry) -> Result<T, E>,
+) -> Result<T, ProviderRegistryMutationError<E>> {
+    let parent = registry_parent(path);
+    std::fs::create_dir_all(parent).map_err(|source| {
+        ProviderRegistryMutationError::Registry(ProviderRegistryError::WriteFailed {
             path: parent.display().to_string(),
-            source: error,
+            source,
+        })
+    })?;
+    let lock_path = provider_registry_lock_path(path);
+    let lock_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|source| {
+            ProviderRegistryMutationError::Registry(ProviderRegistryError::LockFailed {
+                path: lock_path.display().to_string(),
+                source,
+            })
         })?;
-    }
+    lock_file.lock().map_err(|source| {
+        ProviderRegistryMutationError::Registry(ProviderRegistryError::LockFailed {
+            path: lock_path.display().to_string(),
+            source,
+        })
+    })?;
+
+    let mut registry =
+        load_provider_registry_from(path).map_err(ProviderRegistryMutationError::Registry)?;
+    let output = mutator(&mut registry).map_err(ProviderRegistryMutationError::Mutation)?;
+    write_provider_registry_to(path, &registry).map_err(ProviderRegistryMutationError::Registry)?;
+    Ok(output)
+}
+
+fn write_provider_registry_atomic(
+    path: &Path,
+    registry: &ProviderRegistry,
+    before_rename: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<(), ProviderRegistryError> {
+    let parent = registry_parent(path);
+    std::fs::create_dir_all(parent).map_err(|source| ProviderRegistryError::WriteFailed {
+        path: parent.display().to_string(),
+        source,
+    })?;
     let content = serde_json::to_string_pretty(registry)
         .map_err(|error| ProviderRegistryError::SerializeFailed { source: error })?;
-    std::fs::write(path, content).map_err(|error| ProviderRegistryError::WriteFailed {
-        path: path.display().to_string(),
-        source: error,
+    let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|source| {
+        ProviderRegistryError::WriteFailed {
+            path: parent.display().to_string(),
+            source,
+        }
     })?;
+    let temp_path = temp.path().to_path_buf();
+    temp.write_all(content.as_bytes())
+        .and_then(|_| temp.as_file().sync_all())
+        .map_err(|source| ProviderRegistryError::WriteFailed {
+            path: temp_path.display().to_string(),
+            source,
+        })?;
+    before_rename(&temp_path).map_err(|source| ProviderRegistryError::WriteFailed {
+        path: temp_path.display().to_string(),
+        source,
+    })?;
+    temp.persist(path)
+        .map_err(|error| ProviderRegistryError::WriteFailed {
+            path: path.display().to_string(),
+            source: error.error,
+        })?;
+    sync_registry_parent(parent)?;
+    Ok(())
+}
+
+fn registry_parent(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
+fn provider_registry_lock_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("providers.json");
+    path.with_file_name(format!(".{file_name}.lock"))
+}
+
+#[cfg(unix)]
+fn sync_registry_parent(parent: &Path) -> Result<(), ProviderRegistryError> {
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|source| ProviderRegistryError::WriteFailed {
+            path: parent.display().to_string(),
+            source,
+        })
+}
+
+/// Rust's standard library has no portable directory-sync primitive on
+/// non-Unix targets. `NamedTempFile::persist` still supplies atomic replace;
+/// the extra crash-durability sync is applied wherever the platform exposes it.
+#[cfg(not(unix))]
+fn sync_registry_parent(_parent: &Path) -> Result<(), ProviderRegistryError> {
     Ok(())
 }
 
@@ -304,6 +436,83 @@ pub fn build_tts_provider(
         })
 }
 
+/// Builds an OpenAI-compatible moderation provider. Empty credential env-var
+/// names select the explicit no-auth resolver; non-empty names stay strict.
+pub fn build_moderation_provider(
+    entry: &ModerationProviderEntry,
+) -> Result<Box<dyn ModerationProvider>, ProviderBuildError> {
+    validate_moderation_provider_entry(entry).map_err(|error| {
+        ProviderBuildError::InvalidConfiguration {
+            message: error.message,
+        }
+    })?;
+    reject_non_text_daily_token_budget(&entry.id, "moderation", entry.daily_token_budget)?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Moderation,
+        moderation_throttle_config_hash(entry)?,
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: None,
+        },
+    )?;
+    if entry.credential_env_var.trim().is_empty() {
+        OpenAiModerationClient::new(entry, OptionalEnvCredentialResolver)
+            .map(|client| Box::new(client.with_throttle(throttle)) as Box<dyn ModerationProvider>)
+            .map_err(|error| ProviderBuildError::ClientConstruction {
+                provider_id: entry.id.clone(),
+                message: error.message,
+            })
+    } else {
+        OpenAiModerationClient::new(entry, EnvCredentialResolver)
+            .map(|client| Box::new(client.with_throttle(throttle)) as Box<dyn ModerationProvider>)
+            .map_err(|error| ProviderBuildError::ClientConstruction {
+                provider_id: entry.id.clone(),
+                message: error.message,
+            })
+    }
+}
+
+/// Returns the first enabled moderation entry, preserving registry order.
+pub fn resolve_moderation_provider(
+    registry: &ProviderRegistry,
+) -> Option<&ModerationProviderEntry> {
+    registry
+        .moderation_providers
+        .iter()
+        .find(|entry| entry.enabled)
+}
+
+/// Canonical moderation reproducibility identity. Quota fields are excluded;
+/// the throttle registry uses its own normalized upstream identity below.
+pub fn moderation_config_hash(entry: &ModerationProviderEntry) -> String {
+    format!(
+        "sha256:{}",
+        crate::shared::stable_sha256_hash(&format!(
+            "id={}\nendpoint_url={}\nmodel={}\ncredential_env_var={}\nenabled={}\n",
+            entry.id, entry.endpoint_url, entry.model, entry.credential_env_var, entry.enabled,
+        ))
+    )
+}
+
+/// Stable upstream identity for the process-shared moderation throttle gate.
+/// The provider id is already a separate `ProviderThrottleKey` field, while
+/// enabled/quota edits must reconfigure the same gate without erasing debt.
+fn moderation_throttle_config_hash(
+    entry: &ModerationProviderEntry,
+) -> Result<String, ProviderBuildError> {
+    let request_endpoint =
+        crate::shared::join_provider_endpoint(&entry.endpoint_url, "moderations")
+            .map_err(|message| ProviderBuildError::InvalidConfiguration { message })?;
+    Ok(throttle_config_hash(&[
+        "openai_moderations",
+        &request_endpoint,
+        &entry.model,
+        &entry.credential_env_var,
+    ]))
+}
+
 fn build_throttle(
     scope: ProviderThrottleScope,
     provider_config_hash: String,
@@ -336,10 +545,20 @@ fn reject_media_daily_token_budget(
     provider_id: &str,
     daily_token_budget: Option<u64>,
 ) -> Result<(), ProviderBuildError> {
+    reject_non_text_daily_token_budget(provider_id, "image and TTS", daily_token_budget)
+}
+
+fn reject_non_text_daily_token_budget(
+    provider_id: &str,
+    provider_kind: &str,
+    daily_token_budget: Option<u64>,
+) -> Result<(), ProviderBuildError> {
     if daily_token_budget.is_some() {
         return Err(ProviderBuildError::UnsupportedQuota {
             provider_id: provider_id.to_string(),
-            message: "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens".into(),
+            message: format!(
+                "daily_token_budget is supported only by text providers because {provider_kind} usage does not report output tokens"
+            ),
         });
     }
     Ok(())
@@ -725,11 +944,41 @@ pub enum ProviderRegistryError {
     },
     #[error("failed to serialize provider registry: {source}")]
     SerializeFailed { source: serde_json::Error },
+    #[error("failed to lock provider registry at {path}: {source}")]
+    LockFailed {
+        path: String,
+        source: std::io::Error,
+    },
+}
+
+#[derive(Debug)]
+pub enum ProviderRegistryMutationError<E> {
+    Registry(ProviderRegistryError),
+    Mutation(E),
+}
+
+impl<E> std::fmt::Display for ProviderRegistryMutationError<E>
+where
+    E: std::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Registry(error) => write!(formatter, "{error}"),
+            Self::Mutation(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl<E> std::error::Error for ProviderRegistryMutationError<E> where
+    E: std::fmt::Debug + std::fmt::Display
+{
 }
 
 /// Errors raised by `build_provider_client` / `build_text_provider`.
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderBuildError {
+    #[error("invalid provider configuration: {message}")]
+    InvalidConfiguration { message: String },
     #[error("could not construct HTTP client for provider `{provider_id}`: {message}")]
     ClientConstruction {
         provider_id: String,
@@ -756,6 +1005,7 @@ pub fn local_pi_provider() -> FakeTextModelProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Barrier};
     use tempfile::TempDir;
 
     #[test]
@@ -783,6 +1033,123 @@ mod tests {
     }
 
     #[test]
+    fn atomic_registry_write_replaces_existing_file() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.json");
+        let first = ProviderRegistry {
+            version: "first".into(),
+            ..ProviderRegistry::default()
+        };
+        let second = ProviderRegistry {
+            version: "second".into(),
+            ..ProviderRegistry::default()
+        };
+        write_provider_registry_to(&path, &first).expect("first write");
+        write_provider_registry_to(&path, &second).expect("atomic replacement");
+        assert_eq!(
+            load_provider_registry_from(&path).expect("load replaced file"),
+            second
+        );
+    }
+
+    #[test]
+    fn failed_atomic_registry_write_preserves_previous_json() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.json");
+        let previous = ProviderRegistry {
+            version: "previous".into(),
+            ..ProviderRegistry::default()
+        };
+        let replacement = ProviderRegistry {
+            version: "replacement".into(),
+            ..ProviderRegistry::default()
+        };
+        write_provider_registry_to(&path, &previous).expect("baseline write");
+        let error = write_provider_registry_atomic(&path, &replacement, |_| {
+            Err(std::io::Error::other("injected before persist"))
+        })
+        .expect_err("injected failure");
+        assert!(matches!(error, ProviderRegistryError::WriteFailed { .. }));
+        assert_eq!(
+            load_provider_registry_from(&path).expect("previous JSON remains valid"),
+            previous
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .expect("read temp dir")
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_name().to_string_lossy().contains("tmp"))
+                .count(),
+            0,
+            "failed atomic write must clean its temporary file"
+        );
+    }
+
+    #[test]
+    fn missing_registry_path_runs_successful_mutation_then_returns_no_config_dir() {
+        let error = mutate_provider_registry_with_resolved_path(None, |registry| {
+            registry
+                .moderation_providers
+                .push(sample_moderation_entry("no-config", false));
+            Ok::<_, &'static str>(())
+        })
+        .expect_err("successful mutation cannot be persisted without a config dir");
+
+        assert!(matches!(
+            error,
+            ProviderRegistryMutationError::Registry(ProviderRegistryError::NoConfigDir)
+        ));
+    }
+
+    #[test]
+    fn missing_registry_path_preserves_mutation_error_before_no_config_dir() {
+        let error = mutate_provider_registry_with_resolved_path(None, |registry| {
+            assert!(registry.providers.is_empty());
+            Err::<(), _>("provider_not_found")
+        })
+        .expect_err("mutation error wins");
+
+        assert!(matches!(
+            error,
+            ProviderRegistryMutationError::Mutation("provider_not_found")
+        ));
+    }
+
+    #[test]
+    fn concurrent_registry_mutations_do_not_lose_updates() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.json");
+        let barrier = Arc::new(Barrier::new(3));
+        let handles = ["one", "two"].map(|id| {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                mutate_provider_registry_at(&path, |registry| {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    registry
+                        .moderation_providers
+                        .push(sample_moderation_entry(id, false));
+                    Ok::<_, String>(())
+                })
+                .expect("locked mutation");
+            })
+        });
+        barrier.wait();
+        for handle in handles {
+            handle.join().expect("mutation thread");
+        }
+        let registry = load_provider_registry_from(&path).expect("load mutations");
+        let mut ids = registry
+            .moderation_providers
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        assert_eq!(ids, vec!["one", "two"]);
+    }
+
+    #[test]
     fn write_and_load_registry_roundtrips() {
         let dir = TempDir::new().expect("temp dir");
         let registry_path = dir.path().join("providers.json");
@@ -803,6 +1170,7 @@ mod tests {
             }],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");
         let loaded = load_provider_registry_from(&registry_path).expect("read via public API");
@@ -847,6 +1215,7 @@ mod tests {
             ],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
         };
         let resolved = resolve_provider_for_model("glm", &registry).expect("glm entry");
         assert_eq!(resolved.id, "glm");
@@ -1471,6 +1840,7 @@ mod tests {
             version: "1".into(),
             providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
             image_providers: vec![
                 sample_image_entry("disabled-image", "OFF_KEY", false),
                 sample_image_entry("enabled-image", "ON_KEY", true),
@@ -1488,6 +1858,7 @@ mod tests {
             version: "1".into(),
             providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
             image_providers: vec![sample_image_entry("off", "OFF_KEY", false)],
         };
         assert!(resolve_image_provider(&registry).is_none());
@@ -1519,6 +1890,7 @@ mod tests {
                 daily_token_budget: None,
             }],
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
             image_providers: vec![sample_image_entry("openai-image", "OPENAI_API_KEY", true)],
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");
@@ -1530,5 +1902,205 @@ mod tests {
         let raw = std::fs::read_to_string(&registry_path).expect("read raw");
         assert!(!raw.contains("api_key"));
         assert!(!raw.contains("sk-"));
+    }
+
+    fn sample_moderation_entry(id: &str, enabled: bool) -> ModerationProviderEntry {
+        ModerationProviderEntry {
+            id: id.into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "omni-moderation-latest".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        }
+    }
+
+    #[test]
+    fn resolve_moderation_provider_returns_first_enabled() {
+        let registry = ProviderRegistry {
+            moderation_providers: vec![
+                sample_moderation_entry("disabled", false),
+                sample_moderation_entry("first", true),
+                sample_moderation_entry("second", true),
+            ],
+            ..ProviderRegistry::default()
+        };
+        assert_eq!(
+            resolve_moderation_provider(&registry).map(|entry| entry.id.as_str()),
+            Some("first")
+        );
+    }
+
+    #[test]
+    fn resolve_moderation_provider_none_when_empty_or_disabled() {
+        assert!(resolve_moderation_provider(&ProviderRegistry::default()).is_none());
+        let registry = ProviderRegistry {
+            moderation_providers: vec![sample_moderation_entry("disabled", false)],
+            ..ProviderRegistry::default()
+        };
+        assert!(resolve_moderation_provider(&registry).is_none());
+    }
+
+    #[test]
+    fn build_moderation_provider_constructs_no_auth_client() {
+        let mut entry = sample_moderation_entry("local", true);
+        entry.endpoint_url = "http://127.0.0.1:9/v1".into();
+        entry.credential_env_var.clear();
+        build_moderation_provider(&entry).expect("moderation provider builds");
+    }
+
+    #[test]
+    fn build_moderation_provider_rejects_daily_token_budget() {
+        let mut entry = sample_moderation_entry("budgeted", true);
+        entry.daily_token_budget = Some(100);
+        let error = match build_moderation_provider(&entry) {
+            Ok(_) => panic!("daily budget must be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, ProviderBuildError::UnsupportedQuota { .. }));
+    }
+
+    #[test]
+    fn persisted_unsafe_moderation_entry_is_rejected_before_network() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.json");
+        let mut entry = sample_moderation_entry("manual", true);
+        entry.credential_env_var = "sk-secret-literal".into();
+        let registry = ProviderRegistry {
+            moderation_providers: vec![entry],
+            ..ProviderRegistry::default()
+        };
+        write_provider_registry_to(&path, &registry).expect("simulate manual registry");
+        let loaded = load_provider_registry_from(&path).expect("load manual registry");
+        let error = match build_moderation_provider(&loaded.moderation_providers[0]) {
+            Ok(_) => panic!("unsafe persisted entry must not build"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            ProviderBuildError::InvalidConfiguration { .. }
+        ));
+        assert!(!error.to_string().contains("sk-secret-literal"));
+    }
+
+    #[test]
+    fn moderation_config_hash_is_stable_and_excludes_quota() {
+        let entry = sample_moderation_entry("moderation", true);
+        let mut quota_edit = entry.clone();
+        quota_edit.max_concurrency = Some(2);
+        quota_edit.requests_per_minute = Some(30);
+        assert_eq!(
+            moderation_config_hash(&entry),
+            moderation_config_hash(&entry)
+        );
+        assert_eq!(
+            moderation_config_hash(&entry),
+            moderation_config_hash(&quota_edit),
+            "quota edits must reconfigure the same shared gate"
+        );
+
+        let mut model_edit = entry.clone();
+        model_edit.model = "text-moderation-latest".into();
+        assert_ne!(
+            moderation_config_hash(&entry),
+            moderation_config_hash(&model_edit)
+        );
+        assert!(!plotforge_schema::contains_secret_marker_text(
+            &moderation_config_hash(&entry)
+        ));
+
+        for edit in [
+            |entry: &mut ModerationProviderEntry| entry.id.push_str("-other"),
+            |entry: &mut ModerationProviderEntry| entry.endpoint_url.push_str("/other"),
+            |entry: &mut ModerationProviderEntry| entry.credential_env_var.push_str("_OTHER"),
+            |entry: &mut ModerationProviderEntry| entry.enabled = !entry.enabled,
+        ] {
+            let mut changed = entry.clone();
+            edit(&mut changed);
+            assert_ne!(
+                moderation_config_hash(&entry),
+                moderation_config_hash(&changed)
+            );
+        }
+    }
+
+    #[test]
+    fn moderation_enabled_toggle_preserves_shared_rate_debt() {
+        let mut entry = sample_moderation_entry("moderation-enabled-toggle", false);
+        entry.requests_per_minute = Some(1);
+        let first = build_throttle(
+            ProviderThrottleScope::Moderation,
+            moderation_throttle_config_hash(&entry).expect("throttle identity"),
+            ThrottleConfig {
+                provider_id: entry.id.clone(),
+                requests_per_minute: entry.requests_per_minute,
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("first throttle")
+        .expect("configured gate");
+        drop(first.acquire().expect("first request consumes capacity"));
+
+        entry.enabled = true;
+        let rebuilt = build_throttle(
+            ProviderThrottleScope::Moderation,
+            moderation_throttle_config_hash(&entry).expect("throttle identity"),
+            ThrottleConfig {
+                provider_id: entry.id.clone(),
+                requests_per_minute: entry.requests_per_minute,
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("rebuilt throttle")
+        .expect("configured gate");
+        let failure = rebuilt
+            .acquire()
+            .expect_err("enabled toggle must not reset RPM debt")
+            .into_failure();
+        assert!(matches!(
+            failure,
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
+    }
+
+    #[test]
+    fn moderation_canonical_endpoint_preserves_shared_rate_debt() {
+        let mut entry = sample_moderation_entry("moderation-canonical-endpoint", true);
+        entry.endpoint_url = "https://api.openai.com:443/v1/".into();
+        entry.requests_per_minute = Some(1);
+        let first = build_throttle(
+            ProviderThrottleScope::Moderation,
+            moderation_throttle_config_hash(&entry).expect("first identity"),
+            ThrottleConfig {
+                provider_id: entry.id.clone(),
+                requests_per_minute: entry.requests_per_minute,
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("first throttle")
+        .expect("configured gate");
+        drop(first.acquire().expect("consume capacity"));
+
+        entry.endpoint_url = "https://api.openai.com/v1".into();
+        let rebuilt = build_throttle(
+            ProviderThrottleScope::Moderation,
+            moderation_throttle_config_hash(&entry).expect("canonical identity"),
+            ThrottleConfig {
+                provider_id: entry.id.clone(),
+                requests_per_minute: entry.requests_per_minute,
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("rebuilt throttle")
+        .expect("configured gate");
+        assert!(matches!(
+            rebuilt
+                .acquire()
+                .expect_err("equivalent endpoint must retain RPM debt")
+                .into_failure(),
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
     }
 }
