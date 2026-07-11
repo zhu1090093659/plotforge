@@ -7,6 +7,7 @@
 //! lives in the scene planner module; this module only owns the text-output
 //! pipeline shared by generation and pi-Agent paths.
 
+use plotforge_job::{UsageKind, UsageReport};
 use plotforge_schema::{
     AgentOutputEnvelope, AgentProposalPayload, AgentRole, CONTRACT_SCHEMA_VERSION,
     CONTRACT_VERSION, Character, CharacterGenerationReport, CharacterGenerationRequest,
@@ -27,6 +28,7 @@ pub(crate) enum ProviderPipelineError {
     Provider(TextModelProviderError),
     InvalidJson { agent: AgentRole, message: String },
     Validation { agent: AgentRole, message: String },
+    Usage(String),
 }
 
 /// Validated text-agent output plus the redaction-safe token usage reported
@@ -67,6 +69,10 @@ impl ProviderPipelineError {
             Self::Validation { agent, message } => RuntimeError::redacted(
                 "text_provider_schema_validation",
                 format!("{agent:?} returned invalid proposal: {message}"),
+            ),
+            Self::Usage(error) => RuntimeError::redacted(
+                "usage_ledger_report",
+                format!("failed to report provider usage: {error}"),
             ),
         }
     }
@@ -218,6 +224,34 @@ where
         None,
         None,
         &RetryPolicy::default(),
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn complete_text_agent_output_with_usage_reporter<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    prompt: String,
+    reporter: Option<&mut dyn crate::UsageReporter>,
+) -> Result<TextAgentOutput, ProviderPipelineError>
+where
+    P: TextModelProvider + ?Sized,
+{
+    complete_text_agent_output_core(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        prompt,
+        None,
+        None,
+        &RetryPolicy::default(),
+        reporter,
     )
 }
 
@@ -238,7 +272,7 @@ where
     P: TextModelProvider + ?Sized,
 {
     complete_text_agent_output_core(
-        provider, agent, run_seed, call_id, scene_key, prompt, None, None, policy,
+        provider, agent, run_seed, call_id, scene_key, prompt, None, None, policy, None,
     )
     .map(|output| output.envelope)
 }
@@ -336,6 +370,36 @@ where
         Some(messages),
         Some(prompt_version),
         &RetryPolicy::default(),
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn complete_text_agent_output_with_messages_and_usage_reporter<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    messages: Vec<crate::prompts::ChatMessage>,
+    prompt_version: &str,
+    reporter: Option<&mut dyn crate::UsageReporter>,
+) -> Result<TextAgentOutput, ProviderPipelineError>
+where
+    P: TextModelProvider + ?Sized,
+{
+    let prompt = user_prompt_from_messages(&messages);
+    complete_text_agent_output_core(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        prompt,
+        Some(messages),
+        Some(prompt_version),
+        &RetryPolicy::default(),
+        reporter,
     )
 }
 
@@ -356,6 +420,7 @@ fn complete_text_agent_output_core<P>(
     messages: Option<Vec<crate::prompts::ChatMessage>>,
     prompt_version_override: Option<&str>,
     policy: &RetryPolicy,
+    reporter: Option<&mut dyn crate::UsageReporter>,
 ) -> Result<TextAgentOutput, ProviderPipelineError>
 where
     P: TextModelProvider + ?Sized,
@@ -391,6 +456,20 @@ where
     let TextModelResponse { raw_json, usage } =
         complete_with_retry(provider, &model_request, policy)
             .map_err(ProviderPipelineError::Provider)?;
+    if let (Some(reporter), Some(identity), Some(usage)) =
+        (reporter, provider.usage_identity(), usage.as_ref())
+    {
+        reporter
+            .report_usage(UsageReport {
+                provider_id: identity.provider_id,
+                kind: UsageKind::Text,
+                model: identity.model,
+                input_tokens: usage.input_tokens.unwrap_or(0),
+                output_tokens: usage.output_tokens.unwrap_or(0),
+                spent_cost_units: 0,
+            })
+            .map_err(|error| ProviderPipelineError::Usage(error.to_string()))?;
+    }
     if contains_secret_marker_text(&raw_json) {
         return Err(ProviderPipelineError::Validation {
             agent,

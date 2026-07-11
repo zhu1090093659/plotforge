@@ -330,13 +330,30 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     // turns. When empty, the existing one-shot path is taken byte-for-byte
     // (the agent is constructed and `run_with_envelope` is called as before).
     let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
+    let mut usage_ledger = if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        None
+    } else {
+        Some(
+            plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock).map_err(|source| {
+                StudioCommandError {
+                    code: "pi_agent_usage_ledger".into(),
+                    message: source.to_string(),
+                }
+            })?,
+        )
+    };
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
         // Empty list → existing one-shot path. Construct the agent and call
         // `run_with_envelope` exactly as before (byte-identical regression
         // guard: this branch must not change the existing behavior).
         let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
         agent
-            .run_with_envelope(run_request)
+            .run_with_envelope_with_usage_reporter(
+                run_request,
+                usage_ledger
+                    .as_mut()
+                    .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
+            )
             .map_err(|error| StudioCommandError {
                 code: match &error {
                     plotforge_agent::PiAgentError::Provider { code, .. } => {

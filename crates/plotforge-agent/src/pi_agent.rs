@@ -90,22 +90,26 @@ impl PiAgent {
         &self,
         request: PiAgentRunRequest,
     ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
-        self.validate_request(&request)?;
+        self.run_with_envelope_with_usage_reporter(request, None)
+    }
 
-        // Reuse the shared provider pipeline so the pi-Agent benefits from
-        // the same validation path (envelope validation, JSON repair, and
-        // `validate_agent_output_proposal`) as the existing agent pipelines.
-        let output = crate::pipelines::complete_text_agent_output_with_usage(
+    pub fn run_with_envelope_with_usage_reporter(
+        &self,
+        request: PiAgentRunRequest,
+        reporter: Option<&mut dyn crate::UsageReporter>,
+    ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
+        self.validate_request(&request)?;
+        let output = crate::pipelines::complete_text_agent_output_with_usage_reporter(
             self.provider.as_ref(),
             AgentRole::ScenePlanner,
             request.run_seed,
             format!("pi-agent-{}-{}", self.agent_id, request.run_seed),
             format!("pi-agent-{}", self.agent_id),
             request.prompt_summary.clone(),
+            reporter,
         )
         .map_err(Self::provider_error)?;
         let result = self.assemble_result(&output.envelope, request.run_seed, output.usage);
-
         Ok((result, output.envelope))
     }
 
@@ -138,27 +142,26 @@ impl PiAgent {
         request: PiAgentRunRequest,
         context: &str,
     ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
-        self.validate_request(&request)?;
+        self.run_with_envelope_with_context_and_usage_reporter(request, context, None)
+    }
 
-        // The user message is the player's input plus the assembled context
-        // block. When the context is empty (a fresh project with no world
-        // bible yet), the user message is just the player input, mirroring
-        // `run_with_envelope`.
+    pub fn run_with_envelope_with_context_and_usage_reporter(
+        &self,
+        request: PiAgentRunRequest,
+        context: &str,
+        reporter: Option<&mut dyn crate::UsageReporter>,
+    ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), PiAgentError> {
+        self.validate_request(&request)?;
         let user_message = if context.trim().is_empty() {
             request.prompt_summary.clone()
         } else {
             format!("{}\n\n{}", request.prompt_summary.trim(), context)
         };
-
-        // Assemble the structured chat messages (system + user) and drive the
-        // structured-prompt pipeline. `complete_text_agent_output_with_
-        // messages` packs the messages into `TextModelRequest.messages` and
-        // overrides `prompt_version` with the ScenePlanner template version.
         let messages = crate::prompts::PromptAssembler::assemble(
             &crate::prompts::SCENE_PLANNER_V1,
             &user_message,
         );
-        let output = crate::pipelines::complete_text_agent_output_with_messages_and_usage(
+        let output = crate::pipelines::complete_text_agent_output_with_messages_and_usage_reporter(
             self.provider.as_ref(),
             AgentRole::ScenePlanner,
             request.run_seed,
@@ -166,10 +169,10 @@ impl PiAgent {
             format!("pi-agent-{}", self.agent_id),
             messages,
             crate::prompts::SCENE_PLANNER_V1.version,
+            reporter,
         )
         .map_err(Self::provider_error)?;
         let result = self.assemble_result(&output.envelope, request.run_seed, output.usage);
-
         Ok((result, output.envelope))
     }
 
@@ -341,6 +344,7 @@ pub fn pi_agent_capabilities_with_mcp(mcp_enabled: bool) -> Vec<PiAgentCapabilit
 
 #[cfg(test)]
 mod tests {
+    use plotforge_job::{JobClock, UsageLedger};
     use plotforge_schema::{
         AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, CONTRACT_SCHEMA_VERSION,
         CONTRACT_VERSION, PiAgentCapability, ReproducibilityMetadata, ScenePlanProposal, UsageInfo,
@@ -352,6 +356,15 @@ mod tests {
         ConfiguredTextModelProvider, FakeTextModelProvider, TextModelClient,
         TextModelClientRequest, TextModelProvider, TextModelResponse, TextProviderConfig,
     };
+
+    #[derive(Clone, Debug)]
+    struct UsageTestClock;
+
+    impl JobClock for UsageTestClock {
+        fn now_ms(&self) -> u64 {
+            1234
+        }
+    }
 
     #[test]
     fn pi_agent_runs_local_mock_provider() {
@@ -397,6 +410,27 @@ mod tests {
             !result.evidence_summary.contains("sk-"),
             "evidence summary must not contain secret markers"
         );
+    }
+
+    #[test]
+    fn pi_agent_local_mock_usage_ledger_stays_empty() {
+        let agent = PiAgent::new(
+            Box::new(FakeTextModelProvider::local_pi()),
+            "pi-agent-local",
+        );
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:abc".into(),
+        };
+        let mut ledger = UsageLedger::new(UsageTestClock);
+
+        agent
+            .run_with_envelope_with_usage_reporter(request, Some(&mut ledger))
+            .expect("local pi-Agent run succeeds");
+
+        assert!(ledger.entries().is_empty());
     }
 
     #[test]
@@ -843,5 +877,44 @@ mod tests {
             matches!(envelope.proposal.output, AgentProposalPayload::ScenePlan(_)),
             "envelope must carry a ScenePlan payload for the apply path"
         );
+    }
+
+    #[test]
+    fn pi_agent_run_usage_ledger_reports_tokens() {
+        let config = TextProviderConfig::openai_compatible(
+            "stub-provider",
+            "stub-model",
+            "https://example.invalid/v1",
+            "PLOTFORGE_TEST_STUB_KEY",
+        );
+        let provider = ConfiguredTextModelProvider::new(
+            config,
+            StubHttpProviderClient,
+            crate::OptionalEnvCredentialResolver,
+        );
+        let agent = PiAgent::new(Box::new(provider), "pi-agent-local");
+        let request = PiAgentRunRequest {
+            agent_id: "pi-agent-local".into(),
+            run_seed: 7,
+            prompt_summary: "Generate a validated scene plan proposal.".into(),
+            prompt_hash: "sha256:abc".into(),
+        };
+        let mut ledger = UsageLedger::new(UsageTestClock);
+
+        let (result, envelope) = agent
+            .run_with_envelope_with_usage_reporter(request, Some(&mut ledger))
+            .expect("real-provider run reports usage");
+
+        let summary = ledger.summary();
+        assert_eq!(summary.total_input_tokens, 5);
+        assert_eq!(summary.total_output_tokens, 10);
+        assert_eq!(summary.by_provider["stub-provider"].text_calls, 1);
+        assert_eq!(
+            result.usage.as_ref().and_then(|usage| usage.input_tokens),
+            Some(5)
+        );
+        let encoded = serde_json::to_string(&(result, envelope)).expect("serialize output");
+        assert!(!encoded.contains("usage.json"));
+        assert!(!encoded.contains("timestamp_ms"));
     }
 }

@@ -20,6 +20,7 @@ mod registry;
 mod scene_planner;
 mod shared;
 mod skills;
+mod usage_reporter;
 mod validation;
 
 // Re-export the public API so downstream consumers (and the crate's own
@@ -76,6 +77,7 @@ pub use skills::{
     read_cached_skill_index, read_skill_index_from, scan_all_skills, scan_skill, skill_index_path,
     write_skill_index, write_skill_index_to,
 };
+pub use usage_reporter::{ProviderUsageIdentity, UsageReporter};
 pub use validation::{
     AgentProposalValidationError, scene_from_proposals, validate_agent_output_proposal,
     validate_beat_drafts_proposal, validate_character_proposal, validate_review_proposal,

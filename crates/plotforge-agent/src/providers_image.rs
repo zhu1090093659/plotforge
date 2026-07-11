@@ -8,7 +8,9 @@
 use std::path::Path;
 
 use base64::Engine;
-use plotforge_job::{JobClock, JobQueue, JobQueueError, JobRequest};
+use plotforge_job::{
+    JobClock, JobQueue, JobQueueError, JobRequest, UsageKind, UsageLedgerError, UsageReport,
+};
 use plotforge_media::{AssetRegistry, MediaError};
 use plotforge_schema::{
     AssetKind, AssetProviderMetadata, AssetRecord, AssetReference, AssetReferenceKind,
@@ -156,6 +158,10 @@ impl std::fmt::Display for ImageProviderError {
 impl std::error::Error for ImageProviderError {}
 
 pub trait ImageProvider {
+    fn reports_usage(&self) -> bool {
+        false
+    }
+
     fn generate(
         &self,
         request: &ImageGenerationRequest,
@@ -168,6 +174,10 @@ pub trait ImageProvider {
 /// a boxed trait object and the studio layer feed it straight into the
 /// pipeline without an extra adapter layer.
 impl ImageProvider for Box<dyn ImageProvider> {
+    fn reports_usage(&self) -> bool {
+        (**self).reports_usage()
+    }
+
     fn generate(
         &self,
         request: &ImageGenerationRequest,
@@ -206,6 +216,7 @@ pub enum SceneImagePipelineError {
     Job(JobQueueError),
     Media(MediaError),
     MissingAssetRecord(String),
+    Usage(UsageLedgerError),
 }
 
 impl std::fmt::Display for SceneImagePipelineError {
@@ -219,6 +230,7 @@ impl std::fmt::Display for SceneImagePipelineError {
                     "asset registry did not return inserted record {id}"
                 )
             }
+            Self::Usage(error) => write!(formatter, "failed to report image usage: {error}"),
         }
     }
 }
@@ -261,7 +273,20 @@ where
     where
         C: JobClock,
     {
-        self.generate_scene_background_with_project_root(request, None, registry, jobs)
+        self.generate_scene_background_with_project_root(request, None, registry, jobs, None)
+    }
+
+    pub fn generate_scene_background_with_usage_reporter<C>(
+        &self,
+        request: SceneImageRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+        reporter: Option<&mut dyn crate::UsageReporter>,
+    ) -> Result<SceneImageResult, SceneImagePipelineError>
+    where
+        C: JobClock,
+    {
+        self.generate_scene_background_with_project_root(request, None, registry, jobs, reporter)
     }
 
     pub fn generate_scene_background_for_project<C>(
@@ -279,6 +304,27 @@ where
             Some(project_root.as_ref()),
             registry,
             jobs,
+            None,
+        )
+    }
+
+    pub fn generate_scene_background_for_project_with_usage_reporter<C>(
+        &self,
+        project_root: impl AsRef<Path>,
+        request: SceneImageRequest,
+        registry: &mut AssetRegistry,
+        jobs: &mut JobQueue<C>,
+        reporter: Option<&mut dyn crate::UsageReporter>,
+    ) -> Result<SceneImageResult, SceneImagePipelineError>
+    where
+        C: JobClock,
+    {
+        self.generate_scene_background_with_project_root(
+            request,
+            Some(project_root.as_ref()),
+            registry,
+            jobs,
+            reporter,
         )
     }
 
@@ -288,6 +334,7 @@ where
         project_root: Option<&Path>,
         registry: &mut AssetRegistry,
         jobs: &mut JobQueue<C>,
+        reporter: Option<&mut dyn crate::UsageReporter>,
     ) -> Result<SceneImageResult, SceneImagePipelineError>
     where
         C: JobClock,
@@ -328,6 +375,20 @@ where
         };
         match self.provider.generate(&provider_request) {
             Ok(response) => {
+                if self.provider.reports_usage()
+                    && let Some(reporter) = reporter
+                {
+                    reporter
+                        .report_usage(UsageReport {
+                            provider_id: response.provider.clone(),
+                            kind: UsageKind::Image,
+                            model: response.model.clone().unwrap_or_else(|| "unknown".into()),
+                            input_tokens: 0,
+                            output_tokens: 0,
+                            spent_cost_units: response.spent_cost_units,
+                        })
+                        .map_err(SceneImagePipelineError::Usage)?;
+                }
                 let asset_id = insert_media_bytes(
                     registry,
                     project_root,
@@ -606,6 +667,10 @@ impl<R> ImageProvider for OpenAiImageClient<R>
 where
     R: crate::providers_text::ProviderCredentialResolver,
 {
+    fn reports_usage(&self) -> bool {
+        true
+    }
+
     fn generate(
         &self,
         request: &ImageGenerationRequest,
