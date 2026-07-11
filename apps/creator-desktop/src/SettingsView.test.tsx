@@ -791,7 +791,11 @@ describe("SettingsView", () => {
         name: "Add moderation provider",
       }),
     );
-    fireEvent.change(within(section).getByLabelText("Provider id"), {
+    const newProviderId = within(section).getByLabelText(
+      "Provider id",
+    ) as HTMLInputElement;
+    expect(newProviderId.readOnly).toBe(false);
+    fireEvent.change(newProviderId, {
       target: { value: "moderation-new" },
     });
     fireEvent.change(within(section).getByLabelText("Endpoint URL"), {
@@ -846,12 +850,25 @@ describe("SettingsView", () => {
     fireEvent.click(
       within(savedCard).getByRole("button", { name: "Edit" }),
     );
-    expect(
-      (within(section).getByLabelText("Provider id") as HTMLInputElement).value,
-    ).toBe("moderation-prod");
+    const existingProviderId = within(section).getByLabelText(
+      "Provider id",
+    ) as HTMLInputElement;
+    expect(existingProviderId.value).toBe("moderation-prod");
+    expect(existingProviderId.readOnly).toBe(true);
+    fireEvent.change(existingProviderId, {
+      target: { value: "duplicate-provider-id" },
+    });
+    fireEvent.change(within(section).getByLabelText("Model"), {
+      target: { value: "moderation-v3" },
+    });
     fireEvent.click(
-      within(section).getByRole("button", { name: "Cancel" }),
+      within(section).getByRole("button", { name: "Save provider" }),
     );
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(2));
+    expect(upsert.mock.calls[1][0]).toMatchObject({
+      id: "moderation-prod",
+      model: "moderation-v3",
+    });
 
     const restoredCard = within(section)
       .getByText("moderation-prod")

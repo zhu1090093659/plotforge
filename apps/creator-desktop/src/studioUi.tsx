@@ -133,6 +133,7 @@ export interface TextInputProps {
   onChange(value: string): void;
   className?: string;
   placeholder?: string;
+  readOnly?: boolean;
 }
 
 export function TextInput({
@@ -142,6 +143,7 @@ export function TextInput({
   onChange,
   className = "",
   placeholder,
+  readOnly = false,
 }: TextInputProps) {
   return (
     <label className={`grid gap-1 ${className}`}>
@@ -151,6 +153,7 @@ export function TextInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        readOnly={readOnly}
         className={studioUiClassNames.input}
       />
     </label>

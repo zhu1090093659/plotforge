@@ -20,6 +20,11 @@ const EMPTY_MODERATION_ENTRY: ModerationProviderEntry = {
   daily_token_budget: null,
 };
 
+interface ModerationEditorState {
+  entry: ModerationProviderEntry;
+  existingId: string | null;
+}
+
 export function ModerationSection({
   dataSource,
 }: {
@@ -29,8 +34,8 @@ export function ModerationSection({
   const [providers, setProviders] = useState<ModerationProviderEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingEntry, setEditingEntry] =
-    useState<ModerationProviderEntry | null>(null);
+  const [editorState, setEditorState] =
+    useState<ModerationEditorState | null>(null);
   const [testResult, setTestResult] =
     useState<ProviderTestResult | null>(null);
   const [testing, setTesting] = useState(false);
@@ -53,14 +58,18 @@ export function ModerationSection({
     void reloadProviders();
   }, [reloadProviders]);
 
-  const saveProvider = async (entry: ModerationProviderEntry) => {
+  const saveProvider = async (
+    entry: ModerationProviderEntry,
+    existingId: string | null,
+  ) => {
     setError(null);
     try {
       await dataSource.upsertModerationProvider({
         ...entry,
+        id: existingId ?? entry.id,
         daily_token_budget: null,
       });
-      setEditingEntry(null);
+      setEditorState(null);
       await reloadProviders();
     } catch (saveError) {
       setError(
@@ -110,7 +119,10 @@ export function ModerationSection({
         <StudioButton
           variant="primary"
           onClick={() =>
-            setEditingEntry({ ...EMPTY_MODERATION_ENTRY })
+            setEditorState({
+              entry: { ...EMPTY_MODERATION_ENTRY },
+              existingId: null,
+            })
           }
         >
           {t("agent.moderationProvider.add")}
@@ -128,10 +140,11 @@ export function ModerationSection({
           {error}
         </div>
       )}
-      {editingEntry ? (
+      {editorState ? (
         <ModerationProviderEditor
-          entry={editingEntry}
-          onCancel={() => setEditingEntry(null)}
+          entry={editorState.entry}
+          existingId={editorState.existingId}
+          onCancel={() => setEditorState(null)}
           onSave={saveProvider}
         />
       ) : loading ? (
@@ -183,7 +196,14 @@ export function ModerationSection({
                 </div>
               </dl>
               <div className="mt-3 flex gap-1.5">
-                <StudioButton onClick={() => setEditingEntry(provider)}>
+                <StudioButton
+                  onClick={() =>
+                    setEditorState({
+                      entry: provider,
+                      existingId: provider.id,
+                    })
+                  }
+                >
                   {t("agent.provider.edit")}
                 </StudioButton>
                 <StudioButton onClick={() => void deleteProvider(provider.id)}>
@@ -207,12 +227,17 @@ export function ModerationSection({
 
 function ModerationProviderEditor({
   entry,
+  existingId,
   onCancel,
   onSave,
 }: {
   entry: ModerationProviderEntry;
+  existingId: string | null;
   onCancel: () => void;
-  onSave: (entry: ModerationProviderEntry) => void;
+  onSave: (
+    entry: ModerationProviderEntry,
+    existingId: string | null,
+  ) => void;
 }) {
   const { t } = useStudioI18n();
   const [draft, setDraft] = useState({
@@ -234,7 +259,10 @@ function ModerationProviderEditor({
         label={t("agent.provider.id")}
         ariaLabel={t("agent.provider.id")}
         value={draft.id}
-        onChange={(value) => update("id", value)}
+        onChange={(value) => {
+          if (existingId === null) update("id", value);
+        }}
+        readOnly={existingId !== null}
       />
       <TextInput
         label={t("agent.provider.endpoint")}
@@ -289,7 +317,7 @@ function ModerationProviderEditor({
       <div className="flex gap-2">
         <StudioButton
           variant="primary"
-          onClick={() => onSave(draft)}
+          onClick={() => onSave(draft, existingId)}
         >
           {t("agent.provider.save")}
         </StudioButton>
