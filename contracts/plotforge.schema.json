@@ -1636,6 +1636,15 @@
         "credential_env_var": {
           "type": "string"
         },
+        "daily_token_budget": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "default_quality": {
           "default": "medium",
           "type": "string"
@@ -1653,8 +1662,26 @@
         "id": {
           "type": "string"
         },
+        "max_concurrency": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "model": {
           "type": "string"
+        },
+        "requests_per_minute": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -2940,10 +2967,19 @@
     },
     "ProviderEntry": {
       "additionalProperties": false,
-      "description": "A single registered provider entry. `credential_env_var` names the shell\nenvironment variable that holds the credential; the value itself is never\nserialized here, in traces, or in any project source.\n\n`max_output_tokens` is an optional override for the provider's output token\ncap. When `None`, each HTTP client uses its own default (4096 for OpenAI\nvariants, 8192 for Anthropic Messages). When `Some`, the value is\npropagated into the request body so a user can tune output length per\nprovider without editing code. The field is `#[serde(default)]` so existing\nregistries without it still deserialize.",
+      "description": "A single registered provider entry. `credential_env_var` names the shell\nenvironment variable that holds the credential; the value itself is never\nserialized here, in traces, or in any project source.\n\n`max_output_tokens` is an optional override for the provider's output token\ncap. When `None`, each HTTP client uses its own default (4096 for OpenAI\nvariants, 8192 for Anthropic Messages). When `Some`, the value is\npropagated into the request body so a user can tune output length per\nprovider without editing code. The field is `#[serde(default)]` so existing\nregistries without it still deserialize. The three quota fields are\noptional pre-flight throttle inputs owned by `plotforge-job`; `None`\npreserves the legacy unthrottled behaviour.",
       "properties": {
         "credential_env_var": {
           "type": "string"
+        },
+        "daily_token_budget": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "enabled": {
           "type": "boolean"
@@ -2960,6 +2996,15 @@
         "label": {
           "type": "string"
         },
+        "max_concurrency": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "max_output_tokens": {
           "default": null,
           "format": "uint32",
@@ -2971,6 +3016,15 @@
         },
         "model": {
           "type": "string"
+        },
+        "requests_per_minute": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -4558,6 +4612,15 @@
         "credential_env_var": {
           "type": "string"
         },
+        "daily_token_budget": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "enabled": {
           "type": "boolean"
         },
@@ -4571,8 +4634,26 @@
         "id": {
           "type": "string"
         },
+        "max_concurrency": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "model": {
           "type": "string"
+        },
+        "requests_per_minute": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "voice": {
           "default": "coral",

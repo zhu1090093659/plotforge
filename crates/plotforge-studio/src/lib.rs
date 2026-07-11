@@ -3915,6 +3915,9 @@ mod tests {
             credential_env_var: "OPENAI_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let error = upsert_provider(entry).expect_err("query-string credential rejected");
         assert_eq!(error.code, "upsert_provider_invalid");
@@ -3941,6 +3944,9 @@ mod tests {
             enabled: false,
             default_size: "256x256".into(),
             default_quality: "low".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
     }
 
@@ -3953,6 +3959,9 @@ mod tests {
             enabled: false,
             voice: "coral".into(),
             format: "mp3".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
     }
 

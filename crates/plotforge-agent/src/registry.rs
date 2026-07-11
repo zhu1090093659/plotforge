@@ -709,6 +709,9 @@ mod tests {
                 credential_env_var: "ZAI_API_KEY".into(),
                 enabled: true,
                 max_output_tokens: None,
+                max_concurrency: None,
+                requests_per_minute: None,
+                daily_token_budget: None,
             }],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
@@ -736,6 +739,9 @@ mod tests {
                     credential_env_var: "ZAI_API_KEY".into(),
                     enabled: true,
                     max_output_tokens: None,
+                    max_concurrency: None,
+                    requests_per_minute: None,
+                    daily_token_budget: None,
                 },
                 ProviderEntry {
                     id: "claude".into(),
@@ -746,6 +752,9 @@ mod tests {
                     credential_env_var: "ANTHROPIC_API_KEY".into(),
                     enabled: false,
                     max_output_tokens: None,
+                    max_concurrency: None,
+                    requests_per_minute: None,
+                    daily_token_budget: None,
                 },
             ],
             image_providers: Vec::new(),
@@ -772,6 +781,9 @@ mod tests {
             credential_env_var: "ZAI_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let _client = build_provider_client(&entry).expect("openai client");
         let anthropic_entry = ProviderEntry {
@@ -783,6 +795,9 @@ mod tests {
             credential_env_var: "ANTHROPIC_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let _client = build_provider_client(&anthropic_entry).expect("anthropic client");
         let responses_entry = ProviderEntry {
@@ -794,6 +809,9 @@ mod tests {
             credential_env_var: "OPENAI_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let _client = build_provider_client(&responses_entry).expect("responses client");
     }
@@ -833,6 +851,9 @@ mod tests {
             credential_env_var: "PLOTFORGE_H2_TEST_UNSET_VAR".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let provider = build_text_provider(&entry).expect("provider builds");
         // The env var is not set in the test process, so the strict resolver
@@ -880,6 +901,9 @@ mod tests {
             credential_env_var: String::new(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let provider = build_text_provider(&entry).expect("no-auth provider builds");
         let reproducibility = provider.reproducibility_metadata(1);
@@ -940,6 +964,9 @@ mod tests {
             credential_env_var: env_var.into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
     }
 
@@ -1207,6 +1234,9 @@ mod tests {
             enabled,
             default_size: "1024x1024".into(),
             default_quality: "medium".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         }
     }
 
@@ -1285,6 +1315,9 @@ mod tests {
                 credential_env_var: "ZAI_API_KEY".into(),
                 enabled: true,
                 max_output_tokens: None,
+                max_concurrency: None,
+                requests_per_minute: None,
+                daily_token_budget: None,
             }],
             tts_providers: Vec::new(),
             image_providers: vec![sample_image_entry("openai-image", "OPENAI_API_KEY", true)],

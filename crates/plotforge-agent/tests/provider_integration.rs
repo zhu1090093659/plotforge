@@ -254,6 +254,9 @@ fn image_entry(endpoint: &str, credential_env_var: &str) -> ImageProviderEntry {
         enabled: true,
         default_size: "1024x1024".into(),
         default_quality: "medium".into(),
+        max_concurrency: None,
+        requests_per_minute: None,
+        daily_token_budget: None,
     }
 }
 
@@ -268,6 +271,9 @@ fn tts_entry(endpoint: &str, credential_env_var: &str) -> TtsProviderEntry {
         enabled: true,
         voice: "coral".into(),
         format: "mp3".into(),
+        max_concurrency: None,
+        requests_per_minute: None,
+        daily_token_budget: None,
     }
 }
 

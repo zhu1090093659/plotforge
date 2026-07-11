@@ -68,6 +68,9 @@ const savedProvider: ProviderEntry = {
   model: "gpt-4o",
   credential_env_var: "OPENAI_API_KEY",
   enabled: true,
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const savedImageProvider: ImageProviderEntry = {
@@ -78,6 +81,9 @@ const savedImageProvider: ImageProviderEntry = {
   enabled: true,
   default_size: "1024x1024",
   default_quality: "medium",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const savedTtsProvider: TtsProviderEntry = {
@@ -88,6 +94,9 @@ const savedTtsProvider: TtsProviderEntry = {
   enabled: true,
   voice: "coral",
   format: "mp3",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 /** A skill already imported into the user library (origin `plot_forge_user`):

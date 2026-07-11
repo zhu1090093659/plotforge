@@ -35,7 +35,9 @@ pub enum ProviderKind {
 /// variants, 8192 for Anthropic Messages). When `Some`, the value is
 /// propagated into the request body so a user can tune output length per
 /// provider without editing code. The field is `#[serde(default)]` so existing
-/// registries without it still deserialize.
+/// registries without it still deserialize. The three quota fields are
+/// optional pre-flight throttle inputs owned by `plotforge-job`; `None`
+/// preserves the legacy unthrottled behaviour.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderEntry {
@@ -48,6 +50,12 @@ pub struct ProviderEntry {
     pub enabled: bool,
     #[serde(default)]
     pub max_output_tokens: Option<u32>,
+    #[serde(default)]
+    pub max_concurrency: Option<u32>,
+    #[serde(default)]
+    pub requests_per_minute: Option<u32>,
+    #[serde(default)]
+    pub daily_token_budget: Option<u64>,
 }
 
 /// A single registered image provider entry. Like `ProviderEntry`, this is
@@ -73,6 +81,12 @@ pub struct ImageProviderEntry {
     pub default_size: String,
     #[serde(default = "default_image_quality")]
     pub default_quality: String,
+    #[serde(default)]
+    pub max_concurrency: Option<u32>,
+    #[serde(default)]
+    pub requests_per_minute: Option<u32>,
+    #[serde(default)]
+    pub daily_token_budget: Option<u64>,
 }
 
 fn default_image_size() -> String {
@@ -103,6 +117,12 @@ pub struct TtsProviderEntry {
     pub voice: String,
     #[serde(default = "default_tts_format")]
     pub format: String,
+    #[serde(default)]
+    pub max_concurrency: Option<u32>,
+    #[serde(default)]
+    pub requests_per_minute: Option<u32>,
+    #[serde(default)]
+    pub daily_token_budget: Option<u64>,
 }
 
 fn default_tts_voice() -> String {
@@ -180,6 +200,9 @@ mod tests {
             credential_env_var: "ZAI_API_KEY".into(),
             enabled: true,
             max_output_tokens: None,
+            max_concurrency: Some(2),
+            requests_per_minute: Some(30),
+            daily_token_budget: Some(100_000),
         }
     }
 
@@ -199,11 +222,14 @@ mod tests {
     }
 
     #[test]
-    fn provider_entry_roundtrips_json() {
+    fn provider_entry_roundtrips_json_with_quota_fields() {
         let entry = sample_entry();
         let encoded = serde_json::to_string_pretty(&entry).expect("serialize entry");
         let decoded: ProviderEntry = serde_json::from_str(&encoded).expect("deserialize entry");
         assert_eq!(decoded, entry);
+        assert_eq!(decoded.max_concurrency, Some(2));
+        assert_eq!(decoded.requests_per_minute, Some(30));
+        assert_eq!(decoded.daily_token_budget, Some(100_000));
     }
 
     #[test]
@@ -237,6 +263,9 @@ mod tests {
                     credential_env_var: String::new(),
                     enabled: false,
                     max_output_tokens: None,
+                    max_concurrency: None,
+                    requests_per_minute: None,
+                    daily_token_budget: None,
                 },
             ],
             image_providers: Vec::new(),
@@ -292,6 +321,27 @@ mod tests {
         });
         let decoded: ProviderEntry = serde_json::from_value(legacy).expect("legacy deserialize");
         assert_eq!(decoded.max_output_tokens, None);
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
+    }
+
+    #[test]
+    fn provider_entry_backward_compatible_without_quota_fields() {
+        let legacy = serde_json::json!({
+            "id": "glm",
+            "kind": "openai_compatible",
+            "label": "GLM 4.6",
+            "endpoint_url": "https://open.bigmodels.cn/api/paas/v4",
+            "model": "glm-4.6",
+            "credential_env_var": "ZAI_API_KEY",
+            "enabled": true,
+            "max_output_tokens": 8192
+        });
+        let decoded: ProviderEntry = serde_json::from_value(legacy).expect("legacy deserialize");
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
     }
 
     #[test]
@@ -360,16 +410,22 @@ mod tests {
             enabled: true,
             default_size: "1024x1024".into(),
             default_quality: "medium".into(),
+            max_concurrency: Some(1),
+            requests_per_minute: Some(12),
+            daily_token_budget: Some(50_000),
         }
     }
 
     #[test]
-    fn image_provider_entry_roundtrips_json() {
+    fn image_provider_entry_roundtrips_json_with_quota_fields() {
         let entry = sample_image_entry();
         let encoded = serde_json::to_string_pretty(&entry).expect("serialize image entry");
         let decoded: ImageProviderEntry =
             serde_json::from_str(&encoded).expect("deserialize image entry");
         assert_eq!(decoded, entry);
+        assert_eq!(decoded.max_concurrency, Some(1));
+        assert_eq!(decoded.requests_per_minute, Some(12));
+        assert_eq!(decoded.daily_token_budget, Some(50_000));
     }
 
     #[test]
@@ -397,6 +453,27 @@ mod tests {
             serde_json::from_value(legacy).expect("legacy image entry deserialize");
         assert_eq!(decoded.default_size, "1024x1024");
         assert_eq!(decoded.default_quality, "medium");
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
+    }
+
+    #[test]
+    fn image_provider_entry_backward_compatible_without_quota_fields() {
+        let legacy = serde_json::json!({
+            "id": "openai-image",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "gpt-image-1",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true,
+            "default_size": "1536x1024",
+            "default_quality": "high"
+        });
+        let decoded: ImageProviderEntry =
+            serde_json::from_value(legacy).expect("legacy image entry deserialize");
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
     }
 
     #[test]
@@ -409,6 +486,9 @@ mod tests {
             enabled: true,
             default_size: "1536x1024".into(),
             default_quality: "high".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
         };
         let encoded = serde_json::to_string(&entry).expect("serialize");
         let decoded: ImageProviderEntry = serde_json::from_str(&encoded).expect("deserialize");
@@ -463,15 +543,21 @@ mod tests {
             enabled: true,
             voice: "coral".into(),
             format: "mp3".into(),
+            max_concurrency: Some(3),
+            requests_per_minute: Some(60),
+            daily_token_budget: Some(75_000),
         }
     }
 
     #[test]
-    fn tts_provider_entry_roundtrips_json() {
+    fn tts_provider_entry_roundtrips_json_with_quota_fields() {
         let entry = sample_tts_entry();
         let encoded = serde_json::to_string_pretty(&entry).expect("serialize entry");
         let decoded: TtsProviderEntry = serde_json::from_str(&encoded).expect("deserialize entry");
         assert_eq!(decoded, entry);
+        assert_eq!(decoded.max_concurrency, Some(3));
+        assert_eq!(decoded.requests_per_minute, Some(60));
+        assert_eq!(decoded.daily_token_budget, Some(75_000));
     }
 
     #[test]
@@ -497,6 +583,27 @@ mod tests {
             serde_json::from_value(legacy).expect("legacy tts entry deserialize");
         assert_eq!(decoded.voice, "coral");
         assert_eq!(decoded.format, "mp3");
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
+    }
+
+    #[test]
+    fn tts_provider_entry_backward_compatible_without_quota_fields() {
+        let legacy = serde_json::json!({
+            "id": "openai-tts",
+            "endpoint_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini-tts",
+            "credential_env_var": "OPENAI_API_KEY",
+            "enabled": true,
+            "voice": "coral",
+            "format": "mp3"
+        });
+        let decoded: TtsProviderEntry =
+            serde_json::from_value(legacy).expect("legacy tts entry deserialize");
+        assert_eq!(decoded.max_concurrency, None);
+        assert_eq!(decoded.requests_per_minute, None);
+        assert_eq!(decoded.daily_token_budget, None);
     }
 
     #[test]

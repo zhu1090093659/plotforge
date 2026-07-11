@@ -83,6 +83,9 @@ const demoImageProviderEntry: ImageProviderEntry = {
   enabled: true,
   default_size: "1024x1024",
   default_quality: "medium",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const demoTtsProviderEntry: TtsProviderEntry = {
@@ -93,6 +96,9 @@ const demoTtsProviderEntry: TtsProviderEntry = {
   enabled: true,
   voice: "coral",
   format: "mp3",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 describe("createStudioBridge", () => {

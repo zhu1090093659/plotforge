@@ -49,6 +49,9 @@ const EMPTY_ENTRY: ProviderEntry = {
   model: "",
   credential_env_var: "",
   enabled: true,
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const EMPTY_IMAGE_ENTRY: ImageProviderEntry = {
@@ -59,6 +62,9 @@ const EMPTY_IMAGE_ENTRY: ImageProviderEntry = {
   enabled: true,
   default_size: "1024x1024",
   default_quality: "medium",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 const EMPTY_TTS_ENTRY: TtsProviderEntry = {
@@ -69,6 +75,9 @@ const EMPTY_TTS_ENTRY: TtsProviderEntry = {
   enabled: true,
   voice: "coral",
   format: "mp3",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
 };
 
 export interface AgentConfigSectionProps {
