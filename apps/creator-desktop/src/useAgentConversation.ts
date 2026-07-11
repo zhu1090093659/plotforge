@@ -80,6 +80,10 @@ function applyResultToReport(result: PiAgentApplyResult): PlayOnceReport {
 }
 
 function mapApplyErrorToCode(message: string): string | null {
+  if (message.includes("pi_agent_moderation_flagged"))
+    return "pi_agent_moderation_flagged";
+  if (message.includes("pi_agent_moderation_"))
+    return "pi_agent_moderation_failed";
   if (message.includes("missing_credential")) return "pi_agent_missing_credential";
   if (message.includes("timeout")) return "pi_agent_provider_timeout";
   if (message.includes("text_provider_rate_limit"))

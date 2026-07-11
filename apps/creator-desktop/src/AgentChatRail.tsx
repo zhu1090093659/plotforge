@@ -158,6 +158,8 @@ export function AgentChatRail({
                   rateLimitLabel={t("agent.apply.rateLimit")}
                   contentFilteredLabel={t("agent.apply.contentFiltered")}
                   outputTruncatedLabel={t("agent.apply.outputTruncated")}
+                  moderationFlaggedLabel={t("agent.apply.moderationFlagged")}
+                  moderationFailedLabel={t("agent.apply.moderationFailed")}
                   failedLabel={t("agent.apply.failed")}
                   imageWarningLabel={t("agent.apply.imageWarning")}
                 />
@@ -246,6 +248,8 @@ function TurnResult({
   rateLimitLabel,
   contentFilteredLabel,
   outputTruncatedLabel,
+  moderationFlaggedLabel,
+  moderationFailedLabel,
   failedLabel,
   imageWarningLabel,
 }: {
@@ -261,6 +265,8 @@ function TurnResult({
   rateLimitLabel: string;
   contentFilteredLabel: string;
   outputTruncatedLabel: string;
+  moderationFlaggedLabel: string;
+  moderationFailedLabel: string;
   failedLabel: string;
   imageWarningLabel: string;
 }) {
@@ -282,6 +288,10 @@ function TurnResult({
       return contentFilteredLabel;
     if (errorCode === "text_provider_output_truncated")
       return outputTruncatedLabel;
+    if (errorCode === "pi_agent_moderation_flagged")
+      return moderationFlaggedLabel;
+    if (errorCode === "pi_agent_moderation_failed")
+      return moderationFailedLabel;
     return failedLabel;
   })();
   return (

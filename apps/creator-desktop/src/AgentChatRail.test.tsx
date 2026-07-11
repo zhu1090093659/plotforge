@@ -153,6 +153,26 @@ describe("AgentChatRail", () => {
     ).toBeTruthy();
   });
 
+  it("renders an explicit moderation message while retaining the redacted detail", () => {
+    const turn: AgentTurn = {
+      id: "turn-moderation-flagged",
+      intent: "unsafe request",
+      report: null,
+      error:
+        'pi_agent_moderation_flagged: moderation provider flagged content in categories: ["violence"]',
+      errorCode: "pi_agent_moderation_flagged",
+      errorEnvVar: null,
+      imageWarning: null,
+    };
+    renderRail({ turns: [turn] });
+
+    expect(
+      screen.getByText(/Moderation blocked this turn\. Revise the prompt before retrying\./),
+    ).toBeTruthy();
+    expect(screen.getByText(/categories: \["violence"\]/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("sk-");
+  });
+
   it("calls onSubmit when the Send button is clicked", () => {
     const { onSubmit } = renderRail();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

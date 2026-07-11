@@ -225,6 +225,42 @@ describe("useAgentConversation", () => {
     );
   });
 
+  it("maps a flagged moderation preflight to its explicit rail error code", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          'pi_agent_moderation_flagged: moderation provider flagged content in categories: ["violence"]',
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "pi_agent_moderation_flagged",
+    );
+  });
+
+  it("maps other moderation preflight failures without pretending text ran", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          "pi_agent_moderation_rate_limit: moderation provider rate limited",
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "pi_agent_moderation_failed",
+    );
+  });
+
   it("appends multiple turns with monotonic agent-turn-N ids", async () => {
     const { result } = renderHook(() => useHarness());
     await act(async () => {
