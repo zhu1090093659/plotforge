@@ -313,7 +313,7 @@ pub fn build_moderation_provider(
     reject_non_text_daily_token_budget(&entry.id, "moderation", entry.daily_token_budget)?;
     let throttle = build_throttle(
         ProviderThrottleScope::Moderation,
-        moderation_config_hash(entry),
+        moderation_throttle_config_hash(entry),
         ThrottleConfig {
             provider_id: entry.id.clone(),
             max_concurrency: entry.max_concurrency,
@@ -358,6 +358,18 @@ pub fn moderation_config_hash(entry: &ModerationProviderEntry) -> String {
             entry.id, entry.endpoint_url, entry.model, entry.credential_env_var, entry.enabled,
         ))
     )
+}
+
+/// Stable upstream identity for the process-shared moderation throttle gate.
+/// The provider id is already a separate `ProviderThrottleKey` field, while
+/// enabled/quota edits must reconfigure the same gate without erasing debt.
+fn moderation_throttle_config_hash(entry: &ModerationProviderEntry) -> String {
+    throttle_config_hash(&[
+        "openai_moderations",
+        &entry.endpoint_url,
+        &entry.model,
+        &entry.credential_env_var,
+    ])
 }
 
 fn build_throttle(
@@ -1700,5 +1712,44 @@ mod tests {
                 moderation_config_hash(&changed)
             );
         }
+    }
+
+    #[test]
+    fn moderation_enabled_toggle_preserves_shared_rate_debt() {
+        let mut entry = sample_moderation_entry("moderation-enabled-toggle", false);
+        entry.requests_per_minute = Some(1);
+        let first = build_throttle(
+            ProviderThrottleScope::Moderation,
+            moderation_throttle_config_hash(&entry),
+            ThrottleConfig {
+                provider_id: entry.id.clone(),
+                requests_per_minute: entry.requests_per_minute,
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("first throttle")
+        .expect("configured gate");
+        drop(first.acquire().expect("first request consumes capacity"));
+
+        entry.enabled = true;
+        let rebuilt = build_throttle(
+            ProviderThrottleScope::Moderation,
+            moderation_throttle_config_hash(&entry),
+            ThrottleConfig {
+                provider_id: entry.id.clone(),
+                requests_per_minute: entry.requests_per_minute,
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("rebuilt throttle")
+        .expect("configured gate");
+        let failure = rebuilt
+            .acquire()
+            .expect_err("enabled toggle must not reset RPM debt")
+            .into_failure();
+        assert!(matches!(
+            failure,
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
     }
 }
