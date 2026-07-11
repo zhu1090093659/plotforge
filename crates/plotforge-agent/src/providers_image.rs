@@ -16,7 +16,9 @@ use plotforge_schema::{
     redact_trace_text,
 };
 
-use crate::shared::{SCENE_BACKGROUND_SLOT, insert_media_bytes, stable_prompt_hash};
+use crate::shared::{
+    SCENE_BACKGROUND_SLOT, insert_media_bytes, parse_retry_after, stable_prompt_hash,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageGenerationRequest {
@@ -714,7 +716,7 @@ fn execute_image(request: reqwest::blocking::RequestBuilder) -> Result<String, I
     if !status.is_success() {
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             let retry_after_ms =
-                parse_image_retry_after(response.headers().get(reqwest::header::RETRY_AFTER));
+                parse_retry_after(response.headers().get(reqwest::header::RETRY_AFTER));
             return Err(ImageProviderError::rate_limit(
                 retry_after_ms,
                 format!("provider returned HTTP {status}"),
@@ -731,91 +733,6 @@ fn execute_image(request: reqwest::blocking::RequestBuilder) -> Result<String, I
             redact_trace_text(&error.to_string()),
         )
     })
-}
-
-/// Parses an HTTP `Retry-After` header value into milliseconds. Mirrors the
-/// text-client parser: supports delta-seconds and HTTP-date forms. Returns
-/// `None` when the header is absent or unparseable.
-fn parse_image_retry_after(header: Option<&reqwest::header::HeaderValue>) -> Option<u64> {
-    let value = header?;
-    let value = value.to_str().ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if let Ok(seconds) = trimmed.parse::<u64>() {
-        return Some(seconds.saturating_mul(1000));
-    }
-    // HTTP-date form: delegate to the shared text-client parser via a
-    // re-implementation here to keep the image module self-contained (the
-    // text parser is private to providers_http).
-    image_httpdate_to_system_time(trimmed).and_then(|date| {
-        let now = std::time::SystemTime::now();
-        match date.duration_since(now) {
-            Ok(duration) => Some(duration.as_millis().try_into().ok()?),
-            Err(_) => Some(0),
-        }
-    })
-}
-
-/// Parses an RFC 7231 HTTP-date into a `SystemTime`. Accepts the IMF-fixdate
-/// form providers send (`Wed, 21 Oct 2026 07:28:00 GMT`).
-fn image_httpdate_to_system_time(value: &str) -> Option<std::time::SystemTime> {
-    let parts: Vec<&str> = value.split_whitespace().collect();
-    if parts.len() != 6 {
-        return None;
-    }
-    let day: u32 = parts[1].parse().ok()?;
-    let month = image_month_index(parts[2])?;
-    let year: i32 = parts[3].parse().ok()?;
-    let time_parts: Vec<&str> = parts[4].split(':').collect();
-    if time_parts.len() != 3 {
-        return None;
-    }
-    let hour: u32 = time_parts[0].parse().ok()?;
-    let minute: u32 = time_parts[1].parse().ok()?;
-    let second: u32 = time_parts[2].parse().ok()?;
-    if parts[5] != "GMT" {
-        return None;
-    }
-    let epoch_seconds = image_days_from_civil(year, month, day)? as i64 * 86_400
-        + (hour as i64 * 3600)
-        + (minute as i64 * 60)
-        + second as i64;
-    let duration = std::time::Duration::from_secs(epoch_seconds.max(0) as u64);
-    Some(std::time::SystemTime::UNIX_EPOCH + duration)
-}
-
-fn image_month_index(name: &str) -> Option<u32> {
-    match name {
-        "Jan" => Some(1),
-        "Feb" => Some(2),
-        "Mar" => Some(3),
-        "Apr" => Some(4),
-        "May" => Some(5),
-        "Jun" => Some(6),
-        "Jul" => Some(7),
-        "Aug" => Some(8),
-        "Sep" => Some(9),
-        "Oct" => Some(10),
-        "Nov" => Some(11),
-        "Dec" => Some(12),
-        _ => None,
-    }
-}
-
-/// Howard Hinnant's days-from-civil algorithm (mirrors the text client).
-fn image_days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
-    if !(1..=12).contains(&month) {
-        return None;
-    }
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u32;
-    let m = month as i32;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day as i32 - 1;
-    let doe = yoe as i64 * 365 + yoe as i64 / 4 - yoe as i64 / 100 + doy as i64;
-    Some(era as i64 * 146_097 + doe - 719_468)
 }
 
 /// Decodes a base64-encoded image body into raw bytes. Surfaces an explicit
@@ -929,9 +846,13 @@ fn placeholder_image_bytes(scene_key: &str, prompt_hash: &str) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers_text::EnvCredentialResolver;
+    use crate::providers_http::OpenAiCompatibleClient;
+    use crate::providers_text::{
+        EnvCredentialResolver, TextModelClient, TextModelClientRequest, TextModelProviderErrorKind,
+        TextModelRequest, TextProviderConfig,
+    };
     use crate::registry::OptionalEnvCredentialResolver;
-    use plotforge_schema::ImageProviderEntry;
+    use plotforge_schema::{AgentRole, ImageProviderEntry};
 
     /// A capturing in-process TCP server for image-client tests. Mirrors the
     /// `capturing_server` helper in `providers_http.rs`: it reads the full
@@ -1010,6 +931,85 @@ mod tests {
             prompt: "a misty courtroom at dawn".into(),
             output_path: "assets/generated/scene-1.png".into(),
         }
+    }
+
+    fn image_retry_after_ms(header_value: &str) -> u64 {
+        let retry_after_header = format!("Retry-After: {header_value}\r\n");
+        let (addr, handle) = image_status_server(
+            "HTTP/1.1 429 Too Many Requests\r\n".into(),
+            String::new(),
+            &retry_after_header,
+        );
+        let entry = sample_image_entry(&format!("http://{addr}"), "");
+        let client = OpenAiImageClient::new(&entry, OptionalEnvCredentialResolver)
+            .expect("image client builds");
+        let error = client
+            .generate(&sample_image_request())
+            .expect_err("image 429 must error");
+        handle.join().expect("image server thread clean");
+        match error.kind {
+            ImageProviderErrorKind::RateLimit {
+                retry_after_ms: Some(retry_after_ms),
+            } => retry_after_ms,
+            kind => panic!("expected image RateLimit with retry_after_ms, got {kind:?}"),
+        }
+    }
+
+    fn text_retry_after_ms(header_value: &str) -> u64 {
+        let retry_after_header = format!("Retry-After: {header_value}\r\n");
+        let (addr, handle) = image_status_server(
+            "HTTP/1.1 429 Too Many Requests\r\n".into(),
+            String::new(),
+            &retry_after_header,
+        );
+        let config = TextProviderConfig::openai_compatible(
+            "openai",
+            "test-model",
+            format!("http://{addr}"),
+            "",
+        );
+        let request = TextModelRequest {
+            call_id: "retry-after-consistency".into(),
+            agent: AgentRole::ScenePlanner,
+            scene_key: "scene-1".into(),
+            run_seed: 1,
+            prompt_version: "v1".into(),
+            model_version: config.model.clone(),
+            provider_config_hash: config.provider_config_hash(),
+            prompt: "{}".into(),
+            messages: None,
+        };
+        let error = OpenAiCompatibleClient::default()
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "",
+                request: &request,
+            })
+            .expect_err("text 429 must error");
+        handle.join().expect("text server thread clean");
+        match error.kind {
+            TextModelProviderErrorKind::RateLimit {
+                retry_after_ms: Some(retry_after_ms),
+            } => retry_after_ms,
+            kind => panic!("expected text RateLimit with retry_after_ms, got {kind:?}"),
+        }
+    }
+
+    #[test]
+    fn image_and_text_parse_retry_after_consistently() {
+        let text_seconds = text_retry_after_ms("120");
+        let image_seconds = image_retry_after_ms("120");
+        assert_eq!(text_seconds, 120_000);
+        assert_eq!(image_seconds, text_seconds);
+
+        let far_future = "Wed, 21 Oct 2099 07:28:00 GMT";
+        let text_date = text_retry_after_ms(far_future);
+        let image_date = image_retry_after_ms(far_future);
+        assert!(text_date > 1_000_000, "far-future date must stay positive");
+        assert!(
+            text_date.abs_diff(image_date) <= 10_000,
+            "text/image HTTP-date parsing diverged: text={text_date}, image={image_date}"
+        );
     }
 
     #[test]

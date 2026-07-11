@@ -54,10 +54,10 @@
 use plotforge_mcp::{McpError, McpToolCallRequest, McpToolClient};
 use plotforge_schema::{
     AgentOutputEnvelope, AgentRole, PiAgentDescriptor, PiAgentRunRequest, PiAgentRunResult,
-    ReproducibilityMetadata, contains_secret_marker_text,
+    ReproducibilityMetadata, UsageInfo, contains_secret_marker_text,
 };
 
-use crate::pipelines::complete_text_agent_output;
+use crate::pipelines::complete_text_agent_output_with_usage;
 use crate::shared::stable_sha256_hash;
 use crate::{TextModelProvider, TextModelRequest, TextModelResponse};
 
@@ -264,6 +264,7 @@ pub fn complete_with_mcp_tools(
             let provider_reproducibility = provider.reproducibility_metadata(request.run_seed);
             return finalize_with_mcp_hash(
                 &response.raw_json,
+                response.usage,
                 agent_id,
                 &request,
                 provider_reproducibility,
@@ -374,6 +375,7 @@ pub fn complete_with_mcp_tools(
 /// round without ever storing raw tool bodies (P4.2).
 fn finalize_with_mcp_hash(
     final_raw_json: &str,
+    final_usage: Option<UsageInfo>,
     agent_id: &str,
     request: &PiAgentRunRequest,
     provider_reproducibility: ReproducibilityMetadata,
@@ -401,10 +403,11 @@ fn finalize_with_mcp_hash(
     // provider call — except for the MCP hash.
     let cached = CachedResponseProvider::new(
         final_raw_json.to_string(),
+        final_usage,
         provider_reproducibility,
         mcp_tool_call_hash.clone(),
     );
-    let envelope = complete_text_agent_output(
+    let output = complete_text_agent_output_with_usage(
         &cached,
         AgentRole::ScenePlanner,
         request.run_seed,
@@ -419,6 +422,8 @@ fn finalize_with_mcp_hash(
             message: runtime_error.message,
         }
     })?;
+    let envelope = output.envelope;
+    let usage = output.usage;
 
     // The pi-Agent facade owns the deterministic trace-evidence id; mirror
     // `run_with_envelope` so the result is indistinguishable from the
@@ -470,6 +475,7 @@ fn finalize_with_mcp_hash(
     let result = PiAgentRunResult {
         descriptor,
         reproducibility,
+        usage,
         trace_id,
         evidence_summary,
     };
@@ -541,6 +547,7 @@ fn mcp_error_code(error: &McpError) -> String {
 /// includes the MCP hash.
 struct CachedResponseProvider {
     raw_json: String,
+    usage: Option<UsageInfo>,
     reproducibility: ReproducibilityMetadata,
     mcp_tool_call_hash: Option<String>,
 }
@@ -548,11 +555,13 @@ struct CachedResponseProvider {
 impl CachedResponseProvider {
     fn new(
         raw_json: String,
+        usage: Option<UsageInfo>,
         reproducibility: ReproducibilityMetadata,
         mcp_tool_call_hash: Option<String>,
     ) -> Self {
         Self {
             raw_json,
+            usage,
             reproducibility,
             mcp_tool_call_hash,
         }
@@ -576,7 +585,10 @@ impl TextModelProvider for CachedResponseProvider {
         &self,
         _request: &TextModelRequest,
     ) -> Result<TextModelResponse, crate::TextModelProviderError> {
-        Ok(TextModelResponse::json(self.raw_json.clone()))
+        Ok(TextModelResponse::json_with_usage(
+            self.raw_json.clone(),
+            self.usage.clone(),
+        ))
     }
 }
 
@@ -590,7 +602,7 @@ mod tests {
     };
     use plotforge_schema::{
         AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, CONTRACT_SCHEMA_VERSION,
-        CONTRACT_VERSION, PiAgentRunRequest, ReproducibilityMetadata, ScenePlanProposal,
+        CONTRACT_VERSION, PiAgentRunRequest, ReproducibilityMetadata, ScenePlanProposal, UsageInfo,
         contains_secret_marker_text,
     };
 
@@ -607,6 +619,7 @@ mod tests {
     struct ScriptedProvider {
         responses: Vec<String>,
         call: Cell<usize>,
+        usage: Option<UsageInfo>,
     }
 
     impl ScriptedProvider {
@@ -614,7 +627,13 @@ mod tests {
             Self {
                 responses,
                 call: Cell::new(0),
+                usage: None,
             }
+        }
+
+        fn with_usage(mut self, usage: UsageInfo) -> Self {
+            self.usage = Some(usage);
+            self
         }
     }
 
@@ -634,7 +653,10 @@ mod tests {
                 .get(index)
                 .cloned()
                 .unwrap_or_else(|| self.responses.last().cloned().unwrap_or_default());
-            Ok(TextModelResponse::json(response))
+            Ok(TextModelResponse::json_with_usage(
+                response,
+                self.usage.clone(),
+            ))
         }
     }
 
@@ -805,7 +827,12 @@ mod tests {
         );
         let final_json =
             final_envelope_json("pi-agent-pi-agent-local", "pi-agent-mcp-pi-agent-local-r0");
-        let provider = ScriptedProvider::new(vec![tool_call, final_json]);
+        let expected_usage = UsageInfo {
+            input_tokens: Some(8),
+            output_tokens: Some(13),
+        };
+        let provider =
+            ScriptedProvider::new(vec![tool_call, final_json]).with_usage(expected_usage.clone());
         let mcp = MockMcpToolClient::ok("file: a.txt");
         let request = make_request("pi-agent-local");
 
@@ -843,6 +870,11 @@ mod tests {
         );
         // Evidence summary must be redaction-safe.
         assert!(!contains_secret_marker_text(&result.evidence_summary));
+        assert_eq!(
+            result.usage,
+            Some(expected_usage),
+            "MCP loop must surface the final provider response usage"
+        );
 
         // P4.2: the evidence summary must carry a redaction-safe tool-call
         // summary (tool name, server id, content hash) but NEVER the raw tool

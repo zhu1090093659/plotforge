@@ -606,6 +606,30 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
         "test_provider_connection" => print_studio_json(studio_result(
             plotforge_studio::test_provider_connection(studio_arg::<String>(&payload, "id")?),
         )?),
+        "list_image_providers" => {
+            print_studio_json(studio_result(plotforge_studio::list_image_providers())?)
+        }
+        "upsert_image_provider" => print_studio_json(studio_result(
+            plotforge_studio::upsert_image_provider(studio_arg(&payload, "entry")?),
+        )?),
+        "delete_image_provider" => print_studio_json(studio_result(
+            plotforge_studio::delete_image_provider(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "test_image_provider" => print_studio_json(studio_result(
+            plotforge_studio::test_image_provider(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "list_tts_providers" => {
+            print_studio_json(studio_result(plotforge_studio::list_tts_providers())?)
+        }
+        "upsert_tts_provider" => print_studio_json(studio_result(
+            plotforge_studio::upsert_tts_provider(studio_arg(&payload, "entry")?),
+        )?),
+        "delete_tts_provider" => print_studio_json(studio_result(
+            plotforge_studio::delete_tts_provider(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "test_tts_provider" => print_studio_json(studio_result(
+            plotforge_studio::test_tts_provider(studio_arg::<String>(&payload, "id")?),
+        )?),
         "list_user_prompt_templates" => print_studio_json(studio_result(
             plotforge_studio::list_user_prompt_templates(),
         )?),

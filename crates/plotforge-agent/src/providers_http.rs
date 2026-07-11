@@ -11,8 +11,9 @@
 //! Ollama endpoint with no auth), the client omits the auth header rather
 //! than failing.
 //!
-//! The response is always surfaced as `TextModelResponse { raw_json }`,
-//! where `raw_json` is the model's text content. The shared
+//! The response is surfaced as `TextModelResponse { raw_json, usage }`, where
+//! `raw_json` is the model's text content and `usage` carries optional,
+//! redaction-safe token counts. The shared
 //! `complete_text_agent_output` pipeline then JSON-repairs, validates, and
 //! re-derives the `AgentOutputEnvelope` from that text. Network failures map
 //! to `TextModelProviderError::provider` (with a redacted code/message) and
@@ -21,7 +22,7 @@
 
 use std::time::Duration;
 
-use plotforge_schema::redact_trace_text;
+use plotforge_schema::{UsageInfo, redact_trace_text};
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
@@ -30,6 +31,7 @@ use crate::prompts::{ChatMessage, MessageRole};
 use crate::providers_text::{
     TextModelClient, TextModelClientRequest, TextModelProviderError, TextModelResponse,
 };
+use crate::shared::parse_retry_after;
 
 /// The maximum time a single provider HTTP call may take before it is
 /// treated as a timeout. Tuned for the slowest supported API (Anthropic
@@ -41,20 +43,9 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 /// `HTTP_TIMEOUT` still bounds the whole request (connect + send + body).
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Token-usage breakdown extracted from a provider response, when the API
-/// surfaces one. Both fields are optional because not every provider reports
-/// both legs of usage on every response (e.g. some OpenAI-compatible gateways
-/// report only a total). Values are redaction-safe counts, never prompt or
-/// completion text.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct UsageInfo {
-    pub input_tokens: Option<u64>,
-    pub output_tokens: Option<u64>,
-}
-
 /// The decoded payload shared by every provider's `extract_*_content` step.
 /// `content` is the model's text (the field `complete()` wraps in
-/// `TextModelResponse::json`). `finish_reason` and `usage` are surfaced so
+/// `TextModelResponse::json_with_usage`). `finish_reason` and `usage` are surfaced so
 /// the pipeline can detect content-filter / truncation *before* attempting
 /// JSON repair — otherwise a content-filtered or max-tokens-truncated
 /// partial body would masquerade as opaque `text_provider_invalid_json`.
@@ -227,103 +218,6 @@ fn http_status_error(status: StatusCode) -> TextModelProviderError {
         "text_provider_http_status",
         format!("provider returned HTTP {status}"),
     )
-}
-
-/// Parses an HTTP `Retry-After` header value into milliseconds. Supports both
-/// the delta-seconds form (`"120"`) and the HTTP-date form
-/// (`"Wed, 21 Oct 2026 07:28:00 GMT"`). Returns `None` when the header is
-/// absent or unparseable — the caller then falls back to its own backoff.
-/// The parsed value is redaction-safe (a duration, not user content).
-pub(crate) fn parse_retry_after(header: Option<&HeaderValue>) -> Option<u64> {
-    let value = header?;
-    let value = value.to_str().ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    // Delta-seconds form: a non-negative integer.
-    if let Ok(seconds) = trimmed.parse::<u64>() {
-        return Some(seconds.saturating_mul(1000));
-    }
-    // HTTP-date form. `rfc2822` conversion: trim to a fixed-length timestamp
-    // the std parser accepts. We compute the delay relative to now.
-    let date = httpdate_to_system_time(trimmed)?;
-    let now = std::time::SystemTime::now();
-    match date.duration_since(now) {
-        Ok(duration) => Some(duration.as_millis().try_into().ok()?),
-        // A past date means "retry now"; surface a zero delay so the retry loop
-        // honours the header but does not stall.
-        Err(_) => Some(0),
-    }
-}
-
-/// Parses an RFC 7231 HTTP-date into a `SystemTime`. Hand-rolled to avoid a
-/// new dependency: the only formats we accept are the three IMF-fixdate /
-/// RFC 850 / asctime forms, but in practice providers send IMF-fixdate
-/// (`Wed, 21 Oct 2026 07:28:00 GMT`). Falls back to `chrono`-free parsing of
-/// that canonical form; anything else returns `None` (caller falls back to
-/// its own backoff — no silent fallback, the retry loop still runs).
-fn httpdate_to_system_time(value: &str) -> Option<std::time::SystemTime> {
-    // IMF-fixdate: "Wed, 21 Oct 2026 07:28:00 GMT"
-    // Pull the time fields out positionally; this matches the dominant form.
-    let parts: Vec<&str> = value.split_whitespace().collect();
-    if parts.len() != 6 {
-        return None;
-    }
-    // parts: [weekday, day, month, year, time, "GMT"]
-    let day: u32 = parts[1].parse().ok()?;
-    let month = month_index(parts[2])?;
-    let year: i32 = parts[3].parse().ok()?;
-    let time_parts: Vec<&str> = parts[4].split(':').collect();
-    if time_parts.len() != 3 {
-        return None;
-    }
-    let hour: u32 = time_parts[0].parse().ok()?;
-    let minute: u32 = time_parts[1].parse().ok()?;
-    let second: u32 = time_parts[2].parse().ok()?;
-    if parts[5] != "GMT" {
-        return None;
-    }
-    let epoch_seconds = days_from_civil(year, month, day)? as i64 * 86_400
-        + (hour as i64 * 3600)
-        + (minute as i64 * 60)
-        + second as i64;
-    let duration = std::time::Duration::from_secs(epoch_seconds.max(0) as u64);
-    Some(std::time::SystemTime::UNIX_EPOCH + duration)
-}
-
-fn month_index(name: &str) -> Option<u32> {
-    match name {
-        "Jan" => Some(1),
-        "Feb" => Some(2),
-        "Mar" => Some(3),
-        "Apr" => Some(4),
-        "May" => Some(5),
-        "Jun" => Some(6),
-        "Jul" => Some(7),
-        "Aug" => Some(8),
-        "Sep" => Some(9),
-        "Oct" => Some(10),
-        "Nov" => Some(11),
-        "Dec" => Some(12),
-        _ => None,
-    }
-}
-
-/// Howard Hinnant's days-from-civil algorithm. Returns `None` for an invalid
-/// month (1-12). Produces the count of days since 1970-01-01 for the given
-/// (year, month, day), supporting the HTTP-date epoch conversion above.
-fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
-    if !(1..=12).contains(&month) {
-        return None;
-    }
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u32;
-    let m = month as i32;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day as i32 - 1;
-    let doe = yoe as i64 * 365 + yoe as i64 / 4 - yoe as i64 / 100 + doy as i64;
-    Some(era as i64 * 146_097 + doe - 719_468)
 }
 
 // ---------------------------------------------------------------------------
@@ -533,7 +427,10 @@ impl TextModelClient for OpenAiCompatibleClient {
         let builder = self.client.post(chat_url).headers(headers).json(&body);
         let text = execute(builder)?;
         let extracted = extract_openai_chat_content(&text)?;
-        Ok(TextModelResponse::json(extracted.content))
+        Ok(TextModelResponse::json_with_usage(
+            extracted.content,
+            extracted.usage,
+        ))
     }
 }
 
@@ -675,7 +572,10 @@ impl TextModelClient for OpenAiResponsesClient {
         let builder = self.client.post(responses_url).headers(headers).json(&body);
         let text = execute(builder)?;
         let extracted = extract_openai_responses_content(&text)?;
-        Ok(TextModelResponse::json(extracted.content))
+        Ok(TextModelResponse::json_with_usage(
+            extracted.content,
+            extracted.usage,
+        ))
     }
 }
 
@@ -854,7 +754,10 @@ impl TextModelClient for AnthropicMessagesClient {
         let builder = self.client.post(messages_url).headers(headers).json(&body);
         let text = execute(builder)?;
         let extracted = extract_anthropic_content(&text)?;
-        Ok(TextModelResponse::json(extracted.content))
+        Ok(TextModelResponse::json_with_usage(
+            extracted.content,
+            extracted.usage,
+        ))
     }
 }
 
@@ -1613,7 +1516,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_chat_extracts_usage_when_present() {
+    fn openai_chat_extract_surfaces_usage() {
         let body = r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":20}}"#;
         let extracted = extract_openai_chat_content(body).expect("decode");
         let usage = extracted.usage.expect("usage present");
@@ -1675,6 +1578,91 @@ mod tests {
             let _ = stream.flush();
         });
         (addr, handle, captured)
+    }
+
+    fn complete_against_server(
+        client: &dyn TextModelClient,
+        provider: &str,
+        reply_body: &str,
+    ) -> TextModelResponse {
+        let (addr, handle, _captured) = capturing_server(reply_body.into());
+        let config = sample_config(provider, &format!("http://{addr}"), "TEST_KEY");
+        let request = sample_request(&config);
+        let response = client
+            .complete(TextModelClientRequest {
+                config: &config,
+                credential: "token",
+                request: &request,
+            })
+            .expect("complete");
+        handle.join().expect("server thread clean");
+        response
+    }
+
+    #[test]
+    fn real_http_clients_surface_usage() {
+        let openai_chat = complete_against_server(
+            &OpenAiCompatibleClient::default(),
+            "openai",
+            r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}],"usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
+        );
+        assert_eq!(
+            openai_chat.usage,
+            Some(UsageInfo {
+                input_tokens: Some(10),
+                output_tokens: Some(20),
+            })
+        );
+
+        let openai_responses = complete_against_server(
+            &OpenAiResponsesClient::default(),
+            "openai",
+            r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}],"usage":{"input_tokens":11,"output_tokens":21}}"#,
+        );
+        assert_eq!(
+            openai_responses.usage,
+            Some(UsageInfo {
+                input_tokens: Some(11),
+                output_tokens: Some(21),
+            })
+        );
+
+        let anthropic = complete_against_server(
+            &AnthropicMessagesClient::default(),
+            "anthropic",
+            r#"{"content":[{"text":"{\"id\":\"z\"}"}],"usage":{"input_tokens":12,"output_tokens":22}}"#,
+        );
+        assert_eq!(
+            anthropic.usage,
+            Some(UsageInfo {
+                input_tokens: Some(12),
+                output_tokens: Some(22),
+            })
+        );
+    }
+
+    #[test]
+    fn real_http_clients_default_usage_to_none_when_absent() {
+        let openai_chat = complete_against_server(
+            &OpenAiCompatibleClient::default(),
+            "openai",
+            r#"{"choices":[{"message":{"content":"{\"id\":\"x\"}"}}]}"#,
+        );
+        assert_eq!(openai_chat.usage, None);
+
+        let openai_responses = complete_against_server(
+            &OpenAiResponsesClient::default(),
+            "openai",
+            r#"{"output":[{"content":[{"text":"{\"id\":\"y\"}"}]}]}"#,
+        );
+        assert_eq!(openai_responses.usage, None);
+
+        let anthropic = complete_against_server(
+            &AnthropicMessagesClient::default(),
+            "anthropic",
+            r#"{"content":[{"text":"{\"id\":\"z\"}"}]}"#,
+        );
+        assert_eq!(anthropic.usage, None);
     }
 
     #[test]

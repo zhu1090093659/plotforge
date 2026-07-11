@@ -178,7 +178,13 @@ export interface StudioDataSource {
   testProviderConnection(id: string): Promise<ProviderTestResult>;
   listRemoteModels(providerId: string): Promise<RemoteModelInfo[]>;
   listImageProviders(): Promise<ImageProviderEntry[]>;
+  upsertImageProvider(entry: ImageProviderEntry): Promise<ImageProviderEntry>;
+  deleteImageProvider(id: string): Promise<ImageProviderEntry>;
+  testImageProvider(id: string): Promise<ProviderTestResult>;
   listTtsProviders(): Promise<TtsProviderEntry[]>;
+  upsertTtsProvider(entry: TtsProviderEntry): Promise<TtsProviderEntry>;
+  deleteTtsProvider(id: string): Promise<TtsProviderEntry>;
+  testTtsProvider(id: string): Promise<ProviderTestResult>;
   listUserPromptTemplates(): Promise<PromptTemplate[]>;
   listProjectPromptTemplates(projectPath: string): Promise<PromptTemplate[]>;
   upsertUserPromptTemplate(template: PromptTemplate): Promise<PromptTemplate>;
@@ -296,7 +302,13 @@ function createStudioDataSource(
     testProviderConnection: bridge.testProviderConnection,
     listRemoteModels: bridge.listRemoteModels,
     listImageProviders: bridge.listImageProviders,
+    upsertImageProvider: bridge.upsertImageProvider,
+    deleteImageProvider: bridge.deleteImageProvider,
+    testImageProvider: bridge.testImageProvider,
     listTtsProviders: bridge.listTtsProviders,
+    upsertTtsProvider: bridge.upsertTtsProvider,
+    deleteTtsProvider: bridge.deleteTtsProvider,
+    testTtsProvider: bridge.testTtsProvider,
     listUserPromptTemplates: bridge.listUserPromptTemplates,
     listProjectPromptTemplates: bridge.listProjectPromptTemplates,
     upsertUserPromptTemplate: bridge.upsertUserPromptTemplate,

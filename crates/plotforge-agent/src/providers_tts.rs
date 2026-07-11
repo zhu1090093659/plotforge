@@ -613,7 +613,7 @@ where
             // statuses surface as generic `Provider` errors. No raw response
             // body enters the error text.
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let retry_after_ms = crate::providers_http::parse_retry_after(
+                let retry_after_ms = crate::shared::parse_retry_after(
                     response.headers().get(reqwest::header::RETRY_AFTER),
                 );
                 return Err(TtsProviderError::rate_limit(

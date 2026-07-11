@@ -11,12 +11,13 @@ use plotforge_schema::{
     AgentOutputEnvelope, AgentProposalPayload, AgentRole, CONTRACT_SCHEMA_VERSION,
     CONTRACT_VERSION, Character, CharacterGenerationReport, CharacterGenerationRequest,
     CharacterPortraitRequest, GenerationEvidence, GenerationStatus, ReproducibilityMetadata,
-    RuntimeError, StoryCraftGenerationReport, StoryCraftGenerationRequest, WorldEditDocument,
-    WorldGenerationReport, WorldGenerationRequest, contains_secret_marker_text,
+    RuntimeError, StoryCraftGenerationReport, StoryCraftGenerationRequest, UsageInfo,
+    WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, contains_secret_marker_text,
 };
 
 use crate::providers_text::{
     FakeTextModelProvider, TextModelProvider, TextModelProviderError, TextModelProviderErrorKind,
+    TextModelResponse,
 };
 use crate::shared::{payload_kind, stable_sha256_hash};
 use crate::validation::validate_agent_output_proposal;
@@ -26,6 +27,16 @@ pub(crate) enum ProviderPipelineError {
     Provider(TextModelProviderError),
     InvalidJson { agent: AgentRole, message: String },
     Validation { agent: AgentRole, message: String },
+}
+
+/// Validated text-agent output plus the redaction-safe token usage reported
+/// by the provider. Usage deliberately stays beside the schema envelope: it
+/// is runtime accounting metadata, not generated story content,
+/// reproducibility identity, or trace payload.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TextAgentOutput {
+    pub(crate) envelope: AgentOutputEnvelope,
+    pub(crate) usage: Option<UsageInfo>,
 }
 
 impl ProviderPipelineError {
@@ -182,6 +193,34 @@ where
     )
 }
 
+/// Usage-aware counterpart to `complete_text_agent_output`. This is the
+/// internal hand-off for callers that need provider accounting without
+/// changing the legacy envelope-only API.
+#[allow(dead_code)] // consumed by tests + the T1.4 pi-Agent/MCP integration
+pub(crate) fn complete_text_agent_output_with_usage<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    prompt: String,
+) -> Result<TextAgentOutput, ProviderPipelineError>
+where
+    P: TextModelProvider + ?Sized,
+{
+    complete_text_agent_output_core(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        prompt,
+        None,
+        None,
+        &RetryPolicy::default(),
+    )
+}
+
 /// Like `complete_text_agent_output` but with a caller-supplied retry
 /// policy. Exposed (crate) so tests can drive the retry loop with a small
 /// `max_attempts` and negligible backoff; production callers use the
@@ -201,6 +240,7 @@ where
     complete_text_agent_output_core(
         provider, agent, run_seed, call_id, scene_key, prompt, None, None, policy,
     )
+    .map(|output| output.envelope)
 }
 
 /// Structured-prompt variant of `complete_text_agent_output`.
@@ -251,6 +291,34 @@ pub(crate) fn complete_text_agent_output_with_messages<P>(
 where
     P: TextModelProvider + ?Sized,
 {
+    complete_text_agent_output_with_messages_and_usage(
+        provider,
+        agent,
+        run_seed,
+        call_id,
+        scene_key,
+        messages,
+        prompt_version,
+    )
+    .map(|output| output.envelope)
+}
+
+/// Usage-aware counterpart to `complete_text_agent_output_with_messages`.
+/// The shared core keeps token counts separate from the validated envelope.
+#[allow(clippy::too_many_arguments)] // mirrors the structured legacy facade
+#[allow(dead_code)] // consumed by tests + the T1.4 pi-Agent/MCP integration
+pub(crate) fn complete_text_agent_output_with_messages_and_usage<P>(
+    provider: &P,
+    agent: AgentRole,
+    run_seed: u64,
+    call_id: String,
+    scene_key: String,
+    messages: Vec<crate::prompts::ChatMessage>,
+    prompt_version: &str,
+) -> Result<TextAgentOutput, ProviderPipelineError>
+where
+    P: TextModelProvider + ?Sized,
+{
     // Derive the fallback `prompt` string from the user-message content so the
     // existing single-prompt provider path (redaction scan, HTTP body,
     // generated_character prompt hash) keeps working when `messages` is
@@ -288,7 +356,7 @@ fn complete_text_agent_output_core<P>(
     messages: Option<Vec<crate::prompts::ChatMessage>>,
     prompt_version_override: Option<&str>,
     policy: &RetryPolicy,
-) -> Result<AgentOutputEnvelope, ProviderPipelineError>
+) -> Result<TextAgentOutput, ProviderPipelineError>
 where
     P: TextModelProvider + ?Sized,
 {
@@ -320,21 +388,21 @@ where
         // chat-message turn assembled by `PromptAssembler`.
         messages,
     };
-    let response = complete_with_retry(provider, &model_request, policy)
-        .map_err(ProviderPipelineError::Provider)?;
-    if contains_secret_marker_text(&response.raw_json) {
+    let TextModelResponse { raw_json, usage } =
+        complete_with_retry(provider, &model_request, policy)
+            .map_err(ProviderPipelineError::Provider)?;
+    if contains_secret_marker_text(&raw_json) {
         return Err(ProviderPipelineError::Validation {
             agent,
             message: "provider output contained a secret marker".into(),
         });
     }
 
-    let repaired_json = repair_json_text(&response.raw_json).map_err(|message| {
-        ProviderPipelineError::InvalidJson {
+    let repaired_json =
+        repair_json_text(&raw_json).map_err(|message| ProviderPipelineError::InvalidJson {
             agent: agent.clone(),
             message,
-        }
-    })?;
+        })?;
     let mut envelope =
         serde_json::from_str::<AgentOutputEnvelope>(&repaired_json).map_err(|error| {
             ProviderPipelineError::InvalidJson {
@@ -364,7 +432,7 @@ where
         }
     })?;
 
-    Ok(envelope)
+    Ok(TextAgentOutput { envelope, usage })
 }
 
 /// Concatenates the content of all `User` messages in `messages` into a
@@ -836,6 +904,28 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct UsageReportingProvider {
+        usage: UsageInfo,
+    }
+
+    impl TextModelProvider for UsageReportingProvider {
+        fn complete(
+            &self,
+            request: &TextModelRequest,
+        ) -> Result<TextModelResponse, TextModelProviderError> {
+            let response = FakeTextModelProvider::success().complete(request)?;
+            Ok(TextModelResponse::json_with_usage(
+                response.raw_json,
+                Some(self.usage.clone()),
+            ))
+        }
+
+        fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+            ReproducibilityMetadata::local_mock(run_seed)
+        }
+    }
+
     /// Retry policy with negligible backoff so tests do not stall. The
     /// `base_delay_ms` of 1ms and `max_delay_ms` of 2ms keep the suite fast
     /// while still exercising the backoff path.
@@ -844,6 +934,54 @@ mod tests {
             max_attempts,
             base_delay_ms: 1,
             max_delay_ms: 2,
+        }
+    }
+
+    #[test]
+    fn usage_aware_pipeline_keeps_usage_out_of_envelope() {
+        let usage = UsageInfo {
+            input_tokens: Some(144),
+            output_tokens: Some(55),
+        };
+        let provider = UsageReportingProvider {
+            usage: usage.clone(),
+        };
+
+        let legacy = complete_text_agent_output_with_usage(
+            &provider,
+            AgentRole::ScenePlanner,
+            7,
+            "usage-legacy".into(),
+            "scene-1".into(),
+            "plan the next scene".into(),
+        )
+        .expect("usage-aware legacy path succeeds");
+        let messages = crate::prompts::PromptAssembler::assemble(
+            &crate::prompts::SCENE_PLANNER_V1,
+            "scene context",
+        );
+        let structured = complete_text_agent_output_with_messages_and_usage(
+            &provider,
+            AgentRole::ScenePlanner,
+            8,
+            "usage-structured".into(),
+            "scene-1".into(),
+            messages,
+            crate::prompts::SCENE_PLANNER_V1.version,
+        )
+        .expect("usage-aware structured path succeeds");
+
+        for output in [legacy, structured] {
+            assert_eq!(output.usage, Some(usage.clone()));
+            let envelope_json = serde_json::to_value(&output.envelope).expect("serialize envelope");
+            assert!(
+                envelope_json.get("usage").is_none(),
+                "usage must remain outside AgentOutputEnvelope"
+            );
+            assert!(
+                envelope_json["reproducibility"].get("usage").is_none(),
+                "usage must not enter reproducibility metadata"
+            );
         }
     }
 

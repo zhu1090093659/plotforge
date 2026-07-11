@@ -23,6 +23,7 @@ import {
 } from "./testHelpers/studioDataSource";
 import type {
   AssetRecord,
+  ImageProviderEntry,
   McpServerEntry,
   McpServerTestResult,
   McpToolCallRequest,
@@ -31,6 +32,7 @@ import type {
   PiAgentApplyResult,
   ProviderEntry,
   PromptTemplate,
+  TtsProviderEntry,
 } from "../../../contracts/plotforge";
 import type {
   PlayOnceReport,
@@ -1326,8 +1328,42 @@ function appTestDataSource(
     async listImageProviders() {
       return [];
     },
+    async upsertImageProvider(entry: ImageProviderEntry) {
+      return entry;
+    },
+    async deleteImageProvider(id: string) {
+      return {
+        id,
+        endpoint_url: "",
+        model: "",
+        credential_env_var: "",
+        enabled: false,
+        default_size: "1024x1024",
+        default_quality: "medium",
+      };
+    },
+    async testImageProvider(_id: string) {
+      return { ok: true, message: "" };
+    },
     async listTtsProviders() {
       return [];
+    },
+    async upsertTtsProvider(entry: TtsProviderEntry) {
+      return entry;
+    },
+    async deleteTtsProvider(id: string) {
+      return {
+        id,
+        endpoint_url: "",
+        model: "",
+        credential_env_var: "",
+        enabled: false,
+        voice: "coral",
+        format: "mp3",
+      };
+    },
+    async testTtsProvider(_id: string) {
+      return { ok: true, message: "" };
     },
     async listUserPromptTemplates() {
       return [];

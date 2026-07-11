@@ -12,6 +12,8 @@ import { StudioI18nProvider } from "./i18n";
 import type { StudioDataSource } from "./studioDataSource";
 import {
   mockDeleteProvider,
+  mockDeleteImageProvider,
+  mockDeleteTtsProvider,
   mockImportSkill,
   mockListImageProviders,
   mockListTtsProviders,
@@ -23,14 +25,20 @@ import {
   mockReadSkillBody,
   mockRefreshSkillIndex,
   mockTestProviderConnection,
+  mockTestImageProvider,
+  mockTestTtsProvider,
   mockUpsertProvider,
+  mockUpsertImageProvider,
+  mockUpsertTtsProvider,
 } from "./testHelpers/studioDataSource";
 import type {
   AgentSessionConfig,
+  ImageProviderEntry,
   McpServerEntry,
   PromptTemplate,
   ProviderEntry,
   SkillManifest,
+  TtsProviderEntry,
 } from "../../../contracts/plotforge";
 
 afterEach(() => {
@@ -58,6 +66,26 @@ const savedProvider: ProviderEntry = {
   model: "gpt-4o",
   credential_env_var: "OPENAI_API_KEY",
   enabled: true,
+};
+
+const savedImageProvider: ImageProviderEntry = {
+  id: "image-prod",
+  endpoint_url: "https://api.openai.com/v1",
+  model: "gpt-image-1",
+  credential_env_var: "OPENAI_API_KEY",
+  enabled: true,
+  default_size: "1024x1024",
+  default_quality: "medium",
+};
+
+const savedTtsProvider: TtsProviderEntry = {
+  id: "tts-prod",
+  endpoint_url: "https://api.openai.com/v1",
+  model: "gpt-4o-mini-tts",
+  credential_env_var: "OPENAI_API_KEY",
+  enabled: true,
+  voice: "coral",
+  format: "mp3",
 };
 
 /** A skill already imported into the user library (origin `plot_forge_user`):
@@ -119,7 +147,13 @@ function settingsTestDataSource(
     testProviderConnection: mockTestProviderConnection,
     listRemoteModels: mockListRemoteModels,
     listImageProviders: mockListImageProviders,
+    upsertImageProvider: mockUpsertImageProvider,
+    deleteImageProvider: mockDeleteImageProvider,
+    testImageProvider: mockTestImageProvider,
     listTtsProviders: mockListTtsProviders,
+    upsertTtsProvider: mockUpsertTtsProvider,
+    deleteTtsProvider: mockDeleteTtsProvider,
+    testTtsProvider: mockTestTtsProvider,
     listUserPromptTemplates: mockListUserPromptTemplates,
     listProjectPromptTemplates: mockListProjectPromptTemplates,
     listSkills: mockListSkills,
@@ -398,6 +432,147 @@ describe("SettingsView", () => {
     });
     const saved = upsert.mock.calls[0][0] as ProviderEntry;
     expect(saved.max_output_tokens).toBe(8192);
+  });
+
+  it("supports add, edit, delete, and test actions for image providers", async () => {
+    const upsert = vi.fn(async (entry: ImageProviderEntry) => entry);
+    const remove = vi.fn(async (_id: string) => savedImageProvider);
+    const probe = vi.fn(async (_id: string) => ({
+      ok: true,
+      message: "image probe completed",
+    }));
+    const dataSource = settingsTestDataSource({
+      async listImageProviders() {
+        return [savedImageProvider];
+      },
+      async upsertImageProvider(entry) {
+        return upsert(entry);
+      },
+      async deleteImageProvider(id) {
+        return remove(id);
+      },
+      async testImageProvider(id) {
+        return probe(id);
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    const heading = await screen.findByRole("heading", {
+      name: "Image providers",
+    });
+    const section = heading.closest("section") as HTMLElement;
+    expect(await within(section).findByText("image-prod")).toBeTruthy();
+
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Add image provider" }),
+    );
+    fireEvent.change(within(section).getByLabelText("Provider id"), {
+      target: { value: "image-new" },
+    });
+    fireEvent.change(within(section).getByLabelText("Endpoint URL"), {
+      target: { value: "https://images.example/v1" },
+    });
+    fireEvent.change(within(section).getByLabelText("Model"), {
+      target: { value: "image-new-model" },
+    });
+    fireEvent.change(within(section).getByLabelText("Credential env var"), {
+      target: { value: "IMAGE_API_KEY" },
+    });
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Save provider" }),
+    );
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    expect(upsert.mock.calls[0][0].credential_env_var).toBe("IMAGE_API_KEY");
+
+    expect(await within(section).findByText("image-prod")).toBeTruthy();
+    fireEvent.click(within(section).getByRole("button", { name: "Edit" }));
+    expect(
+      (within(section).getByLabelText("Provider id") as HTMLInputElement).value,
+    ).toBe("image-prod");
+    fireEvent.click(within(section).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Test connection" }),
+    );
+    await waitFor(() => expect(probe).toHaveBeenCalledWith("image-prod"));
+    expect(
+      await within(section).findByText(/image probe completed/),
+    ).toBeTruthy();
+
+    fireEvent.click(within(section).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("image-prod"));
+  });
+
+  it("supports add, edit, delete, and test actions for TTS providers", async () => {
+    const upsert = vi.fn(async (entry: TtsProviderEntry) => entry);
+    const remove = vi.fn(async (_id: string) => savedTtsProvider);
+    const probe = vi.fn(async (_id: string) => ({
+      ok: false,
+      message: "TTS probe failed safely",
+    }));
+    const dataSource = settingsTestDataSource({
+      async listTtsProviders() {
+        return [savedTtsProvider];
+      },
+      async upsertTtsProvider(entry) {
+        return upsert(entry);
+      },
+      async deleteTtsProvider(id) {
+        return remove(id);
+      },
+      async testTtsProvider(id) {
+        return probe(id);
+      },
+    });
+    renderSettingsView({ dataSource });
+
+    const heading = await screen.findByRole("heading", {
+      name: "TTS providers",
+    });
+    const section = heading.closest("section") as HTMLElement;
+    expect(await within(section).findByText("tts-prod")).toBeTruthy();
+
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Add TTS provider" }),
+    );
+    fireEvent.change(within(section).getByLabelText("Provider id"), {
+      target: { value: "tts-new" },
+    });
+    fireEvent.change(within(section).getByLabelText("Endpoint URL"), {
+      target: { value: "https://speech.example/v1" },
+    });
+    fireEvent.change(within(section).getByLabelText("Model"), {
+      target: { value: "tts-new-model" },
+    });
+    fireEvent.change(within(section).getByLabelText("Credential env var"), {
+      target: { value: "TTS_API_KEY" },
+    });
+    fireEvent.change(within(section).getByLabelText("Default voice"), {
+      target: { value: "alloy" },
+    });
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Save provider" }),
+    );
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    expect(upsert.mock.calls[0][0].credential_env_var).toBe("TTS_API_KEY");
+
+    expect(await within(section).findByText("tts-prod")).toBeTruthy();
+    fireEvent.click(within(section).getByRole("button", { name: "Edit" }));
+    expect(
+      (within(section).getByLabelText("Provider id") as HTMLInputElement).value,
+    ).toBe("tts-prod");
+    fireEvent.click(within(section).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Test connection" }),
+    );
+    await waitFor(() => expect(probe).toHaveBeenCalledWith("tts-prod"));
+    expect(
+      await within(section).findByText(/TTS probe failed safely/),
+    ).toBeTruthy();
+
+    fireEvent.click(within(section).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("tts-prod"));
   });
 
   it("renders the Prompts user/project scope toggle buttons inside the Agent tab", async () => {

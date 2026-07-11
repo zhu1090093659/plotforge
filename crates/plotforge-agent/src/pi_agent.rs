@@ -17,10 +17,10 @@
 
 use plotforge_schema::{
     AgentOutputEnvelope, AgentRole, PiAgentCapability, PiAgentDescriptor, PiAgentRunRequest,
-    PiAgentRunResult,
+    PiAgentRunResult, UsageInfo,
 };
 
-use crate::{TextModelProvider, complete_text_agent_output, contains_secret_marker_text};
+use crate::{TextModelProvider, contains_secret_marker_text};
 
 /// pi-Agent facade errors. Explicit errors only — no silent fallback.
 ///
@@ -95,7 +95,7 @@ impl PiAgent {
         // Reuse the shared provider pipeline so the pi-Agent benefits from
         // the same validation path (envelope validation, JSON repair, and
         // `validate_agent_output_proposal`) as the existing agent pipelines.
-        let envelope = complete_text_agent_output(
+        let output = crate::pipelines::complete_text_agent_output_with_usage(
             self.provider.as_ref(),
             AgentRole::ScenePlanner,
             request.run_seed,
@@ -104,8 +104,9 @@ impl PiAgent {
             request.prompt_summary.clone(),
         )
         .map_err(Self::provider_error)?;
+        let result = self.assemble_result(&output.envelope, request.run_seed, output.usage);
 
-        Ok((self.assemble_result(&envelope, request.run_seed), envelope))
+        Ok((result, output.envelope))
     }
 
     /// Run the pi-Agent with assembled project context, using the structured
@@ -157,7 +158,7 @@ impl PiAgent {
             &crate::prompts::SCENE_PLANNER_V1,
             &user_message,
         );
-        let envelope = crate::pipelines::complete_text_agent_output_with_messages(
+        let output = crate::pipelines::complete_text_agent_output_with_messages_and_usage(
             self.provider.as_ref(),
             AgentRole::ScenePlanner,
             request.run_seed,
@@ -167,8 +168,9 @@ impl PiAgent {
             crate::prompts::SCENE_PLANNER_V1.version,
         )
         .map_err(Self::provider_error)?;
+        let result = self.assemble_result(&output.envelope, request.run_seed, output.usage);
 
-        Ok((self.assemble_result(&envelope, request.run_seed), envelope))
+        Ok((result, output.envelope))
     }
 
     /// Validate the redaction-safe request: `agent_id` must match the facade,
@@ -199,7 +201,12 @@ impl PiAgent {
     /// Build the redaction-safe `PiAgentRunResult` from a validated envelope.
     /// Shared by both `run_with_envelope` and `run_with_envelope_with_context`
     /// so the trace-identity and evidence-summary contract is identical.
-    fn assemble_result(&self, envelope: &AgentOutputEnvelope, run_seed: u64) -> PiAgentRunResult {
+    fn assemble_result(
+        &self,
+        envelope: &AgentOutputEnvelope,
+        run_seed: u64,
+        usage: Option<UsageInfo>,
+    ) -> PiAgentRunResult {
         let mut reproducibility = envelope.reproducibility.clone();
         // The pi-Agent facade owns the trace-evidence identity for its results:
         // it derives a deterministic, redaction-safe id from `agent_id:run_seed`
@@ -237,6 +244,7 @@ impl PiAgent {
         PiAgentRunResult {
             descriptor,
             reproducibility,
+            usage,
             trace_id,
             evidence_summary,
         }
@@ -335,7 +343,7 @@ pub fn pi_agent_capabilities_with_mcp(mcp_enabled: bool) -> Vec<PiAgentCapabilit
 mod tests {
     use plotforge_schema::{
         AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, CONTRACT_SCHEMA_VERSION,
-        CONTRACT_VERSION, PiAgentCapability, ReproducibilityMetadata, ScenePlanProposal,
+        CONTRACT_VERSION, PiAgentCapability, ReproducibilityMetadata, ScenePlanProposal, UsageInfo,
         contains_secret_marker_text,
     };
 
@@ -360,6 +368,7 @@ mod tests {
         assert!(result.descriptor.is_local_pi);
         assert_eq!(result.descriptor.agent_id, "pi-agent-local");
         assert!(!result.descriptor.capabilities.is_empty());
+        assert_eq!(result.usage, None, "local mock runs do not report usage");
         assert_eq!(result.reproducibility.run_seed, 7);
         assert!(
             result
@@ -764,7 +773,13 @@ mod tests {
                 proposal,
             };
             let json = serde_json::to_string(&envelope).expect("serialize stub envelope");
-            Ok(TextModelResponse::json(json))
+            Ok(TextModelResponse::json_with_usage(
+                json,
+                Some(UsageInfo {
+                    input_tokens: Some(5),
+                    output_tokens: Some(10),
+                }),
+            ))
         }
     }
 
@@ -806,6 +821,14 @@ mod tests {
         assert_ne!(
             result.reproducibility.provider_config_hash, "sha256:remote-unknown",
             "facade must overwrite the provider's config hash"
+        );
+        assert_eq!(
+            result.usage,
+            Some(UsageInfo {
+                input_tokens: Some(5),
+                output_tokens: Some(10),
+            }),
+            "pi-Agent must surface provider-reported usage outside the envelope"
         );
         // The provider-supplied trace id must be overwritten by the facade's
         // deterministic id.
