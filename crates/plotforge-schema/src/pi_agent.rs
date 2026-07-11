@@ -10,7 +10,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{ReproducibilityMetadata, RuntimeSnapshot, RuntimeTrace, Scene};
+use crate::{ReproducibilityMetadata, RuntimeSnapshot, RuntimeTrace, Scene, UsageInfo};
 
 /// A single pi-Agent capability.
 ///
@@ -59,12 +59,15 @@ pub struct PiAgentRunRequest {
 /// evidence stays consistent across the runtime. The descriptor echoes the
 /// agent identity and capabilities used for the run. `evidence_summary` is a
 /// short, redacted summary; it must not contain raw provider responses,
-/// credentials, or secret markers.
+/// credentials, or secret markers. `usage` carries redaction-safe provider
+/// token counts when available and stays absent for local or legacy runs.
 #[derive(Clone, Debug, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PiAgentRunResult {
     pub descriptor: PiAgentDescriptor,
     pub reproducibility: ReproducibilityMetadata,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInfo>,
     pub trace_id: Option<String>,
     pub evidence_summary: String,
 }
@@ -96,6 +99,7 @@ pub struct PiAgentApplyRequest {
 /// a separate `PlayOnceReport` (which lives in the Studio layer, not in
 /// schema). `trace_path` and `snapshot_path` are absolute paths written by the
 /// Studio layer; they never enter export packages.
+/// `usage` mirrors `run.usage` for direct consumers of the apply result.
 ///
 /// `image_generation_failed` carries a redaction-safe error message when the
 /// optional scene background image generation step failed but the turn still
@@ -111,6 +115,8 @@ pub struct PiAgentApplyRequest {
 #[serde(deny_unknown_fields)]
 pub struct PiAgentApplyResult {
     pub run: PiAgentRunResult,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInfo>,
     pub scene_key: String,
     pub scene: Scene,
     pub trace: RuntimeTrace,
@@ -250,6 +256,7 @@ mod tests {
             descriptor: descriptor.clone(),
             reproducibility: ReproducibilityMetadata::local_mock(7)
                 .with_trace_id("pi-agent-trace-001"),
+            usage: None,
             trace_id: Some("pi-agent-trace-001".into()),
             evidence_summary: "pi-Agent produced a validated scene plan proposal.".into(),
         };
@@ -278,6 +285,7 @@ mod tests {
                 capabilities: Vec::new(),
             },
             reproducibility: ReproducibilityMetadata::local_mock(7),
+            usage: None,
             trace_id: None,
             evidence_summary: "redacted".into(),
         };
@@ -301,6 +309,24 @@ mod tests {
                 evidence: "FakeTextModelProvider envelope".into(),
             }],
         }
+    }
+
+    #[test]
+    fn pi_agent_run_result_backward_compatible_without_usage() {
+        let legacy = PiAgentRunResult {
+            descriptor: sample_descriptor(),
+            reproducibility: ReproducibilityMetadata::local_mock(7),
+            usage: None,
+            trace_id: None,
+            evidence_summary: "redacted".into(),
+        };
+        let value = serde_json::to_value(&legacy).expect("serialize legacy run result");
+        assert!(value.get("usage").is_none());
+
+        let decoded: PiAgentRunResult =
+            serde_json::from_value(value).expect("deserialize legacy run result");
+
+        assert_eq!(decoded.usage, None);
     }
 
     #[test]
@@ -336,11 +362,11 @@ mod tests {
         assert!(error.to_string().contains("unknown field"));
     }
 
-    #[test]
-    fn pi_agent_apply_result_roundtrips_with_runtime_shapes() {
+    fn sample_apply_result() -> PiAgentApplyResult {
         let run = PiAgentRunResult {
             descriptor: sample_descriptor(),
             reproducibility: ReproducibilityMetadata::local_mock(11),
+            usage: None,
             trace_id: Some("pi-agent-trace-011".into()),
             evidence_summary: "pi-Agent committed a scene plan proposal.".into(),
         };
@@ -400,8 +426,9 @@ mod tests {
             errors: Vec::new(),
             fallback_used: false,
         };
-        let result = PiAgentApplyResult {
+        PiAgentApplyResult {
             run: run.clone(),
+            usage: None,
             scene_key: scene.key.clone(),
             scene: scene.clone(),
             trace: trace.clone(),
@@ -410,7 +437,12 @@ mod tests {
             snapshot: None,
             snapshot_path: None,
             image_generation_failed: None,
-        };
+        }
+    }
+
+    #[test]
+    fn pi_agent_apply_result_roundtrips_with_runtime_shapes() {
+        let result = sample_apply_result();
 
         let encoded = serde_json::to_string_pretty(&result).expect("serialize apply result");
         let decoded: PiAgentApplyResult =
@@ -425,14 +457,30 @@ mod tests {
     }
 
     #[test]
+    fn pi_agent_apply_result_backward_compatible_without_usage() {
+        let legacy = sample_apply_result();
+        let value = serde_json::to_value(&legacy).expect("serialize legacy apply result");
+        assert!(value.get("usage").is_none());
+        assert!(value["run"].get("usage").is_none());
+
+        let decoded: PiAgentApplyResult =
+            serde_json::from_value(value).expect("deserialize legacy apply result");
+
+        assert_eq!(decoded.usage, None);
+        assert_eq!(decoded.run.usage, None);
+    }
+
+    #[test]
     fn pi_agent_apply_result_rejects_raw_provider_fields() {
         let result = PiAgentApplyResult {
             run: PiAgentRunResult {
                 descriptor: sample_descriptor(),
                 reproducibility: ReproducibilityMetadata::local_mock(11),
+                usage: None,
                 trace_id: None,
                 evidence_summary: "redacted".into(),
             },
+            usage: None,
             scene_key: "provider-scene-011".into(),
             scene: Scene {
                 key: "provider-scene-011".into(),
@@ -513,9 +561,11 @@ mod tests {
             run: PiAgentRunResult {
                 descriptor: sample_descriptor(),
                 reproducibility: ReproducibilityMetadata::local_mock(11),
+                usage: None,
                 trace_id: None,
                 evidence_summary: "redacted".into(),
             },
+            usage: None,
             scene_key: "provider-scene-011".into(),
             scene: Scene {
                 key: "provider-scene-011".into(),
@@ -600,9 +650,11 @@ mod tests {
             run: PiAgentRunResult {
                 descriptor: sample_descriptor(),
                 reproducibility: ReproducibilityMetadata::local_mock(11),
+                usage: None,
                 trace_id: None,
                 evidence_summary: "redacted".into(),
             },
+            usage: None,
             scene_key: "scene-1".into(),
             scene: Scene {
                 key: "scene-1".into(),

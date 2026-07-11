@@ -2411,7 +2411,7 @@
     },
     "PiAgentApplyResult": {
       "additionalProperties": false,
-      "description": "The result of a `pi_agent_apply_run`: the redaction-safe pi-Agent evidence\nenvelope plus the runtime-visible outcome (committed scene + trace + optional\nsnapshot). This embeds the same shape `AgentChatRail` renders for a playtest\nturn (`scene` + `trace`), so the rail can drive `pi_agent_apply_run` without\na separate `PlayOnceReport` (which lives in the Studio layer, not in\nschema). `trace_path` and `snapshot_path` are absolute paths written by the\nStudio layer; they never enter export packages.\n\n`image_generation_failed` carries a redaction-safe error message when the\noptional scene background image generation step failed but the turn still\nsucceeded (failure isolation: an image provider outage never fails the\nturn). It is `None` when no image provider was configured, when image\ngeneration was skipped (e.g. a cached asset was reused), or when it\nsucceeded. The message is redaction-safe (no credentials, no raw provider\nresponse bodies) and trace-visible so the user can diagnose the outage\nrather than seeing a silent missing image. Per AGENTS.md: no silent\nfallback — the field makes the image failure explicit even though the turn\nsucceeds.",
+      "description": "The result of a `pi_agent_apply_run`: the redaction-safe pi-Agent evidence\nenvelope plus the runtime-visible outcome (committed scene + trace + optional\nsnapshot). This embeds the same shape `AgentChatRail` renders for a playtest\nturn (`scene` + `trace`), so the rail can drive `pi_agent_apply_run` without\na separate `PlayOnceReport` (which lives in the Studio layer, not in\nschema). `trace_path` and `snapshot_path` are absolute paths written by the\nStudio layer; they never enter export packages.\n`usage` mirrors `run.usage` for direct consumers of the apply result.\n\n`image_generation_failed` carries a redaction-safe error message when the\noptional scene background image generation step failed but the turn still\nsucceeded (failure isolation: an image provider outage never fails the\nturn). It is `None` when no image provider was configured, when image\ngeneration was skipped (e.g. a cached asset was reused), or when it\nsucceeded. The message is redaction-safe (no credentials, no raw provider\nresponse bodies) and trace-visible so the user can diagnose the outage\nrather than seeing a silent missing image. Per AGENTS.md: no silent\nfallback — the field makes the image failure explicit even though the turn\nsucceeds.",
       "properties": {
         "delta_summary": {
           "default": [],
@@ -2458,6 +2458,16 @@
         },
         "trace_path": {
           "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -2551,7 +2561,7 @@
     },
     "PiAgentRunResult": {
       "additionalProperties": false,
-      "description": "The redaction-safe result of a pi-Agent run.\n\nReuses the shared `ReproducibilityMetadata` type so trace/snapshot\nevidence stays consistent across the runtime. The descriptor echoes the\nagent identity and capabilities used for the run. `evidence_summary` is a\nshort, redacted summary; it must not contain raw provider responses,\ncredentials, or secret markers.",
+      "description": "The redaction-safe result of a pi-Agent run.\n\nReuses the shared `ReproducibilityMetadata` type so trace/snapshot\nevidence stays consistent across the runtime. The descriptor echoes the\nagent identity and capabilities used for the run. `evidence_summary` is a\nshort, redacted summary; it must not contain raw provider responses,\ncredentials, or secret markers. `usage` carries redaction-safe provider\ntoken counts when available and stays absent for local or legacy runs.",
       "properties": {
         "descriptor": {
           "$ref": "#/$defs/PiAgentDescriptor"
@@ -2566,6 +2576,16 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageInfo"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
@@ -4520,6 +4540,29 @@
       ],
       "type": "object"
     },
+    "UsageInfo": {
+      "additionalProperties": false,
+      "description": "Redaction-safe token usage reported by a model provider.\n\nBoth counts are optional because providers may omit one or both values.",
+      "properties": {
+        "input_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "output_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "VisualBible": {
       "additionalProperties": false,
       "properties": {
@@ -5099,6 +5142,9 @@
     "tts_provider_entry": {
       "$ref": "#/$defs/TtsProviderEntry"
     },
+    "usage_info": {
+      "$ref": "#/$defs/UsageInfo"
+    },
     "visual_bible": {
       "$ref": "#/$defs/VisualBible"
     },
@@ -5130,6 +5176,7 @@
     "runtime_trace",
     "runtime_snapshot",
     "job_record",
+    "usage_info",
     "agent_output_proposal",
     "agent_output_envelope",
     "reproducibility_metadata",
