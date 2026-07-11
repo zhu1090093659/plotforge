@@ -17,14 +17,15 @@ use std::path::PathBuf;
 
 use plotforge_job::ThrottleConfig;
 use plotforge_schema::{
-    ImageProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
-    RemoteModelList, TtsProviderEntry, redact_trace_text,
+    ImageProviderEntry, ModerationProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry,
+    RemoteModelInfo, RemoteModelList, TtsProviderEntry, redact_trace_text,
 };
 
 use crate::providers_http::{
     AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient,
 };
 use crate::providers_image::{ImageProvider, OpenAiImageClient};
+use crate::providers_moderation::{ModerationProvider, OpenAiModerationClient};
 use crate::providers_text::{
     ConfiguredTextModelProvider, EnvCredentialResolver, FakeTextModelProvider,
     ProviderCredentialError, ProviderCredentialResolver, TextModelClient, TextModelProvider,
@@ -304,6 +305,61 @@ pub fn build_tts_provider(
         })
 }
 
+/// Builds an OpenAI-compatible moderation provider. Empty credential env-var
+/// names select the explicit no-auth resolver; non-empty names stay strict.
+pub fn build_moderation_provider(
+    entry: &ModerationProviderEntry,
+) -> Result<Box<dyn ModerationProvider>, ProviderBuildError> {
+    reject_non_text_daily_token_budget(&entry.id, "moderation", entry.daily_token_budget)?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Moderation,
+        moderation_config_hash(entry),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: None,
+        },
+    )?;
+    if entry.credential_env_var.trim().is_empty() {
+        OpenAiModerationClient::new(entry, OptionalEnvCredentialResolver)
+            .map(|client| Box::new(client.with_throttle(throttle)) as Box<dyn ModerationProvider>)
+            .map_err(|error| ProviderBuildError::ClientConstruction {
+                provider_id: entry.id.clone(),
+                message: error.message,
+            })
+    } else {
+        OpenAiModerationClient::new(entry, EnvCredentialResolver)
+            .map(|client| Box::new(client.with_throttle(throttle)) as Box<dyn ModerationProvider>)
+            .map_err(|error| ProviderBuildError::ClientConstruction {
+                provider_id: entry.id.clone(),
+                message: error.message,
+            })
+    }
+}
+
+/// Returns the first enabled moderation entry, preserving registry order.
+pub fn resolve_moderation_provider(
+    registry: &ProviderRegistry,
+) -> Option<&ModerationProviderEntry> {
+    registry
+        .moderation_providers
+        .iter()
+        .find(|entry| entry.enabled)
+}
+
+/// Canonical moderation reproducibility and throttle identity. Quota fields
+/// are deliberately excluded so quota edits reconfigure the same shared gate.
+pub fn moderation_config_hash(entry: &ModerationProviderEntry) -> String {
+    format!(
+        "sha256:{}",
+        crate::shared::stable_sha256_hash(&format!(
+            "id={}\nendpoint_url={}\nmodel={}\ncredential_env_var={}\nenabled={}\n",
+            entry.id, entry.endpoint_url, entry.model, entry.credential_env_var, entry.enabled,
+        ))
+    )
+}
+
 fn build_throttle(
     scope: ProviderThrottleScope,
     provider_config_hash: String,
@@ -336,10 +392,20 @@ fn reject_media_daily_token_budget(
     provider_id: &str,
     daily_token_budget: Option<u64>,
 ) -> Result<(), ProviderBuildError> {
+    reject_non_text_daily_token_budget(provider_id, "image and TTS", daily_token_budget)
+}
+
+fn reject_non_text_daily_token_budget(
+    provider_id: &str,
+    provider_kind: &str,
+    daily_token_budget: Option<u64>,
+) -> Result<(), ProviderBuildError> {
     if daily_token_budget.is_some() {
         return Err(ProviderBuildError::UnsupportedQuota {
             provider_id: provider_id.to_string(),
-            message: "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens".into(),
+            message: format!(
+                "daily_token_budget is supported only by text providers because {provider_kind} usage does not report output tokens"
+            ),
         });
     }
     Ok(())
@@ -1535,5 +1601,87 @@ mod tests {
         let raw = std::fs::read_to_string(&registry_path).expect("read raw");
         assert!(!raw.contains("api_key"));
         assert!(!raw.contains("sk-"));
+    }
+
+    fn sample_moderation_entry(id: &str, enabled: bool) -> ModerationProviderEntry {
+        ModerationProviderEntry {
+            id: id.into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "omni-moderation-latest".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        }
+    }
+
+    #[test]
+    fn resolve_moderation_provider_returns_first_enabled() {
+        let registry = ProviderRegistry {
+            moderation_providers: vec![
+                sample_moderation_entry("disabled", false),
+                sample_moderation_entry("first", true),
+                sample_moderation_entry("second", true),
+            ],
+            ..ProviderRegistry::default()
+        };
+        assert_eq!(
+            resolve_moderation_provider(&registry).map(|entry| entry.id.as_str()),
+            Some("first")
+        );
+    }
+
+    #[test]
+    fn resolve_moderation_provider_none_when_empty_or_disabled() {
+        assert!(resolve_moderation_provider(&ProviderRegistry::default()).is_none());
+        let registry = ProviderRegistry {
+            moderation_providers: vec![sample_moderation_entry("disabled", false)],
+            ..ProviderRegistry::default()
+        };
+        assert!(resolve_moderation_provider(&registry).is_none());
+    }
+
+    #[test]
+    fn build_moderation_provider_constructs_no_auth_client() {
+        let mut entry = sample_moderation_entry("local", true);
+        entry.endpoint_url = "http://127.0.0.1:9/v1".into();
+        entry.credential_env_var.clear();
+        build_moderation_provider(&entry).expect("moderation provider builds");
+    }
+
+    #[test]
+    fn build_moderation_provider_rejects_daily_token_budget() {
+        let mut entry = sample_moderation_entry("budgeted", true);
+        entry.daily_token_budget = Some(100);
+        let error = match build_moderation_provider(&entry) {
+            Ok(_) => panic!("daily budget must be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, ProviderBuildError::UnsupportedQuota { .. }));
+    }
+
+    #[test]
+    fn moderation_config_hash_is_stable_and_excludes_quota() {
+        let entry = sample_moderation_entry("moderation", true);
+        let mut quota_edit = entry.clone();
+        quota_edit.max_concurrency = Some(2);
+        quota_edit.requests_per_minute = Some(30);
+        assert_eq!(
+            moderation_config_hash(&entry),
+            moderation_config_hash(&entry)
+        );
+        assert_eq!(
+            moderation_config_hash(&entry),
+            moderation_config_hash(&quota_edit),
+            "quota edits must reconfigure the same shared gate"
+        );
+
+        let mut model_edit = entry.clone();
+        model_edit.model = "text-moderation-latest".into();
+        assert_ne!(
+            moderation_config_hash(&entry),
+            moderation_config_hash(&model_edit)
+        );
     }
 }

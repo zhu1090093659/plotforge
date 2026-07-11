@@ -9,11 +9,13 @@
 //! module.
 
 mod mcp_loop;
+mod moderation_loop;
 mod pi_agent;
 mod pipelines;
 mod prompts;
 mod providers_http;
 mod providers_image;
+mod providers_moderation;
 mod providers_text;
 mod providers_tts;
 mod registry;
@@ -45,6 +47,10 @@ pub use providers_image::{
     ImageProviderError, ImageProviderErrorKind, OpenAiImageClient, SceneImagePipeline,
     SceneImagePipelineError, SceneImageRequest, SceneImageResult,
 };
+pub use providers_moderation::{
+    FakeModerationProvider, ModerationProvider, ModerationProviderError,
+    ModerationProviderErrorKind, ModerationRequest, ModerationResponse, OpenAiModerationClient,
+};
 pub use providers_text::{
     ConfiguredTextModelProvider, EnvCredentialResolver, FakeTextModelProvider,
     ProviderCredentialError, ProviderCredentialResolver, TextModelClient, TextModelClientRequest,
@@ -65,9 +71,10 @@ pub use providers_tts::{
 };
 pub use registry::{
     LOCAL_PI_MODEL_ID, ModelDiscoveryError, OptionalEnvCredentialResolver, ProviderBuildError,
-    ProviderRegistryError, build_image_provider, build_provider_client, build_text_provider,
-    build_tts_provider, fetch_provider_models, fetch_provider_models_to, load_provider_registry,
-    load_provider_registry_from, local_pi_provider, provider_registry_path, resolve_image_provider,
+    ProviderRegistryError, build_image_provider, build_moderation_provider, build_provider_client,
+    build_text_provider, build_tts_provider, fetch_provider_models, fetch_provider_models_to,
+    load_provider_registry, load_provider_registry_from, local_pi_provider, moderation_config_hash,
+    provider_registry_path, resolve_image_provider, resolve_moderation_provider,
     resolve_provider_for_model, resolve_tts_provider, user_config_dir, write_provider_registry,
     write_provider_registry_to,
 };
