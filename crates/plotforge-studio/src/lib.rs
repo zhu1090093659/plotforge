@@ -254,90 +254,97 @@ pub fn pi_agent_capabilities() -> StudioCommandResult<Vec<PiAgentCapability>> {
     Ok(plotforge_agent::pi_agent_capabilities())
 }
 
-/// Run the pi-Agent against a project, generate a `ScenePlan` proposal via
-/// the configured provider, evaluate rules, commit the proposal as a runtime
-/// state change, and return the resulting scene + trace. This is the
-/// "describe a change / run a turn" path the desktop `AgentChatRail` drives
-/// when a real provider is configured; when `model_id == "local-pi"` it falls
-/// back to the deterministic mock provider.
-///
-/// Failure modes are explicit (never silent):
-/// - `pi_agent_missing_credential`: the provider's `credential_env_var`
-///   names an env var that is missing or empty.
-/// - `pi_agent_provider_timeout`: the HTTP call timed out.
-/// - `pi_agent_unsupported_payload`: the provider returned a payload kind
-///   other than `scene_plan` (only scene plans are committable today).
-pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
-    let project_path = Path::new(&request.project_path);
-    let project = load_project(project_path)
-        .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
-    let agent_config = get_agent_session_config(project_path)?;
-    let model_id = agent_config.model_id.as_str();
+struct ApplyTextOutput {
+    run_result: PiAgentRunResult,
+    envelope: plotforge_schema::AgentOutputEnvelope,
+    usage_ledger: Option<SystemUsageLedger>,
+}
 
-    // Capture the project's visual style before `project` is moved into the
-    // runtime session. The visual style lives in
-    // `story_craft.bible.prose_style_guide` (where the storage layer persists
-    // the creator's `visual_style`) and feeds the scene image prompt.
-    let visual_style = project
-        .story_craft
-        .bible
-        .prose_style_guide
-        .clone()
-        .unwrap_or_default();
+/// Runs `downstream` only after an optional moderation pre-flight passes.
+/// Keeping this ordering in one helper gives the flagged-path regression test
+/// a direct call-count seam without coupling moderation to either text retry
+/// ownership or the MCP loop.
+fn screen_then_apply<T>(
+    screen: Option<plotforge_agent::ModerationScreen<'_>>,
+    request: &plotforge_agent::ModerationRequest,
+    downstream: impl FnOnce() -> StudioCommandResult<T>,
+) -> StudioCommandResult<(Option<plotforge_agent::ModerationOutcome>, T)> {
+    let outcome = plotforge_agent::screen_with_moderation(screen, request)
+        .map_err(map_moderation_loop_error)?;
+    let value = downstream()?;
+    Ok((outcome, value))
+}
 
-    // Resolve the provider. `local-pi` keeps the deterministic mock; any
-    // other model id must resolve to a registered, enabled provider entry.
-    // Both branches yield `Box<dyn TextModelProvider>` so the agent facade
-    // receives a single type-erased provider regardless of whether the
-    // registry picked a strict or optional credential resolver.
-    let provider: Box<dyn plotforge_agent::TextModelProvider> =
-        if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
-            Box::new(plotforge_agent::FakeTextModelProvider::local_pi())
-                as Box<dyn plotforge_agent::TextModelProvider>
-        } else {
-            let registry =
-                plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-                    code: "pi_agent_apply_registry".into(),
-                    message: source.to_string(),
-                })?;
-            let entry = plotforge_agent::resolve_provider_for_model(model_id, &registry)
-                .ok_or_else(|| StudioCommandError {
-                    code: "pi_agent_apply_no_provider".into(),
-                    message: format!("no enabled provider registered for model id `{model_id}`"),
-                })?;
-            plotforge_agent::build_text_provider(entry).map_err(|source| StudioCommandError {
-                code: "pi_agent_apply_build".into(),
-                message: source.to_string(),
-            })?
-        };
-
-    // Build the redaction-safe run request the pi-Agent expects. The prompt
-    // summary carries the player input (local-only); the hash anchors the
-    // reproducibility identity.
-    let run_request = PiAgentRunRequest {
-        agent_id: request.agent_id.clone(),
-        run_seed: request.run_seed,
-        prompt_summary: request.player_input.clone(),
-        prompt_hash: format!(
-            "sha256:{}",
-            plotforge_agent::stable_sha256_hash(&request.player_input)
-        ),
+fn map_moderation_loop_error(error: plotforge_agent::ModerationLoopError) -> StudioCommandError {
+    let code = match &error {
+        plotforge_agent::ModerationLoopError::ContentFlagged { .. } => {
+            "pi_agent_moderation_flagged"
+        }
+        plotforge_agent::ModerationLoopError::ResponseSecretMarker => {
+            "pi_agent_moderation_secret_marker"
+        }
+        plotforge_agent::ModerationLoopError::Provider(source) => match &source.kind {
+            plotforge_agent::ModerationProviderErrorKind::Timeout => "pi_agent_moderation_timeout",
+            plotforge_agent::ModerationProviderErrorKind::RateLimit { .. } => {
+                "pi_agent_moderation_rate_limit"
+            }
+            _ if source.code.contains("missing_credential") => {
+                "pi_agent_moderation_missing_credential"
+            }
+            _ => "pi_agent_moderation_provider",
+        },
     };
+    StudioCommandError {
+        code: code.into(),
+        message: redact_trace_text(&error.to_string()),
+    }
+}
 
-    // Branch on MCP enablement. When `AgentSessionConfig.enabled_mcp_servers`
-    // is non-empty, drive the multi-turn tool-call loop via
-    // `complete_with_mcp_tools` instead of the one-shot
-    // `PiAgent::run_with_envelope`. The provider is borrowed for the loop
-    // (not moved into a `PiAgent`) so the loop can drive multiple `complete()`
-    // turns. When empty, the existing one-shot path is taken byte-for-byte
-    // (the agent is constructed and `run_with_envelope` is called as before).
-    let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
+fn moderation_request_for_apply(
+    request: &PiAgentApplyRequest,
+) -> plotforge_agent::ModerationRequest {
+    plotforge_agent::ModerationRequest {
+        call_id: format!(
+            "pi-agent-moderation-{}-{}",
+            request.agent_id, request.run_seed
+        ),
+        prompt: request.player_input.clone(),
+    }
+}
+
+fn stamp_moderation_outcome(
+    outcome: Option<plotforge_agent::ModerationOutcome>,
+    run_result: &mut PiAgentRunResult,
+    envelope: &mut plotforge_schema::AgentOutputEnvelope,
+) -> Option<plotforge_schema::ModerationOutcomeSummary> {
+    outcome.map(|outcome| {
+        let config_hash = outcome.moderation_config_hash;
+        run_result.reproducibility.moderation_config_hash = Some(config_hash.clone());
+        envelope.reproducibility.moderation_config_hash = Some(config_hash);
+        outcome.summary
+    })
+}
+
+fn load_provider_registry_for_apply(
+    model_id: &str,
+    loader: impl FnOnce() -> StudioCommandResult<ProviderRegistry>,
+) -> StudioCommandResult<Option<ProviderRegistry>> {
+    if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        return Ok(None);
+    }
+    loader().map(Some)
+}
+
+fn run_apply_text_provider(
+    provider: Box<dyn plotforge_agent::TextModelProvider>,
+    agent_id: &str,
+    model_id: &str,
+    run_request: PiAgentRunRequest,
+    enabled_mcp_servers: &[String],
+) -> StudioCommandResult<ApplyTextOutput> {
     let mut usage_ledger = load_apply_usage_ledger(model_id, None)?;
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
-        // Empty list → existing one-shot path. Construct the agent and call
-        // `run_with_envelope` exactly as before (byte-identical regression
-        // guard: this branch must not change the existing behavior).
-        let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
+        let agent = plotforge_agent::PiAgent::new(provider, agent_id);
         agent
             .run_with_envelope_with_usage_reporter(
                 run_request,
@@ -361,21 +368,12 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                 message: error.to_string(),
             })?
     } else {
-        // Non-empty list → MCP tool-use loop. Load the MCP registry + build
-        // the blocking `McpToolClient` façade, derive the redaction-safe
-        // `mcp_tool_call_hash` inputs, and drive `complete_with_mcp_tools`.
-        // Transport/registry failures surface as explicit errors
-        // (`mcp_apply_registry` / `mcp_apply_tool_error`); no silent fallback
-        // to the no-MCP path (AGENTS.md:144).
         let mcp_registry =
             plotforge_mcp::McpToolRegistry::load().map_err(|source| StudioCommandError {
                 code: "mcp_apply_registry".into(),
                 message: format!("failed to load MCP registry: {source}"),
             })?;
         let hash_inputs = mcp_registry.hash_inputs_for(enabled_mcp_servers);
-        // If none of the enabled servers resolve to registry entries, surface
-        // an explicit error rather than silently running with an empty hash
-        // (which would look like a no-MCP turn to downstream consumers).
         if hash_inputs.is_empty() {
             return Err(StudioCommandError {
                 code: "mcp_apply_no_server".into(),
@@ -387,7 +385,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
         }
         plotforge_agent::complete_with_mcp_tools_with_usage_reporter(
             provider.as_ref(),
-            &request.agent_id,
+            agent_id,
             run_request,
             &mcp_registry,
             enabled_mcp_servers,
@@ -426,6 +424,135 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             message: error.to_string(),
         })?
     };
+    Ok(ApplyTextOutput {
+        run_result,
+        envelope,
+        usage_ledger,
+    })
+}
+
+/// Run the pi-Agent against a project, generate a `ScenePlan` proposal via
+/// the configured provider, evaluate rules, commit the proposal as a runtime
+/// state change, and return the resulting scene + trace. This is the
+/// "describe a change / run a turn" path the desktop `AgentChatRail` drives
+/// when a real provider is configured; when `model_id == "local-pi"` it falls
+/// back to the deterministic mock provider.
+///
+/// Failure modes are explicit (never silent):
+/// - `pi_agent_missing_credential`: the provider's `credential_env_var`
+///   names an env var that is missing or empty.
+/// - `pi_agent_provider_timeout`: the HTTP call timed out.
+/// - `pi_agent_unsupported_payload`: the provider returned a payload kind
+///   other than `scene_plan` (only scene plans are committable today).
+pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
+    let project_path = Path::new(&request.project_path);
+    let project = load_project(project_path)
+        .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
+    let agent_config = get_agent_session_config(project_path)?;
+    let model_id = agent_config.model_id.as_str();
+
+    // Capture the project's visual style before `project` is moved into the
+    // runtime session. The visual style lives in
+    // `story_craft.bible.prose_style_guide` (where the storage layer persists
+    // the creator's `visual_style`) and feeds the scene image prompt.
+    let visual_style = project
+        .story_craft
+        .bible
+        .prose_style_guide
+        .clone()
+        .unwrap_or_default();
+
+    // Build the redaction-safe run request the pi-Agent expects. The prompt
+    // summary carries the player input (local-only); the hash anchors the
+    // reproducibility identity.
+    let run_request = PiAgentRunRequest {
+        agent_id: request.agent_id.clone(),
+        run_seed: request.run_seed,
+        prompt_summary: request.player_input.clone(),
+        prompt_hash: format!(
+            "sha256:{}",
+            plotforge_agent::stable_sha256_hash(&request.player_input)
+        ),
+    };
+
+    let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
+    let provider_registry = load_provider_registry_for_apply(model_id, || {
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "pi_agent_apply_registry".into(),
+            message: source.to_string(),
+        })
+    })?;
+    let (moderation, text_output) = if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        // The deterministic local path never loads or resolves the provider
+        // registry for moderation and never performs a moderation network
+        // call. This preserves the existing offline local-pi contract.
+        let provider = Box::new(plotforge_agent::FakeTextModelProvider::local_pi())
+            as Box<dyn plotforge_agent::TextModelProvider>;
+        (
+            None,
+            run_apply_text_provider(
+                provider,
+                &request.agent_id,
+                model_id,
+                run_request,
+                enabled_mcp_servers,
+            )?,
+        )
+    } else {
+        // One registry load owns both text and moderation resolution. The
+        // exact player input is screened once before text provider
+        // construction and before either the one-shot or MCP branch runs.
+        let registry = provider_registry
+            .as_ref()
+            .ok_or_else(|| StudioCommandError {
+                code: "pi_agent_apply_registry".into(),
+                message: "non-local apply path did not load the provider registry".into(),
+            })?;
+        let text_entry = plotforge_agent::resolve_provider_for_model(model_id, registry)
+            .ok_or_else(|| StudioCommandError {
+                code: "pi_agent_apply_no_provider".into(),
+                message: format!("no enabled provider registered for model id `{model_id}`"),
+            })?;
+        let moderation_provider = plotforge_agent::resolve_moderation_provider(registry)
+            .map(|entry| {
+                let config_hash = plotforge_agent::moderation_config_hash(entry);
+                plotforge_agent::build_moderation_provider(entry)
+                    .map(|provider| (provider, config_hash))
+                    .map_err(|source| StudioCommandError {
+                        code: "pi_agent_moderation_build".into(),
+                        message: redact_trace_text(&source.to_string()),
+                    })
+            })
+            .transpose()?;
+        let moderation_request = moderation_request_for_apply(&request);
+        let screen = moderation_provider.as_ref().map(|(provider, config_hash)| {
+            plotforge_agent::ModerationScreen {
+                provider: provider.as_ref(),
+                config_hash,
+            }
+        });
+        screen_then_apply(screen, &moderation_request, || {
+            let provider = plotforge_agent::build_text_provider(text_entry).map_err(|source| {
+                StudioCommandError {
+                    code: "pi_agent_apply_build".into(),
+                    message: source.to_string(),
+                }
+            })?;
+            run_apply_text_provider(
+                provider,
+                &request.agent_id,
+                model_id,
+                run_request,
+                enabled_mcp_servers,
+            )
+        })?
+    };
+    let ApplyTextOutput {
+        mut run_result,
+        mut envelope,
+        mut usage_ledger,
+    } = text_output;
+    let moderation_outcome = stamp_moderation_outcome(moderation, &mut run_result, &mut envelope);
 
     // Extract the ScenePlan payload. Other payload kinds are not committable
     // today; surface an explicit error rather than silently skipping.
@@ -510,7 +637,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     Ok(PiAgentApplyResult {
         run: run_result,
         usage,
-        moderation_outcome: None,
+        moderation_outcome,
         scene_key,
         scene,
         trace: report.trace.clone(),
@@ -2818,7 +2945,7 @@ fn is_editable_source_file(path: &Path, kind: &SourceFileKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{cell::Cell, fs, path::Path};
 
     use tempfile::tempdir;
 
@@ -2840,14 +2967,15 @@ mod tests {
         import_workshop_library_package, list_asset_records, list_available_models,
         list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
         list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
-        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
-        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
-        play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
-        probe_moderation_provider, probe_tts_provider, read_ai_safety_policy,
-        read_character_edit_document, read_rules_edit_document, read_source_file,
-        read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
+        load_provider_registry_for_apply, load_workshop_library_item, moderation_request_for_apply,
+        open_project, pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
+        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
+        play_once_project_with_save, probe_image_provider, probe_moderation_provider,
+        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, screen_then_apply, set_agent_session_config,
+        stamp_moderation_outcome, update_ai_safety_policy, update_story_craft_edit_document,
         update_world_edit_document, upsert_image_provider, upsert_image_provider_entry,
         upsert_moderation_provider, upsert_moderation_provider_entry,
         upsert_project_prompt_template, upsert_provider, upsert_tts_provider,
@@ -3844,6 +3972,239 @@ mod tests {
     }
 
     #[test]
+    fn moderation_request_uses_exact_player_input() {
+        let request = PiAgentApplyRequest {
+            agent_id: "scene-planner".into(),
+            run_seed: 17,
+            project_path: "/tmp/project".into(),
+            player_input: "  Preserve this exact input.\n".into(),
+            save_id: None,
+            restore_id: None,
+        };
+
+        let moderation_request = moderation_request_for_apply(&request);
+
+        assert_eq!(moderation_request.prompt, request.player_input);
+        assert_eq!(
+            moderation_request.call_id,
+            "pi-agent-moderation-scene-planner-17"
+        );
+    }
+
+    #[test]
+    fn local_pi_apply_does_not_load_configured_moderation_registry() {
+        let registry_loads = Cell::new(0);
+        let mut moderation_entry = sample_moderation_provider_entry("global-moderation");
+        moderation_entry.enabled = true;
+        let configured_registry = ProviderRegistry {
+            moderation_providers: vec![moderation_entry],
+            ..ProviderRegistry::default()
+        };
+
+        let registry = load_provider_registry_for_apply(plotforge_agent::LOCAL_PI_MODEL_ID, || {
+            registry_loads.set(registry_loads.get() + 1);
+            Ok(configured_registry)
+        })
+        .expect("local registry bypass");
+
+        assert!(registry.is_none());
+        assert_eq!(registry_loads.get(), 0);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_surfaces_moderation_flagged_without_downstream_call() {
+        let provider = plotforge_agent::FakeModerationProvider::flagged(["violence"]);
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "flagged".into(),
+            prompt: "flagged player input".into(),
+        };
+
+        let error = screen_then_apply(
+            Some(plotforge_agent::ModerationScreen {
+                provider: &provider,
+                config_hash: "sha256:moderation",
+            }),
+            &request,
+            || {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("flagged content must stop the apply flow");
+
+        assert_eq!(error.code, "pi_agent_moderation_flagged");
+        assert_eq!(provider.call_count(), 1, "moderation runs exactly once");
+        assert_eq!(
+            downstream_calls.get(),
+            0,
+            "neither the text nor MCP downstream may run"
+        );
+    }
+
+    #[test]
+    fn pi_agent_apply_run_moderation_pass_calls_downstream_once() {
+        let provider = plotforge_agent::FakeModerationProvider::pass();
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "pass".into(),
+            prompt: "safe player input".into(),
+        };
+
+        let (outcome, value) = screen_then_apply(
+            Some(plotforge_agent::ModerationScreen {
+                provider: &provider,
+                config_hash: "sha256:moderation",
+            }),
+            &request,
+            || {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(42)
+            },
+        )
+        .expect("moderation pass");
+
+        assert_eq!(value, 42);
+        assert_eq!(provider.call_count(), 1);
+        assert_eq!(downstream_calls.get(), 1);
+        assert_eq!(
+            outcome.expect("moderation outcome").moderation_config_hash,
+            "sha256:moderation"
+        );
+    }
+
+    #[test]
+    fn pi_agent_apply_run_without_moderation_calls_downstream_once() {
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "no-provider".into(),
+            prompt: "safe player input".into(),
+        };
+
+        let (outcome, value) = screen_then_apply(None, &request, || {
+            downstream_calls.set(downstream_calls.get() + 1);
+            Ok(42)
+        })
+        .expect("no-provider pass-through");
+
+        assert_eq!(value, 42);
+        assert!(outcome.is_none());
+        assert_eq!(downstream_calls.get(), 1);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_surfaces_moderation_provider_error_without_fallback() {
+        let provider = plotforge_agent::FakeModerationProvider::with_error(
+            plotforge_agent::ModerationProviderError::provider(
+                "moderation_upstream_failed",
+                "upstream echoed sk-moderation-secret",
+            ),
+        );
+        let downstream_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "provider-error".into(),
+            prompt: "safe input".into(),
+        };
+
+        let error = screen_then_apply(
+            Some(plotforge_agent::ModerationScreen {
+                provider: &provider,
+                config_hash: "sha256:moderation",
+            }),
+            &request,
+            || {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("provider failure must not pass through");
+
+        assert_eq!(error.code, "pi_agent_moderation_provider");
+        assert!(!error.message.contains("sk-moderation-secret"));
+        assert_eq!(downstream_calls.get(), 0);
+    }
+
+    struct SecretCategoryModerationProvider;
+
+    impl plotforge_agent::ModerationProvider for SecretCategoryModerationProvider {
+        fn moderate(
+            &self,
+            _request: &plotforge_agent::ModerationRequest,
+        ) -> Result<plotforge_agent::ModerationResponse, plotforge_agent::ModerationProviderError>
+        {
+            Ok(plotforge_agent::ModerationResponse {
+                flagged: false,
+                categories: vec!["OPENAI_API_KEY=sk-secret".into()],
+                usage: None,
+                spent_cost_units: 0,
+            })
+        }
+    }
+
+    #[test]
+    fn pi_agent_apply_run_rejects_moderation_secret_marker_without_fallback() {
+        let downstream_calls = Cell::new(0);
+        let provider = SecretCategoryModerationProvider;
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "secret-marker".into(),
+            prompt: "safe input".into(),
+        };
+
+        let error = screen_then_apply(
+            Some(plotforge_agent::ModerationScreen {
+                provider: &provider,
+                config_hash: "sha256:moderation",
+            }),
+            &request,
+            || {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("secret marker must stop the apply flow");
+
+        assert_eq!(error.code, "pi_agent_moderation_secret_marker");
+        assert!(!contains_secret_marker_text(&error.message));
+        assert_eq!(downstream_calls.get(), 0);
+    }
+
+    #[test]
+    fn pi_agent_apply_run_stamps_moderation_hash_on_run_and_envelope() {
+        let provider = Box::new(plotforge_agent::FakeTextModelProvider::local_pi());
+        let agent = plotforge_agent::PiAgent::new(provider, "scene-planner");
+        let (mut run_result, mut envelope) = agent
+            .run_with_envelope(PiAgentRunRequest {
+                agent_id: "scene-planner".into(),
+                run_seed: 23,
+                prompt_summary: "safe input".into(),
+                prompt_hash: "sha256:safe-input".into(),
+            })
+            .expect("local envelope");
+        let outcome = plotforge_agent::ModerationOutcome {
+            summary: plotforge_schema::ModerationOutcomeSummary {
+                flagged: false,
+                categories: Vec::new(),
+            },
+            moderation_config_hash: "sha256:moderation-config".into(),
+            usage: None,
+            spent_cost_units: 0,
+        };
+
+        let summary = stamp_moderation_outcome(Some(outcome), &mut run_result, &mut envelope)
+            .expect("moderation summary");
+
+        assert!(!summary.flagged);
+        assert_eq!(
+            run_result.reproducibility.moderation_config_hash.as_deref(),
+            Some("sha256:moderation-config")
+        );
+        assert_eq!(
+            envelope.reproducibility.moderation_config_hash.as_deref(),
+            Some("sha256:moderation-config")
+        );
+    }
+
+    #[test]
     fn pi_agent_apply_run_commits_local_pi_scene_plan_to_runtime() {
         // End-to-end: a fresh project + local-pi model id (the default) +
         // a `pi_agent_apply_run` call must commit the agent's ScenePlan
@@ -3873,6 +4234,9 @@ mod tests {
         assert!(result.run.descriptor.is_local_pi);
         assert_eq!(result.usage, result.run.usage);
         assert_eq!(result.usage, None, "local pi-Agent apply reports no usage");
+        assert_eq!(result.moderation_outcome, None);
+        assert_eq!(result.run.reproducibility.moderation_config_hash, None);
+        assert_eq!(result.trace.reproducibility.moderation_config_hash, None);
         assert!(
             result
                 .run
