@@ -330,30 +330,18 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     // turns. When empty, the existing one-shot path is taken byte-for-byte
     // (the agent is constructed and `run_with_envelope` is called as before).
     let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
-    let mut usage_ledger = if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
-        None
-    } else {
-        Some(
-            plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock).map_err(|source| {
-                StudioCommandError {
-                    code: "pi_agent_usage_ledger".into(),
-                    message: source.to_string(),
-                }
-            })?,
-        )
-    };
+    let mut usage_ledger = plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock)
+        .map_err(|source| StudioCommandError {
+            code: "pi_agent_usage_ledger".into(),
+            message: source.to_string(),
+        })?;
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
         // Empty list → existing one-shot path. Construct the agent and call
         // `run_with_envelope` exactly as before (byte-identical regression
         // guard: this branch must not change the existing behavior).
         let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
         agent
-            .run_with_envelope_with_usage_reporter(
-                run_request,
-                usage_ledger
-                    .as_mut()
-                    .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
-            )
+            .run_with_envelope_with_usage_reporter(run_request, Some(&mut usage_ledger))
             .map_err(|error| StudioCommandError {
                 code: match &error {
                     plotforge_agent::PiAgentError::Provider { code, .. } => {
@@ -394,13 +382,14 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                 ),
             });
         }
-        plotforge_agent::complete_with_mcp_tools(
+        plotforge_agent::complete_with_mcp_tools_with_usage_reporter(
             provider.as_ref(),
             &request.agent_id,
             run_request,
             &mcp_registry,
             enabled_mcp_servers,
             &hash_inputs,
+            Some(&mut usage_ledger),
         )
         .map_err(|error| StudioCommandError {
             code: match &error {
@@ -427,6 +416,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                         "pi_agent_apply_run".into()
                     }
                 }
+                plotforge_agent::McpLoopError::UsageReport { .. } => "pi_agent_usage_ledger".into(),
             },
             message: error.to_string(),
         })?
@@ -503,8 +493,13 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     // -----------------------------------------------------------------------
     let mut scene = report.scene.clone();
     let committed_scene = scene.clone();
-    let image_generation_failed =
-        attempt_scene_image_generation(project_path, &visual_style, &committed_scene, &mut scene);
+    let image_generation_failed = attempt_scene_image_generation(
+        project_path,
+        &visual_style,
+        &committed_scene,
+        &mut scene,
+        &mut usage_ledger,
+    );
     let usage = run_result.usage.clone();
 
     Ok(PiAgentApplyResult {
@@ -557,6 +552,7 @@ fn attempt_scene_image_generation(
     visual_style: &str,
     committed_scene: &Scene,
     result_scene: &mut Scene,
+    usage_reporter: &mut dyn plotforge_agent::UsageReporter,
 ) -> Option<String> {
     // Resolve the image provider. When none is configured (or all are
     // disabled), image generation is skipped — not an error. The turn
@@ -600,11 +596,12 @@ fn attempt_scene_image_generation(
     let pipeline = plotforge_agent::SceneImagePipeline::new(image_provider);
     let mut asset_registry = plotforge_media::AssetRegistry::new();
     let mut job_queue = plotforge_job::JobQueue::new(SystemJobClock);
-    match pipeline.generate_scene_background_for_project(
+    match pipeline.generate_scene_background_for_project_with_usage_reporter(
         project_path,
         request,
         &mut asset_registry,
         &mut job_queue,
+        Some(usage_reporter),
     ) {
         Ok(result) => {
             // Update the returned scene + persist the background_asset path

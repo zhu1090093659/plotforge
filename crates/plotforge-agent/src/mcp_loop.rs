@@ -51,6 +51,7 @@
 //! wrapper returns the same `(PiAgentRunResult, AgentOutputEnvelope)` pair the
 //! existing path returns.
 
+use plotforge_job::{UsageKind, UsageReport};
 use plotforge_mcp::{McpError, McpToolCallRequest, McpToolClient};
 use plotforge_schema::{
     AgentOutputEnvelope, AgentRole, PiAgentDescriptor, PiAgentRunRequest, PiAgentRunResult,
@@ -101,6 +102,9 @@ pub enum McpLoopError {
     /// turns).
     #[error("mcp_loop_provider_failure: {code}: {message}")]
     ProviderFailure { code: String, message: String },
+
+    #[error("mcp_loop_usage_report: {message}")]
+    UsageReport { message: String },
 }
 
 /// A parsed tool-call request emitted by the model on an intermediate round.
@@ -180,6 +184,27 @@ pub fn complete_with_mcp_tools(
     _enabled_mcp_servers: &[String],
     mcp_tool_call_hash_inputs: &[String],
 ) -> Result<(PiAgentRunResult, AgentOutputEnvelope), McpLoopError> {
+    complete_with_mcp_tools_with_usage_reporter(
+        provider,
+        agent_id,
+        request,
+        mcp_client,
+        _enabled_mcp_servers,
+        mcp_tool_call_hash_inputs,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn complete_with_mcp_tools_with_usage_reporter(
+    provider: &dyn TextModelProvider,
+    agent_id: &str,
+    request: PiAgentRunRequest,
+    mcp_client: &dyn McpToolClient,
+    _enabled_mcp_servers: &[String],
+    mcp_tool_call_hash_inputs: &[String],
+    mut reporter: Option<&mut dyn crate::UsageReporter>,
+) -> Result<(PiAgentRunResult, AgentOutputEnvelope), McpLoopError> {
     // Identity checks mirroring `PiAgent::run_with_envelope`: the request's
     // agent_id must agree with the caller's agent_id, the prompt hash must be
     // non-empty, and the prompt summary must not carry a secret marker. These
@@ -243,6 +268,24 @@ pub fn complete_with_mcp_tools(
                     },
                     message: error.message,
                 })?;
+        if let (Some(reporter), Some(identity), Some(usage)) = (
+            reporter.as_deref_mut(),
+            provider.usage_identity(),
+            response.usage.as_ref(),
+        ) {
+            reporter
+                .report_usage(UsageReport {
+                    provider_id: identity.provider_id,
+                    kind: UsageKind::Text,
+                    model: identity.model,
+                    input_tokens: usage.input_tokens.unwrap_or(0),
+                    output_tokens: usage.output_tokens.unwrap_or(0),
+                    spent_cost_units: 0,
+                })
+                .map_err(|error| McpLoopError::UsageReport {
+                    message: error.to_string(),
+                })?;
+        }
 
         // Note: the intermediate turn's raw JSON is the tool-call request
         // (carrying `mcp_tool_calls`), not a tool result. Secret markers in
@@ -608,8 +651,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        FakeTextModelProvider, PiAgent, TextModelClient, TextModelClientRequest, TextModelProvider,
-        TextModelResponse, TextProviderConfig,
+        FakeTextModelProvider, PiAgent, ProviderUsageIdentity, TextModelClient,
+        TextModelClientRequest, TextModelProvider, TextModelResponse, TextProviderConfig,
     };
 
     /// A `TextModelProvider` that returns a scripted sequence of raw JSON
@@ -640,6 +683,10 @@ mod tests {
     impl TextModelProvider for ScriptedProvider {
         fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
             ReproducibilityMetadata::local_mock(run_seed)
+        }
+
+        fn usage_identity(&self) -> Option<ProviderUsageIdentity> {
+            Some(ProviderUsageIdentity::new("mcp-provider", "mcp-model"))
         }
 
         fn complete(
@@ -924,6 +971,47 @@ mod tests {
         assert_eq!(decoded.reproducibility, result.reproducibility);
         assert!(!encoded.contains("file: a.txt"));
         assert!(!encoded.contains("/tmp"));
+    }
+
+    #[test]
+    fn mcp_loop_usage_ledger_reports_each_real_provider_round() {
+        #[derive(Clone, Debug)]
+        struct TestClock;
+        impl plotforge_job::JobClock for TestClock {
+            fn now_ms(&self) -> u64 {
+                44
+            }
+        }
+
+        let tool_call = tool_call_json(
+            "local-fs",
+            "list_files",
+            serde_json::json!({"path": "/tmp"}),
+        );
+        let final_json =
+            final_envelope_json("pi-agent-pi-agent-local", "pi-agent-mcp-pi-agent-local-r0");
+        let provider = ScriptedProvider::new(vec![tool_call, final_json]).with_usage(UsageInfo {
+            input_tokens: Some(8),
+            output_tokens: Some(13),
+        });
+        let mcp = MockMcpToolClient::ok("file: a.txt");
+        let mut ledger = plotforge_job::UsageLedger::new(TestClock);
+
+        complete_with_mcp_tools_with_usage_reporter(
+            &provider,
+            "pi-agent-local",
+            make_request("pi-agent-local"),
+            &mcp,
+            &["local-fs".to_string()],
+            &["local-fs|stdio||".to_string()],
+            Some(&mut ledger),
+        )
+        .expect("MCP loop reports usage");
+
+        let report = ledger.provider_cost_report("mcp-provider");
+        assert_eq!(report.text_calls, 2);
+        assert_eq!(report.input_tokens, 16);
+        assert_eq!(report.output_tokens, 26);
     }
 
     /// (c) Tool error → explicit `mcp_tool_error`, not silent skip.

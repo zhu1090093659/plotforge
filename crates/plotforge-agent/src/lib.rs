@@ -26,7 +26,10 @@ mod validation;
 // Re-export the public API so downstream consumers (and the crate's own
 // `crate::` paths used by the pi-Agent facade) keep resolving at the crate
 // root with the same names.
-pub use mcp_loop::{McpLoopError, complete_with_mcp_tools, parse_mcp_tool_calls};
+pub use mcp_loop::{
+    McpLoopError, complete_with_mcp_tools, complete_with_mcp_tools_with_usage_reporter,
+    parse_mcp_tool_calls,
+};
 pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities, pi_agent_capabilities_with_mcp};
 pub use pipelines::{
     generate_character, generate_character_with_provider, generate_story_craft,
