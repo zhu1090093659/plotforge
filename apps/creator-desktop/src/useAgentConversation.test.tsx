@@ -11,6 +11,7 @@ import type { PlayOnceReport } from "./tauriBridge";
 interface HarnessOptions {
   /** Force piAgentApplyRun to reject with this error message. */
   failWithError?: string;
+  turnUsage?: PiAgentApplyResult["turn_usage"];
 }
 
 const defaultAgentConfig: AgentSessionConfig = {
@@ -68,7 +69,10 @@ function useHarness(options: HarnessOptions = {}) {
         throw new Error(options.failWithError);
       }
       await new Promise((resolve) => setTimeout(resolve, 0));
-      return demoApplyResult(demoPlayOnceReport(input));
+      return {
+        ...demoApplyResult(demoPlayOnceReport(input)),
+        turn_usage: options.turnUsage,
+      };
     });
   }
   const piAgentApplyRun = mockRef.current;
@@ -116,6 +120,27 @@ describe("useAgentConversation", () => {
     expect(result.current.workspace.turns[0].report).not.toBeNull();
     expect(result.current.workspace.turns[0].error).toBeNull();
     expect(result.current.piAgentApplyRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the apply result turn usage as redaction-safe evidence", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        turnUsage: {
+          total_input_tokens: 41,
+          total_output_tokens: 13,
+          total_spent_cost_units: 7,
+        },
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+
+    expect(result.current.workspace.turns[0].turnUsage).toEqual({
+      total_input_tokens: 41,
+      total_output_tokens: 13,
+      total_spent_cost_units: 7,
+    });
   });
 
   it("does not submit when input is empty", async () => {

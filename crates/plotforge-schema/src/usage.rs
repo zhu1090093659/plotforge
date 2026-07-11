@@ -36,6 +36,19 @@ pub struct UsageSummary {
     pub by_provider: BTreeMap<String, ProviderCostReport>,
 }
 
+/// Redaction-safe usage totals for one pi-Agent apply turn.
+///
+/// This deliberately carries only numeric totals. Provider ids, prompts,
+/// response bodies, credentials, and global ledger state stay outside the
+/// per-turn evidence contract.
+#[derive(Clone, Debug, Default, JsonSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TurnUsageSummary {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_spent_cost_units: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,6 +109,24 @@ mod tests {
             serde_json::from_str(&encoded).expect("deserialize usage summary");
 
         assert_eq!(decoded, summary);
+    }
+
+    #[test]
+    fn turn_usage_summary_roundtrips_json() {
+        let summary = TurnUsageSummary {
+            total_input_tokens: 29,
+            total_output_tokens: 7,
+            total_spent_cost_units: 11,
+        };
+
+        let encoded = serde_json::to_string(&summary).expect("serialize turn usage");
+        let decoded: TurnUsageSummary =
+            serde_json::from_str(&encoded).expect("deserialize turn usage");
+
+        assert_eq!(decoded, summary);
+        assert!(!encoded.contains("prompt"));
+        assert!(!encoded.contains("response"));
+        assert!(!encoded.contains("credential"));
     }
 
     #[test]

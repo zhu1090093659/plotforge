@@ -1,5 +1,9 @@
 import { useCallback, useRef, useState } from "react";
-import type { AgentSessionConfig, PiAgentApplyResult } from "../../../contracts/plotforge";
+import type {
+  AgentSessionConfig,
+  PiAgentApplyResult,
+  TurnUsageSummary,
+} from "../../../contracts/plotforge";
 import type { PlayOnceReport } from "./tauriBridge";
 import type { StudioDataSource } from "./studioDataSource";
 import type { PlaytestRunResult, PlaytestWorkspace } from "./usePlaytest";
@@ -43,6 +47,8 @@ export interface AgentTurn {
    * warning), this carries the redacted failure message so the rail can
    * surface it as a visible warning rather than a silent missing image. */
   imageWarning: string | null;
+  /** Numeric-only usage totals emitted by providers during this turn. */
+  turnUsage: TurnUsageSummary | null;
 }
 
 export interface AgentConversationWorkspace {
@@ -151,6 +157,7 @@ export function useAgentConversation(
         idCounterRef.current += 1;
         const report = applyResultToReport(result);
         const imageWarning = result.image_generation_failed ?? null;
+        const turnUsage = result.turn_usage ?? null;
         setTurns((prev) => [
           ...prev,
           {
@@ -161,6 +168,7 @@ export function useAgentConversation(
             errorCode: null,
             errorEnvVar: null,
             imageWarning,
+            turnUsage,
           },
         ]);
         // Mirror the report into the playtest workspace so TraceDebugView /
@@ -186,6 +194,7 @@ export function useAgentConversation(
             errorCode,
             errorEnvVar,
             imageWarning: null,
+            turnUsage: null,
           },
         ]);
         playtest.setPlaytestReport(null);

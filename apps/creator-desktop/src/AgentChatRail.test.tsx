@@ -19,6 +19,7 @@ function makeTurn(intent: string, withError = false): AgentTurn {
     errorCode: withError ? "pi_agent_provider_timeout" : null,
     errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
   };
 }
 
@@ -82,6 +83,7 @@ describe("AgentChatRail", () => {
       errorCode: "pi_agent_missing_credential",
       errorEnvVar: "OPENAI_API_KEY",
       imageWarning: null,
+      turnUsage: null,
     };
     renderRail({ turns: [turn] });
     // The friendly message names the env var. The raw redacted error is also
@@ -101,6 +103,7 @@ describe("AgentChatRail", () => {
       errorCode: "pi_agent_provider_timeout",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Provider timed out/)).toBeTruthy();
@@ -118,6 +121,7 @@ describe("AgentChatRail", () => {
       errorCode: "text_provider_rate_limit",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Rate limited; retrying with backoff/)).toBeTruthy();
@@ -132,6 +136,7 @@ describe("AgentChatRail", () => {
       errorCode: "text_provider_content_filtered",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Content policy triggered; modify your prompt/)).toBeTruthy();
@@ -146,6 +151,7 @@ describe("AgentChatRail", () => {
       errorCode: "text_provider_output_truncated",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(
@@ -163,6 +169,7 @@ describe("AgentChatRail", () => {
       errorCode: "pi_agent_moderation_flagged",
       errorEnvVar: null,
       imageWarning: null,
+      turnUsage: null,
     };
     renderRail({ turns: [turn] });
 

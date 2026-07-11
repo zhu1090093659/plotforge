@@ -701,6 +701,9 @@ fn cli_studio_pi_agent_apply_run_persists_passing_moderation_hash() {
     assert_eq!(moderation.request_count(), 1);
     assert_eq!(text.request_count(), 1);
     assert_eq!(result["moderation_outcome"]["flagged"], false);
+    assert_eq!(result["turn_usage"]["total_input_tokens"], 10);
+    assert_eq!(result["turn_usage"]["total_output_tokens"], 20);
+    assert_eq!(result["turn_usage"]["total_spent_cost_units"], 0);
     let moderation_hash = result["run"]["reproducibility"]["moderation_config_hash"]
         .as_str()
         .filter(|hash| !hash.is_empty())
