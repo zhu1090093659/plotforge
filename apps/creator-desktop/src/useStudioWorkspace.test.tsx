@@ -509,6 +509,7 @@ function workspaceTestDataSource(
         text_calls: 0,
         image_calls: 0,
         tts_calls: 0,
+        moderation_calls: 0,
         input_tokens: 0,
         output_tokens: 0,
         spent_cost_units: 0,

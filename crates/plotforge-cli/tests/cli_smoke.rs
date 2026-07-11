@@ -651,6 +651,7 @@ fn cli_usage_command_group_reports_empty_fresh_home() {
     run_with_home(&home.home, ["usage", "provider", "--id", "provider-a"])
         .assert_success_contains("provider usage: provider-a")
         .assert_contains("text calls: 0")
+        .assert_contains("moderation calls: 0")
         .assert_contains("cost units: 0");
 
     let provider = run_with_home(
@@ -661,6 +662,7 @@ fn cli_usage_command_group_reports_empty_fresh_home() {
     .stdout_json();
     assert_eq!(provider["provider_id"], "provider-a");
     assert_eq!(provider["text_calls"], 0);
+    assert_eq!(provider["moderation_calls"], 0);
     assert_eq!(provider["spent_cost_units"], 0);
 }
 
@@ -684,6 +686,7 @@ fn cli_studio_usage_dispatch_returns_contract_shapes() {
     )
     .stdout_json();
     assert_eq!(report["provider_id"], "provider-a");
+    assert_eq!(report["moderation_calls"], 0);
     assert_eq!(report["spent_cost_units"], 0);
 }
 

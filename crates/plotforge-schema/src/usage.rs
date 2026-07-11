@@ -20,6 +20,8 @@ pub struct ProviderCostReport {
     pub text_calls: u64,
     pub image_calls: u64,
     pub tts_calls: u64,
+    #[serde(default)]
+    pub moderation_calls: u64,
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub spent_cost_units: u64,
@@ -77,6 +79,7 @@ mod tests {
             text_calls: 2,
             image_calls: 1,
             tts_calls: 1,
+            moderation_calls: 1,
             input_tokens: 1_024,
             output_tokens: 256,
             spent_cost_units: 12,
@@ -112,6 +115,7 @@ mod tests {
             "text_calls": 0,
             "image_calls": 0,
             "tts_calls": 0,
+            "moderation_calls": 0,
             "input_tokens": 0,
             "output_tokens": 0,
             "spent_cost_units": 0,
@@ -119,5 +123,21 @@ mod tests {
         }))
         .expect_err("provider report must reject unknown fields");
         assert!(report_error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn provider_report_defaults_moderation_calls_for_legacy_json() {
+        let decoded: ProviderCostReport = serde_json::from_value(serde_json::json!({
+            "provider_id": "provider-a",
+            "text_calls": 1,
+            "image_calls": 0,
+            "tts_calls": 0,
+            "input_tokens": 10,
+            "output_tokens": 2,
+            "spent_cost_units": 3
+        }))
+        .expect("legacy provider report");
+
+        assert_eq!(decoded.moderation_calls, 0);
     }
 }

@@ -3017,6 +3017,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "moderation_calls": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "output_tokens": {
           "format": "uint64",
           "minimum": 0,

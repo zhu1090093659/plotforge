@@ -175,6 +175,7 @@ function settingsTestDataSource(
       text_calls: 0,
       image_calls: 0,
       tts_calls: 0,
+      moderation_calls: 0,
       input_tokens: 0,
       output_tokens: 0,
       spent_cost_units: 0,
@@ -272,6 +273,7 @@ describe("SettingsView", () => {
           text_calls: 3,
           image_calls: 1,
           tts_calls: 2,
+          moderation_calls: 4,
           input_tokens: 1200,
           output_tokens: 300,
           spent_cost_units: 36,
@@ -292,6 +294,8 @@ describe("SettingsView", () => {
     });
     expect(within(table).getByText("openai-prod")).toBeTruthy();
     expect(within(table).getByText("1,200")).toBeTruthy();
+    expect(within(table).getByRole("columnheader", { name: "Moderation" })).toBeTruthy();
+    expect(within(table).getByText("4")).toBeTruthy();
     expect(getUsageSummary).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));

@@ -257,22 +257,31 @@ pub fn pi_agent_capabilities() -> StudioCommandResult<Vec<PiAgentCapability>> {
 struct ApplyTextOutput {
     run_result: PiAgentRunResult,
     envelope: plotforge_schema::AgentOutputEnvelope,
-    usage_ledger: Option<SystemUsageLedger>,
 }
 
-/// Runs `downstream` only after an optional moderation pre-flight passes.
-/// Keeping this ordering in one helper gives the flagged-path regression test
-/// a direct call-count seam without coupling moderation to either text retry
-/// ownership or the MCP loop.
+/// Owns the non-local apply pre-flight ordering and the single usage ledger
+/// shared by moderation and the downstream text/MCP path. Loading the ledger
+/// first is intentional: a corrupt or unsupported ledger must stop the flow
+/// before any paid provider request leaves the process.
 fn screen_then_apply<T>(
+    load_ledger: impl FnOnce() -> StudioCommandResult<SystemUsageLedger>,
     screen: Option<plotforge_agent::ModerationScreen<'_>>,
     request: &plotforge_agent::ModerationRequest,
-    downstream: impl FnOnce() -> StudioCommandResult<T>,
-) -> StudioCommandResult<(Option<plotforge_agent::ModerationOutcome>, T)> {
-    let outcome = plotforge_agent::screen_with_moderation(screen, request)
-        .map_err(map_moderation_loop_error)?;
-    let value = downstream()?;
-    Ok((outcome, value))
+    downstream: impl FnOnce(&mut SystemUsageLedger) -> StudioCommandResult<T>,
+) -> StudioCommandResult<(
+    Option<plotforge_agent::ModerationOutcome>,
+    T,
+    SystemUsageLedger,
+)> {
+    let mut usage_ledger = load_ledger()?;
+    let outcome = plotforge_agent::screen_with_moderation_with_usage_reporter(
+        screen,
+        request,
+        Some(&mut usage_ledger),
+    )
+    .map_err(map_moderation_loop_error)?;
+    let value = downstream(&mut usage_ledger)?;
+    Ok((outcome, value, usage_ledger))
 }
 
 fn map_moderation_loop_error(error: plotforge_agent::ModerationLoopError) -> StudioCommandError {
@@ -283,6 +292,7 @@ fn map_moderation_loop_error(error: plotforge_agent::ModerationLoopError) -> Stu
         plotforge_agent::ModerationLoopError::ResponseSecretMarker => {
             "pi_agent_moderation_secret_marker"
         }
+        plotforge_agent::ModerationLoopError::UsageReport { .. } => "pi_agent_usage_ledger",
         plotforge_agent::ModerationLoopError::Provider(source) => match &source.kind {
             plotforge_agent::ModerationProviderErrorKind::Timeout => "pi_agent_moderation_timeout",
             plotforge_agent::ModerationProviderErrorKind::RateLimit { .. } => {
@@ -338,20 +348,14 @@ fn load_provider_registry_for_apply(
 fn run_apply_text_provider(
     provider: Box<dyn plotforge_agent::TextModelProvider>,
     agent_id: &str,
-    model_id: &str,
     run_request: PiAgentRunRequest,
     enabled_mcp_servers: &[String],
+    reporter: Option<&mut dyn plotforge_agent::UsageReporter>,
 ) -> StudioCommandResult<ApplyTextOutput> {
-    let mut usage_ledger = load_apply_usage_ledger(model_id, None)?;
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
         let agent = plotforge_agent::PiAgent::new(provider, agent_id);
         agent
-            .run_with_envelope_with_usage_reporter(
-                run_request,
-                usage_ledger
-                    .as_mut()
-                    .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
-            )
+            .run_with_envelope_with_usage_reporter(run_request, reporter)
             .map_err(|error| StudioCommandError {
                 code: match &error {
                     plotforge_agent::PiAgentError::Provider { code, .. } => {
@@ -390,9 +394,7 @@ fn run_apply_text_provider(
             &mcp_registry,
             enabled_mcp_servers,
             &hash_inputs,
-            usage_ledger
-                .as_mut()
-                .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
+            reporter,
         )
         .map_err(|error| StudioCommandError {
             code: match &error {
@@ -427,7 +429,6 @@ fn run_apply_text_provider(
     Ok(ApplyTextOutput {
         run_result,
         envelope,
-        usage_ledger,
     })
 }
 
@@ -482,7 +483,9 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             message: source.to_string(),
         })
     })?;
-    let (moderation, text_output) = if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+    let (moderation, text_output, mut usage_ledger) = if model_id
+        == plotforge_agent::LOCAL_PI_MODEL_ID
+    {
         // The deterministic local path never loads or resolves the provider
         // registry for moderation and never performs a moderation network
         // call. This preserves the existing offline local-pi contract.
@@ -493,10 +496,11 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             run_apply_text_provider(
                 provider,
                 &request.agent_id,
-                model_id,
                 run_request,
                 enabled_mcp_servers,
+                None,
             )?,
+            None,
         )
     } else {
         // One registry load owns both text and moderation resolution. The
@@ -517,7 +521,16 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             .map(|entry| {
                 let config_hash = plotforge_agent::moderation_config_hash(entry);
                 plotforge_agent::build_moderation_provider(entry)
-                    .map(|provider| (provider, config_hash))
+                    .map(|provider| {
+                        (
+                            provider,
+                            config_hash,
+                            plotforge_agent::ProviderUsageIdentity::new(
+                                entry.id.clone(),
+                                entry.model.clone(),
+                            ),
+                        )
+                    })
                     .map_err(|source| StudioCommandError {
                         code: "pi_agent_moderation_build".into(),
                         message: redact_trace_text(&source.to_string()),
@@ -525,32 +538,46 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             })
             .transpose()?;
         let moderation_request = moderation_request_for_apply(&request);
-        let screen = moderation_provider.as_ref().map(|(provider, config_hash)| {
-            plotforge_agent::ModerationScreen {
-                provider: provider.as_ref(),
-                config_hash,
-            }
-        });
-        screen_then_apply(screen, &moderation_request, || {
-            let provider = plotforge_agent::build_text_provider(text_entry).map_err(|source| {
-                StudioCommandError {
-                    code: "pi_agent_apply_build".into(),
-                    message: source.to_string(),
-                }
-            })?;
-            run_apply_text_provider(
-                provider,
-                &request.agent_id,
-                model_id,
-                run_request,
-                enabled_mcp_servers,
-            )
-        })?
+        let screen = moderation_provider
+            .as_ref()
+            .map(
+                |(provider, config_hash, usage_identity)| plotforge_agent::ModerationScreen {
+                    provider: provider.as_ref(),
+                    config_hash,
+                    usage_identity: usage_identity.clone(),
+                },
+            );
+        let (moderation, text_output, usage_ledger) = screen_then_apply(
+            || {
+                load_apply_usage_ledger(model_id, None)?.ok_or_else(|| StudioCommandError {
+                    code: "pi_agent_usage_ledger".into(),
+                    message: "non-local apply path did not load the usage ledger".into(),
+                })
+            },
+            screen,
+            &moderation_request,
+            |usage_ledger| {
+                let provider =
+                    plotforge_agent::build_text_provider(text_entry).map_err(|source| {
+                        StudioCommandError {
+                            code: "pi_agent_apply_build".into(),
+                            message: source.to_string(),
+                        }
+                    })?;
+                run_apply_text_provider(
+                    provider,
+                    &request.agent_id,
+                    run_request,
+                    enabled_mcp_servers,
+                    Some(usage_ledger),
+                )
+            },
+        )?;
+        (moderation, text_output, Some(usage_ledger))
     };
     let ApplyTextOutput {
         mut run_result,
         mut envelope,
-        mut usage_ledger,
     } = text_output;
     let moderation_outcome = stamp_moderation_outcome(moderation, &mut run_result, &mut envelope);
 
@@ -2954,10 +2981,10 @@ mod tests {
         AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, GIT_NOT_A_REPO_CODE,
         ImageProviderEntry, ModerationProviderEntry, PromptScope, PromptTemplate, ProviderEntry,
         ProviderKind, ProviderRegistry, ResourceDefinition, Rule, RuleDraft,
-        SteamSubmissionKitRequest, TtsProviderEntry, WorkshopDraftVisibility, WorkshopItemPackage,
-        WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
-        create_character_from_draft, create_project, create_resource, create_rule,
-        create_rule_from_draft, delete_image_provider, delete_mcp_server,
+        SteamSubmissionKitRequest, SystemUsageLedger, TtsProviderEntry, WorkshopDraftVisibility,
+        WorkshopItemPackage, WorkshopPackageFile, block_workshop_library_item, check_project,
+        create_character, create_character_from_draft, create_project, create_resource,
+        create_rule, create_rule_from_draft, delete_image_provider, delete_mcp_server,
         delete_moderation_provider_entry, delete_project_prompt_template, delete_provider,
         delete_tts_provider, delete_workshop_library_item, enable_mcp_server_for_project,
         enable_skill_for_project, export_static_project, export_static_project_zip,
@@ -3017,6 +3044,15 @@ mod tests {
       "output_tokens": 30,
       "spent_cost_units": 7,
       "timestamp_ms": 1000
+    },
+    {
+      "provider_id": "provider-a",
+      "kind": "moderation",
+      "model": "moderation-a",
+      "input_tokens": 5,
+      "output_tokens": 0,
+      "spent_cost_units": 2,
+      "timestamp_ms": 1001
     }
   ]
 }"#,
@@ -3027,12 +3063,13 @@ mod tests {
         let report = get_provider_cost_report_from_path(&path, "provider-a".into())
             .expect("load provider report");
 
-        assert_eq!(summary.total_input_tokens, 120);
+        assert_eq!(summary.total_input_tokens, 125);
         assert_eq!(summary.total_output_tokens, 30);
-        assert_eq!(summary.total_spent_cost_units, 7);
+        assert_eq!(summary.total_spent_cost_units, 9);
         assert_eq!(report.provider_id, "provider-a");
         assert_eq!(report.text_calls, 1);
-        assert_eq!(report.input_tokens, 120);
+        assert_eq!(report.moderation_calls, 1);
+        assert_eq!(report.input_tokens, 125);
     }
 
     #[test]
@@ -3956,6 +3993,25 @@ mod tests {
         create_project(project_path, sample_creation_request(), false).expect("create project");
     }
 
+    fn test_moderation_screen(
+        provider: &dyn plotforge_agent::ModerationProvider,
+    ) -> plotforge_agent::ModerationScreen<'_> {
+        plotforge_agent::ModerationScreen {
+            provider,
+            config_hash: "sha256:moderation",
+            usage_identity: plotforge_agent::ProviderUsageIdentity::new(
+                "stable-moderation-id",
+                "moderation-model",
+            ),
+        }
+    }
+
+    fn fresh_apply_usage_ledger() -> super::StudioCommandResult<SystemUsageLedger> {
+        Ok(plotforge_job::UsageLedger::new(
+            plotforge_job::SystemJobClock,
+        ))
+    }
+
     #[test]
     fn local_pi_apply_does_not_load_corrupt_usage_ledger() {
         let temp = tempdir().expect("tempdir");
@@ -3969,6 +4025,41 @@ mod tests {
         .expect("local-pi does not require the usage ledger");
 
         assert!(ledger.is_none());
+    }
+
+    #[test]
+    fn non_local_apply_validates_ledger_before_moderation_or_text() {
+        let temp = tempdir().expect("tempdir");
+        let corrupt_path = temp.path().join("usage.json");
+        fs::write(&corrupt_path, "not-json").expect("write corrupt ledger");
+        let provider = plotforge_agent::FakeModerationProvider::pass();
+        let text_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "corrupt-ledger".into(),
+            prompt: "safe input".into(),
+        };
+
+        let error = screen_then_apply(
+            || {
+                load_apply_usage_ledger("remote-model", Some(&corrupt_path))?.ok_or_else(|| {
+                    super::StudioCommandError {
+                        code: "pi_agent_usage_ledger".into(),
+                        message: "non-local usage ledger missing".into(),
+                    }
+                })
+            },
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                text_calls.set(text_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("corrupt ledger must stop before providers");
+
+        assert_eq!(error.code, "pi_agent_usage_ledger");
+        assert_eq!(provider.call_count(), 0);
+        assert_eq!(text_calls.get(), 0);
     }
 
     #[test]
@@ -4021,12 +4112,10 @@ mod tests {
         };
 
         let error = screen_then_apply(
-            Some(plotforge_agent::ModerationScreen {
-                provider: &provider,
-                config_hash: "sha256:moderation",
-            }),
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
             &request,
-            || {
+            |_usage_ledger| {
                 downstream_calls.set(downstream_calls.get() + 1);
                 Ok(())
             },
@@ -4051,13 +4140,11 @@ mod tests {
             prompt: "safe player input".into(),
         };
 
-        let (outcome, value) = screen_then_apply(
-            Some(plotforge_agent::ModerationScreen {
-                provider: &provider,
-                config_hash: "sha256:moderation",
-            }),
+        let (outcome, value, _usage_ledger) = screen_then_apply(
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
             &request,
-            || {
+            |_usage_ledger| {
                 downstream_calls.set(downstream_calls.get() + 1);
                 Ok(42)
             },
@@ -4081,11 +4168,12 @@ mod tests {
             prompt: "safe player input".into(),
         };
 
-        let (outcome, value) = screen_then_apply(None, &request, || {
-            downstream_calls.set(downstream_calls.get() + 1);
-            Ok(42)
-        })
-        .expect("no-provider pass-through");
+        let (outcome, value, _usage_ledger) =
+            screen_then_apply(fresh_apply_usage_ledger, None, &request, |_usage_ledger| {
+                downstream_calls.set(downstream_calls.get() + 1);
+                Ok(42)
+            })
+            .expect("no-provider pass-through");
 
         assert_eq!(value, 42);
         assert!(outcome.is_none());
@@ -4107,12 +4195,10 @@ mod tests {
         };
 
         let error = screen_then_apply(
-            Some(plotforge_agent::ModerationScreen {
-                provider: &provider,
-                config_hash: "sha256:moderation",
-            }),
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
             &request,
-            || {
+            |_usage_ledger| {
                 downstream_calls.set(downstream_calls.get() + 1);
                 Ok(())
             },
@@ -4141,6 +4227,104 @@ mod tests {
         }
     }
 
+    struct UsageModerationProvider {
+        flagged: bool,
+    }
+
+    impl plotforge_agent::ModerationProvider for UsageModerationProvider {
+        fn moderate(
+            &self,
+            _request: &plotforge_agent::ModerationRequest,
+        ) -> Result<plotforge_agent::ModerationResponse, plotforge_agent::ModerationProviderError>
+        {
+            Ok(plotforge_agent::ModerationResponse {
+                flagged: self.flagged,
+                categories: self
+                    .flagged
+                    .then(|| "violence".into())
+                    .into_iter()
+                    .collect(),
+                usage: Some(plotforge_schema::UsageInfo {
+                    input_tokens: Some(29),
+                    output_tokens: Some(4),
+                }),
+                spent_cost_units: 7,
+            })
+        }
+    }
+
+    #[test]
+    fn screened_apply_rolls_up_nonzero_moderation_usage_on_pass() {
+        let temp = tempdir().expect("tempdir");
+        let usage_path = temp.path().join("usage.json");
+        let provider = UsageModerationProvider { flagged: false };
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "usage-pass".into(),
+            prompt: "safe input".into(),
+        };
+
+        let (_outcome, (), ledger) = screen_then_apply(
+            || {
+                load_apply_usage_ledger("remote-model", Some(&usage_path))?.ok_or_else(|| {
+                    super::StudioCommandError {
+                        code: "pi_agent_usage_ledger".into(),
+                        message: "non-local usage ledger missing".into(),
+                    }
+                })
+            },
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| Ok(()),
+        )
+        .expect("screened apply");
+
+        let report = ledger.provider_cost_report("stable-moderation-id");
+        assert_eq!(report.moderation_calls, 1);
+        assert_eq!(report.text_calls, 0);
+        assert_eq!(report.input_tokens, 29);
+        assert_eq!(report.output_tokens, 4);
+        assert_eq!(report.spent_cost_units, 7);
+    }
+
+    #[test]
+    fn screened_apply_rolls_up_nonzero_moderation_usage_when_flagged() {
+        let temp = tempdir().expect("tempdir");
+        let usage_path = temp.path().join("usage.json");
+        let provider = UsageModerationProvider { flagged: true };
+        let text_calls = Cell::new(0);
+        let request = plotforge_agent::ModerationRequest {
+            call_id: "usage-flagged".into(),
+            prompt: "flagged input".into(),
+        };
+
+        let error = screen_then_apply(
+            || {
+                load_apply_usage_ledger("remote-model", Some(&usage_path))?.ok_or_else(|| {
+                    super::StudioCommandError {
+                        code: "pi_agent_usage_ledger".into(),
+                        message: "non-local usage ledger missing".into(),
+                    }
+                })
+            },
+            Some(test_moderation_screen(&provider)),
+            &request,
+            |_usage_ledger| {
+                text_calls.set(text_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect_err("flagged response");
+
+        assert_eq!(error.code, "pi_agent_moderation_flagged");
+        assert_eq!(text_calls.get(), 0);
+        let report = get_provider_cost_report_from_path(&usage_path, "stable-moderation-id".into())
+            .expect("persisted moderation report");
+        assert_eq!(report.moderation_calls, 1);
+        assert_eq!(report.input_tokens, 29);
+        assert_eq!(report.output_tokens, 4);
+        assert_eq!(report.spent_cost_units, 7);
+    }
+
     #[test]
     fn pi_agent_apply_run_rejects_moderation_secret_marker_without_fallback() {
         let downstream_calls = Cell::new(0);
@@ -4151,12 +4335,10 @@ mod tests {
         };
 
         let error = screen_then_apply(
-            Some(plotforge_agent::ModerationScreen {
-                provider: &provider,
-                config_hash: "sha256:moderation",
-            }),
+            fresh_apply_usage_ledger,
+            Some(test_moderation_screen(&provider)),
             &request,
-            || {
+            |_usage_ledger| {
                 downstream_calls.set(downstream_calls.get() + 1);
                 Ok(())
             },
@@ -4169,7 +4351,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_agent_apply_run_stamps_moderation_hash_on_run_and_envelope() {
+    fn pi_agent_apply_run_stamps_moderation_hash_on_run_envelope_and_final_trace() {
         let provider = Box::new(plotforge_agent::FakeTextModelProvider::local_pi());
         let agent = plotforge_agent::PiAgent::new(provider, "scene-planner");
         let (mut run_result, mut envelope) = agent
@@ -4200,6 +4382,35 @@ mod tests {
         );
         assert_eq!(
             envelope.reproducibility.moderation_config_hash.as_deref(),
+            Some("sha256:moderation-config")
+        );
+
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("moderation-trace-hash");
+        create_starter_project(&project_path);
+        let project = super::load_project(&project_path).expect("load project");
+        let proposal = match &envelope.proposal.output {
+            plotforge_schema::AgentProposalPayload::ScenePlan(proposal) => proposal,
+            other => panic!(
+                "expected scene plan, got {}",
+                plotforge_agent::payload_kind(other)
+            ),
+        };
+        let scene_plan =
+            plotforge_agent::ScenePlan::from_proposal(proposal, envelope.reproducibility.clone())
+                .expect("scene plan");
+        let mut session = super::RuntimeSession::new(project);
+        let step = session
+            .apply_agent_scene_plan(scene_plan, "safe input")
+            .expect("commit scene plan");
+        let report = super::assemble_play_once_report(&project_path, step, None, &session)
+            .expect("assemble report");
+        assert_eq!(
+            report
+                .trace
+                .reproducibility
+                .moderation_config_hash
+                .as_deref(),
             Some("sha256:moderation-config")
         );
     }

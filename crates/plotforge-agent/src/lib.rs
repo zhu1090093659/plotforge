@@ -35,6 +35,7 @@ pub use mcp_loop::{
 };
 pub use moderation_loop::{
     ModerationLoopError, ModerationOutcome, ModerationScreen, screen_with_moderation,
+    screen_with_moderation_with_usage_reporter,
 };
 pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities, pi_agent_capabilities_with_mcp};
 pub use pipelines::{

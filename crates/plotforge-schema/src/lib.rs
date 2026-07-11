@@ -7,7 +7,7 @@ pub type ResourceMap = BTreeMap<String, i32>;
 pub type FlagMap = BTreeMap<String, bool>;
 
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CONTRACT_SCHEMA_VERSION: u32 = 22;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 23;
 pub const CONTRACT_GENERATOR: &str = "plotforge-schema";
 pub const AI_USAGE_MANIFEST_FILE: &str = "ai-usage.json";
 pub const WORKSHOP_ITEM_MANIFEST_FILE: &str = "workshop-item.json";
@@ -2110,7 +2110,7 @@ export interface JobCost { estimated_units: number; spent_units: number; }
 export interface JobFailure { code: string; message: string; retryable: boolean; }
 export interface JobRecord { id: string; kind: JobKind; status: JobStatus; attempt: number; max_attempts: number; created_at_ms: number; updated_at_ms: number; started_at_ms?: number | null; finished_at_ms?: number | null; timeout_ms: number; progress: JobProgress; cost: JobCost; failure?: JobFailure | null; }
 export interface UsageInfo { input_tokens?: number | null; output_tokens?: number | null; }
-export interface ProviderCostReport { provider_id: string; text_calls: number; image_calls: number; tts_calls: number; input_tokens: number; output_tokens: number; spent_cost_units: number; }
+export interface ProviderCostReport { provider_id: string; text_calls: number; image_calls: number; tts_calls: number; moderation_calls: number; input_tokens: number; output_tokens: number; spent_cost_units: number; }
 export interface UsageSummary { total_input_tokens: number; total_output_tokens: number; total_spent_cost_units: number; by_provider: Record<string, ProviderCostReport>; }
 
 export interface ProjectData { game: GameProject; resources: ResourceDefinition[]; world_state: WorldState; story_state: StoryState; story_craft: StoryCraftState; characters: Character[]; rules: Rule[]; scenes: Scene[]; visual_bible: VisualBible; audio_bible: AudioBible; asset_records: AssetRecord[]; ai_safety_policy: AiSafetyPolicy; }
@@ -2695,7 +2695,7 @@ mod tests {
     fn contract_bundle_uses_current_version_envelope() {
         let bundle = contract_bundle();
 
-        assert_eq!(CONTRACT_SCHEMA_VERSION, 22);
+        assert_eq!(CONTRACT_SCHEMA_VERSION, 23);
         assert_eq!(bundle.contract_version, CONTRACT_VERSION);
         assert_eq!(bundle.schema_version, CONTRACT_SCHEMA_VERSION);
         assert_eq!(bundle.generated_by, CONTRACT_GENERATOR);

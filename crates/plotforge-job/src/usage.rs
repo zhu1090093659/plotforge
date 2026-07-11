@@ -15,6 +15,7 @@ pub enum UsageKind {
     Text,
     Image,
     Tts,
+    Moderation,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -268,6 +269,7 @@ fn add_entry(report: &mut ProviderCostReport, entry: &UsageLedgerEntry) {
         UsageKind::Text => report.text_calls += 1,
         UsageKind::Image => report.image_calls += 1,
         UsageKind::Tts => report.tts_calls += 1,
+        UsageKind::Moderation => report.moderation_calls += 1,
     }
     report.input_tokens += entry.input_tokens;
     report.output_tokens += entry.output_tokens;
@@ -316,6 +318,14 @@ mod tests {
     }
 
     #[test]
+    fn moderation_usage_kind_serializes_snake_case() {
+        let encoded = serde_json::to_string(&UsageKind::Moderation).expect("serialize kind");
+        assert_eq!(encoded, "\"moderation\"");
+        let decoded: UsageKind = serde_json::from_str(&encoded).expect("deserialize kind");
+        assert_eq!(decoded, UsageKind::Moderation);
+    }
+
+    #[test]
     fn usage_summary_aggregates_by_provider() {
         let mut ledger = UsageLedger::new(FakeClock::new(1_000));
         ledger
@@ -327,15 +337,19 @@ mod tests {
         ledger
             .report_usage(report("provider-b", UsageKind::Tts, "voice-b"))
             .expect("tts report");
+        ledger
+            .report_usage(report("provider-a", UsageKind::Moderation, "moderation-a"))
+            .expect("moderation report");
 
         let summary = ledger.summary();
 
-        assert_eq!(summary.total_input_tokens, 300);
-        assert_eq!(summary.total_output_tokens, 75);
-        assert_eq!(summary.total_spent_cost_units, 9);
+        assert_eq!(summary.total_input_tokens, 400);
+        assert_eq!(summary.total_output_tokens, 100);
+        assert_eq!(summary.total_spent_cost_units, 12);
         assert_eq!(summary.by_provider.len(), 2);
         assert_eq!(summary.by_provider["provider-a"].text_calls, 1);
         assert_eq!(summary.by_provider["provider-a"].image_calls, 1);
+        assert_eq!(summary.by_provider["provider-a"].moderation_calls, 1);
         assert_eq!(summary.by_provider["provider-b"].tts_calls, 1);
     }
 
