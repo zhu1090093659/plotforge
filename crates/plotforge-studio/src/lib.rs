@@ -52,6 +52,7 @@ use plotforge_storage::{
 use serde::Serialize;
 
 pub type StudioCommandResult<T> = Result<T, StudioCommandError>;
+type SystemUsageLedger = plotforge_job::UsageLedger<plotforge_job::SystemJobClock>;
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct StudioCommandError {
@@ -331,18 +332,19 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     // turns. When empty, the existing one-shot path is taken byte-for-byte
     // (the agent is constructed and `run_with_envelope` is called as before).
     let enabled_mcp_servers = &agent_config.enabled_mcp_servers;
-    let mut usage_ledger = plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock)
-        .map_err(|source| StudioCommandError {
-            code: "pi_agent_usage_ledger".into(),
-            message: source.to_string(),
-        })?;
+    let mut usage_ledger = load_apply_usage_ledger(model_id, None)?;
     let (run_result, envelope) = if enabled_mcp_servers.is_empty() {
         // Empty list → existing one-shot path. Construct the agent and call
         // `run_with_envelope` exactly as before (byte-identical regression
         // guard: this branch must not change the existing behavior).
         let agent = plotforge_agent::PiAgent::new(provider, &request.agent_id);
         agent
-            .run_with_envelope_with_usage_reporter(run_request, Some(&mut usage_ledger))
+            .run_with_envelope_with_usage_reporter(
+                run_request,
+                usage_ledger
+                    .as_mut()
+                    .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
+            )
             .map_err(|error| StudioCommandError {
                 code: match &error {
                     plotforge_agent::PiAgentError::Provider { code, .. } => {
@@ -390,7 +392,9 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             &mcp_registry,
             enabled_mcp_servers,
             &hash_inputs,
-            Some(&mut usage_ledger),
+            usage_ledger
+                .as_mut()
+                .map(|ledger| ledger as &mut dyn plotforge_agent::UsageReporter),
         )
         .map_err(|error| StudioCommandError {
             code: match &error {
@@ -521,22 +525,6 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     })
 }
 
-/// A `JobClock` backed by `SystemTime`, used by the scene image pipeline so
-/// job records carry real timestamps. The pi-Agent apply flow constructs a
-/// fresh `JobQueue` per turn (image jobs are not long-lived), so this is the
-/// only place a real clock is needed in the studio layer.
-#[derive(Clone, Debug, Default)]
-struct SystemJobClock;
-
-impl plotforge_job::JobClock for SystemJobClock {
-    fn now_ms(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
-    }
-}
-
 /// Attempts to generate a scene background image when an enabled image
 /// provider is registered. Returns `None` when image generation was not
 /// attempted (no provider configured) or succeeded; returns `Some(message)`
@@ -553,7 +541,7 @@ fn attempt_scene_image_generation(
     visual_style: &str,
     committed_scene: &Scene,
     result_scene: &mut Scene,
-    usage_reporter: &mut dyn plotforge_agent::UsageReporter,
+    usage_ledger: &mut Option<SystemUsageLedger>,
 ) -> Option<String> {
     // Resolve the image provider. When none is configured (or all are
     // disabled), image generation is skipped — not an error. The turn
@@ -581,6 +569,19 @@ fn attempt_scene_image_generation(
             )));
         }
     };
+    if usage_ledger.is_none() {
+        match plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock) {
+            Ok(ledger) => *usage_ledger = Some(ledger),
+            Err(error) => {
+                return Some(redact_trace_text(&format!(
+                    "image generation skipped: usage ledger load failed: {error}"
+                )));
+            }
+        }
+    }
+    let Some(usage_reporter) = usage_ledger.as_mut() else {
+        return Some("image generation skipped: usage ledger unavailable".into());
+    };
 
     // Build the image prompt from scene title + description + project visual
     // style. The scene description is the scene summary the planner produced;
@@ -596,7 +597,7 @@ fn attempt_scene_image_generation(
 
     let pipeline = plotforge_agent::SceneImagePipeline::new(image_provider);
     let mut asset_registry = plotforge_media::AssetRegistry::new();
-    let mut job_queue = plotforge_job::JobQueue::new(SystemJobClock);
+    let mut job_queue = plotforge_job::JobQueue::new(plotforge_job::SystemJobClock);
     match pipeline.generate_scene_background_for_project_with_usage_reporter(
         project_path,
         request,
@@ -687,15 +688,35 @@ pub fn get_provider_cost_report_from_path(
 fn load_usage_ledger(
     path: Option<&Path>,
     command: &'static str,
-) -> StudioCommandResult<plotforge_job::UsageLedger<SystemJobClock>> {
-    let result = match path {
-        Some(path) => plotforge_job::UsageLedger::load_from(path, SystemJobClock),
-        None => plotforge_job::UsageLedger::load(SystemJobClock),
-    };
-    result.map_err(|source| StudioCommandError {
+) -> StudioCommandResult<SystemUsageLedger> {
+    open_usage_ledger(path).map_err(|source| StudioCommandError {
         code: format!("{command}_load"),
         message: source.to_string(),
     })
+}
+
+fn load_apply_usage_ledger(
+    model_id: &str,
+    path: Option<&Path>,
+) -> StudioCommandResult<Option<SystemUsageLedger>> {
+    if model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        return Ok(None);
+    }
+    open_usage_ledger(path)
+        .map(Some)
+        .map_err(|source| StudioCommandError {
+            code: "pi_agent_usage_ledger".into(),
+            message: source.to_string(),
+        })
+}
+
+fn open_usage_ledger(
+    path: Option<&Path>,
+) -> Result<SystemUsageLedger, plotforge_job::UsageLedgerError> {
+    match path {
+        Some(path) => plotforge_job::UsageLedger::load_from(path, plotforge_job::SystemJobClock),
+        None => plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock),
+    }
 }
 
 /// Lists every registered provider entry from the user-global registry.
@@ -2612,18 +2633,19 @@ mod tests {
         git_current_branch, git_list_branches, git_project_dir_name, git_switch_branch,
         import_workshop_library_package, list_asset_records, list_available_models,
         list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
-        list_remote_models, list_source_files, list_workshop_library, load_workshop_library_item,
-        open_project, pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
-        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
-        play_once_project_with_save, probe_image_provider, probe_tts_provider,
-        read_ai_safety_policy, read_character_edit_document, read_rules_edit_document,
-        read_source_file, read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, upsert_image_provider, upsert_image_provider_entry,
-        upsert_project_prompt_template, upsert_provider, upsert_tts_provider,
-        upsert_tts_provider_entry, validate_media_provider_fields, validate_workshop_package,
-        write_source_file, write_steam_submission_kit, write_workshop_publish_draft,
+        list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
+        load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
+        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
+        play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
+        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, set_agent_session_config, update_ai_safety_policy,
+        update_story_craft_edit_document, update_world_edit_document, upsert_image_provider,
+        upsert_image_provider_entry, upsert_project_prompt_template, upsert_provider,
+        upsert_tts_provider, upsert_tts_provider_entry, validate_media_provider_fields,
+        validate_workshop_package, write_source_file, write_steam_submission_kit,
+        write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
@@ -3596,6 +3618,21 @@ mod tests {
 
     fn create_starter_project(project_path: &Path) {
         create_project(project_path, sample_creation_request(), false).expect("create project");
+    }
+
+    #[test]
+    fn local_pi_apply_does_not_load_corrupt_usage_ledger() {
+        let temp = tempdir().expect("tempdir");
+        let corrupt_path = temp.path().join("usage.json");
+        fs::write(&corrupt_path, "not-json").expect("write corrupt ledger");
+
+        let ledger = load_apply_usage_ledger(
+            plotforge_agent::LOCAL_PI_MODEL_ID,
+            Some(corrupt_path.as_path()),
+        )
+        .expect("local-pi does not require the usage ledger");
+
+        assert!(ledger.is_none());
     }
 
     #[test]

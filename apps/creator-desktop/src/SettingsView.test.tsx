@@ -269,6 +269,30 @@ describe("SettingsView", () => {
     await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(2));
   });
 
+  it("clears stale usage totals when a refresh fails", async () => {
+    const summary: UsageSummary = {
+      total_input_tokens: 1500,
+      total_output_tokens: 375,
+      total_spent_cost_units: 42,
+      by_provider: {},
+    };
+    const getUsageSummary = vi
+      .fn()
+      .mockResolvedValueOnce(summary)
+      .mockRejectedValueOnce(new Error("ledger is corrupt"));
+    renderSettingsView({
+      dataSource: settingsTestDataSource({ getUsageSummary }),
+    });
+
+    expect(await screen.findByText("1,500")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "ledger is corrupt",
+    );
+    expect(screen.queryByText("1,500")).toBeNull();
+  });
+
   it("renders the usage empty state and Chinese copy without adding a fourth tab", async () => {
     renderSettingsView({ locale: "zh" });
 

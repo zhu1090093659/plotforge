@@ -16,6 +16,7 @@ export function UsageSection({ dataSource }: { dataSource: StudioDataSource }) {
     try {
       setSummary(await dataSource.getUsageSummary());
     } catch (cause) {
+      setSummary(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
