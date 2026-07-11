@@ -24,6 +24,8 @@ pub mod prompt_template;
 pub use prompt_template::*;
 pub mod skill;
 pub use skill::*;
+pub mod usage;
+pub use usage::*;
 
 // ---------------------------------------------------------------------------
 // Git workspace integration contracts.

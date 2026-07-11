@@ -21,7 +21,7 @@
 
 use std::time::Duration;
 
-use plotforge_schema::redact_trace_text;
+use plotforge_schema::{UsageInfo, redact_trace_text};
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
@@ -40,17 +40,6 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 /// fail fast instead of holding a Tauri worker for the full 60s. The overall
 /// `HTTP_TIMEOUT` still bounds the whole request (connect + send + body).
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Token-usage breakdown extracted from a provider response, when the API
-/// surfaces one. Both fields are optional because not every provider reports
-/// both legs of usage on every response (e.g. some OpenAI-compatible gateways
-/// report only a total). Values are redaction-safe counts, never prompt or
-/// completion text.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct UsageInfo {
-    pub input_tokens: Option<u64>,
-    pub output_tokens: Option<u64>,
-}
 
 /// The decoded payload shared by every provider's `extract_*_content` step.
 /// `content` is the model's text (the field `complete()` wraps in
