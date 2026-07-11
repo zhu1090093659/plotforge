@@ -874,6 +874,44 @@ fn open_usage_ledger(
     }
 }
 
+/// Runs a Studio provider-registry mutation through the agent-owned locked
+/// transaction. `path` exists only for hermetic adapter tests; production
+/// always resolves the user-global registry through `mutate_provider_registry`.
+fn mutate_studio_provider_registry<T>(
+    path: Option<&Path>,
+    command: &'static str,
+    mutator: impl FnOnce(&mut ProviderRegistry) -> StudioCommandResult<T>,
+) -> StudioCommandResult<T> {
+    let result = match path {
+        Some(path) => plotforge_agent::mutate_provider_registry_at(path, mutator),
+        None => plotforge_agent::mutate_provider_registry(mutator),
+    };
+    result.map_err(|source| map_provider_registry_mutation_error(command, source))
+}
+
+fn map_provider_registry_mutation_error(
+    command: &'static str,
+    source: plotforge_agent::ProviderRegistryMutationError<StudioCommandError>,
+) -> StudioCommandError {
+    match source {
+        plotforge_agent::ProviderRegistryMutationError::Mutation(error) => error,
+        plotforge_agent::ProviderRegistryMutationError::Registry(error) => {
+            let stage = match &error {
+                plotforge_agent::ProviderRegistryError::NoConfigDir
+                | plotforge_agent::ProviderRegistryError::ReadFailed { .. }
+                | plotforge_agent::ProviderRegistryError::ParseFailed { .. } => "load",
+                plotforge_agent::ProviderRegistryError::WriteFailed { .. }
+                | plotforge_agent::ProviderRegistryError::SerializeFailed { .. }
+                | plotforge_agent::ProviderRegistryError::LockFailed { .. } => "write",
+            };
+            StudioCommandError {
+                code: format!("{command}_{stage}"),
+                message: error.to_string(),
+            }
+        }
+    }
+}
+
 /// Lists every registered provider entry from the user-global registry.
 /// An absent registry returns an empty list (fresh install).
 pub fn list_providers() -> StudioCommandResult<Vec<ProviderEntry>> {
@@ -950,41 +988,26 @@ pub fn upsert_image_provider(entry: ImageProviderEntry) -> StudioCommandResult<I
         message,
     })?;
 
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_image_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    upsert_image_provider_entry(&mut registry, entry.clone());
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_image_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_image_provider", move |registry| {
+        upsert_image_provider_entry(registry, entry.clone());
+        Ok(entry)
+    })
 }
 
 /// Removes an image provider by id, returning the removed entry. Unknown ids
 /// fail explicitly instead of becoming a silent no-op.
 pub fn delete_image_provider(id: String) -> StudioCommandResult<ImageProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_image_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let position = registry
-        .image_providers
-        .iter()
-        .position(|provider| provider.id == id)
-        .ok_or_else(|| StudioCommandError {
-            code: "image_provider_not_found".into(),
-            message: format!("no image provider with id `{id}`"),
-        })?;
-    let removed = registry.image_providers.remove(position);
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_image_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_image_provider", move |registry| {
+        let position = registry
+            .image_providers
+            .iter()
+            .position(|provider| provider.id == id)
+            .ok_or_else(|| StudioCommandError {
+                code: "image_provider_not_found".into(),
+                message: format!("no image provider with id `{id}`"),
+            })?;
+        Ok(registry.image_providers.remove(position))
+    })
 }
 
 /// Sends a minimal real image-generation request through the registered
@@ -1044,41 +1067,26 @@ pub fn upsert_tts_provider(entry: TtsProviderEntry) -> StudioCommandResult<TtsPr
         message,
     })?;
 
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_tts_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    upsert_tts_provider_entry(&mut registry, entry.clone());
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_tts_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_tts_provider", move |registry| {
+        upsert_tts_provider_entry(registry, entry.clone());
+        Ok(entry)
+    })
 }
 
 /// Removes a TTS provider by id, returning the removed entry. Unknown ids
 /// surface a typed error.
 pub fn delete_tts_provider(id: String) -> StudioCommandResult<TtsProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_tts_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let position = registry
-        .tts_providers
-        .iter()
-        .position(|provider| provider.id == id)
-        .ok_or_else(|| StudioCommandError {
-            code: "tts_provider_not_found".into(),
-            message: format!("no TTS provider with id `{id}`"),
-        })?;
-    let removed = registry.tts_providers.remove(position);
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_tts_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_tts_provider", move |registry| {
+        let position = registry
+            .tts_providers
+            .iter()
+            .position(|provider| provider.id == id)
+            .ok_or_else(|| StudioCommandError {
+                code: "tts_provider_not_found".into(),
+                message: format!("no TTS provider with id `{id}`"),
+            })?;
+        Ok(registry.tts_providers.remove(position))
+    })
 }
 
 /// Sends a minimal real speech-synthesis request through the registered TTS
@@ -1141,33 +1149,18 @@ pub fn upsert_moderation_provider(
         message,
     })?;
 
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_moderation_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    upsert_moderation_provider_entry(&mut registry, entry.clone());
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_moderation_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_moderation_provider", move |registry| {
+        upsert_moderation_provider_entry(registry, entry.clone());
+        Ok(entry)
+    })
 }
 
 /// Removes a moderation provider by id. Unknown ids fail explicitly rather
 /// than becoming a silent no-op.
 pub fn delete_moderation_provider(id: String) -> StudioCommandResult<ModerationProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_moderation_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let removed = delete_moderation_provider_entry(&mut registry, &id)?;
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_moderation_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_moderation_provider", move |registry| {
+        delete_moderation_provider_entry(registry, &id)
+    })
 }
 
 /// Sends a benign moderation request through a registered provider. The
@@ -1387,45 +1380,30 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
         code: "upsert_provider_invalid".into(),
         message,
     })?;
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "upsert_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    if let Some(existing) = registry.providers.iter_mut().find(|p| p.id == entry.id) {
-        *existing = entry.clone();
-    } else {
-        registry.providers.push(entry.clone());
-    }
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "upsert_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(entry)
+    mutate_studio_provider_registry(None, "upsert_provider", move |registry| {
+        if let Some(existing) = registry.providers.iter_mut().find(|p| p.id == entry.id) {
+            *existing = entry.clone();
+        } else {
+            registry.providers.push(entry.clone());
+        }
+        Ok(entry)
+    })
 }
 
 /// Removes a provider entry by id. Returns the removed entry, or an explicit
 /// `provider_not_found` error if no entry matches.
 pub fn delete_provider(id: String) -> StudioCommandResult<ProviderEntry> {
-    let mut registry =
-        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
-            code: "delete_provider_load".into(),
-            message: source.to_string(),
-        })?;
-    let position = registry
-        .providers
-        .iter()
-        .position(|p| p.id == id)
-        .ok_or_else(|| StudioCommandError {
-            code: "provider_not_found".into(),
-            message: format!("no provider with id `{id}`"),
-        })?;
-    let removed = registry.providers.remove(position);
-    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
-        code: "delete_provider_write".into(),
-        message: source.to_string(),
-    })?;
-    Ok(removed)
+    mutate_studio_provider_registry(None, "delete_provider", move |registry| {
+        let position = registry
+            .providers
+            .iter()
+            .position(|provider| provider.id == id)
+            .ok_or_else(|| StudioCommandError {
+                code: "provider_not_found".into(),
+                message: format!("no provider with id `{id}`"),
+            })?;
+        Ok(registry.providers.remove(position))
+    })
 }
 
 /// The result of a `test_provider_connection` ping: ok/failed + a
@@ -2972,7 +2950,12 @@ fn is_editable_source_file(path: &Path, kind: &SourceFileKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, fs, path::Path};
+    use std::{
+        cell::Cell,
+        fs,
+        path::Path,
+        sync::{Arc, Barrier},
+    };
 
     use tempfile::tempdir;
 
@@ -2995,20 +2978,20 @@ mod tests {
         list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
         list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
         load_provider_registry_for_apply, load_workshop_library_item, moderation_request_for_apply,
-        open_project, pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
-        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
-        play_once_project_with_save, probe_image_provider, probe_moderation_provider,
-        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
-        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
-        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
-        report_workshop_library_item, screen_then_apply, set_agent_session_config,
-        stamp_moderation_outcome, update_ai_safety_policy, update_story_craft_edit_document,
-        update_world_edit_document, upsert_image_provider, upsert_image_provider_entry,
-        upsert_moderation_provider, upsert_moderation_provider_entry,
-        upsert_project_prompt_template, upsert_provider, upsert_tts_provider,
-        upsert_tts_provider_entry, validate_provider_endpoint_fields, validate_provider_quotas,
-        validate_workshop_package, write_source_file, write_steam_submission_kit,
-        write_workshop_publish_draft,
+        mutate_studio_provider_registry, open_project, pi_agent_apply_run, pi_agent_capabilities,
+        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
+        play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
+        probe_moderation_provider, probe_tts_provider, read_ai_safety_policy,
+        read_character_edit_document, read_rules_edit_document, read_source_file,
+        read_state_variables_edit_document, read_story_craft_edit_document,
+        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
+        screen_then_apply, set_agent_session_config, stamp_moderation_outcome,
+        update_ai_safety_policy, update_story_craft_edit_document, update_world_edit_document,
+        upsert_image_provider, upsert_image_provider_entry, upsert_moderation_provider,
+        upsert_moderation_provider_entry, upsert_project_prompt_template, upsert_provider,
+        upsert_tts_provider, upsert_tts_provider_entry, validate_provider_endpoint_fields,
+        validate_provider_quotas, validate_workshop_package, write_source_file,
+        write_steam_submission_kit, write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
@@ -4775,6 +4758,70 @@ mod tests {
             requests_per_minute: None,
             daily_token_budget: None,
         }
+    }
+
+    #[test]
+    fn provider_family_mutations_share_one_serialized_transaction() {
+        let temp = tempdir().expect("tempdir");
+        let registry_path = temp.path().join("providers.json");
+        let barrier = Arc::new(Barrier::new(3));
+
+        let image_path = registry_path.clone();
+        let image_barrier = Arc::clone(&barrier);
+        let image_handle = std::thread::spawn(move || {
+            let entry = sample_image_provider_entry("serialized-image");
+            image_barrier.wait();
+            mutate_studio_provider_registry(
+                Some(&image_path),
+                "upsert_image_provider",
+                |registry| {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    upsert_image_provider_entry(registry, entry);
+                    Ok(())
+                },
+            )
+            .expect("image transaction");
+        });
+
+        let tts_path = registry_path.clone();
+        let tts_barrier = Arc::clone(&barrier);
+        let tts_handle = std::thread::spawn(move || {
+            let entry = sample_tts_provider_entry("serialized-tts");
+            tts_barrier.wait();
+            mutate_studio_provider_registry(Some(&tts_path), "upsert_tts_provider", |registry| {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+                upsert_tts_provider_entry(registry, entry);
+                Ok(())
+            })
+            .expect("TTS transaction");
+        });
+
+        barrier.wait();
+        image_handle.join().expect("image thread");
+        tts_handle.join().expect("TTS thread");
+
+        let registry = plotforge_agent::load_provider_registry_from(&registry_path)
+            .expect("load serialized registry");
+        assert_eq!(registry.image_providers.len(), 1);
+        assert_eq!(registry.image_providers[0].id, "serialized-image");
+        assert_eq!(registry.tts_providers.len(), 1);
+        assert_eq!(registry.tts_providers[0].id, "serialized-tts");
+    }
+
+    #[test]
+    fn provider_mutation_maps_corrupt_registry_to_existing_load_code() {
+        let temp = tempdir().expect("tempdir");
+        let registry_path = temp.path().join("providers.json");
+        fs::write(&registry_path, "not-json").expect("write corrupt registry");
+
+        let error =
+            mutate_studio_provider_registry(Some(&registry_path), "delete_provider", |_registry| {
+                Ok(())
+            })
+            .expect_err("corrupt registry");
+
+        assert_eq!(error.code, "delete_provider_load");
+        assert!(error.message.contains("failed to parse provider registry"));
     }
 
     #[test]
