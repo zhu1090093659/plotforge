@@ -55,6 +55,10 @@ impl ProviderPipelineError {
                 TextModelProviderErrorKind::RateLimit { .. } => {
                     RuntimeError::redacted(error.code, error.message)
                 }
+                TextModelProviderErrorKind::ThrottlePreflight
+                | TextModelProviderErrorKind::BudgetExceeded { .. } => {
+                    RuntimeError::redacted(error.code, error.message)
+                }
                 TextModelProviderErrorKind::ContentFiltered { .. } => {
                     RuntimeError::redacted(error.code, error.message)
                 }

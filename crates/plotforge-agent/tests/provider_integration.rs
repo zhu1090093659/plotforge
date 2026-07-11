@@ -45,14 +45,15 @@ use plotforge_agent::{
     ConfiguredTextModelProvider, EnvCredentialResolver, ImageGenerationRequest, ImageProvider,
     OpenAiCompatibleClient, OpenAiImageClient, OpenAiTtsClient, OptionalEnvCredentialResolver,
     TextModelClient, TextModelClientRequest, TextModelProvider, TextModelProviderErrorKind,
-    TextModelRequest, TextProviderConfig, TtsProvider, TtsRequest, TtsTarget,
+    TextModelRequest, TextProviderConfig, TtsProvider, TtsRequest, TtsTarget, build_image_provider,
+    build_text_provider, build_tts_provider,
 };
 use plotforge_media::{AssetRecordInput, AssetRegistry};
 use plotforge_schema::{
     AgentOutputEnvelope, AgentOutputProposal, AgentProposalPayload, AgentRole, AssetKind,
     AssetProviderMetadata, AssetReference, AssetReferenceKind, AssetSourceKind,
     CONTRACT_SCHEMA_VERSION, CONTRACT_VERSION, Choice, ImageProviderEntry, NarrativeFunction,
-    ReproducibilityMetadata, ScenePlanProposal, TtsProviderEntry,
+    ProviderEntry, ProviderKind, ReproducibilityMetadata, ScenePlanProposal, TtsProviderEntry,
 };
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,31 @@ fn capturing_server(reply: Vec<u8>) -> CapturingServer {
     }
 }
 
+fn capturing_server_replies(replies: Vec<Vec<u8>>) -> CapturingServer {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
+    let addr = listener.local_addr().expect("local addr");
+    let captured = Arc::new(Mutex::new(String::new()));
+    let captured_clone = captured.clone();
+    let handle = thread::spawn(move || {
+        for reply in replies {
+            let (mut stream, _) = listener.accept().expect("accept mock connection");
+            let mut buf = vec![0u8; 65_536];
+            let read = stream.read(&mut buf).expect("read mock request");
+            captured_clone
+                .lock()
+                .expect("capture lock")
+                .push_str(&String::from_utf8_lossy(&buf[..read]));
+            let _ = stream.write_all(&reply);
+            let _ = stream.flush();
+        }
+    });
+    CapturingServer {
+        addr,
+        handle,
+        captured,
+    }
+}
+
 /// Builds a complete HTTP/1.1 response: status line + `Content-Type` +
 /// `Content-Length` headers + blank line + body. Used by `capturing_server`.
 fn http_response(status_line: &str, content_type: &str, body: &str) -> Vec<u8> {
@@ -148,6 +174,22 @@ fn http_binary_response(content_type: &str, body: &[u8]) -> Vec<u8> {
 /// resolver in the full-pipeline tests).
 fn text_config(endpoint: &str, credential_env_var: &str) -> TextProviderConfig {
     TextProviderConfig::openai_compatible("openai", "test-model", endpoint, credential_env_var)
+}
+
+fn text_entry(endpoint: &str) -> ProviderEntry {
+    ProviderEntry {
+        id: "openai-test".into(),
+        kind: ProviderKind::OpenAiCompatible,
+        label: "openai".into(),
+        endpoint_url: endpoint.into(),
+        model: "test-model".into(),
+        credential_env_var: String::new(),
+        enabled: true,
+        max_output_tokens: None,
+        max_concurrency: None,
+        requests_per_minute: None,
+        daily_token_budget: None,
+    }
 }
 
 /// A minimal `TextModelRequest` carrying a single `prompt` and `messages:
@@ -369,6 +411,83 @@ fn text_full_pipeline_success_parses_and_validates_envelope() {
 // not possible from the integration layer (the retry loop is `pub(crate)`),
 // but the rate-limit *kind* is the contract the retry loop branches on.
 // ===========================================================================
+#[test]
+#[ignore]
+fn throttle_rate_limit_surfaces_before_a_second_http_request() {
+    let body = openai_chat_body(&valid_envelope_json());
+    let server = capturing_server(http_response("HTTP/1.1 200 OK", "application/json", &body));
+    let endpoint = format!("http://{}", server.addr);
+    let mut entry = text_entry(&endpoint);
+    entry.requests_per_minute = Some(1);
+    let provider = build_text_provider(&entry).expect("build throttled provider");
+    let config = text_config(&endpoint, "");
+    let request = single_prompt_request(&config);
+
+    provider
+        .complete(&request)
+        .expect("first request reaches HTTP");
+    let error = provider
+        .complete(&request)
+        .expect_err("second request throttled");
+
+    let TextModelProviderErrorKind::RateLimit {
+        retry_after_ms: Some(retry_after_ms),
+    } = &error.kind
+    else {
+        panic!("expected local RateLimit with exact retry delay, got {error:?}");
+    };
+    assert!((1..=60_000).contains(retry_after_ms));
+    server.handle.join().expect("server thread");
+    assert_eq!(
+        server
+            .captured
+            .lock()
+            .expect("capture lock")
+            .matches("POST ")
+            .count(),
+        1,
+        "the throttled call must not reach the HTTP server"
+    );
+}
+
+#[test]
+#[ignore]
+fn throttle_concurrency_permit_releases_after_http_error() {
+    let success_body = openai_chat_body(&valid_envelope_json());
+    let server = capturing_server_replies(vec![
+        http_response(
+            "HTTP/1.1 500 Internal Server Error",
+            "application/json",
+            "{}",
+        ),
+        http_response("HTTP/1.1 200 OK", "application/json", &success_body),
+    ]);
+    let endpoint = format!("http://{}", server.addr);
+    let mut entry = text_entry(&endpoint);
+    entry.max_concurrency = Some(1);
+    let provider = build_text_provider(&entry).expect("build throttled provider");
+    let config = text_config(&endpoint, "");
+    let request = single_prompt_request(&config);
+
+    provider
+        .complete(&request)
+        .expect_err("first HTTP call fails");
+    provider
+        .complete(&request)
+        .expect("permit released for second HTTP call");
+
+    server.handle.join().expect("server thread");
+    assert_eq!(
+        server
+            .captured
+            .lock()
+            .expect("capture lock")
+            .matches("POST ")
+            .count(),
+        2
+    );
+}
+
 #[test]
 #[ignore]
 fn text_rate_limit_surfaces_retryable_kind_with_retry_after() {
@@ -838,6 +957,48 @@ fn image_generation_returns_bytes_and_records_asset() {
     assert_eq!(payload.get("n").and_then(|v| v.as_u64()), Some(1));
 }
 
+#[test]
+#[ignore]
+fn throttle_image_rate_limit_surfaces_before_a_second_http_request() {
+    let bytes = image_bytes();
+    let b64 = base64_image_field(&bytes);
+    let body = format!(r#"{{"data":[{{"b64_json":"{b64}"}}]}}"#);
+    let server = capturing_server(http_response("HTTP/1.1 200 OK", "application/json", &body));
+    let env_var = "PFIT_THROTTLE_IMAGE_TOKEN";
+    unsafe { std::env::set_var(env_var, "test-token") };
+    let mut entry = image_entry(&format!("http://{}", server.addr), env_var);
+    entry.requests_per_minute = Some(1);
+    let provider = build_image_provider(&entry).expect("build throttled image provider");
+    let request = ImageGenerationRequest {
+        scene_key: "scene-1".into(),
+        prompt: "quota composition".into(),
+        output_path: "assets/generated/quota.png".into(),
+    };
+
+    provider.generate(&request).expect("first image request");
+    let error = provider
+        .generate(&request)
+        .expect_err("second image throttled");
+
+    assert!(matches!(
+        error.kind,
+        plotforge_agent::ImageProviderErrorKind::RateLimit {
+            retry_after_ms: Some(_)
+        }
+    ));
+    server.handle.join().expect("server thread");
+    assert_eq!(
+        server
+            .captured
+            .lock()
+            .expect("capture")
+            .matches("POST ")
+            .count(),
+        1
+    );
+    unsafe { std::env::remove_var(env_var) };
+}
+
 // ===========================================================================
 // Test scenario 7: TTS generation → audio bytes returned.
 //
@@ -916,6 +1077,50 @@ fn tts_generation_returns_audio_bytes() {
     );
 
     unsafe { std::env::remove_var("PFIT_TTS_TOKEN") };
+}
+
+#[test]
+#[ignore]
+fn throttle_tts_rate_limit_surfaces_before_a_second_http_request() {
+    let audio = b"ID3-throttle-audio";
+    let server = capturing_server(http_binary_response("audio/mpeg", audio));
+    let env_var = "PFIT_THROTTLE_TTS_TOKEN";
+    unsafe { std::env::set_var(env_var, "test-token") };
+    let mut entry = tts_entry(&format!("http://{}", server.addr), env_var);
+    entry.requests_per_minute = Some(1);
+    let provider = build_tts_provider(&entry).expect("build throttled TTS provider");
+    let request = TtsRequest {
+        target: TtsTarget::Scene {
+            scene_key: "scene-1".into(),
+        },
+        text: "quota composition".into(),
+        voice: String::new(),
+        output_path: "assets/generated/quota.mp3".into(),
+        asset_kind: AssetKind::Audio,
+    };
+
+    provider.synthesize(&request).expect("first TTS request");
+    let error = provider
+        .synthesize(&request)
+        .expect_err("second TTS throttled");
+
+    assert!(matches!(
+        error.kind,
+        plotforge_agent::TtsProviderErrorKind::RateLimit {
+            retry_after_ms: Some(_)
+        }
+    ));
+    server.handle.join().expect("server thread");
+    assert_eq!(
+        server
+            .captured
+            .lock()
+            .expect("capture")
+            .matches("POST ")
+            .count(),
+        1
+    );
+    unsafe { std::env::remove_var(env_var) };
 }
 
 // ===========================================================================

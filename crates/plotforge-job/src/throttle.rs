@@ -204,7 +204,11 @@ fn enforce_request_rate(
 }
 
 fn refill_tokens(state: &mut ThrottleState, requests_per_minute: u32, now_ms: u64) {
-    if now_ms <= state.last_refill_ms {
+    if now_ms < state.last_refill_ms {
+        state.last_refill_ms = now_ms;
+        return;
+    }
+    if now_ms == state.last_refill_ms {
         return;
     }
     let elapsed_ms = now_ms - state.last_refill_ms;
@@ -280,6 +284,38 @@ mod tests {
         );
         clock.set(30_000);
         drop(gate.acquire(None).expect("one token refilled"));
+    }
+
+    #[test]
+    fn throttle_gate_clock_rollback_resets_refill_baseline() {
+        let clock = FakeClock::new(10_000);
+        let gate = gate(
+            ThrottleConfig {
+                requests_per_minute: Some(1),
+                ..config()
+            },
+            clock.clone(),
+        );
+        drop(gate.acquire(None).expect("initial token"));
+
+        clock.set(5_000);
+        assert_eq!(
+            gate.acquire(None)
+                .expect_err("rollback does not mint a token"),
+            ThrottleError::RateLimited {
+                retry_after_ms: 60_000
+            }
+        );
+        clock.set(64_999);
+        assert_eq!(
+            gate.acquire(None).expect_err("one millisecond remains"),
+            ThrottleError::RateLimited { retry_after_ms: 1 }
+        );
+        clock.set(65_000);
+        drop(
+            gate.acquire(None)
+                .expect("token refills from rollback baseline"),
+        );
     }
 
     #[test]

@@ -155,6 +155,7 @@ impl TtsProviderOutput {
 pub enum TtsProviderErrorKind {
     Provider,
     Timeout,
+    ThrottlePreflight,
     /// Upstream returned a 429 (Too Many Requests). `retry_after_ms` carries
     /// the server-advised delay parsed from the `Retry-After` header, in
     /// milliseconds, when present. Mirrors the image/text provider pattern.
@@ -188,6 +189,14 @@ impl TtsProviderError {
         Self {
             kind: TtsProviderErrorKind::Timeout,
             code: "tts_provider_timeout".into(),
+            message: message.into(),
+        }
+    }
+
+    fn throttle_preflight(message: impl Into<String>) -> Self {
+        Self {
+            kind: TtsProviderErrorKind::ThrottlePreflight,
+            code: "tts_provider_throttle_preflight".into(),
             message: message.into(),
         }
     }
@@ -232,6 +241,9 @@ impl TtsProviderError {
                 format!("tts provider timed out: {}", self.message),
             ),
             TtsProviderErrorKind::RateLimit { .. } => {
+                RuntimeError::redacted(self.code, self.message)
+            }
+            TtsProviderErrorKind::ThrottlePreflight => {
                 RuntimeError::redacted(self.code, self.message)
             }
             TtsProviderErrorKind::ContentFiltered { .. } => {
@@ -559,6 +571,7 @@ pub struct OpenAiTtsClient<R> {
     credential_env_var: String,
     credential_resolver: R,
     client: reqwest::blocking::Client,
+    throttle: Option<crate::throttle::ProviderThrottle>,
 }
 
 impl<R> OpenAiTtsClient<R>
@@ -610,7 +623,16 @@ where
             credential_env_var: credential_env_var.into(),
             credential_resolver,
             client,
+            throttle: None,
         })
+    }
+
+    pub(crate) fn with_throttle(
+        mut self,
+        throttle: Option<crate::throttle::ProviderThrottle>,
+    ) -> Self {
+        self.throttle = throttle;
+        self
     }
 }
 
@@ -666,6 +688,12 @@ where
                 })?;
             headers.insert("Authorization", value);
         }
+        let _permit = self
+            .throttle
+            .as_ref()
+            .map(crate::throttle::ProviderThrottle::acquire)
+            .transpose()
+            .map_err(map_tts_throttle_error)?;
         let response = self
             .client
             .post(&speech_url)
@@ -725,6 +753,23 @@ where
             None,
             1,
         ))
+    }
+}
+
+fn map_tts_throttle_error(error: crate::throttle::ProviderThrottleError) -> TtsProviderError {
+    match error.into_failure() {
+        crate::throttle::ThrottleFailure::RateLimit {
+            retry_after_ms,
+            message,
+        } => TtsProviderError::rate_limit(retry_after_ms, message),
+        crate::throttle::ThrottleFailure::BudgetExceeded { spent, budget } => {
+            TtsProviderError::throttle_preflight(format!(
+                "unsupported TTS-provider daily token budget state: spent={spent}, budget={budget}"
+            ))
+        }
+        crate::throttle::ThrottleFailure::Preflight { message } => {
+            TtsProviderError::throttle_preflight(redact_trace_text(&message))
+        }
     }
 }
 

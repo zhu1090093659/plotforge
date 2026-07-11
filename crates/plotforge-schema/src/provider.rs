@@ -51,10 +51,13 @@ pub struct ProviderEntry {
     #[serde(default)]
     pub max_output_tokens: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub max_concurrency: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub requests_per_minute: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub daily_token_budget: Option<u64>,
 }
 
@@ -82,10 +85,13 @@ pub struct ImageProviderEntry {
     #[serde(default = "default_image_quality")]
     pub default_quality: String,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub max_concurrency: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub requests_per_minute: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub daily_token_budget: Option<u64>,
 }
 
@@ -118,10 +124,13 @@ pub struct TtsProviderEntry {
     #[serde(default = "default_tts_format")]
     pub format: String,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub max_concurrency: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub requests_per_minute: Option<u32>,
     #[serde(default)]
+    #[schemars(range(min = 1))]
     pub daily_token_budget: Option<u64>,
 }
 
@@ -230,6 +239,38 @@ mod tests {
         assert_eq!(decoded.max_concurrency, Some(2));
         assert_eq!(decoded.requests_per_minute, Some(30));
         assert_eq!(decoded.daily_token_budget, Some(100_000));
+    }
+
+    #[test]
+    fn provider_quota_contracts_require_positive_values() {
+        for schema in [
+            serde_json::to_value(schemars::schema_for!(ProviderEntry)).expect("provider schema"),
+            serde_json::to_value(schemars::schema_for!(ImageProviderEntry)).expect("image schema"),
+            serde_json::to_value(schemars::schema_for!(TtsProviderEntry)).expect("TTS schema"),
+        ] {
+            for field in [
+                "max_concurrency",
+                "requests_per_minute",
+                "daily_token_budget",
+            ] {
+                let property = &schema["properties"][field];
+                assert!(
+                    contains_minimum_one(property),
+                    "{field} must carry minimum=1 in {property}"
+                );
+            }
+        }
+    }
+
+    fn contains_minimum_one(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Object(fields) => {
+                fields.get("minimum") == Some(&serde_json::json!(1))
+                    || fields.values().any(contains_minimum_one)
+            }
+            serde_json::Value::Array(values) => values.iter().any(contains_minimum_one),
+            _ => false,
+        }
     }
 
     #[test]

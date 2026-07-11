@@ -772,6 +772,16 @@ pub fn upsert_image_provider(entry: ImageProviderEntry) -> StudioCommandResult<I
         code: "upsert_image_provider_invalid".into(),
         message: error.to_string(),
     })?;
+    validate_provider_quotas(
+        entry.max_concurrency,
+        entry.requests_per_minute,
+        entry.daily_token_budget,
+        false,
+    )
+    .map_err(|message| StudioCommandError {
+        code: "upsert_image_provider_invalid".into(),
+        message,
+    })?;
 
     let mut registry =
         plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
@@ -855,6 +865,16 @@ pub fn upsert_tts_provider(entry: TtsProviderEntry) -> StudioCommandResult<TtsPr
     .map_err(|error| StudioCommandError {
         code: "upsert_tts_provider_invalid".into(),
         message: error.to_string(),
+    })?;
+    validate_provider_quotas(
+        entry.max_concurrency,
+        entry.requests_per_minute,
+        entry.daily_token_budget,
+        false,
+    )
+    .map_err(|message| StudioCommandError {
+        code: "upsert_tts_provider_invalid".into(),
+        message,
     })?;
 
     let mut registry =
@@ -944,6 +964,30 @@ fn validate_media_provider_fields(
     .validate()
 }
 
+fn validate_provider_quotas(
+    max_concurrency: Option<u32>,
+    requests_per_minute: Option<u32>,
+    daily_token_budget: Option<u64>,
+    supports_daily_token_budget: bool,
+) -> Result<(), String> {
+    if max_concurrency == Some(0) {
+        return Err("max_concurrency must be greater than 0".into());
+    }
+    if requests_per_minute == Some(0) {
+        return Err("requests_per_minute must be greater than 0".into());
+    }
+    if daily_token_budget == Some(0) {
+        return Err("daily_token_budget must be greater than 0".into());
+    }
+    if daily_token_budget.is_some() && !supports_daily_token_budget {
+        return Err(
+            "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn upsert_image_provider_entry(registry: &mut ProviderRegistry, entry: ImageProviderEntry) {
     if let Some(existing) = registry
         .image_providers
@@ -1027,6 +1071,16 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
     config.validate().map_err(|error| StudioCommandError {
         code: "upsert_provider_invalid".into(),
         message: error.to_string(),
+    })?;
+    validate_provider_quotas(
+        entry.max_concurrency,
+        entry.requests_per_minute,
+        entry.daily_token_budget,
+        true,
+    )
+    .map_err(|message| StudioCommandError {
+        code: "upsert_provider_invalid".into(),
+        message,
     })?;
     let mut registry =
         plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
@@ -2644,8 +2698,8 @@ mod tests {
         update_story_craft_edit_document, update_world_edit_document, upsert_image_provider,
         upsert_image_provider_entry, upsert_project_prompt_template, upsert_provider,
         upsert_tts_provider, upsert_tts_provider_entry, validate_media_provider_fields,
-        validate_workshop_package, write_source_file, write_steam_submission_kit,
-        write_workshop_publish_draft,
+        validate_provider_quotas, validate_workshop_package, write_source_file,
+        write_steam_submission_kit, write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
@@ -3925,6 +3979,22 @@ mod tests {
     }
 
     #[test]
+    fn provider_quota_validation_rejects_zero_values() {
+        assert_eq!(
+            validate_provider_quotas(Some(0), None, None, true).unwrap_err(),
+            "max_concurrency must be greater than 0"
+        );
+        assert_eq!(
+            validate_provider_quotas(None, Some(0), None, true).unwrap_err(),
+            "requests_per_minute must be greater than 0"
+        );
+        assert_eq!(
+            validate_provider_quotas(None, None, Some(0), true).unwrap_err(),
+            "daily_token_budget must be greater than 0"
+        );
+    }
+
+    #[test]
     fn delete_provider_reports_missing_id_explicitly() {
         // Finding H4: `delete_provider` must surface `provider_not_found`
         // for an unknown id (no silent fallback / no panic). The id here is
@@ -3996,6 +4066,21 @@ mod tests {
         let error = upsert_image_provider(credential_value)
             .expect_err("credential values are not valid env-var names");
         assert_eq!(error.code, "upsert_image_provider_invalid");
+    }
+
+    #[test]
+    fn media_provider_upsert_rejects_daily_token_budget_before_persistence() {
+        let mut image = sample_image_provider_entry("image-budget");
+        image.daily_token_budget = Some(100);
+        let error = upsert_image_provider(image).expect_err("image token budget unsupported");
+        assert_eq!(error.code, "upsert_image_provider_invalid");
+        assert!(error.message.contains("supported only by text providers"));
+
+        let mut tts = sample_tts_provider_entry("tts-budget");
+        tts.daily_token_budget = Some(100);
+        let error = upsert_tts_provider(tts).expect_err("TTS token budget unsupported");
+        assert_eq!(error.code, "upsert_tts_provider_invalid");
+        assert!(error.message.contains("supported only by text providers"));
     }
 
     #[test]

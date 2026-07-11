@@ -1639,7 +1639,7 @@
         "daily_token_budget": {
           "default": null,
           "format": "uint64",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -1665,7 +1665,7 @@
         "max_concurrency": {
           "default": null,
           "format": "uint32",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -1677,7 +1677,7 @@
         "requests_per_minute": {
           "default": null,
           "format": "uint32",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -2975,7 +2975,7 @@
         "daily_token_budget": {
           "default": null,
           "format": "uint64",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -2999,7 +2999,7 @@
         "max_concurrency": {
           "default": null,
           "format": "uint32",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -3020,7 +3020,7 @@
         "requests_per_minute": {
           "default": null,
           "format": "uint32",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -4615,7 +4615,7 @@
         "daily_token_budget": {
           "default": null,
           "format": "uint64",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -4637,7 +4637,7 @@
         "max_concurrency": {
           "default": null,
           "format": "uint32",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -4649,7 +4649,7 @@
         "requests_per_minute": {
           "default": null,
           "format": "uint32",
-          "minimum": 0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"

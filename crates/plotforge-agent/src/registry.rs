@@ -15,6 +15,7 @@
 
 use std::path::PathBuf;
 
+use plotforge_job::ThrottleConfig;
 use plotforge_schema::{
     ImageProviderEntry, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
     RemoteModelList, TtsProviderEntry, redact_trace_text,
@@ -184,18 +185,22 @@ pub fn build_text_provider(
         max_output_tokens: entry.max_output_tokens,
         supports_json_schema,
     };
+    let throttle = build_throttle(ThrottleConfig {
+        provider_id: entry.label.clone(),
+        max_concurrency: entry.max_concurrency,
+        requests_per_minute: entry.requests_per_minute,
+        daily_token_budget: entry.daily_token_budget,
+    })?;
     if entry.credential_env_var.trim().is_empty() {
-        Ok(Box::new(ConfiguredTextModelProvider::new(
-            config,
-            client,
-            OptionalEnvCredentialResolver,
-        )))
+        Ok(Box::new(
+            ConfiguredTextModelProvider::new(config, client, OptionalEnvCredentialResolver)
+                .with_throttle(throttle),
+        ))
     } else {
-        Ok(Box::new(ConfiguredTextModelProvider::new(
-            config,
-            client,
-            EnvCredentialResolver,
-        )))
+        Ok(Box::new(
+            ConfiguredTextModelProvider::new(config, client, EnvCredentialResolver)
+                .with_throttle(throttle),
+        ))
     }
 }
 
@@ -224,12 +229,19 @@ pub fn build_text_provider(
 pub fn build_image_provider(
     entry: &ImageProviderEntry,
 ) -> Result<Box<dyn ImageProvider>, ProviderBuildError> {
-    let client = OpenAiImageClient::new(entry, EnvCredentialResolver).map_err(|error| {
-        ProviderBuildError::ClientConstruction {
+    reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
+    let throttle = build_throttle(ThrottleConfig {
+        provider_id: entry.id.clone(),
+        max_concurrency: entry.max_concurrency,
+        requests_per_minute: entry.requests_per_minute,
+        daily_token_budget: None,
+    })?;
+    let client = OpenAiImageClient::new(entry, EnvCredentialResolver)
+        .map_err(|error| ProviderBuildError::ClientConstruction {
             provider_id: entry.id.clone(),
             message: error.message,
-        }
-    })?;
+        })?
+        .with_throttle(throttle);
     Ok(Box::new(client))
 }
 
@@ -259,12 +271,44 @@ pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProvi
 pub fn build_tts_provider(
     entry: &TtsProviderEntry,
 ) -> Result<OpenAiTtsClient<EnvCredentialResolver>, ProviderBuildError> {
-    OpenAiTtsClient::from_entry(entry, EnvCredentialResolver).map_err(|error| {
-        ProviderBuildError::ClientConstruction {
+    reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
+    let throttle = build_throttle(ThrottleConfig {
+        provider_id: entry.id.clone(),
+        max_concurrency: entry.max_concurrency,
+        requests_per_minute: entry.requests_per_minute,
+        daily_token_budget: None,
+    })?;
+    OpenAiTtsClient::from_entry(entry, EnvCredentialResolver)
+        .map(|client| client.with_throttle(throttle))
+        .map_err(|error| ProviderBuildError::ClientConstruction {
             provider_id: entry.id.clone(),
             message: error.message,
+        })
+}
+
+fn build_throttle(
+    config: ThrottleConfig,
+) -> Result<Option<crate::throttle::ProviderThrottle>, ProviderBuildError> {
+    let provider_id = config.provider_id.clone();
+    crate::throttle::ProviderThrottle::from_config(config).map_err(|error| {
+        ProviderBuildError::InvalidThrottle {
+            provider_id,
+            message: error.to_string(),
         }
     })
+}
+
+fn reject_media_daily_token_budget(
+    provider_id: &str,
+    daily_token_budget: Option<u64>,
+) -> Result<(), ProviderBuildError> {
+    if daily_token_budget.is_some() {
+        return Err(ProviderBuildError::UnsupportedQuota {
+            provider_id: provider_id.to_string(),
+            message: "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens".into(),
+        });
+    }
+    Ok(())
 }
 
 /// Returns the first enabled TTS provider entry in `registry`, or `None`
@@ -654,6 +698,16 @@ pub enum ProviderRegistryError {
 pub enum ProviderBuildError {
     #[error("could not construct HTTP client for provider `{provider_id}`: {message}")]
     ClientConstruction {
+        provider_id: String,
+        message: String,
+    },
+    #[error("invalid throttle configuration for provider `{provider_id}`: {message}")]
+    InvalidThrottle {
+        provider_id: String,
+        message: String,
+    },
+    #[error("unsupported quota configuration for provider `{provider_id}`: {message}")]
+    UnsupportedQuota {
         provider_id: String,
         message: String,
     },
@@ -1238,6 +1292,19 @@ mod tests {
             requests_per_minute: None,
             daily_token_budget: None,
         }
+    }
+
+    #[test]
+    fn media_daily_token_budget_is_rejected_as_unsupported() {
+        let error = reject_media_daily_token_budget("image-a", Some(1))
+            .expect_err("media daily tokens unsupported");
+        assert!(matches!(error, ProviderBuildError::UnsupportedQuota { .. }));
+        assert!(
+            error
+                .to_string()
+                .contains("supported only by text providers")
+        );
+        reject_media_daily_token_budget("image-a", None).expect("no budget remains supported");
     }
 
     #[test]

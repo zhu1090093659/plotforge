@@ -263,6 +263,8 @@ pub fn complete_with_mcp_tools_with_usage_reporter(
                             "text_provider_timeout".into()
                         }
                         crate::TextModelProviderErrorKind::RateLimit { .. } => error.code,
+                        crate::TextModelProviderErrorKind::ThrottlePreflight
+                        | crate::TextModelProviderErrorKind::BudgetExceeded { .. } => error.code,
                         crate::TextModelProviderErrorKind::ContentFiltered { .. } => error.code,
                         crate::TextModelProviderErrorKind::OutputTruncated { .. } => error.code,
                     },

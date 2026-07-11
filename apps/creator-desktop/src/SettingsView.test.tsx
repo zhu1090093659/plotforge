@@ -526,6 +526,40 @@ describe("SettingsView", () => {
     expect(saved.max_output_tokens).toBe(8192);
   });
 
+  it("persists optional text-provider quotas through the whole-entry bridge", async () => {
+    const upsert = vi.fn(async (entry: ProviderEntry) => entry);
+    renderSettingsView({
+      dataSource: settingsTestDataSource({
+        async upsertProvider(entry) {
+          return upsert(entry);
+        },
+        async listProviders() {
+          return [];
+        },
+      }),
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.change(screen.getByLabelText("Max concurrency (optional)"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByLabelText("Requests per minute (optional)"), {
+      target: { value: "30" },
+    });
+    fireEvent.change(screen.getByLabelText("Daily token budget (optional)"), {
+      target: { value: "50000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    expect(upsert.mock.calls[0][0]).toMatchObject({
+      max_concurrency: 2,
+      requests_per_minute: 30,
+      daily_token_budget: 50000,
+    });
+  });
+
   it("supports add, edit, delete, and test actions for image providers", async () => {
     const upsert = vi.fn(async (entry: ImageProviderEntry) => entry);
     const remove = vi.fn(async (_id: string) => savedImageProvider);
@@ -570,11 +604,27 @@ describe("SettingsView", () => {
     fireEvent.change(within(section).getByLabelText("Credential env var"), {
       target: { value: "IMAGE_API_KEY" },
     });
+    fireEvent.change(within(section).getByLabelText("Max concurrency (optional)"), {
+      target: { value: "3" },
+    });
+    fireEvent.change(within(section).getByLabelText("Requests per minute (optional)"), {
+      target: { value: "12" },
+    });
+    expect(
+      (within(section).getByLabelText("Daily token budget (optional)") as HTMLInputElement)
+        .disabled,
+    ).toBe(true);
+    expect(within(section).getByText(/apply only to text providers/)).toBeTruthy();
     fireEvent.click(
       within(section).getByRole("button", { name: "Save provider" }),
     );
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     expect(upsert.mock.calls[0][0].credential_env_var).toBe("IMAGE_API_KEY");
+    expect(upsert.mock.calls[0][0]).toMatchObject({
+      max_concurrency: 3,
+      requests_per_minute: 12,
+      daily_token_budget: null,
+    });
 
     expect(await within(section).findByText("image-prod")).toBeTruthy();
     fireEvent.click(within(section).getByRole("button", { name: "Edit" }));
@@ -642,11 +692,26 @@ describe("SettingsView", () => {
     fireEvent.change(within(section).getByLabelText("Default voice"), {
       target: { value: "alloy" },
     });
+    fireEvent.change(within(section).getByLabelText("Max concurrency (optional)"), {
+      target: { value: "4" },
+    });
+    fireEvent.change(within(section).getByLabelText("Requests per minute (optional)"), {
+      target: { value: "20" },
+    });
+    expect(
+      (within(section).getByLabelText("Daily token budget (optional)") as HTMLInputElement)
+        .disabled,
+    ).toBe(true);
     fireEvent.click(
       within(section).getByRole("button", { name: "Save provider" }),
     );
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     expect(upsert.mock.calls[0][0].credential_env_var).toBe("TTS_API_KEY");
+    expect(upsert.mock.calls[0][0]).toMatchObject({
+      max_concurrency: 4,
+      requests_per_minute: 20,
+      daily_token_budget: null,
+    });
 
     expect(await within(section).findByText("tts-prod")).toBeTruthy();
     fireEvent.click(within(section).getByRole("button", { name: "Edit" }));
