@@ -70,7 +70,7 @@ pub(crate) fn httpdate_to_system_time(value: &str) -> Option<std::time::SystemTi
     if parts[5] != "GMT" {
         return None;
     }
-    let epoch_seconds = days_from_civil(year, month, day)? as i64 * 86_400
+    let epoch_seconds = days_from_civil(year, month, day)? * 86_400
         + (hour as i64 * 3600)
         + (minute as i64 * 60)
         + second as i64;
