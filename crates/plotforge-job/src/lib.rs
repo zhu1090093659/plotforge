@@ -3,8 +3,26 @@ use std::collections::BTreeMap;
 use plotforge_schema::{JobCost, JobFailure, JobKind, JobProgress, JobRecord, JobStatus};
 use thiserror::Error;
 
+mod usage;
+
+pub use usage::{
+    UsageKind, UsageLedger, UsageLedgerEntry, UsageLedgerError, UsageReport, usage_ledger_path,
+};
+
 pub trait JobClock {
     fn now_ms(&self) -> u64;
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SystemJobClock;
+
+impl JobClock for SystemJobClock {
+    fn now_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
