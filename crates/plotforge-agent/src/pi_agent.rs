@@ -368,6 +368,7 @@ mod tests {
         assert!(result.descriptor.is_local_pi);
         assert_eq!(result.descriptor.agent_id, "pi-agent-local");
         assert!(!result.descriptor.capabilities.is_empty());
+        assert_eq!(result.usage, None, "local mock runs do not report usage");
         assert_eq!(result.reproducibility.run_seed, 7);
         assert!(
             result
