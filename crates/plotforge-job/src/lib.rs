@@ -3,8 +3,10 @@ use std::collections::BTreeMap;
 use plotforge_schema::{JobCost, JobFailure, JobKind, JobProgress, JobRecord, JobStatus};
 use thiserror::Error;
 
+mod throttle;
 mod usage;
 
+pub use throttle::{DailyTokenUsage, ThrottleConfig, ThrottleError, ThrottleGate, ThrottlePermit};
 pub use usage::{
     UsageKind, UsageLedger, UsageLedgerEntry, UsageLedgerError, UsageReport, usage_ledger_path,
 };
