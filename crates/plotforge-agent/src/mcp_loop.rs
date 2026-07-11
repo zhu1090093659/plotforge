@@ -58,7 +58,7 @@ use plotforge_schema::{
     ReproducibilityMetadata, UsageInfo, contains_secret_marker_text,
 };
 
-use crate::pipelines::complete_text_agent_output_with_usage;
+use crate::pipelines::{RetryPolicy, complete_text_agent_output_with_usage, complete_with_retry};
 use crate::shared::stable_sha256_hash;
 use crate::{TextModelProvider, TextModelRequest, TextModelResponse};
 
@@ -253,23 +253,8 @@ pub fn complete_with_mcp_tools_with_usage_reporter(
             // chat messages are not assembled here.
             messages: None,
         };
-        let response =
-            provider
-                .complete(&model_request)
-                .map_err(|error| McpLoopError::ProviderFailure {
-                    code: match error.kind {
-                        crate::TextModelProviderErrorKind::Provider => "text_provider_error".into(),
-                        crate::TextModelProviderErrorKind::Timeout => {
-                            "text_provider_timeout".into()
-                        }
-                        crate::TextModelProviderErrorKind::RateLimit { .. } => error.code,
-                        crate::TextModelProviderErrorKind::ThrottlePreflight
-                        | crate::TextModelProviderErrorKind::BudgetExceeded { .. } => error.code,
-                        crate::TextModelProviderErrorKind::ContentFiltered { .. } => error.code,
-                        crate::TextModelProviderErrorKind::OutputTruncated { .. } => error.code,
-                    },
-                    message: error.message,
-                })?;
+        let response = complete_with_retry(provider, &model_request, &RetryPolicy::default())
+            .map_err(provider_failure)?;
         if let (Some(reporter), Some(identity), Some(usage)) = (
             reporter.as_deref_mut(),
             provider.usage_identity(),
@@ -399,6 +384,22 @@ pub fn complete_with_mcp_tools_with_usage_reporter(
     }
 
     Err(McpLoopError::ExceededRounds(MAX_ROUNDS))
+}
+
+fn provider_failure(error: crate::TextModelProviderError) -> McpLoopError {
+    let code = match &error.kind {
+        crate::TextModelProviderErrorKind::Provider => "text_provider_error".into(),
+        crate::TextModelProviderErrorKind::Timeout => "text_provider_timeout".into(),
+        crate::TextModelProviderErrorKind::RateLimit { .. }
+        | crate::TextModelProviderErrorKind::ThrottlePreflight
+        | crate::TextModelProviderErrorKind::BudgetExceeded { .. }
+        | crate::TextModelProviderErrorKind::ContentFiltered { .. }
+        | crate::TextModelProviderErrorKind::OutputTruncated { .. } => error.code,
+    };
+    McpLoopError::ProviderFailure {
+        code,
+        message: error.message,
+    }
 }
 
 /// Finalize the loop by running the last raw JSON through the one-shot
@@ -709,6 +710,32 @@ mod tests {
         }
     }
 
+    struct RateLimitedThenSuccessProvider {
+        calls: Cell<usize>,
+        response: String,
+    }
+
+    impl TextModelProvider for RateLimitedThenSuccessProvider {
+        fn reproducibility_metadata(&self, run_seed: u64) -> ReproducibilityMetadata {
+            ReproducibilityMetadata::local_mock(run_seed)
+        }
+
+        fn complete(
+            &self,
+            _request: &TextModelRequest,
+        ) -> Result<TextModelResponse, crate::TextModelProviderError> {
+            let call = self.calls.get();
+            self.calls.set(call + 1);
+            if call == 0 {
+                return Err(crate::TextModelProviderError::rate_limit(
+                    Some(0),
+                    "local throttle requested an immediate retry",
+                ));
+            }
+            Ok(TextModelResponse::json(self.response.clone()))
+        }
+    }
+
     /// A `McpToolClient` mock that returns canned tool-call results. Records
     /// the invocations so tests can assert the loop called the right tools.
     struct MockMcpToolClient {
@@ -973,6 +1000,34 @@ mod tests {
         assert_eq!(decoded.reproducibility, result.reproducibility);
         assert!(!encoded.contains("file: a.txt"));
         assert!(!encoded.contains("/tmp"));
+    }
+
+    #[test]
+    fn mcp_loop_uses_shared_retry_policy_for_provider_rounds() {
+        let provider = RateLimitedThenSuccessProvider {
+            calls: Cell::new(0),
+            response: final_envelope_json(
+                "pi-agent-pi-agent-local",
+                "pi-agent-mcp-pi-agent-local-r0",
+            ),
+        };
+        let mcp = MockMcpToolClient::ok("unused");
+
+        let (_, envelope) = complete_with_mcp_tools(
+            &provider,
+            "pi-agent-local",
+            make_request("pi-agent-local"),
+            &mcp,
+            &["local-fs".to_string()],
+            &[],
+        )
+        .expect("retryable provider error must be retried by the shared policy");
+
+        assert_eq!(provider.calls.get(), 2);
+        assert!(matches!(
+            envelope.proposal.output,
+            AgentProposalPayload::ScenePlan(_)
+        ));
     }
 
     #[test]

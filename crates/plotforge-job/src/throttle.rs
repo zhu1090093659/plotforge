@@ -6,7 +6,7 @@ use crate::{JobClock, UsageLedger};
 
 const TOKEN_SCALE: u128 = 60_000;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct ThrottleConfig {
     pub provider_id: String,
     pub max_concurrency: Option<u32>,

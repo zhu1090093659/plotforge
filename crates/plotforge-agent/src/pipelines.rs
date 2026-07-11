@@ -136,7 +136,7 @@ impl RetryPolicy {
 /// truncated errors are non-retryable and surface immediately. Returns the
 /// final response on success, or the last error annotated with the number of
 /// attempts made (in `error.code` for trace visibility).
-fn complete_with_retry<P>(
+pub(crate) fn complete_with_retry<P>(
     provider: &P,
     request: &crate::providers_text::TextModelRequest,
     policy: &RetryPolicy,

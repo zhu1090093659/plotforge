@@ -178,7 +178,7 @@ pub fn build_text_provider(
     );
     let config = TextProviderConfig {
         enabled: entry.enabled,
-        provider: entry.label.clone(),
+        provider: entry.id.clone(),
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
@@ -186,7 +186,7 @@ pub fn build_text_provider(
         supports_json_schema,
     };
     let throttle = build_throttle(ThrottleConfig {
-        provider_id: entry.label.clone(),
+        provider_id: entry.id.clone(),
         max_concurrency: entry.max_concurrency,
         requests_per_minute: entry.requests_per_minute,
         daily_token_budget: entry.daily_token_budget,
@@ -290,7 +290,7 @@ fn build_throttle(
     config: ThrottleConfig,
 ) -> Result<Option<crate::throttle::ProviderThrottle>, ProviderBuildError> {
     let provider_id = config.provider_id.clone();
-    crate::throttle::ProviderThrottle::from_config(config).map_err(|error| {
+    crate::throttle::ProviderThrottle::shared_from_config(config).map_err(|error| {
         ProviderBuildError::InvalidThrottle {
             provider_id,
             message: error.to_string(),
@@ -988,6 +988,55 @@ mod tests {
                 || error.code.contains("text_provider_timeout"),
             "expected an HTTP transport error for the unreachable no-auth endpoint, got: {error}"
         );
+    }
+
+    #[test]
+    fn build_text_provider_uses_stable_registry_id_for_usage_identity() {
+        let entry = ProviderEntry {
+            id: "stable-provider-id".into(),
+            kind: ProviderKind::OpenAiCompatible,
+            label: "Editable display label".into(),
+            endpoint_url: "http://localhost:11434/v1".into(),
+            model: "model-a".into(),
+            credential_env_var: String::new(),
+            enabled: true,
+            max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        };
+
+        let provider = build_text_provider(&entry).expect("provider builds");
+        let identity = provider
+            .usage_identity()
+            .expect("registered provider identity");
+        assert_eq!(identity.provider_id, entry.id);
+        assert_ne!(identity.provider_id, entry.label);
+    }
+
+    #[test]
+    fn rebuilding_provider_throttle_reuses_process_state() {
+        let config = ThrottleConfig {
+            provider_id: "registry-rebuild-throttle-test".into(),
+            requests_per_minute: Some(1),
+            ..ThrottleConfig::default()
+        };
+        let first = build_throttle(config.clone())
+            .expect("first provider build")
+            .expect("quota creates throttle");
+        let second = build_throttle(config)
+            .expect("second provider build")
+            .expect("quota creates throttle");
+
+        drop(first.acquire().expect("first build consumes token"));
+        let failure = second
+            .acquire()
+            .expect_err("rebuilt provider must observe the same bucket")
+            .into_failure();
+        assert!(matches!(
+            failure,
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
     }
 
     // -----------------------------------------------------------------------

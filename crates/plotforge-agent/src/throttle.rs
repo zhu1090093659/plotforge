@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
+};
 
 use plotforge_job::{
     SystemJobClock, ThrottleConfig, ThrottleError, ThrottleGate, ThrottlePermit, UsageLedger,
@@ -42,6 +46,8 @@ pub(crate) enum ProviderThrottleError {
     Gate(#[from] ThrottleError),
     #[error("failed to load the usage ledger for daily token budget enforcement: {0}")]
     Usage(#[from] UsageLedgerError),
+    #[error("provider throttle registry state is unavailable after a concurrent panic")]
+    RegistryState,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -87,11 +93,44 @@ impl ProviderThrottleError {
                     "failed to load the usage ledger for daily token budget enforcement: {error}"
                 ),
             },
+            Self::RegistryState => ThrottleFailure::Preflight {
+                message: "provider throttle registry state is unavailable after a concurrent panic"
+                    .into(),
+            },
         }
     }
 }
 
 impl ProviderThrottle {
+    /// Returns the process-shared gate for a stable provider id and quota
+    /// configuration. Studio rebuilds provider adapters between turns, so
+    /// keeping this state outside the adapter is required for RPM and
+    /// concurrency quotas to span those rebuilds.
+    pub(crate) fn shared_from_config(
+        config: ThrottleConfig,
+    ) -> Result<Option<Self>, ProviderThrottleError> {
+        if config.max_concurrency.is_none()
+            && config.requests_per_minute.is_none()
+            && config.daily_token_budget.is_none()
+        {
+            return Ok(None);
+        }
+
+        static REGISTRY: OnceLock<Mutex<HashMap<ThrottleConfig, ProviderThrottle>>> =
+            OnceLock::new();
+        let registry = REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut registry = registry
+            .lock()
+            .map_err(|_| ProviderThrottleError::RegistryState)?;
+        if let Some(throttle) = registry.get(&config) {
+            return Ok(Some(throttle.clone()));
+        }
+
+        let throttle = Self::from_config(config.clone())?.expect("quota config creates throttle");
+        registry.insert(config, throttle.clone());
+        Ok(Some(throttle))
+    }
+
     pub(crate) fn from_config(
         config: ThrottleConfig,
     ) -> Result<Option<Self>, ProviderThrottleError> {
