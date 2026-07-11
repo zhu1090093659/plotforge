@@ -31,7 +31,7 @@ use crate::prompts::{ChatMessage, MessageRole};
 use crate::providers_text::{
     TextModelClient, TextModelClientRequest, TextModelProviderError, TextModelResponse,
 };
-use crate::shared::parse_retry_after;
+use crate::shared::{join_provider_endpoint, parse_retry_after};
 
 /// The maximum time a single provider HTTP call may take before it is
 /// treated as a timeout. Tuned for the slowest supported API (Anthropic
@@ -382,7 +382,10 @@ impl TextModelClient for OpenAiCompatibleClient {
                 "openai_compatible provider has no endpoint_url",
             )
         })?;
-        let chat_url = join_endpoint(endpoint_url, "chat/completions");
+        let chat_url =
+            join_provider_endpoint(endpoint_url, "chat/completions").map_err(|message| {
+                TextModelProviderError::provider("text_provider_invalid_endpoint", message)
+            })?;
 
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -531,7 +534,10 @@ impl TextModelClient for OpenAiResponsesClient {
                 "openai_responses provider has no endpoint_url",
             )
         })?;
-        let responses_url = join_endpoint(endpoint_url, "responses");
+        let responses_url =
+            join_provider_endpoint(endpoint_url, "responses").map_err(|message| {
+                TextModelProviderError::provider("text_provider_invalid_endpoint", message)
+            })?;
 
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -699,7 +705,10 @@ impl TextModelClient for AnthropicMessagesClient {
                 "anthropic_messages provider has no endpoint_url",
             )
         })?;
-        let messages_url = join_endpoint(endpoint_url, "v1/messages");
+        let messages_url =
+            join_provider_endpoint(endpoint_url, "v1/messages").map_err(|message| {
+                TextModelProviderError::provider("text_provider_invalid_endpoint", message)
+            })?;
 
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -854,13 +863,6 @@ fn extract_anthropic_content(body: &str) -> Result<ExtractedResponse, TextModelP
     })
 }
 
-/// Joins an endpoint base URL with a relative path, normalising slashes.
-/// Accepts both `https://host/v1` and `https://host/v1/` styles.
-fn join_endpoint(base_url: &str, relative: &str) -> String {
-    let trimmed = base_url.trim_end_matches('/');
-    format!("{trimmed}/{relative}")
-}
-
 /// Extracts the OpenAI `usage.output_tokens` / legacy `completion_tokens`
 /// count from a Chat Completions or Responses `usage` object. Used for the
 /// `OutputTruncated` token count on a `length` / `max_output_tokens` finish.
@@ -993,18 +995,6 @@ mod tests {
                 ChatMessage::new(MessageRole::User, "second user line"),
             ]),
         }
-    }
-
-    #[test]
-    fn join_endpoint_normalises_trailing_slash() {
-        assert_eq!(
-            join_endpoint("https://host/v1/", "chat/completions"),
-            "https://host/v1/chat/completions"
-        );
-        assert_eq!(
-            join_endpoint("https://host/v1", "chat/completions"),
-            "https://host/v1/chat/completions"
-        );
     }
 
     #[test]
