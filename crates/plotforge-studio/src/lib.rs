@@ -488,9 +488,11 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     let committed_scene = scene.clone();
     let image_generation_failed =
         attempt_scene_image_generation(project_path, &visual_style, &committed_scene, &mut scene);
+    let usage = run_result.usage.clone();
 
     Ok(PiAgentApplyResult {
         run: run_result,
+        usage,
         scene_key,
         scene,
         trace: report.trace.clone(),
@@ -3507,6 +3509,8 @@ mod tests {
         assert_eq!(result.scene.key, result.scene_key);
         assert!(!result.trace.id.is_empty());
         assert!(result.run.descriptor.is_local_pi);
+        assert_eq!(result.usage, result.run.usage);
+        assert_eq!(result.usage, None, "local pi-Agent apply reports no usage");
         assert!(
             result
                 .run
