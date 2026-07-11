@@ -15,14 +15,15 @@ pub use plotforge_schema::{
     Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ImageProviderEntry, ModelOption,
     PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
     PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
-    ProjectTemplateId, PromptScope, PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry,
-    RemoteModelInfo, ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot,
-    RuntimeTrace, Scene, SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin,
-    SkillSource, StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
-    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
-    TtsProviderEntry, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
-    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
-    WorldGenerationRequest, redact_trace_text,
+    ProjectTemplateId, PromptScope, PromptTemplate, ProviderCostReport, ProviderEntry,
+    ProviderKind, ProviderRegistry, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft,
+    RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene, SkillFrontmatter, SkillIndex,
+    SkillInterface, SkillManifest, SkillOrigin, SkillSource, StateVariablesEditDocument,
+    SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, TtsProviderEntry,
+    UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
+    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
+    redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -653,6 +654,49 @@ fn scene_image_prompt(scene: &Scene, visual_style: &str) -> String {
 // project-scoped prompt store (`<project>/.plotforge/prompts.json`). They
 // never carry credentials, raw provider responses, or secret markers.
 // ---------------------------------------------------------------------------
+
+/// Returns the redaction-safe aggregate of the user-global usage ledger.
+/// A missing ledger is the fresh-install state and therefore returns an empty
+/// summary. Parse/read failures remain explicit Studio command errors.
+pub fn get_usage_summary() -> StudioCommandResult<UsageSummary> {
+    load_usage_ledger(None, "get_usage_summary").map(|ledger| ledger.summary())
+}
+
+/// Hermetic path-based seam used by crate tests and local adapters that must
+/// not read the real user-global `~/.plotforge/usage.json`.
+pub fn get_usage_summary_from_path(path: impl AsRef<Path>) -> StudioCommandResult<UsageSummary> {
+    load_usage_ledger(Some(path.as_ref()), "get_usage_summary").map(|ledger| ledger.summary())
+}
+
+/// Returns the usage/cost rollup for one provider id. Unknown providers are
+/// represented by a zero-valued typed report carrying the requested id.
+pub fn get_provider_cost_report(provider_id: String) -> StudioCommandResult<ProviderCostReport> {
+    load_usage_ledger(None, "get_provider_cost_report")
+        .map(|ledger| ledger.provider_cost_report(&provider_id))
+}
+
+/// Hermetic path-based counterpart to `get_provider_cost_report`.
+pub fn get_provider_cost_report_from_path(
+    path: impl AsRef<Path>,
+    provider_id: String,
+) -> StudioCommandResult<ProviderCostReport> {
+    load_usage_ledger(Some(path.as_ref()), "get_provider_cost_report")
+        .map(|ledger| ledger.provider_cost_report(&provider_id))
+}
+
+fn load_usage_ledger(
+    path: Option<&Path>,
+    command: &'static str,
+) -> StudioCommandResult<plotforge_job::UsageLedger<SystemJobClock>> {
+    let result = match path {
+        Some(path) => plotforge_job::UsageLedger::load_from(path, SystemJobClock),
+        None => plotforge_job::UsageLedger::load(SystemJobClock),
+    };
+    result.map_err(|source| StudioCommandError {
+        code: format!("{command}_load"),
+        message: source.to_string(),
+    })
+}
 
 /// Lists every registered provider entry from the user-global registry.
 /// An absent registry returns an empty list (fresh install).
@@ -2564,12 +2608,12 @@ mod tests {
         delete_tts_provider, delete_workshop_library_item, enable_mcp_server_for_project,
         enable_skill_for_project, export_static_project, export_static_project_zip,
         generate_character, generate_story_craft, generate_world_expansion,
-        get_agent_session_config, git_current_branch, git_list_branches, git_project_dir_name,
-        git_switch_branch, import_workshop_library_package, list_asset_records,
-        list_available_models, list_export_profiles, list_mcp_servers,
-        list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
-        list_workshop_library, load_workshop_library_item, open_project, pi_agent_apply_run,
-        pi_agent_capabilities, pi_agent_run, play_once_project,
+        get_agent_session_config, get_provider_cost_report_from_path, get_usage_summary_from_path,
+        git_current_branch, git_list_branches, git_project_dir_name, git_switch_branch,
+        import_workshop_library_package, list_asset_records, list_available_models,
+        list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
+        list_remote_models, list_source_files, list_workshop_library, load_workshop_library_item,
+        open_project, pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
         play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
         play_once_project_with_save, probe_image_provider, probe_tts_provider,
         read_ai_safety_policy, read_character_edit_document, read_rules_edit_document,
@@ -2585,6 +2629,65 @@ mod tests {
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
         contains_secret_marker_text,
     };
+
+    #[test]
+    fn get_usage_summary_empty_when_no_ledger() {
+        let dir = tempdir().expect("temp dir");
+        let summary = get_usage_summary_from_path(dir.path().join("usage.json"))
+            .expect("missing ledger is an empty summary");
+
+        assert_eq!(summary.total_input_tokens, 0);
+        assert_eq!(summary.total_output_tokens, 0);
+        assert_eq!(summary.total_spent_cost_units, 0);
+        assert!(summary.by_provider.is_empty());
+    }
+
+    #[test]
+    fn get_usage_summary_and_provider_report_load_typed_rollups() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("usage.json");
+        fs::write(
+            &path,
+            r#"{
+  "version": 1,
+  "entries": [
+    {
+      "provider_id": "provider-a",
+      "kind": "text",
+      "model": "model-a",
+      "input_tokens": 120,
+      "output_tokens": 30,
+      "spent_cost_units": 7,
+      "timestamp_ms": 1000
+    }
+  ]
+}"#,
+        )
+        .expect("write ledger fixture");
+
+        let summary = get_usage_summary_from_path(&path).expect("load usage summary");
+        let report = get_provider_cost_report_from_path(&path, "provider-a".into())
+            .expect("load provider report");
+
+        assert_eq!(summary.total_input_tokens, 120);
+        assert_eq!(summary.total_output_tokens, 30);
+        assert_eq!(summary.total_spent_cost_units, 7);
+        assert_eq!(report.provider_id, "provider-a");
+        assert_eq!(report.text_calls, 1);
+        assert_eq!(report.input_tokens, 120);
+    }
+
+    #[test]
+    fn get_usage_summary_reports_corrupt_ledger_explicitly() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("usage.json");
+        fs::write(&path, "not-json").expect("write corrupt ledger");
+
+        let error = get_usage_summary_from_path(path).expect_err("corrupt ledger must fail");
+
+        assert_eq!(error.code, "get_usage_summary_load");
+        assert!(error.message.contains("failed to parse usage ledger"));
+    }
 
     #[test]
     fn pi_agent_run_returns_local_pi_marker() {

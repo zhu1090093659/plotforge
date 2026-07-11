@@ -11,6 +11,7 @@ import type {
   ProviderEntry,
   ImageProviderEntry,
   TtsProviderEntry,
+  UsageSummary,
   PromptTemplate,
   RemoteModelInfo,
   SkillIndex,
@@ -145,6 +146,15 @@ export async function mockPiAgentApplyRun(
 
 export async function mockListProviders(): Promise<ProviderEntry[]> {
   return [];
+}
+
+export async function mockGetUsageSummary(): Promise<UsageSummary> {
+  return {
+    total_input_tokens: 0,
+    total_output_tokens: 0,
+    total_spent_cost_units: 0,
+    by_provider: {},
+  };
 }
 
 export async function mockUpsertProvider(entry: ProviderEntry): Promise<ProviderEntry> {

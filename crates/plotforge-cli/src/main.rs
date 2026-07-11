@@ -8,7 +8,8 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use cli_output::{
     OutputLanguage, cli_term, export_profile_target_label, none_label, print_studio_json,
-    print_workshop_validation, render_check_summary, resolve_output_language, unsupported_label,
+    print_workshop_validation, render_check_summary, render_provider_cost_report,
+    render_usage_summary, resolve_output_language, unsupported_label,
 };
 use dialoguer::Input;
 use plotforge_export::{export_desktop_runtime_draft, export_static_web, export_static_web_zip};
@@ -50,6 +51,7 @@ enum Command {
     Trace(TraceCommand),
     Export(ExportCommand),
     Workshop(WorkshopCommand),
+    Usage(UsageCommand),
     Studio(StudioInvokeArgs),
     /// Manage MCP (Model Context Protocol) servers and tools. Thin
     /// orchestration only — delegates to `plotforge_studio` (registry IO +
@@ -283,6 +285,36 @@ struct StudioInvokeArgs {
     command: String,
 }
 
+#[derive(Debug, Args)]
+struct UsageCommand {
+    #[command(subcommand)]
+    command: UsageSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum UsageSubcommand {
+    /// Show aggregate token and cost-unit usage across all providers.
+    Summary(UsageOutputArgs),
+    /// Show token, call, and cost-unit usage for one provider id.
+    Provider(UsageProviderArgs),
+}
+
+#[derive(Debug, Args)]
+struct UsageOutputArgs {
+    /// Emit the stable schema-defined JSON shape instead of human output.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct UsageProviderArgs {
+    #[arg(long)]
+    id: String,
+    /// Emit the stable schema-defined JSON shape instead of human output.
+    #[arg(long)]
+    json: bool,
+}
+
 // --- MCP subcommand (Phase 5, P5.3) ---
 // Thin CLI orchestration over the 7 MCP Studio commands. The CLI only
 // collects parameters; validation + redaction stay in `plotforge_studio`
@@ -373,6 +405,7 @@ fn main() -> Result<()> {
         Command::Trace(command) => handle_trace(command, language),
         Command::Export(command) => handle_export(command, language),
         Command::Workshop(command) => handle_workshop(command, language),
+        Command::Usage(command) => handle_usage(command, language),
         Command::Studio(args) => handle_studio(args),
         Command::Mcp(command) => handle_mcp(command, language),
     }
@@ -596,6 +629,14 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
         "pi_agent_apply_run" => print_studio_json(studio_result(
             plotforge_studio::pi_agent_apply_run(studio_arg(&payload, "request")?),
         )?),
+        "get_usage_summary" => {
+            print_studio_json(studio_result(plotforge_studio::get_usage_summary())?)
+        }
+        "get_provider_cost_report" => {
+            print_studio_json(studio_result(plotforge_studio::get_provider_cost_report(
+                studio_arg::<String>(&payload, "provider_id")?,
+            ))?)
+        }
         "list_providers" => print_studio_json(studio_result(plotforge_studio::list_providers())?),
         "upsert_provider" => print_studio_json(studio_result(plotforge_studio::upsert_provider(
             studio_arg(&payload, "entry")?,
@@ -711,6 +752,29 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
             )?)
         }
         other => anyhow::bail!("unknown studio command `{other}`"),
+    }
+}
+
+fn handle_usage(command: UsageCommand, language: OutputLanguage) -> Result<()> {
+    match command.command {
+        UsageSubcommand::Summary(args) => {
+            let summary = studio_result(plotforge_studio::get_usage_summary())?;
+            if args.json {
+                print_studio_json(summary)
+            } else {
+                render_usage_summary(language, &summary);
+                Ok(())
+            }
+        }
+        UsageSubcommand::Provider(args) => {
+            let report = studio_result(plotforge_studio::get_provider_cost_report(args.id))?;
+            if args.json {
+                print_studio_json(report)
+            } else {
+                render_provider_cost_report(language, &report);
+                Ok(())
+            }
+        }
     }
 }
 

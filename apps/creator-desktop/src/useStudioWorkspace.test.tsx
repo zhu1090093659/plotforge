@@ -494,6 +494,25 @@ function workspaceTestDataSource(
     async piAgentApplyRun() {
       throw new Error("piAgentApplyRun not supported in test fixture");
     },
+    async getUsageSummary() {
+      return {
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_spent_cost_units: 0,
+        by_provider: {},
+      };
+    },
+    async getProviderCostReport(providerId: string) {
+      return {
+        provider_id: providerId,
+        text_calls: 0,
+        image_calls: 0,
+        tts_calls: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        spent_cost_units: 0,
+      };
+    },
     async listProviders() {
       return [];
     },

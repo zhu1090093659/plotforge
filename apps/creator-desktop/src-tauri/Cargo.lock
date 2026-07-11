@@ -2359,7 +2359,10 @@ dependencies = [
 name = "plotforge-job"
 version = "0.1.0"
 dependencies = [
+ "dirs 5.0.1",
  "plotforge-schema",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

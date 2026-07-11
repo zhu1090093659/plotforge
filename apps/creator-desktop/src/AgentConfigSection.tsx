@@ -23,6 +23,7 @@ import {
   TextInput,
 } from "./studioUi";
 import { useStudioI18n } from "./i18n";
+import { UsageSection } from "./UsageSection";
 
 // ---------------------------------------------------------------------------
 // AgentConfigSection — the "Agent" tab inside SettingsView.
@@ -354,6 +355,7 @@ export function AgentConfigSection({
         scope={promptScope}
         onScopeChange={setPromptScope}
       />
+      <UsageSection dataSource={dataSource} />
     </div>
   );
 }

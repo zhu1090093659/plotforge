@@ -8,13 +8,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
-import { StudioI18nProvider } from "./i18n";
+import { StudioI18nProvider, type StudioLocale } from "./i18n";
 import type { StudioDataSource } from "./studioDataSource";
 import {
   mockDeleteProvider,
   mockDeleteImageProvider,
   mockDeleteTtsProvider,
   mockImportSkill,
+  mockGetUsageSummary,
   mockListImageProviders,
   mockListTtsProviders,
   mockListProjectPromptTemplates,
@@ -39,6 +40,7 @@ import type {
   ProviderEntry,
   SkillManifest,
   TtsProviderEntry,
+  UsageSummary,
 } from "../../../contracts/plotforge";
 
 afterEach(() => {
@@ -142,6 +144,16 @@ function settingsTestDataSource(
     runtimeName: "Test runtime",
     // Agent-surface methods — only these are consumed by SettingsView.
     listProviders: mockListProviders,
+    getUsageSummary: mockGetUsageSummary,
+    getProviderCostReport: async (providerId: string) => ({
+      provider_id: providerId,
+      text_calls: 0,
+      image_calls: 0,
+      tts_calls: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      spent_cost_units: 0,
+    }),
     upsertProvider: mockUpsertProvider,
     deleteProvider: mockDeleteProvider,
     testProviderConnection: mockTestProviderConnection,
@@ -179,6 +191,7 @@ function renderSettingsView(
     dataSource?: StudioDataSource;
     agentConfig?: AgentSessionConfig;
     loadedPath?: string;
+    locale?: StudioLocale;
     onAgentConfigChange?: (config: AgentSessionConfig) => void;
   } = {},
 ) {
@@ -187,7 +200,7 @@ function renderSettingsView(
   const dataSource =
     overrides.dataSource ?? settingsTestDataSource();
   const result = render(
-    <StudioI18nProvider>
+    <StudioI18nProvider defaultLocale={overrides.locale}>
       <SettingsView
         dataSource={dataSource}
         loadedPath={overrides.loadedPath ?? "/tmp/starter-project"}
@@ -217,6 +230,52 @@ describe("SettingsView", () => {
     expect(within(tablist).getByRole("tab", { name: "Agent" })).toBeTruthy();
     expect(within(tablist).getByRole("tab", { name: "MCP" })).toBeTruthy();
     expect(within(tablist).getByRole("tab", { name: "Skills" })).toBeTruthy();
+  });
+
+  it("renders typed usage totals and provider rows, then refreshes on demand", async () => {
+    const summary: UsageSummary = {
+      total_input_tokens: 1500,
+      total_output_tokens: 375,
+      total_spent_cost_units: 42,
+      by_provider: {
+        "openai-prod": {
+          provider_id: "openai-prod",
+          text_calls: 3,
+          image_calls: 1,
+          tts_calls: 2,
+          input_tokens: 1200,
+          output_tokens: 300,
+          spent_cost_units: 36,
+        },
+      },
+    };
+    const getUsageSummary = vi.fn().mockResolvedValue(summary);
+    renderSettingsView({
+      dataSource: settingsTestDataSource({ getUsageSummary }),
+    });
+
+    expect(await screen.findByRole("heading", { name: "Usage" })).toBeTruthy();
+    expect(screen.getByText("1,500")).toBeTruthy();
+    expect(screen.getByText("375")).toBeTruthy();
+    expect(screen.getByText("42")).toBeTruthy();
+    const table = screen.getByRole("table", {
+      name: "Provider usage breakdown",
+    });
+    expect(within(table).getByText("openai-prod")).toBeTruthy();
+    expect(within(table).getByText("1,200")).toBeTruthy();
+    expect(getUsageSummary).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(2));
+  });
+
+  it("renders the usage empty state and Chinese copy without adding a fourth tab", async () => {
+    renderSettingsView({ locale: "zh" });
+
+    expect(await screen.findByRole("heading", { name: "用量" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
+    expect(screen.getByText("尚未记录任何提供商用量。")).toBeTruthy();
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
   });
 
   it("clicking the Agent tab surfaces the Add provider button and the providers table", async () => {

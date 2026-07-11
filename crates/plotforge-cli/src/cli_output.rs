@@ -13,7 +13,7 @@ use std::io::IsTerminal;
 
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use plotforge_schema::{ExportProfileTarget, ProjectData};
+use plotforge_schema::{ExportProfileTarget, ProjectData, ProviderCostReport, UsageSummary};
 use plotforge_workshop::WorkshopPackageValidationReport;
 use serde::Serialize;
 
@@ -121,6 +121,101 @@ pub fn print_studio_json(value: impl Serialize) -> Result<()> {
         serde_json::to_string(&value).context("serialize studio command result")?
     );
     Ok(())
+}
+
+/// Render the aggregate user-global usage ledger. The compact table is meant
+/// for terminals; `plotforge usage summary --json` remains the stable machine
+/// contract and bypasses this human-readable surface entirely.
+pub fn render_usage_summary(language: OutputLanguage, summary: &UsageSummary) {
+    let title = match language {
+        OutputLanguage::En => "usage summary",
+        OutputLanguage::Zh => "用量汇总",
+    };
+    println!("{}", paint("36", title));
+    println!(
+        "{}: {}",
+        usage_label(language, "input tokens"),
+        summary.total_input_tokens
+    );
+    println!(
+        "{}: {}",
+        usage_label(language, "output tokens"),
+        summary.total_output_tokens
+    );
+    println!(
+        "{}: {}",
+        usage_label(language, "cost units"),
+        summary.total_spent_cost_units
+    );
+
+    if summary.by_provider.is_empty() {
+        println!("{}", usage_label(language, "no usage recorded"));
+        return;
+    }
+
+    println!(
+        "{:<24} {:>10} {:>10} {:>8} {:>8} {:>8} {:>12}",
+        usage_label(language, "provider"),
+        usage_label(language, "input"),
+        usage_label(language, "output"),
+        usage_label(language, "text"),
+        usage_label(language, "image"),
+        usage_label(language, "tts"),
+        usage_label(language, "cost units")
+    );
+    for report in summary.by_provider.values() {
+        println!(
+            "{:<24} {:>10} {:>10} {:>8} {:>8} {:>8} {:>12}",
+            report.provider_id,
+            report.input_tokens,
+            report.output_tokens,
+            report.text_calls,
+            report.image_calls,
+            report.tts_calls,
+            report.spent_cost_units
+        );
+    }
+}
+
+/// Render one provider's usage report without changing the JSON contract.
+pub fn render_provider_cost_report(language: OutputLanguage, report: &ProviderCostReport) {
+    let title = match language {
+        OutputLanguage::En => format!("provider usage: {}", report.provider_id),
+        OutputLanguage::Zh => format!("提供商用量：{}", report.provider_id),
+    };
+    println!("{}", paint("36", &title));
+    for (label, value) in [
+        ("text calls", report.text_calls),
+        ("image calls", report.image_calls),
+        ("tts calls", report.tts_calls),
+        ("input tokens", report.input_tokens),
+        ("output tokens", report.output_tokens),
+        ("cost units", report.spent_cost_units),
+    ] {
+        println!("{}: {value}", usage_label(language, label));
+    }
+}
+
+fn usage_label(language: OutputLanguage, label: &'static str) -> &'static str {
+    if matches!(language, OutputLanguage::En) {
+        return label;
+    }
+    match label {
+        "provider" => "提供商",
+        "input" => "输入",
+        "output" => "输出",
+        "text" => "文本",
+        "image" => "图片",
+        "tts" => "语音",
+        "input tokens" => "输入令牌",
+        "output tokens" => "输出令牌",
+        "text calls" => "文本调用",
+        "image calls" => "图片调用",
+        "tts calls" => "语音调用",
+        "cost units" => "成本单位",
+        "no usage recorded" => "尚无用量记录",
+        _ => label,
+    }
 }
 
 /// Render the export profile target as a stable machine-readable label.
