@@ -120,10 +120,27 @@ pub fn write_provider_registry_to(
 pub fn mutate_provider_registry<T, E>(
     mutator: impl FnOnce(&mut ProviderRegistry) -> Result<T, E>,
 ) -> Result<T, ProviderRegistryMutationError<E>> {
-    let path = provider_registry_path().ok_or_else(|| {
-        ProviderRegistryMutationError::Registry(ProviderRegistryError::NoConfigDir)
-    })?;
-    mutate_provider_registry_at(&path, mutator)
+    let path = provider_registry_path();
+    mutate_provider_registry_with_resolved_path(path.as_deref(), mutator)
+}
+
+/// Applies the same missing-path semantics as the user-global transaction
+/// without requiring tests to mutate HOME or platform config environment.
+/// A mutation error wins over the later persistence failure, matching the
+/// legacy load-default-then-write flow; a successful in-memory mutation cannot
+/// be persisted and therefore returns `NoConfigDir`.
+fn mutate_provider_registry_with_resolved_path<T, E>(
+    path: Option<&Path>,
+    mutator: impl FnOnce(&mut ProviderRegistry) -> Result<T, E>,
+) -> Result<T, ProviderRegistryMutationError<E>> {
+    let Some(path) = path else {
+        let mut registry = ProviderRegistry::default();
+        let _ = mutator(&mut registry).map_err(ProviderRegistryMutationError::Mutation)?;
+        return Err(ProviderRegistryMutationError::Registry(
+            ProviderRegistryError::NoConfigDir,
+        ));
+    };
+    mutate_provider_registry_at(path, mutator)
 }
 
 /// Path-injected counterpart for adapters and hermetic concurrency tests.
@@ -1066,6 +1083,36 @@ mod tests {
             0,
             "failed atomic write must clean its temporary file"
         );
+    }
+
+    #[test]
+    fn missing_registry_path_runs_successful_mutation_then_returns_no_config_dir() {
+        let error = mutate_provider_registry_with_resolved_path(None, |registry| {
+            registry
+                .moderation_providers
+                .push(sample_moderation_entry("no-config", false));
+            Ok::<_, &'static str>(())
+        })
+        .expect_err("successful mutation cannot be persisted without a config dir");
+
+        assert!(matches!(
+            error,
+            ProviderRegistryMutationError::Registry(ProviderRegistryError::NoConfigDir)
+        ));
+    }
+
+    #[test]
+    fn missing_registry_path_preserves_mutation_error_before_no_config_dir() {
+        let error = mutate_provider_registry_with_resolved_path(None, |registry| {
+            assert!(registry.providers.is_empty());
+            Err::<(), _>("provider_not_found")
+        })
+        .expect_err("mutation error wins");
+
+        assert!(matches!(
+            error,
+            ProviderRegistryMutationError::Mutation("provider_not_found")
+        ));
     }
 
     #[test]

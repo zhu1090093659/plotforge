@@ -897,10 +897,10 @@ fn map_provider_registry_mutation_error(
         plotforge_agent::ProviderRegistryMutationError::Mutation(error) => error,
         plotforge_agent::ProviderRegistryMutationError::Registry(error) => {
             let stage = match &error {
-                plotforge_agent::ProviderRegistryError::NoConfigDir
-                | plotforge_agent::ProviderRegistryError::ReadFailed { .. }
+                plotforge_agent::ProviderRegistryError::ReadFailed { .. }
                 | plotforge_agent::ProviderRegistryError::ParseFailed { .. } => "load",
-                plotforge_agent::ProviderRegistryError::WriteFailed { .. }
+                plotforge_agent::ProviderRegistryError::NoConfigDir
+                | plotforge_agent::ProviderRegistryError::WriteFailed { .. }
                 | plotforge_agent::ProviderRegistryError::SerializeFailed { .. }
                 | plotforge_agent::ProviderRegistryError::LockFailed { .. } => "write",
             };
@@ -2977,7 +2977,8 @@ mod tests {
         import_workshop_library_package, list_asset_records, list_available_models,
         list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
         list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
-        load_provider_registry_for_apply, load_workshop_library_item, moderation_request_for_apply,
+        load_provider_registry_for_apply, load_workshop_library_item,
+        map_provider_registry_mutation_error, moderation_request_for_apply,
         mutate_studio_provider_registry, open_project, pi_agent_apply_run, pi_agent_capabilities,
         pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
         play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
@@ -4822,6 +4823,27 @@ mod tests {
 
         assert_eq!(error.code, "delete_provider_load");
         assert!(error.message.contains("failed to parse provider registry"));
+    }
+
+    #[test]
+    fn provider_mutation_preserves_no_config_write_and_typed_delete_errors() {
+        let upsert_error = map_provider_registry_mutation_error(
+            "upsert_provider",
+            plotforge_agent::ProviderRegistryMutationError::Registry(
+                plotforge_agent::ProviderRegistryError::NoConfigDir,
+            ),
+        );
+        assert_eq!(upsert_error.code, "upsert_provider_write");
+
+        let delete_error = map_provider_registry_mutation_error(
+            "delete_provider",
+            plotforge_agent::ProviderRegistryMutationError::Mutation(super::StudioCommandError {
+                code: "provider_not_found".into(),
+                message: "no provider with id `absent`".into(),
+            }),
+        );
+        assert_eq!(delete_error.code, "provider_not_found");
+        assert_eq!(delete_error.message, "no provider with id `absent`");
     }
 
     #[test]
