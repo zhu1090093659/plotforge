@@ -383,8 +383,42 @@ pub fn list_image_providers() -> Result<Vec<ImageProviderEntry>, StudioCommandEr
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn upsert_image_provider(
+    entry: ImageProviderEntry,
+) -> Result<ImageProviderEntry, StudioCommandError> {
+    plotforge_studio::upsert_image_provider(entry)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_image_provider(id: String) -> Result<ImageProviderEntry, StudioCommandError> {
+    plotforge_studio::delete_image_provider(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn test_image_provider(id: String) -> Result<ProviderTestResult, StudioCommandError> {
+    plotforge_studio::test_image_provider(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_tts_providers() -> Result<Vec<TtsProviderEntry>, StudioCommandError> {
     plotforge_studio::list_tts_providers()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upsert_tts_provider(
+    entry: TtsProviderEntry,
+) -> Result<TtsProviderEntry, StudioCommandError> {
+    plotforge_studio::upsert_tts_provider(entry)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_tts_provider(id: String) -> Result<TtsProviderEntry, StudioCommandError> {
+    plotforge_studio::delete_tts_provider(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn test_tts_provider(id: String) -> Result<ProviderTestResult, StudioCommandError> {
+    plotforge_studio::test_tts_provider(id)
 }
 
 #[tauri::command(rename_all = "snake_case")]

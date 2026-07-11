@@ -5,6 +5,7 @@ import type {
   AudioBible,
   Character,
   CharacterEditDocument,
+  ImageProviderEntry,
   McpServerEntry,
   McpServerTestResult,
   McpToolCallRequest,
@@ -17,6 +18,7 @@ import type {
   RuntimeSnapshot,
   StateVariablesEditDocument,
   StoryCraftEditDocument,
+  TtsProviderEntry,
   VisualBible,
   WorldEditDocument,
 } from "../../../contracts/plotforge";
@@ -71,6 +73,26 @@ const demoAgentSessionConfig: AgentSessionConfig = {
   thinking_level: "medium",
   enabled_skills: [],
   enabled_mcp_servers: ["weather"],
+};
+
+const demoImageProviderEntry: ImageProviderEntry = {
+  id: "image-local",
+  endpoint_url: "http://localhost:11434/v1",
+  model: "image-model",
+  credential_env_var: "",
+  enabled: true,
+  default_size: "1024x1024",
+  default_quality: "medium",
+};
+
+const demoTtsProviderEntry: TtsProviderEntry = {
+  id: "tts-local",
+  endpoint_url: "http://localhost:11434/v1",
+  model: "tts-model",
+  credential_env_var: "",
+  enabled: true,
+  voice: "coral",
+  format: "mp3",
 };
 
 describe("createStudioBridge", () => {
@@ -558,6 +580,46 @@ describe("createStudioBridge MCP commands", () => {
           enabled: true,
         },
       },
+    ]);
+  });
+});
+
+describe("createStudioBridge image and TTS provider commands", () => {
+  it("maps both four-command provider families to snake_case commands", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: StudioInvoke = async <T>(
+      command: string,
+      args?: Record<string, unknown>,
+    ) => {
+      calls.push({ command, args });
+      return {} as T;
+    };
+    const bridge = createStudioBridge(invoke);
+
+    await bridge.listImageProviders();
+    await bridge.upsertImageProvider(demoImageProviderEntry);
+    await bridge.deleteImageProvider("image-local");
+    await bridge.testImageProvider("image-local");
+    await bridge.listTtsProviders();
+    await bridge.upsertTtsProvider(demoTtsProviderEntry);
+    await bridge.deleteTtsProvider("tts-local");
+    await bridge.testTtsProvider("tts-local");
+
+    expect(calls).toEqual([
+      { command: "list_image_providers", args: undefined },
+      {
+        command: "upsert_image_provider",
+        args: { entry: demoImageProviderEntry },
+      },
+      { command: "delete_image_provider", args: { id: "image-local" } },
+      { command: "test_image_provider", args: { id: "image-local" } },
+      { command: "list_tts_providers", args: undefined },
+      {
+        command: "upsert_tts_provider",
+        args: { entry: demoTtsProviderEntry },
+      },
+      { command: "delete_tts_provider", args: { id: "tts-local" } },
+      { command: "test_tts_provider", args: { id: "tts-local" } },
     ]);
   });
 });

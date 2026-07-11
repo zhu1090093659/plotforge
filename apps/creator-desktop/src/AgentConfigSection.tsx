@@ -50,6 +50,26 @@ const EMPTY_ENTRY: ProviderEntry = {
   enabled: true,
 };
 
+const EMPTY_IMAGE_ENTRY: ImageProviderEntry = {
+  id: "",
+  endpoint_url: "",
+  model: "",
+  credential_env_var: "",
+  enabled: true,
+  default_size: "1024x1024",
+  default_quality: "medium",
+};
+
+const EMPTY_TTS_ENTRY: TtsProviderEntry = {
+  id: "",
+  endpoint_url: "",
+  model: "",
+  credential_env_var: "",
+  enabled: true,
+  voice: "coral",
+  format: "mp3",
+};
+
 export interface AgentConfigSectionProps {
   dataSource: StudioDataSource;
   loadedPath: string;
@@ -83,10 +103,20 @@ export function AgentConfigSection({
   const [imageProviderError, setImageProviderError] = useState<string | null>(
     null,
   );
+  const [editingImageProvider, setEditingImageProvider] =
+    useState<ImageProviderEntry | null>(null);
+  const [imageTestResult, setImageTestResult] =
+    useState<ProviderTestResult | null>(null);
+  const [testingImageProvider, setTestingImageProvider] = useState(false);
 
   const [ttsProviders, setTtsProviders] = useState<TtsProviderEntry[]>([]);
   const [ttsProvidersLoading, setTtsProvidersLoading] = useState(false);
   const [ttsProviderError, setTtsProviderError] = useState<string | null>(null);
+  const [editingTtsProvider, setEditingTtsProvider] =
+    useState<TtsProviderEntry | null>(null);
+  const [ttsTestResult, setTtsTestResult] =
+    useState<ProviderTestResult | null>(null);
+  const [testingTtsProvider, setTestingTtsProvider] = useState(false);
 
   const reloadProviders = useCallback(async () => {
     setProvidersLoading(true);
@@ -188,6 +218,86 @@ export function AgentConfigSection({
     }
   };
 
+  const handleSaveImageProvider = async (entry: ImageProviderEntry) => {
+    setImageProviderError(null);
+    try {
+      await dataSource.upsertImageProvider(entry);
+      setEditingImageProvider(null);
+      await reloadImageProviders();
+    } catch (error) {
+      setImageProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+
+  const handleDeleteImageProvider = async (id: string) => {
+    setImageProviderError(null);
+    try {
+      await dataSource.deleteImageProvider(id);
+      await reloadImageProviders();
+    } catch (error) {
+      setImageProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+
+  const handleTestImageProvider = async (id: string) => {
+    setTestingImageProvider(true);
+    setImageTestResult(null);
+    try {
+      setImageTestResult(await dataSource.testImageProvider(id));
+    } catch (error) {
+      setImageTestResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setTestingImageProvider(false);
+    }
+  };
+
+  const handleSaveTtsProvider = async (entry: TtsProviderEntry) => {
+    setTtsProviderError(null);
+    try {
+      await dataSource.upsertTtsProvider(entry);
+      setEditingTtsProvider(null);
+      await reloadTtsProviders();
+    } catch (error) {
+      setTtsProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+
+  const handleDeleteTtsProvider = async (id: string) => {
+    setTtsProviderError(null);
+    try {
+      await dataSource.deleteTtsProvider(id);
+      await reloadTtsProviders();
+    } catch (error) {
+      setTtsProviderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+
+  const handleTestTtsProvider = async (id: string) => {
+    setTestingTtsProvider(true);
+    setTtsTestResult(null);
+    try {
+      setTtsTestResult(await dataSource.testTtsProvider(id));
+    } catch (error) {
+      setTtsTestResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setTestingTtsProvider(false);
+    }
+  };
+
   return (
     <div className="grid gap-6">
       <ProvidersArea
@@ -214,11 +324,29 @@ export function AgentConfigSection({
         providers={imageProviders}
         loading={imageProvidersLoading}
         error={imageProviderError}
+        editingEntry={editingImageProvider}
+        onEdit={setEditingImageProvider}
+        onCancelEdit={() => setEditingImageProvider(null)}
+        onSave={handleSaveImageProvider}
+        onDelete={handleDeleteImageProvider}
+        onTest={handleTestImageProvider}
+        testing={testingImageProvider}
+        testResult={imageTestResult}
+        onAdd={() => setEditingImageProvider({ ...EMPTY_IMAGE_ENTRY })}
       />
       <TtsProvidersArea
         providers={ttsProviders}
         loading={ttsProvidersLoading}
         error={ttsProviderError}
+        editingEntry={editingTtsProvider}
+        onEdit={setEditingTtsProvider}
+        onCancelEdit={() => setEditingTtsProvider(null)}
+        onSave={handleSaveTtsProvider}
+        onDelete={handleDeleteTtsProvider}
+        onTest={handleTestTtsProvider}
+        testing={testingTtsProvider}
+        testResult={ttsTestResult}
+        onAdd={() => setEditingTtsProvider({ ...EMPTY_TTS_ENTRY })}
       />
       <PromptsArea
         userPrompts={userPrompts}
@@ -335,21 +463,7 @@ function ProvidersArea({
           </table>
         </div>
       )}
-      {testResult && (
-        <div
-          role="status"
-          className={[
-            "mt-3 rounded-md border px-3 py-2 text-sm",
-            testResult.ok
-              ? "border-sage/30 bg-sage/10 text-sage"
-              : "border-signal/30 bg-signal/10 text-signal",
-          ].join(" ")}
-        >
-          {testResult.ok ? t("agent.provider.test.ok") : t("agent.provider.test.failed")}
-          {" "}
-          {testResult.message}
-        </div>
-      )}
+      <ProviderTestStatus result={testResult} />
     </StudioPanel>
   );
 }
@@ -561,31 +675,64 @@ function ModelArea({ agentConfig, onAgentConfigChange, saveError }: ModelAreaPro
 }
 
 // ---------------------------------------------------------------------------
-// Image providers area (T3.3 — read-only display; image providers are
-// configured via ~/.plotforge/providers.json in v1)
+// Image/TTS provider areas — CRUD adapters over the Studio command boundary.
+// Provider validation and persistence stay in Rust; these components collect
+// schema-defined entries and render redaction-safe command results.
 // ---------------------------------------------------------------------------
 
 interface ImageProvidersAreaProps {
   providers: ImageProviderEntry[];
   loading: boolean;
   error: string | null;
+  editingEntry: ImageProviderEntry | null;
+  onEdit: (entry: ImageProviderEntry) => void;
+  onCancelEdit: () => void;
+  onSave: (entry: ImageProviderEntry) => void;
+  onDelete: (id: string) => void;
+  onTest: (id: string) => void;
+  testing: boolean;
+  testResult: ProviderTestResult | null;
+  onAdd: () => void;
 }
 
 function ImageProvidersArea({
   providers,
   loading,
   error,
+  editingEntry,
+  onEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+  onTest,
+  testing,
+  testResult,
+  onAdd,
 }: ImageProvidersAreaProps) {
   const { t } = useStudioI18n();
   return (
     <StudioPanel>
-      <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
-        {t("agent.imageProvider.title")}
-      </h4>
-      {loading ? (
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h4 className="font-display text-lg font-semibold tracking-display-tight text-ink">
+          {t("agent.imageProvider.title")}
+        </h4>
+        <StudioButton variant="primary" onClick={onAdd}>
+          {t("agent.imageProvider.add")}
+        </StudioButton>
+      </div>
+      {error && (
+        <div role="alert" className="mb-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
+      {editingEntry ? (
+        <ImageProviderEditor
+          entry={editingEntry}
+          onCancel={onCancelEdit}
+          onSave={onSave}
+        />
+      ) : loading ? (
         <p className="text-sm text-ink-faint">{t("agent.provider.loading")}</p>
-      ) : error ? (
-        <p className="text-sm text-danger">{error}</p>
       ) : providers.length === 0 ? (
         <p className="text-sm text-ink-faint">
           {t("agent.imageProvider.empty")}
@@ -598,9 +745,7 @@ function ImageProvidersArea({
               className="rounded-md border border-canvas-200/70 bg-canvas-100/40 p-3"
             >
               <div className="flex items-center justify-between gap-2">
-                <strong className="font-semibold text-ink">
-                  {provider.id}
-                </strong>
+                <strong className="font-semibold text-ink">{provider.id}</strong>
                 <span
                   className={
                     provider.enabled
@@ -633,40 +778,161 @@ function ImageProvidersArea({
                   <dd className="inline"> {provider.default_quality}</dd>
                 </div>
               </dl>
+              <div className="mt-3 flex gap-1.5">
+                <StudioButton onClick={() => onEdit(provider)}>
+                  {t("agent.provider.edit")}
+                </StudioButton>
+                <StudioButton onClick={() => onDelete(provider.id)}>
+                  {t("agent.provider.delete")}
+                </StudioButton>
+                <StudioButton
+                  onClick={() => onTest(provider.id)}
+                  disabled={testing}
+                >
+                  {t("agent.provider.test")}
+                </StudioButton>
+              </div>
             </li>
           ))}
         </ul>
       )}
+      <ProviderTestStatus result={testResult} />
     </StudioPanel>
   );
 }
 
-// ---------------------------------------------------------------------------
-// TTS providers area (T4.1 — read-only display; TTS providers are
-// configured via ~/.plotforge/providers.json in v1)
-// ---------------------------------------------------------------------------
+function ImageProviderEditor({
+  entry,
+  onCancel,
+  onSave,
+}: {
+  entry: ImageProviderEntry;
+  onCancel: () => void;
+  onSave: (entry: ImageProviderEntry) => void;
+}) {
+  const { t } = useStudioI18n();
+  const [draft, setDraft] = useState(entry);
+  const update = <K extends keyof ImageProviderEntry>(
+    key: K,
+    value: ImageProviderEntry[K],
+  ) => setDraft((previous) => ({ ...previous, [key]: value }));
+  return (
+    <div className="grid max-w-xl gap-3 rounded-md border border-canvas-200/70 bg-canvas-100/40 p-4">
+      <TextInput
+        label={t("agent.provider.id")}
+        ariaLabel={t("agent.provider.id")}
+        value={draft.id}
+        onChange={(value) => update("id", value)}
+      />
+      <TextInput
+        label={t("agent.provider.endpoint")}
+        ariaLabel={t("agent.provider.endpoint")}
+        value={draft.endpoint_url}
+        onChange={(value) => update("endpoint_url", value)}
+      />
+      <TextInput
+        label={t("agent.provider.model")}
+        ariaLabel={t("agent.provider.model")}
+        value={draft.model}
+        onChange={(value) => update("model", value)}
+      />
+      <div className="grid gap-1">
+        <TextInput
+          label={t("agent.provider.credentialEnvVar")}
+          ariaLabel={t("agent.provider.credentialEnvVar")}
+          value={draft.credential_env_var}
+          onChange={(value) => update("credential_env_var", value)}
+          placeholder="e.g. OPENAI_API_KEY"
+        />
+        <small className="text-xs text-ink/55">
+          {t("agent.provider.credentialHint")}
+        </small>
+      </div>
+      <TextInput
+        label={t("agent.imageProvider.sizeLabel")}
+        ariaLabel={t("agent.imageProvider.sizeLabel")}
+        value={draft.default_size}
+        onChange={(value) => update("default_size", value)}
+      />
+      <TextInput
+        label={t("agent.imageProvider.qualityLabel")}
+        ariaLabel={t("agent.imageProvider.qualityLabel")}
+        value={draft.default_quality}
+        onChange={(value) => update("default_quality", value)}
+      />
+      <label className="inline-flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          onChange={(event) => update("enabled", event.target.checked)}
+        />
+        {t("agent.provider.enabled")}
+      </label>
+      <div className="flex gap-2">
+        <StudioButton variant="primary" onClick={() => onSave(draft)}>
+          {t("agent.provider.save")}
+        </StudioButton>
+        <StudioButton onClick={onCancel}>
+          {t("agent.provider.cancel")}
+        </StudioButton>
+      </div>
+    </div>
+  );
+}
 
 interface TtsProvidersAreaProps {
   providers: TtsProviderEntry[];
   loading: boolean;
   error: string | null;
+  editingEntry: TtsProviderEntry | null;
+  onEdit: (entry: TtsProviderEntry) => void;
+  onCancelEdit: () => void;
+  onSave: (entry: TtsProviderEntry) => void;
+  onDelete: (id: string) => void;
+  onTest: (id: string) => void;
+  testing: boolean;
+  testResult: ProviderTestResult | null;
+  onAdd: () => void;
 }
 
 function TtsProvidersArea({
   providers,
   loading,
   error,
+  editingEntry,
+  onEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+  onTest,
+  testing,
+  testResult,
+  onAdd,
 }: TtsProvidersAreaProps) {
   const { t } = useStudioI18n();
   return (
     <StudioPanel>
-      <h4 className="mb-3 font-display text-lg font-semibold tracking-display-tight text-ink">
-        {t("agent.ttsProvider.title")}
-      </h4>
-      {loading ? (
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h4 className="font-display text-lg font-semibold tracking-display-tight text-ink">
+          {t("agent.ttsProvider.title")}
+        </h4>
+        <StudioButton variant="primary" onClick={onAdd}>
+          {t("agent.ttsProvider.add")}
+        </StudioButton>
+      </div>
+      {error && (
+        <div role="alert" className="mb-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
+      {editingEntry ? (
+        <TtsProviderEditor
+          entry={editingEntry}
+          onCancel={onCancelEdit}
+          onSave={onSave}
+        />
+      ) : loading ? (
         <p className="text-sm text-ink-faint">{t("agent.provider.loading")}</p>
-      ) : error ? (
-        <p className="text-sm text-danger">{error}</p>
       ) : providers.length === 0 ? (
         <p className="text-sm text-ink-faint">{t("agent.ttsProvider.empty")}</p>
       ) : (
@@ -677,9 +943,7 @@ function TtsProvidersArea({
               className="rounded-md border border-canvas-200/70 bg-canvas-100/40 p-3"
             >
               <div className="flex items-center justify-between gap-2">
-                <strong className="font-semibold text-ink">
-                  {provider.id}
-                </strong>
+                <strong className="font-semibold text-ink">{provider.id}</strong>
                 <span
                   className={
                     provider.enabled
@@ -712,11 +976,126 @@ function TtsProvidersArea({
                   <dd className="inline"> {provider.format}</dd>
                 </div>
               </dl>
+              <div className="mt-3 flex gap-1.5">
+                <StudioButton onClick={() => onEdit(provider)}>
+                  {t("agent.provider.edit")}
+                </StudioButton>
+                <StudioButton onClick={() => onDelete(provider.id)}>
+                  {t("agent.provider.delete")}
+                </StudioButton>
+                <StudioButton
+                  onClick={() => onTest(provider.id)}
+                  disabled={testing}
+                >
+                  {t("agent.provider.test")}
+                </StudioButton>
+              </div>
             </li>
           ))}
         </ul>
       )}
+      <ProviderTestStatus result={testResult} />
     </StudioPanel>
+  );
+}
+
+function TtsProviderEditor({
+  entry,
+  onCancel,
+  onSave,
+}: {
+  entry: TtsProviderEntry;
+  onCancel: () => void;
+  onSave: (entry: TtsProviderEntry) => void;
+}) {
+  const { t } = useStudioI18n();
+  const [draft, setDraft] = useState(entry);
+  const update = <K extends keyof TtsProviderEntry>(
+    key: K,
+    value: TtsProviderEntry[K],
+  ) => setDraft((previous) => ({ ...previous, [key]: value }));
+  return (
+    <div className="grid max-w-xl gap-3 rounded-md border border-canvas-200/70 bg-canvas-100/40 p-4">
+      <TextInput
+        label={t("agent.provider.id")}
+        ariaLabel={t("agent.provider.id")}
+        value={draft.id}
+        onChange={(value) => update("id", value)}
+      />
+      <TextInput
+        label={t("agent.provider.endpoint")}
+        ariaLabel={t("agent.provider.endpoint")}
+        value={draft.endpoint_url}
+        onChange={(value) => update("endpoint_url", value)}
+      />
+      <TextInput
+        label={t("agent.provider.model")}
+        ariaLabel={t("agent.provider.model")}
+        value={draft.model}
+        onChange={(value) => update("model", value)}
+      />
+      <div className="grid gap-1">
+        <TextInput
+          label={t("agent.provider.credentialEnvVar")}
+          ariaLabel={t("agent.provider.credentialEnvVar")}
+          value={draft.credential_env_var}
+          onChange={(value) => update("credential_env_var", value)}
+          placeholder="e.g. OPENAI_API_KEY"
+        />
+        <small className="text-xs text-ink/55">
+          {t("agent.provider.credentialHint")}
+        </small>
+      </div>
+      <TextInput
+        label={t("agent.ttsProvider.voiceLabel")}
+        ariaLabel={t("agent.ttsProvider.voiceLabel")}
+        value={draft.voice}
+        onChange={(value) => update("voice", value)}
+      />
+      <TextInput
+        label={t("agent.ttsProvider.formatLabel")}
+        ariaLabel={t("agent.ttsProvider.formatLabel")}
+        value={draft.format}
+        onChange={(value) => update("format", value)}
+      />
+      <label className="inline-flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          onChange={(event) => update("enabled", event.target.checked)}
+        />
+        {t("agent.provider.enabled")}
+      </label>
+      <div className="flex gap-2">
+        <StudioButton variant="primary" onClick={() => onSave(draft)}>
+          {t("agent.provider.save")}
+        </StudioButton>
+        <StudioButton onClick={onCancel}>
+          {t("agent.provider.cancel")}
+        </StudioButton>
+      </div>
+    </div>
+  );
+}
+
+function ProviderTestStatus({ result }: { result: ProviderTestResult | null }) {
+  const { t } = useStudioI18n();
+  if (!result) return null;
+  return (
+    <div
+      role="status"
+      className={[
+        "mt-3 rounded-md border px-3 py-2 text-sm",
+        result.ok
+          ? "border-sage/30 bg-sage/10 text-sage"
+          : "border-signal/30 bg-signal/10 text-signal",
+      ].join(" ")}
+    >
+      {result.ok
+        ? t("agent.provider.test.ok")
+        : t("agent.provider.test.failed")}{" "}
+      {result.message}
+    </div>
   );
 }
 

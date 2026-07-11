@@ -207,12 +207,64 @@ export async function mockListImageProviders(): Promise<ImageProviderEntry[]> {
   return [];
 }
 
+export async function mockUpsertImageProvider(
+  entry: ImageProviderEntry,
+): Promise<ImageProviderEntry> {
+  return entry;
+}
+
+export async function mockDeleteImageProvider(
+  id: string,
+): Promise<ImageProviderEntry> {
+  return {
+    id,
+    endpoint_url: "",
+    model: "",
+    credential_env_var: "",
+    enabled: false,
+    default_size: "1024x1024",
+    default_quality: "medium",
+  };
+}
+
+export async function mockTestImageProvider(
+  _id: string,
+): Promise<ProviderTestResult> {
+  return { ok: true, message: "" };
+}
+
 /**
  * Mock `listTtsProviders`: returns an empty list so the Settings → Agent →
  * TTS providers area can be exercised in tests without a live registry.
  */
 export async function mockListTtsProviders(): Promise<TtsProviderEntry[]> {
   return [];
+}
+
+export async function mockUpsertTtsProvider(
+  entry: TtsProviderEntry,
+): Promise<TtsProviderEntry> {
+  return entry;
+}
+
+export async function mockDeleteTtsProvider(
+  id: string,
+): Promise<TtsProviderEntry> {
+  return {
+    id,
+    endpoint_url: "",
+    model: "",
+    credential_env_var: "",
+    enabled: false,
+    voice: "coral",
+    format: "mp3",
+  };
+}
+
+export async function mockTestTtsProvider(
+  _id: string,
+): Promise<ProviderTestResult> {
+  return { ok: true, message: "" };
 }
 
 export async function mockListProjectPromptTemplates(_projectPath: string): Promise<PromptTemplate[]> {

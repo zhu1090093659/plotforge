@@ -102,7 +102,13 @@ export const studioCommandNames = {
   testProviderConnection: "test_provider_connection",
   listRemoteModels: "list_remote_models",
   listImageProviders: "list_image_providers",
+  upsertImageProvider: "upsert_image_provider",
+  deleteImageProvider: "delete_image_provider",
+  testImageProvider: "test_image_provider",
   listTtsProviders: "list_tts_providers",
+  upsertTtsProvider: "upsert_tts_provider",
+  deleteTtsProvider: "delete_tts_provider",
+  testTtsProvider: "test_tts_provider",
   listUserPromptTemplates: "list_user_prompt_templates",
   listProjectPromptTemplates: "list_project_prompt_templates",
   upsertUserPromptTemplate: "upsert_user_prompt_template",
@@ -624,9 +630,45 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
         studioCommandNames.listImageProviders,
       );
     },
+    upsertImageProvider(entry: ImageProviderEntry): Promise<ImageProviderEntry> {
+      return invokeCommand<ImageProviderEntry>(
+        studioCommandNames.upsertImageProvider,
+        { entry },
+      );
+    },
+    deleteImageProvider(id: string): Promise<ImageProviderEntry> {
+      return invokeCommand<ImageProviderEntry>(
+        studioCommandNames.deleteImageProvider,
+        { id },
+      );
+    },
+    testImageProvider(id: string): Promise<ProviderTestResult> {
+      return invokeCommand<ProviderTestResult>(
+        studioCommandNames.testImageProvider,
+        { id },
+      );
+    },
     listTtsProviders(): Promise<TtsProviderEntry[]> {
       return invokeCommand<TtsProviderEntry[]>(
         studioCommandNames.listTtsProviders,
+      );
+    },
+    upsertTtsProvider(entry: TtsProviderEntry): Promise<TtsProviderEntry> {
+      return invokeCommand<TtsProviderEntry>(
+        studioCommandNames.upsertTtsProvider,
+        { entry },
+      );
+    },
+    deleteTtsProvider(id: string): Promise<TtsProviderEntry> {
+      return invokeCommand<TtsProviderEntry>(
+        studioCommandNames.deleteTtsProvider,
+        { id },
+      );
+    },
+    testTtsProvider(id: string): Promise<ProviderTestResult> {
+      return invokeCommand<ProviderTestResult>(
+        studioCommandNames.testTtsProvider,
+        { id },
       );
     },
     listUserPromptTemplates(): Promise<PromptTemplate[]> {

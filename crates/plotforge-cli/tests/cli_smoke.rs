@@ -726,6 +726,126 @@ fn cli_studio_delete_provider_reports_missing_id_explicitly() {
 }
 
 #[test]
+fn cli_studio_image_provider_commands_round_trip_against_temp_home() {
+    let home = hermetic_home();
+    let entry = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_image_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-smoke-image",
+                "endpoint_url": "https://example.invalid/v1",
+                "model": "gpt-image-test",
+                "credential_env_var": "PLOTFORGE_CLI_SMOKE_IMAGE_KEY_9F3C7A",
+                "enabled": false,
+                "default_size": "256x256",
+                "default_quality": "low"
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert!(entry.is_object(), "upsert must return a JSON object");
+    assert!(
+        entry["id"].is_string(),
+        "upsert object must carry string id"
+    );
+
+    let listed = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_image_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(listed.is_array(), "list must return a JSON array");
+
+    let tested = run_with_stdin_home(
+        &home.home,
+        ["studio", "test_image_provider"],
+        &serde_json::json!({ "id": "cli-smoke-image" }).to_string(),
+    )
+    .stdout_json();
+    assert!(tested.is_object(), "test must return a JSON object");
+    assert!(tested["ok"].is_boolean(), "test object must carry bool ok");
+    assert!(
+        tested["message"].is_string(),
+        "test object must carry string message"
+    );
+
+    let removed = run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_image_provider"],
+        &serde_json::json!({ "id": "cli-smoke-image" }).to_string(),
+    )
+    .stdout_json();
+    assert!(removed.is_object(), "delete must return a JSON object");
+    assert!(
+        removed["id"].is_string(),
+        "delete object must carry string id"
+    );
+}
+
+#[test]
+fn cli_studio_tts_provider_commands_round_trip_against_temp_home() {
+    let home = hermetic_home();
+    let entry = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_tts_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-smoke-tts",
+                "endpoint_url": "https://example.invalid/v1",
+                "model": "gpt-tts-test",
+                "credential_env_var": "PLOTFORGE_CLI_SMOKE_TTS_KEY_9F3C7A",
+                "enabled": false,
+                "voice": "coral",
+                "format": "mp3"
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert!(entry.is_object(), "upsert must return a JSON object");
+    assert!(
+        entry["id"].is_string(),
+        "upsert object must carry string id"
+    );
+
+    let listed = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_tts_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert!(listed.is_array(), "list must return a JSON array");
+
+    let tested = run_with_stdin_home(
+        &home.home,
+        ["studio", "test_tts_provider"],
+        &serde_json::json!({ "id": "cli-smoke-tts" }).to_string(),
+    )
+    .stdout_json();
+    assert!(tested.is_object(), "test must return a JSON object");
+    assert!(tested["ok"].is_boolean(), "test object must carry bool ok");
+    assert!(
+        tested["message"].is_string(),
+        "test object must carry string message"
+    );
+
+    let removed = run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_tts_provider"],
+        &serde_json::json!({ "id": "cli-smoke-tts" }).to_string(),
+    )
+    .stdout_json();
+    assert!(removed.is_object(), "delete must return a JSON object");
+    assert!(
+        removed["id"].is_string(),
+        "delete object must carry string id"
+    );
+}
+
+#[test]
 fn cli_studio_prompt_templates_user_and_project_round_trip() {
     // User-global templates live at `~/.plotforge/prompts.json`; project
     // templates live at `<project>/.plotforge/prompts.json`. Redirecting HOME
