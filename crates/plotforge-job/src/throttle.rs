@@ -6,7 +6,7 @@ use crate::{JobClock, UsageLedger};
 
 const TOKEN_SCALE: u128 = 60_000;
 
-#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ThrottleConfig {
     pub provider_id: String,
     pub max_concurrency: Option<u32>,
@@ -29,13 +29,13 @@ where
 
 #[derive(Clone, Debug)]
 pub struct ThrottleGate<C> {
-    config: ThrottleConfig,
     clock: C,
     state: Arc<Mutex<ThrottleState>>,
 }
 
 #[derive(Debug)]
 struct ThrottleState {
+    config: ThrottleConfig,
     available_token_units: u128,
     last_refill_ms: u64,
     in_flight: u32,
@@ -85,9 +85,9 @@ where
             .unwrap_or_default();
 
         Ok(Self {
-            config,
             clock,
             state: Arc::new(Mutex::new(ThrottleState {
+                config,
                 available_token_units,
                 last_refill_ms: now_ms,
                 in_flight: 0,
@@ -100,16 +100,15 @@ where
         usage_ledger: Option<&dyn DailyTokenUsage>,
     ) -> Result<ThrottlePermit, ThrottleError> {
         let now_ms = self.clock.now_ms();
-        self.enforce_daily_budget(usage_ledger, now_ms)?;
-
         let mut state = self
             .state
             .lock()
             .map_err(|_| ThrottleError::StatePoisoned)?;
-        enforce_concurrency(&self.config, &state)?;
-        enforce_request_rate(&self.config, &mut state, now_ms)?;
+        enforce_daily_budget(&state.config, usage_ledger, now_ms)?;
+        enforce_concurrency(&state.config, &state)?;
+        enforce_request_rate(&mut state, now_ms)?;
 
-        let concurrency_state = if self.config.max_concurrency.is_some() {
+        let concurrency_state = if state.config.max_concurrency.is_some() {
             state.in_flight += 1;
             Some(Arc::clone(&self.state))
         } else {
@@ -120,21 +119,57 @@ where
         Ok(ThrottlePermit { concurrency_state })
     }
 
-    fn enforce_daily_budget(
-        &self,
-        usage_ledger: Option<&dyn DailyTokenUsage>,
-        now_ms: u64,
-    ) -> Result<(), ThrottleError> {
-        let Some(budget) = self.config.daily_token_budget else {
-            return Ok(());
-        };
-        let ledger = usage_ledger.ok_or(ThrottleError::BudgetLedgerRequired)?;
-        let spent = ledger.provider_output_tokens_for_utc_day(&self.config.provider_id, now_ms);
-        if spent >= budget {
-            return Err(ThrottleError::BudgetExceeded { spent, budget });
+    pub fn reconfigure(&self, config: ThrottleConfig) -> Result<(), ThrottleError> {
+        validate_config(&config)?;
+        let now_ms = self.clock.now_ms();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ThrottleError::StatePoisoned)?;
+        if config.provider_id != state.config.provider_id {
+            return Err(ThrottleError::InvalidConfig(
+                "provider_id cannot change when reconfiguring a throttle gate",
+            ));
         }
+        let previous_rpm = state.config.requests_per_minute;
+        if let Some(requests_per_minute) = previous_rpm {
+            refill_tokens(&mut state, requests_per_minute, now_ms);
+        }
+        state.available_token_units = match (previous_rpm, config.requests_per_minute) {
+            (_, None) => 0,
+            (None, Some(requests_per_minute)) => token_capacity_units(requests_per_minute),
+            (Some(_), Some(requests_per_minute)) => state
+                .available_token_units
+                .min(token_capacity_units(requests_per_minute)),
+        };
+        state.last_refill_ms = now_ms;
+        state.config = config;
         Ok(())
     }
+
+    pub fn requires_daily_usage(&self) -> Result<bool, ThrottleError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| ThrottleError::StatePoisoned)?;
+        Ok(state.config.daily_token_budget.is_some())
+    }
+}
+
+fn enforce_daily_budget(
+    config: &ThrottleConfig,
+    usage_ledger: Option<&dyn DailyTokenUsage>,
+    now_ms: u64,
+) -> Result<(), ThrottleError> {
+    let Some(budget) = config.daily_token_budget else {
+        return Ok(());
+    };
+    let ledger = usage_ledger.ok_or(ThrottleError::BudgetLedgerRequired)?;
+    let spent = ledger.provider_output_tokens_for_utc_day(&config.provider_id, now_ms);
+    if spent >= budget {
+        return Err(ThrottleError::BudgetExceeded { spent, budget });
+    }
+    Ok(())
 }
 
 impl Drop for ThrottlePermit {
@@ -181,12 +216,8 @@ fn enforce_concurrency(
     Ok(())
 }
 
-fn enforce_request_rate(
-    config: &ThrottleConfig,
-    state: &mut ThrottleState,
-    now_ms: u64,
-) -> Result<(), ThrottleError> {
-    let Some(requests_per_minute) = config.requests_per_minute else {
+fn enforce_request_rate(state: &mut ThrottleState, now_ms: u64) -> Result<(), ThrottleError> {
+    let Some(requests_per_minute) = state.config.requests_per_minute else {
         return Ok(());
     };
 
@@ -335,6 +366,55 @@ mod tests {
             ThrottleError::RateLimited {
                 retry_after_ms: 60_000
             }
+        );
+    }
+
+    #[test]
+    fn throttle_gate_reconfigure_preserves_in_flight_and_rate_state() {
+        let clock = FakeClock::new(0);
+        let gate = gate(
+            ThrottleConfig {
+                max_concurrency: Some(1),
+                requests_per_minute: Some(1),
+                ..config()
+            },
+            clock,
+        );
+        let permit = gate.acquire(None).expect("initial permit and token");
+
+        gate.reconfigure(ThrottleConfig {
+            max_concurrency: Some(1),
+            requests_per_minute: Some(2),
+            ..config()
+        })
+        .expect("quota hot update");
+
+        assert_eq!(
+            gate.acquire(None)
+                .expect_err("in-flight request survives update"),
+            ThrottleError::ConcurrencyCapped { max_concurrency: 1 }
+        );
+        drop(permit);
+        assert!(matches!(
+            gate.acquire(None),
+            Err(ThrottleError::RateLimited { .. })
+        ));
+    }
+
+    #[test]
+    fn throttle_gate_reconfigure_rejects_identity_changes() {
+        let gate = gate(config(), FakeClock::new(0));
+
+        assert_eq!(
+            gate.reconfigure(ThrottleConfig {
+                provider_id: "provider-b".into(),
+                requests_per_minute: Some(1),
+                ..ThrottleConfig::default()
+            })
+            .expect_err("gate identity is stable"),
+            ThrottleError::InvalidConfig(
+                "provider_id cannot change when reconfiguring a throttle gate"
+            )
         );
     }
 

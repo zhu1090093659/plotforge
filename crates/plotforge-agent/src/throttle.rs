@@ -37,7 +37,21 @@ impl UsageLedgerLoader {
 #[derive(Clone, Debug)]
 pub(crate) struct ProviderThrottle {
     gate: ThrottleGate<SystemJobClock>,
-    usage_loader: Option<UsageLedgerLoader>,
+    usage_loader: UsageLedgerLoader,
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) enum ProviderThrottleScope {
+    Text,
+    Image,
+    Tts,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct ProviderThrottleKey {
+    scope: ProviderThrottleScope,
+    provider_id: String,
+    provider_config_hash: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -102,11 +116,15 @@ impl ProviderThrottleError {
 }
 
 impl ProviderThrottle {
-    /// Returns the process-shared gate for a stable provider id and quota
-    /// configuration. Studio rebuilds provider adapters between turns, so
-    /// keeping this state outside the adapter is required for RPM and
-    /// concurrency quotas to span those rebuilds.
+    /// Returns the process-shared gate for a provider kind, stable id, and
+    /// redaction-safe upstream config hash. Studio rebuilds provider adapters
+    /// between turns, so keeping this state outside the adapter is required
+    /// for RPM and concurrency quotas to span those rebuilds. Quota edits
+    /// reconfigure the existing gate in place so in-flight permits and
+    /// consumed rate capacity are not reset.
     pub(crate) fn shared_from_config(
+        scope: ProviderThrottleScope,
+        provider_config_hash: String,
         config: ThrottleConfig,
     ) -> Result<Option<Self>, ProviderThrottleError> {
         if config.max_concurrency.is_none()
@@ -116,27 +134,35 @@ impl ProviderThrottle {
             return Ok(None);
         }
 
-        static REGISTRY: OnceLock<Mutex<HashMap<ThrottleConfig, ProviderThrottle>>> =
-            OnceLock::new();
+        static REGISTRY: OnceLock<
+            Mutex<HashMap<ProviderThrottleKey, ThrottleGate<SystemJobClock>>>,
+        > = OnceLock::new();
         let registry = REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
         let mut registry = registry
             .lock()
             .map_err(|_| ProviderThrottleError::RegistryState)?;
-        if let Some(throttle) = registry.get(&config) {
-            return Ok(Some(throttle.clone()));
+        let key = ProviderThrottleKey {
+            scope,
+            provider_id: config.provider_id.clone(),
+            provider_config_hash,
+        };
+        if let Some(gate) = registry.get(&key) {
+            gate.reconfigure(config)?;
+            return Ok(Some(Self {
+                gate: gate.clone(),
+                usage_loader: UsageLedgerLoader::user_global(),
+            }));
         }
 
-        let throttle = Self::from_config(config.clone())?.expect("quota config creates throttle");
-        registry.insert(config, throttle.clone());
-        Ok(Some(throttle))
+        let gate = ThrottleGate::new(config, SystemJobClock)?;
+        registry.insert(key, gate.clone());
+        Ok(Some(Self {
+            gate,
+            usage_loader: UsageLedgerLoader::user_global(),
+        }))
     }
 
-    pub(crate) fn from_config(
-        config: ThrottleConfig,
-    ) -> Result<Option<Self>, ProviderThrottleError> {
-        Self::from_config_with_loader(config, UsageLedgerLoader::user_global())
-    }
-
+    #[cfg(test)]
     fn from_config_with_loader(
         config: ThrottleConfig,
         usage_loader: UsageLedgerLoader,
@@ -147,10 +173,9 @@ impl ProviderThrottle {
         {
             return Ok(None);
         }
-        let requires_usage = config.daily_token_budget.is_some();
         Ok(Some(Self {
             gate: ThrottleGate::new(config, SystemJobClock)?,
-            usage_loader: requires_usage.then_some(usage_loader),
+            usage_loader,
         }))
     }
 
@@ -164,9 +189,9 @@ impl ProviderThrottle {
 
     pub(crate) fn acquire(&self) -> Result<ThrottlePermit, ProviderThrottleError> {
         let ledger = self
-            .usage_loader
-            .as_ref()
-            .map(UsageLedgerLoader::load)
+            .gate
+            .requires_daily_usage()?
+            .then(|| self.usage_loader.load())
             .transpose()?;
         self.gate
             .acquire(ledger.as_ref().map(|value| value as _))

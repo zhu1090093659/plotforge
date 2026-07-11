@@ -31,6 +31,7 @@ use crate::providers_text::{
     TextProviderConfig,
 };
 use crate::providers_tts::OpenAiTtsClient;
+use crate::throttle::ProviderThrottleScope;
 
 /// The reserved model id for the offline local pi-Agent mock. Real providers
 /// are opt-in: a fresh install resolves every model id to this default until
@@ -185,12 +186,21 @@ pub fn build_text_provider(
         max_output_tokens: entry.max_output_tokens,
         supports_json_schema,
     };
-    let throttle = build_throttle(ThrottleConfig {
-        provider_id: entry.id.clone(),
-        max_concurrency: entry.max_concurrency,
-        requests_per_minute: entry.requests_per_minute,
-        daily_token_budget: entry.daily_token_budget,
-    })?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Text,
+        throttle_config_hash(&[
+            provider_kind_key(entry.kind),
+            &entry.endpoint_url,
+            &entry.model,
+            &entry.credential_env_var,
+        ]),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: entry.daily_token_budget,
+        },
+    )?;
     if entry.credential_env_var.trim().is_empty() {
         Ok(Box::new(
             ConfiguredTextModelProvider::new(config, client, OptionalEnvCredentialResolver)
@@ -230,12 +240,16 @@ pub fn build_image_provider(
     entry: &ImageProviderEntry,
 ) -> Result<Box<dyn ImageProvider>, ProviderBuildError> {
     reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
-    let throttle = build_throttle(ThrottleConfig {
-        provider_id: entry.id.clone(),
-        max_concurrency: entry.max_concurrency,
-        requests_per_minute: entry.requests_per_minute,
-        daily_token_budget: None,
-    })?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Image,
+        throttle_config_hash(&[&entry.endpoint_url, &entry.model, &entry.credential_env_var]),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: None,
+        },
+    )?;
     let client = OpenAiImageClient::new(entry, EnvCredentialResolver)
         .map_err(|error| ProviderBuildError::ClientConstruction {
             provider_id: entry.id.clone(),
@@ -272,12 +286,16 @@ pub fn build_tts_provider(
     entry: &TtsProviderEntry,
 ) -> Result<OpenAiTtsClient<EnvCredentialResolver>, ProviderBuildError> {
     reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
-    let throttle = build_throttle(ThrottleConfig {
-        provider_id: entry.id.clone(),
-        max_concurrency: entry.max_concurrency,
-        requests_per_minute: entry.requests_per_minute,
-        daily_token_budget: None,
-    })?;
+    let throttle = build_throttle(
+        ProviderThrottleScope::Tts,
+        throttle_config_hash(&[&entry.endpoint_url, &entry.model, &entry.credential_env_var]),
+        ThrottleConfig {
+            provider_id: entry.id.clone(),
+            max_concurrency: entry.max_concurrency,
+            requests_per_minute: entry.requests_per_minute,
+            daily_token_budget: None,
+        },
+    )?;
     OpenAiTtsClient::from_entry(entry, EnvCredentialResolver)
         .map(|client| client.with_throttle(throttle))
         .map_err(|error| ProviderBuildError::ClientConstruction {
@@ -287,15 +305,31 @@ pub fn build_tts_provider(
 }
 
 fn build_throttle(
+    scope: ProviderThrottleScope,
+    provider_config_hash: String,
     config: ThrottleConfig,
 ) -> Result<Option<crate::throttle::ProviderThrottle>, ProviderBuildError> {
     let provider_id = config.provider_id.clone();
-    crate::throttle::ProviderThrottle::shared_from_config(config).map_err(|error| {
-        ProviderBuildError::InvalidThrottle {
+    crate::throttle::ProviderThrottle::shared_from_config(scope, provider_config_hash, config)
+        .map_err(|error| ProviderBuildError::InvalidThrottle {
             provider_id,
             message: error.to_string(),
-        }
-    })
+        })
+}
+
+fn throttle_config_hash(parts: &[&str]) -> String {
+    format!(
+        "sha256:{}",
+        crate::shared::stable_sha256_hash(&parts.join("\n"))
+    )
+}
+
+fn provider_kind_key(kind: ProviderKind) -> &'static str {
+    match kind {
+        ProviderKind::OpenAiCompatible => "openai_compatible",
+        ProviderKind::OpenAiResponses => "openai_responses",
+        ProviderKind::AnthropicMessages => "anthropic_messages",
+    }
 }
 
 fn reject_media_daily_token_budget(
@@ -1016,27 +1050,76 @@ mod tests {
 
     #[test]
     fn rebuilding_provider_throttle_reuses_process_state() {
-        let config = ThrottleConfig {
+        let first_config = ThrottleConfig {
             provider_id: "registry-rebuild-throttle-test".into(),
+            max_concurrency: Some(1),
             requests_per_minute: Some(1),
             ..ThrottleConfig::default()
         };
-        let first = build_throttle(config.clone())
-            .expect("first provider build")
-            .expect("quota creates throttle");
-        let second = build_throttle(config)
-            .expect("second provider build")
-            .expect("quota creates throttle");
+        let first = build_throttle(
+            ProviderThrottleScope::Text,
+            "sha256:registry-rebuild".into(),
+            first_config,
+        )
+        .expect("first provider build")
+        .expect("quota creates throttle");
+        let permit = first.acquire().expect("first build consumes capacity");
 
-        drop(first.acquire().expect("first build consumes token"));
+        let second = build_throttle(
+            ProviderThrottleScope::Text,
+            "sha256:registry-rebuild".into(),
+            ThrottleConfig {
+                provider_id: "registry-rebuild-throttle-test".into(),
+                max_concurrency: Some(1),
+                requests_per_minute: Some(2),
+                ..ThrottleConfig::default()
+            },
+        )
+        .expect("second provider build")
+        .expect("quota creates throttle");
         let failure = second
             .acquire()
-            .expect_err("rebuilt provider must observe the same bucket")
+            .expect_err("rebuilt provider must observe the in-flight permit")
             .into_failure();
         assert!(matches!(
             failure,
             crate::throttle::ThrottleFailure::RateLimit { .. }
         ));
+        drop(permit);
+        let failure = second
+            .acquire()
+            .expect_err("quota update must not refill the consumed bucket")
+            .into_failure();
+        assert!(matches!(
+            failure,
+            crate::throttle::ThrottleFailure::RateLimit { .. }
+        ));
+    }
+
+    #[test]
+    fn provider_kinds_with_the_same_id_do_not_share_throttle_state() {
+        let config = ThrottleConfig {
+            provider_id: "cross-kind-throttle-test".into(),
+            requests_per_minute: Some(1),
+            ..ThrottleConfig::default()
+        };
+        let text = build_throttle(
+            ProviderThrottleScope::Text,
+            "sha256:cross-kind".into(),
+            config.clone(),
+        )
+        .expect("text build")
+        .expect("text throttle");
+        let image = build_throttle(
+            ProviderThrottleScope::Image,
+            "sha256:cross-kind".into(),
+            config,
+        )
+        .expect("image build")
+        .expect("image throttle");
+
+        drop(text.acquire().expect("text token"));
+        drop(image.acquire().expect("independent image token"));
     }
 
     // -----------------------------------------------------------------------
