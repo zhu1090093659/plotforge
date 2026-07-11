@@ -165,6 +165,17 @@ fn http_binary_response(content_type: &str, body: &[u8]) -> Vec<u8> {
     response
 }
 
+fn http_chunked_response(content_type: &str, body: &[u8]) -> Vec<u8> {
+    let mut response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nTransfer-Encoding: chunked\r\n\r\n{:X}\r\n",
+        body.len()
+    )
+    .into_bytes();
+    response.extend_from_slice(body);
+    response.extend_from_slice(b"\r\n0\r\n\r\n");
+    response
+}
+
 // ---------------------------------------------------------------------------
 // Fixture builders (mirror the unit-test helpers in providers_http::tests).
 // ---------------------------------------------------------------------------
@@ -1228,6 +1239,40 @@ fn moderation_raw_response_secret_marker_is_rejected_before_parse() {
         .expect_err("secret response rejected");
     assert_eq!(error.code, "moderation_provider_response_secret");
     assert!(!error.message.contains("sk-provider-secret"));
+    server.handle.join().expect("server thread");
+}
+
+#[test]
+#[ignore]
+fn moderation_fixed_length_response_over_limit_is_rejected() {
+    let body = "x".repeat(1024 * 1024 + 1);
+    let server = capturing_server(http_response("HTTP/1.1 200 OK", "application/json", &body));
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), "");
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let error = provider
+        .moderate(&ModerationRequest {
+            call_id: "oversized-fixed".into(),
+            prompt: "safe input".into(),
+        })
+        .expect_err("oversized response rejected");
+    assert_eq!(error.code, "moderation_provider_response_too_large");
+    server.handle.join().expect("server thread");
+}
+
+#[test]
+#[ignore]
+fn moderation_chunked_response_over_limit_is_rejected() {
+    let body = vec![b'x'; 1024 * 1024 + 1];
+    let server = capturing_server(http_chunked_response("application/json", &body));
+    let entry = moderation_entry(&format!("http://{}/v1", server.addr), "");
+    let provider = build_moderation_provider(&entry).expect("build moderation provider");
+    let error = provider
+        .moderate(&ModerationRequest {
+            call_id: "oversized-chunked".into(),
+            prompt: "safe input".into(),
+        })
+        .expect_err("oversized chunked response rejected");
+    assert_eq!(error.code, "moderation_provider_response_too_large");
     server.handle.join().expect("server thread");
 }
 

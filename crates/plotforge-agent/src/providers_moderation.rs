@@ -1,15 +1,18 @@
 //! Moderation provider port and OpenAI-compatible blocking client.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, io::Read};
 
 use plotforge_schema::{
     ModerationProviderEntry, UsageInfo, contains_secret_marker_text, redact_trace_text,
 };
 
-use crate::providers_text::{ProviderCredentialError, ProviderCredentialResolver};
+use crate::providers_text::{
+    ProviderCredentialError, ProviderCredentialResolver, TextProviderConfig,
+};
 use crate::shared::{join_provider_endpoint, parse_retry_after};
 
 const MODERATION_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const MODERATION_RESPONSE_BODY_MAX_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModerationRequest {
@@ -166,6 +169,7 @@ where
         entry: &ModerationProviderEntry,
         credential_resolver: R,
     ) -> Result<Self, ModerationProviderError> {
+        validate_moderation_provider_entry(entry)?;
         let endpoint_url =
             join_provider_endpoint(&entry.endpoint_url, "moderations").map_err(|message| {
                 ModerationProviderError::provider("moderation_provider_invalid_endpoint", message)
@@ -278,12 +282,7 @@ where
                 format!("moderation provider returned HTTP {status}"),
             ));
         }
-        let raw = response.text().map_err(|error| {
-            ModerationProviderError::provider(
-                "moderation_provider_http_body",
-                redact_trace_text(&error.to_string()),
-            )
-        })?;
+        let raw = read_moderation_response_body(response)?;
         if contains_secret_marker_text(&raw) {
             return Err(ModerationProviderError::provider(
                 "moderation_provider_response_secret",
@@ -292,6 +291,67 @@ where
         }
         parse_moderation_response(&raw)
     }
+}
+
+pub(crate) fn validate_moderation_provider_entry(
+    entry: &ModerationProviderEntry,
+) -> Result<(), ModerationProviderError> {
+    TextProviderConfig {
+        enabled: entry.enabled,
+        provider: entry.id.clone(),
+        model: entry.model.clone(),
+        endpoint_url: Some(entry.endpoint_url.clone()),
+        credential_env_var: entry.credential_env_var.clone(),
+        max_output_tokens: None,
+        supports_json_schema: false,
+    }
+    .validate()
+    .map_err(|error| {
+        ModerationProviderError::provider(
+            "moderation_provider_invalid_configuration",
+            error.to_string(),
+        )
+    })
+}
+
+fn read_moderation_response_body(
+    response: reqwest::blocking::Response,
+) -> Result<String, ModerationProviderError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MODERATION_RESPONSE_BODY_MAX_BYTES)
+    {
+        return Err(moderation_response_too_large());
+    }
+    let mut bytes = Vec::new();
+    response
+        .take(MODERATION_RESPONSE_BODY_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            ModerationProviderError::provider(
+                "moderation_provider_http_body",
+                redact_trace_text(&error.to_string()),
+            )
+        })?;
+    if bytes.len() as u64 > MODERATION_RESPONSE_BODY_MAX_BYTES {
+        return Err(moderation_response_too_large());
+    }
+    String::from_utf8(bytes).map_err(|_| {
+        ModerationProviderError::provider(
+            "moderation_provider_http_body",
+            "moderation provider response was not valid UTF-8",
+        )
+    })
+}
+
+fn moderation_response_too_large() -> ModerationProviderError {
+    ModerationProviderError::provider(
+        "moderation_provider_response_too_large",
+        format!(
+            "moderation provider response exceeded the {} byte limit",
+            MODERATION_RESPONSE_BODY_MAX_BYTES
+        ),
+    )
 }
 
 #[derive(serde::Deserialize)]
@@ -436,5 +496,29 @@ mod tests {
             })
             .expect_err("secret prompt");
         assert_eq!(error.code, "moderation_provider_prompt_secret");
+    }
+
+    #[test]
+    fn moderation_client_rejects_unsafe_persisted_fields_without_echo() {
+        let mut unsafe_entry = entry("http://127.0.0.1:9/v1", "");
+        unsafe_entry.model = "sk-secret-model".into();
+        let error = match OpenAiModerationClient::new(
+            &unsafe_entry,
+            crate::OptionalEnvCredentialResolver,
+        ) {
+            Ok(_) => panic!("unsafe model must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "moderation_provider_invalid_configuration");
+        assert!(!error.to_string().contains("sk-secret-model"));
+
+        let mut unsafe_entry = entry("http://127.0.0.1:9/v1", "sk-secret-env-name");
+        unsafe_entry.id = "safe-id".into();
+        let error = match OpenAiModerationClient::new(&unsafe_entry, crate::EnvCredentialResolver) {
+            Ok(_) => panic!("unsafe credential env-var name must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "moderation_provider_invalid_configuration");
+        assert!(!error.to_string().contains("sk-secret-env-name"));
     }
 }
