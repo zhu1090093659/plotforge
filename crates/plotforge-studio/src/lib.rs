@@ -510,6 +510,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
     Ok(PiAgentApplyResult {
         run: run_result,
         usage,
+        moderation_outcome: None,
         scene_key,
         scene,
         trace: report.trace.clone(),

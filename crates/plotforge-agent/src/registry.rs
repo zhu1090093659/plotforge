@@ -803,6 +803,7 @@ mod tests {
             }],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");
         let loaded = load_provider_registry_from(&registry_path).expect("read via public API");
@@ -847,6 +848,7 @@ mod tests {
             ],
             image_providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
         };
         let resolved = resolve_provider_for_model("glm", &registry).expect("glm entry");
         assert_eq!(resolved.id, "glm");
@@ -1471,6 +1473,7 @@ mod tests {
             version: "1".into(),
             providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
             image_providers: vec![
                 sample_image_entry("disabled-image", "OFF_KEY", false),
                 sample_image_entry("enabled-image", "ON_KEY", true),
@@ -1488,6 +1491,7 @@ mod tests {
             version: "1".into(),
             providers: Vec::new(),
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
             image_providers: vec![sample_image_entry("off", "OFF_KEY", false)],
         };
         assert!(resolve_image_provider(&registry).is_none());
@@ -1519,6 +1523,7 @@ mod tests {
                 daily_token_budget: None,
             }],
             tts_providers: Vec::new(),
+            moderation_providers: Vec::new(),
             image_providers: vec![sample_image_entry("openai-image", "OPENAI_API_KEY", true)],
         };
         write_provider_registry_to(&registry_path, &registry).expect("write via public API");

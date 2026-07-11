@@ -267,6 +267,7 @@ fn valid_envelope_json() -> String {
             model_version: "test-model".into(),
             provider_config_hash: "sha256:integration".into(),
             mcp_tool_call_hash: None,
+            moderation_config_hash: None,
             trace_id: None,
             snapshot_id: None,
         },
