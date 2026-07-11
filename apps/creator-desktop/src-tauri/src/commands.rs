@@ -2,14 +2,14 @@ use plotforge_studio::{
     AgentSessionConfig, AiSafetyPolicy, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, ExportProfile, GitBranchInfo,
     GitSwitchResult, ImageProviderEntry, McpServerEntry, McpServerTestResult,
-    McpToolCallRequest, McpToolCallResult, McpToolManifest, ModelOption, PiAgentApplyRequest,
-    PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, PlayOnceReport,
-    ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData, ProviderEntry,
-    ProviderCostReport, ProviderTestResult, PromptTemplate, RemoteModelInfo, ResourceDefinition,
-    Rule, RuleDraft, RulesEditDocument, SkillIndex, SkillManifest, SourceFileContent,
-    SourceFileSummary, StateVariablesEditDocument, StaticExportReport, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StudioCommandError, TtsProviderEntry, UsageSummary, VisualBible,
-    WorldEditDocument, WorldGenerationReport,
+    McpToolCallRequest, McpToolCallResult, McpToolManifest, ModelOption, ModerationProviderEntry,
+    PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest, PiAgentRunResult,
+    PlayOnceReport, ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData,
+    ProviderCostReport, ProviderEntry, ProviderTestResult, PromptTemplate, RemoteModelInfo,
+    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, SkillIndex, SkillManifest,
+    SourceFileContent, SourceFileSummary, StateVariablesEditDocument, StaticExportReport,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StudioCommandError, TtsProviderEntry,
+    UsageSummary, VisualBible, WorldEditDocument, WorldGenerationReport,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -431,6 +431,30 @@ pub fn delete_tts_provider(id: String) -> Result<TtsProviderEntry, StudioCommand
 #[tauri::command(rename_all = "snake_case")]
 pub fn test_tts_provider(id: String) -> Result<ProviderTestResult, StudioCommandError> {
     plotforge_studio::test_tts_provider(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_moderation_providers() -> Result<Vec<ModerationProviderEntry>, StudioCommandError> {
+    plotforge_studio::list_moderation_providers()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upsert_moderation_provider(
+    entry: ModerationProviderEntry,
+) -> Result<ModerationProviderEntry, StudioCommandError> {
+    plotforge_studio::upsert_moderation_provider(entry)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_moderation_provider(
+    id: String,
+) -> Result<ModerationProviderEntry, StudioCommandError> {
+    plotforge_studio::delete_moderation_provider(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn test_moderation_provider(id: String) -> Result<ProviderTestResult, StudioCommandError> {
+    plotforge_studio::test_moderation_provider(id)
 }
 
 #[tauri::command(rename_all = "snake_case")]

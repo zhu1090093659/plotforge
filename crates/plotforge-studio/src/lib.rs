@@ -13,17 +13,17 @@ pub use plotforge_schema::{
     AiUsageManifest, AiUsageSourceKind, AssetRecord, AudioBible, Character, CharacterDraft,
     CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Condition,
     Effect, ExportProfile, GitBranchInfo, GitSwitchResult, ImageProviderEntry, ModelOption,
-    PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest,
-    PiAgentRunResult, ProjectCreationReport, ProjectCreationRequest, ProjectData,
-    ProjectTemplateId, PromptScope, PromptTemplate, ProviderCostReport, ProviderEntry,
-    ProviderKind, ProviderRegistry, RemoteModelInfo, ResourceDefinition, Rule, RuleDraft,
-    RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene, SkillFrontmatter, SkillIndex,
-    SkillInterface, SkillManifest, SkillOrigin, SkillSource, StateVariablesEditDocument,
-    SteamSubmissionKitDraft, SteamSubmissionKitRequest, StoryCraftEditDocument,
-    StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel, TtsProviderEntry,
-    UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
-    WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
-    redact_trace_text,
+    ModerationProviderEntry, PermissionLevel, PiAgentApplyRequest, PiAgentApplyResult,
+    PiAgentCapability, PiAgentRunRequest, PiAgentRunResult, ProjectCreationReport,
+    ProjectCreationRequest, ProjectData, ProjectTemplateId, PromptScope, PromptTemplate,
+    ProviderCostReport, ProviderEntry, ProviderKind, ProviderRegistry, RemoteModelInfo,
+    ResourceDefinition, Rule, RuleDraft, RulesEditDocument, RuntimeSnapshot, RuntimeTrace, Scene,
+    SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin, SkillSource,
+    StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
+    StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
+    TtsProviderEntry, UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
+    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
+    WorldGenerationRequest, redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -757,12 +757,24 @@ pub fn list_tts_providers() -> StudioCommandResult<Vec<TtsProviderEntry>> {
     Ok(registry.tts_providers)
 }
 
+/// Lists all registered moderation providers from the user-global registry.
+/// Entries contain only redaction-safe routing metadata and credential
+/// environment-variable names, never credential values.
+pub fn list_moderation_providers() -> StudioCommandResult<Vec<ModerationProviderEntry>> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "list_moderation_providers".into(),
+            message: source.to_string(),
+        })?;
+    Ok(registry.moderation_providers)
+}
+
 /// Adds or updates (by `id`) an image provider entry in the user-global
 /// registry. The same provider-config validator used by text providers owns
 /// the endpoint and credential-env-var rules, so Studio does not grow a
 /// second implementation of the secret-marker boundary.
 pub fn upsert_image_provider(entry: ImageProviderEntry) -> StudioCommandResult<ImageProviderEntry> {
-    validate_media_provider_fields(
+    validate_provider_endpoint_fields(
         &entry.id,
         &entry.endpoint_url,
         &entry.model,
@@ -856,7 +868,7 @@ pub fn test_image_provider(id: String) -> StudioCommandResult<ProviderTestResult
 /// registry. Credentials remain indirect: only the validated environment
 /// variable name is persisted.
 pub fn upsert_tts_provider(entry: TtsProviderEntry) -> StudioCommandResult<TtsProviderEntry> {
-    validate_media_provider_fields(
+    validate_provider_endpoint_fields(
         &entry.id,
         &entry.endpoint_url,
         &entry.model,
@@ -946,7 +958,96 @@ pub fn test_tts_provider(id: String) -> StudioCommandResult<ProviderTestResult> 
     Ok(probe_tts_provider(&provider))
 }
 
-fn validate_media_provider_fields(
+/// Adds or updates (by `id`) a moderation provider entry in the user-global
+/// registry. Daily token budgets are rejected explicitly because moderation
+/// responses do not provide the output-token accounting that budget
+/// enforcement requires.
+pub fn upsert_moderation_provider(
+    entry: ModerationProviderEntry,
+) -> StudioCommandResult<ModerationProviderEntry> {
+    validate_provider_endpoint_fields(
+        &entry.id,
+        &entry.endpoint_url,
+        &entry.model,
+        &entry.credential_env_var,
+        entry.enabled,
+    )
+    .map_err(|error| StudioCommandError {
+        code: "upsert_moderation_provider_invalid".into(),
+        message: error.to_string(),
+    })?;
+    validate_provider_quotas(
+        entry.max_concurrency,
+        entry.requests_per_minute,
+        entry.daily_token_budget,
+        false,
+    )
+    .map_err(|message| StudioCommandError {
+        code: "upsert_moderation_provider_invalid".into(),
+        message,
+    })?;
+
+    let mut registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "upsert_moderation_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    upsert_moderation_provider_entry(&mut registry, entry.clone());
+    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
+        code: "upsert_moderation_provider_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(entry)
+}
+
+/// Removes a moderation provider by id. Unknown ids fail explicitly rather
+/// than becoming a silent no-op.
+pub fn delete_moderation_provider(id: String) -> StudioCommandResult<ModerationProviderEntry> {
+    let mut registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "delete_moderation_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    let removed = delete_moderation_provider_entry(&mut registry, &id)?;
+    plotforge_agent::write_provider_registry(&registry).map_err(|source| StudioCommandError {
+        code: "delete_moderation_provider_write".into(),
+        message: source.to_string(),
+    })?;
+    Ok(removed)
+}
+
+/// Sends a benign moderation request through a registered provider. The
+/// provider response body and category details are discarded; callers receive
+/// only a redaction-safe connectivity result.
+pub fn test_moderation_provider(id: String) -> StudioCommandResult<ProviderTestResult> {
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "test_moderation_provider_load".into(),
+            message: source.to_string(),
+        })?;
+    let entry = registry
+        .moderation_providers
+        .iter()
+        .find(|provider| provider.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "moderation_provider_not_found".into(),
+            message: format!("no moderation provider with id `{id}`"),
+        })?;
+    if !entry.enabled {
+        return Ok(ProviderTestResult {
+            ok: false,
+            message: "moderation provider is disabled; enable it before testing".into(),
+        });
+    }
+    let provider =
+        plotforge_agent::build_moderation_provider(entry).map_err(|source| StudioCommandError {
+            code: "test_moderation_provider_build".into(),
+            message: redact_trace_text(&source.to_string()),
+        })?;
+    Ok(probe_moderation_provider(provider.as_ref()))
+}
+
+fn validate_provider_endpoint_fields(
     id: &str,
     endpoint_url: &str,
     model: &str,
@@ -982,7 +1083,7 @@ fn validate_provider_quotas(
     }
     if daily_token_budget.is_some() && !supports_daily_token_budget {
         return Err(
-            "daily_token_budget is supported only by text providers because image and TTS usage does not report output tokens"
+            "daily_token_budget is supported only by text providers because image, TTS, and moderation usage does not report output tokens"
                 .into(),
         );
     }
@@ -1011,6 +1112,36 @@ fn upsert_tts_provider_entry(registry: &mut ProviderRegistry, entry: TtsProvider
     } else {
         registry.tts_providers.push(entry);
     }
+}
+
+fn upsert_moderation_provider_entry(
+    registry: &mut ProviderRegistry,
+    entry: ModerationProviderEntry,
+) {
+    if let Some(existing) = registry
+        .moderation_providers
+        .iter_mut()
+        .find(|provider| provider.id == entry.id)
+    {
+        *existing = entry;
+    } else {
+        registry.moderation_providers.push(entry);
+    }
+}
+
+fn delete_moderation_provider_entry(
+    registry: &mut ProviderRegistry,
+    id: &str,
+) -> StudioCommandResult<ModerationProviderEntry> {
+    let position = registry
+        .moderation_providers
+        .iter()
+        .position(|provider| provider.id == id)
+        .ok_or_else(|| StudioCommandError {
+            code: "moderation_provider_not_found".into(),
+            message: format!("no moderation provider with id `{id}`"),
+        })?;
+    Ok(registry.moderation_providers.remove(position))
 }
 
 fn probe_image_provider(provider: &dyn plotforge_agent::ImageProvider) -> ProviderTestResult {
@@ -1045,6 +1176,25 @@ fn probe_tts_provider(provider: &dyn plotforge_agent::TtsProvider) -> ProviderTe
         Ok(_) => ProviderTestResult {
             ok: true,
             message: "minimal TTS synthesis completed".into(),
+        },
+        Err(error) => ProviderTestResult {
+            ok: false,
+            message: redact_trace_text(&error.message),
+        },
+    }
+}
+
+fn probe_moderation_provider(
+    provider: &dyn plotforge_agent::ModerationProvider,
+) -> ProviderTestResult {
+    let request = plotforge_agent::ModerationRequest {
+        call_id: "connection-test".into(),
+        prompt: "A calm village morning.".into(),
+    };
+    match provider.moderate(&request) {
+        Ok(_) => ProviderTestResult {
+            ok: true,
+            message: "minimal moderation request completed".into(),
         },
         Err(error) => ProviderTestResult {
             ok: false,
@@ -2675,12 +2825,13 @@ mod tests {
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
         AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, GIT_NOT_A_REPO_CODE,
-        ImageProviderEntry, PromptScope, PromptTemplate, ProviderEntry, ProviderKind,
-        ProviderRegistry, ResourceDefinition, Rule, RuleDraft, SteamSubmissionKitRequest,
-        TtsProviderEntry, WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
-        block_workshop_library_item, check_project, create_character, create_character_from_draft,
-        create_project, create_resource, create_rule, create_rule_from_draft,
-        delete_image_provider, delete_mcp_server, delete_project_prompt_template, delete_provider,
+        ImageProviderEntry, ModerationProviderEntry, PromptScope, PromptTemplate, ProviderEntry,
+        ProviderKind, ProviderRegistry, ResourceDefinition, Rule, RuleDraft,
+        SteamSubmissionKitRequest, TtsProviderEntry, WorkshopDraftVisibility, WorkshopItemPackage,
+        WorkshopPackageFile, block_workshop_library_item, check_project, create_character,
+        create_character_from_draft, create_project, create_resource, create_rule,
+        create_rule_from_draft, delete_image_provider, delete_mcp_server,
+        delete_moderation_provider_entry, delete_project_prompt_template, delete_provider,
         delete_tts_provider, delete_workshop_library_item, enable_mcp_server_for_project,
         enable_skill_for_project, export_static_project, export_static_project_zip,
         generate_character, generate_story_craft, generate_world_expansion,
@@ -2692,15 +2843,17 @@ mod tests {
         load_workshop_library_item, open_project, pi_agent_apply_run, pi_agent_capabilities,
         pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
         play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
-        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
-        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
-        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
-        report_workshop_library_item, set_agent_session_config, update_ai_safety_policy,
-        update_story_craft_edit_document, update_world_edit_document, upsert_image_provider,
-        upsert_image_provider_entry, upsert_project_prompt_template, upsert_provider,
-        upsert_tts_provider, upsert_tts_provider_entry, validate_media_provider_fields,
-        validate_provider_quotas, validate_workshop_package, write_source_file,
-        write_steam_submission_kit, write_workshop_publish_draft,
+        probe_moderation_provider, probe_tts_provider, read_ai_safety_policy,
+        read_character_edit_document, read_rules_edit_document, read_source_file,
+        read_state_variables_edit_document, read_story_craft_edit_document,
+        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
+        set_agent_session_config, update_ai_safety_policy, update_story_craft_edit_document,
+        update_world_edit_document, upsert_image_provider, upsert_image_provider_entry,
+        upsert_moderation_provider, upsert_moderation_provider_entry,
+        upsert_project_prompt_template, upsert_provider, upsert_tts_provider,
+        upsert_tts_provider_entry, validate_provider_endpoint_fields, validate_provider_quotas,
+        validate_workshop_package, write_source_file, write_steam_submission_kit,
+        write_workshop_publish_draft,
     };
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
@@ -4036,10 +4189,23 @@ mod tests {
         }
     }
 
+    fn sample_moderation_provider_entry(id: &str) -> ModerationProviderEntry {
+        ModerationProviderEntry {
+            id: id.into(),
+            endpoint_url: "https://example.invalid/v1".into(),
+            model: "omni-moderation-test".into(),
+            credential_env_var: "PLOTFORGE_MODERATION_TEST_KEY".into(),
+            enabled: false,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        }
+    }
+
     #[test]
     fn upsert_image_provider_succeeds() {
         let entry = sample_image_provider_entry("image-test");
-        validate_media_provider_fields(
+        validate_provider_endpoint_fields(
             &entry.id,
             &entry.endpoint_url,
             &entry.model,
@@ -4070,7 +4236,7 @@ mod tests {
     }
 
     #[test]
-    fn media_provider_upsert_rejects_daily_token_budget_before_persistence() {
+    fn non_text_provider_upsert_rejects_daily_token_budget_before_persistence() {
         let mut image = sample_image_provider_entry("image-budget");
         image.daily_token_budget = Some(100);
         let error = upsert_image_provider(image).expect_err("image token budget unsupported");
@@ -4081,6 +4247,13 @@ mod tests {
         tts.daily_token_budget = Some(100);
         let error = upsert_tts_provider(tts).expect_err("TTS token budget unsupported");
         assert_eq!(error.code, "upsert_tts_provider_invalid");
+        assert!(error.message.contains("supported only by text providers"));
+
+        let mut moderation = sample_moderation_provider_entry("moderation-budget");
+        moderation.daily_token_budget = Some(100);
+        let error = upsert_moderation_provider(moderation)
+            .expect_err("moderation token budget unsupported");
+        assert_eq!(error.code, "upsert_moderation_provider_invalid");
         assert!(error.message.contains("supported only by text providers"));
     }
 
@@ -4119,7 +4292,7 @@ mod tests {
     #[test]
     fn upsert_tts_provider_succeeds() {
         let entry = sample_tts_provider_entry("tts-test");
-        validate_media_provider_fields(
+        validate_provider_endpoint_fields(
             &entry.id,
             &entry.endpoint_url,
             &entry.model,
@@ -4177,6 +4350,62 @@ mod tests {
         assert!(!result.ok);
         assert!(!result.message.contains("sk-tts-secret"));
         assert!(contains_secret_marker_text("sk-tts-secret"));
+        assert!(!contains_secret_marker_text(&result.message));
+    }
+
+    #[test]
+    fn list_moderation_providers_empty_when_no_entry() {
+        assert!(ProviderRegistry::default().moderation_providers.is_empty());
+    }
+
+    #[test]
+    fn upsert_moderation_provider_succeeds() {
+        let entry = sample_moderation_provider_entry("moderation-test");
+        validate_provider_endpoint_fields(
+            &entry.id,
+            &entry.endpoint_url,
+            &entry.model,
+            &entry.credential_env_var,
+            entry.enabled,
+        )
+        .expect("valid moderation provider fields");
+        let mut registry = ProviderRegistry::default();
+
+        upsert_moderation_provider_entry(&mut registry, entry.clone());
+
+        assert_eq!(registry.moderation_providers, vec![entry]);
+    }
+
+    #[test]
+    fn delete_moderation_provider_not_found() {
+        let mut registry = ProviderRegistry::default();
+        let error = delete_moderation_provider_entry(&mut registry, "absent-moderation")
+            .expect_err("unknown moderation provider must fail explicitly");
+        assert_eq!(error.code, "moderation_provider_not_found");
+    }
+
+    struct SecretLeakingModerationProvider;
+
+    impl plotforge_agent::ModerationProvider for SecretLeakingModerationProvider {
+        fn moderate(
+            &self,
+            _request: &plotforge_agent::ModerationRequest,
+        ) -> Result<plotforge_agent::ModerationResponse, plotforge_agent::ModerationProviderError>
+        {
+            Err(plotforge_agent::ModerationProviderError::provider(
+                "probe_failed",
+                "upstream echoed sk-moderation-secret",
+            ))
+        }
+    }
+
+    #[test]
+    fn test_moderation_provider_redacts_error() {
+        let result = probe_moderation_provider(&SecretLeakingModerationProvider);
+
+        assert!(!result.ok);
+        assert!(!result.message.contains("sk-moderation-secret"));
+        assert!(contains_secret_marker_text("sk-moderation-secret"));
         assert!(!contains_secret_marker_text(&result.message));
     }
 

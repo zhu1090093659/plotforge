@@ -671,6 +671,18 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
         "test_tts_provider" => print_studio_json(studio_result(
             plotforge_studio::test_tts_provider(studio_arg::<String>(&payload, "id")?),
         )?),
+        "list_moderation_providers" => {
+            print_studio_json(studio_result(plotforge_studio::list_moderation_providers())?)
+        }
+        "upsert_moderation_provider" => print_studio_json(studio_result(
+            plotforge_studio::upsert_moderation_provider(studio_arg(&payload, "entry")?),
+        )?),
+        "delete_moderation_provider" => print_studio_json(studio_result(
+            plotforge_studio::delete_moderation_provider(studio_arg::<String>(&payload, "id")?),
+        )?),
+        "test_moderation_provider" => print_studio_json(studio_result(
+            plotforge_studio::test_moderation_provider(studio_arg::<String>(&payload, "id")?),
+        )?),
         "list_user_prompt_templates" => print_studio_json(studio_result(
             plotforge_studio::list_user_prompt_templates(),
         )?),

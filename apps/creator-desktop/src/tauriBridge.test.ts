@@ -11,6 +11,7 @@ import type {
   McpToolCallRequest,
   McpToolCallResult,
   McpToolManifest,
+  ModerationProviderEntry,
   ProjectCreationReport,
   ResourceDefinition,
   Rule,
@@ -96,6 +97,17 @@ const demoTtsProviderEntry: TtsProviderEntry = {
   enabled: true,
   voice: "coral",
   format: "mp3",
+  max_concurrency: null,
+  requests_per_minute: null,
+  daily_token_budget: null,
+};
+
+const demoModerationProviderEntry: ModerationProviderEntry = {
+  id: "moderation-local",
+  endpoint_url: "http://localhost:11434/v1",
+  model: "moderation-model",
+  credential_env_var: "",
+  enabled: true,
   max_concurrency: null,
   requests_per_minute: null,
   daily_token_budget: null,
@@ -590,8 +602,8 @@ describe("createStudioBridge MCP commands", () => {
   });
 });
 
-describe("createStudioBridge image and TTS provider commands", () => {
-  it("maps both four-command provider families to snake_case commands", async () => {
+describe("createStudioBridge specialized provider commands", () => {
+  it("maps image, TTS, and moderation provider families to snake_case commands", async () => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
     const invoke: StudioInvoke = async <T>(
       command: string,
@@ -610,6 +622,10 @@ describe("createStudioBridge image and TTS provider commands", () => {
     await bridge.upsertTtsProvider(demoTtsProviderEntry);
     await bridge.deleteTtsProvider("tts-local");
     await bridge.testTtsProvider("tts-local");
+    await bridge.listModerationProviders();
+    await bridge.upsertModerationProvider(demoModerationProviderEntry);
+    await bridge.deleteModerationProvider("moderation-local");
+    await bridge.testModerationProvider("moderation-local");
 
     expect(calls).toEqual([
       { command: "list_image_providers", args: undefined },
@@ -626,6 +642,19 @@ describe("createStudioBridge image and TTS provider commands", () => {
       },
       { command: "delete_tts_provider", args: { id: "tts-local" } },
       { command: "test_tts_provider", args: { id: "tts-local" } },
+      { command: "list_moderation_providers", args: undefined },
+      {
+        command: "upsert_moderation_provider",
+        args: { entry: demoModerationProviderEntry },
+      },
+      {
+        command: "delete_moderation_provider",
+        args: { id: "moderation-local" },
+      },
+      {
+        command: "test_moderation_provider",
+        args: { id: "moderation-local" },
+      },
     ]);
   });
 });

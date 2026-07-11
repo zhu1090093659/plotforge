@@ -17,6 +17,7 @@ import type {
   McpToolCallResult,
   McpToolManifest,
   ModelOption,
+  ModerationProviderEntry,
   PiAgentApplyRequest,
   PiAgentApplyResult,
   PiAgentCapability,
@@ -113,6 +114,10 @@ export const studioCommandNames = {
   upsertTtsProvider: "upsert_tts_provider",
   deleteTtsProvider: "delete_tts_provider",
   testTtsProvider: "test_tts_provider",
+  listModerationProviders: "list_moderation_providers",
+  upsertModerationProvider: "upsert_moderation_provider",
+  deleteModerationProvider: "delete_moderation_provider",
+  testModerationProvider: "test_moderation_provider",
   listUserPromptTemplates: "list_user_prompt_templates",
   listProjectPromptTemplates: "list_project_prompt_templates",
   upsertUserPromptTemplate: "upsert_user_prompt_template",
@@ -681,6 +686,31 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
     testTtsProvider(id: string): Promise<ProviderTestResult> {
       return invokeCommand<ProviderTestResult>(
         studioCommandNames.testTtsProvider,
+        { id },
+      );
+    },
+    listModerationProviders(): Promise<ModerationProviderEntry[]> {
+      return invokeCommand<ModerationProviderEntry[]>(
+        studioCommandNames.listModerationProviders,
+      );
+    },
+    upsertModerationProvider(
+      entry: ModerationProviderEntry,
+    ): Promise<ModerationProviderEntry> {
+      return invokeCommand<ModerationProviderEntry>(
+        studioCommandNames.upsertModerationProvider,
+        { entry },
+      );
+    },
+    deleteModerationProvider(id: string): Promise<ModerationProviderEntry> {
+      return invokeCommand<ModerationProviderEntry>(
+        studioCommandNames.deleteModerationProvider,
+        { id },
+      );
+    },
+    testModerationProvider(id: string): Promise<ProviderTestResult> {
+      return invokeCommand<ProviderTestResult>(
+        studioCommandNames.testModerationProvider,
         { id },
       );
     },

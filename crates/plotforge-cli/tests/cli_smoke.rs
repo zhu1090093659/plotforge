@@ -903,6 +903,53 @@ fn cli_studio_tts_provider_commands_round_trip_against_temp_home() {
 }
 
 #[test]
+fn cli_studio_moderation_provider_commands_round_trip_against_temp_home() {
+    let home = hermetic_home();
+    let entry = run_with_stdin_home(
+        &home.home,
+        ["studio", "upsert_moderation_provider"],
+        &serde_json::json!({
+            "entry": {
+                "id": "cli-smoke-moderation",
+                "endpoint_url": "https://example.invalid/v1",
+                "model": "omni-moderation-test",
+                "credential_env_var": "PLOTFORGE_CLI_SMOKE_MODERATION_KEY_9F3C7A",
+                "enabled": false
+            }
+        })
+        .to_string(),
+    )
+    .stdout_json();
+    assert!(entry.is_object(), "upsert must return a JSON object");
+    assert_eq!(entry["id"], "cli-smoke-moderation");
+
+    let listed = run_with_stdin_home(
+        &home.home,
+        ["studio", "list_moderation_providers"],
+        &serde_json::json!({}).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+
+    let tested = run_with_stdin_home(
+        &home.home,
+        ["studio", "test_moderation_provider"],
+        &serde_json::json!({ "id": "cli-smoke-moderation" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(tested["ok"], false);
+    assert!(tested["message"].is_string());
+
+    let removed = run_with_stdin_home(
+        &home.home,
+        ["studio", "delete_moderation_provider"],
+        &serde_json::json!({ "id": "cli-smoke-moderation" }).to_string(),
+    )
+    .stdout_json();
+    assert_eq!(removed["id"], "cli-smoke-moderation");
+}
+
+#[test]
 fn cli_studio_prompt_templates_user_and_project_round_trip() {
     // User-global templates live at `~/.plotforge/prompts.json`; project
     // templates live at `<project>/.plotforge/prompts.json`. Redirecting HOME
