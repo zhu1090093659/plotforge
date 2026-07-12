@@ -687,7 +687,6 @@ fn cli_studio_pi_agent_apply_run_persists_passing_moderation_hash() {
     let image = MockHttpServer::new(json_http_response(&serde_json::json!({
         "data": [{"b64_json": "iVBORw0KGgo="}]
     })));
-    unsafe { std::env::set_var("PF_CLI_E2E_IMAGE_TOKEN", "cli-image-token") };
     configure_real_apply(
         &home.home,
         &project,
@@ -696,13 +695,14 @@ fn cli_studio_pi_agent_apply_run_persists_passing_moderation_hash() {
     );
     configure_real_apply_image(&home.home, &format!("http://{}/v1", image.addr()));
 
-    let result = run_with_stdin_home(
+    let result = run_with_stdin_home_with_env(
         &home.home,
         ["studio", "pi_agent_apply_run"],
         &pi_agent_apply_payload(&project, "safe player input"),
+        "PF_CLI_E2E_IMAGE_TOKEN",
+        "cli-image-token",
     )
     .stdout_json();
-    unsafe { std::env::remove_var("PF_CLI_E2E_IMAGE_TOKEN") };
 
     assert_eq!(moderation.request_count(), 1);
     assert_eq!(text.request_count(), 1);
@@ -1635,21 +1635,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let mut child = cli()
-        .args(args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("spawn command");
-    child
-        .stdin
-        .as_mut()
-        .expect("stdin")
-        .write_all(stdin.as_bytes())
-        .expect("write stdin");
-    let output = child.wait_with_output().expect("wait command");
-    CommandOutput { output }
+    run_command_with_stdin(cli(), args, stdin)
 }
 
 /// Build a CLI `Command` that resolves the user-global PlotForge config
@@ -1689,7 +1675,31 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let mut child = cli_with_home(home)
+    run_command_with_stdin(cli_with_home(home), args, stdin)
+}
+
+fn run_with_stdin_home_with_env<I, S>(
+    home: &std::path::Path,
+    args: I,
+    stdin: &str,
+    env_key: &str,
+    env_value: &str,
+) -> CommandOutput
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut command = cli_with_home(home);
+    command.env(env_key, env_value);
+    run_command_with_stdin(command, args, stdin)
+}
+
+fn run_command_with_stdin<I, S>(mut command: Command, args: I, stdin: &str) -> CommandOutput
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut child = command
         .args(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

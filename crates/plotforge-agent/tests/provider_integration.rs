@@ -1420,13 +1420,9 @@ fn provider_families_report_usage_with_stable_registry_ids() {
     let image_entry = image_entry(&format!("http://{}", image_server.addr), "");
     let image_provider = OpenAiImageClient::new(&image_entry, OptionalEnvCredentialResolver)
         .expect("image provider");
-    let tts_entry = tts_entry(
-        &format!("http://{}", tts_server.addr),
-        "PFIT_USAGE_TTS_TOKEN",
-    );
-    unsafe { std::env::set_var("PFIT_USAGE_TTS_TOKEN", "usage-audit-token") };
-    let tts_provider =
-        OpenAiTtsClient::from_entry(&tts_entry, EnvCredentialResolver).expect("TTS provider");
+    let tts_entry = tts_entry(&format!("http://{}", tts_server.addr), "");
+    let tts_provider = OpenAiTtsClient::from_entry(&tts_entry, OptionalEnvCredentialResolver)
+        .expect("TTS provider");
 
     let mut usage = UsageLedger::new(SystemJobClock);
     screen_with_moderation_with_usage_reporter(
@@ -1491,8 +1487,6 @@ fn provider_families_report_usage_with_stable_registry_ids() {
             Some(&mut usage),
         )
         .expect("TTS usage");
-    unsafe { std::env::remove_var("PFIT_USAGE_TTS_TOKEN") };
-
     let summary = usage.summary();
     assert_eq!(summary.total_input_tokens, 10);
     assert_eq!(summary.total_output_tokens, 20);

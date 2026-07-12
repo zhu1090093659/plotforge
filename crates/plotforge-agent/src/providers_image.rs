@@ -18,6 +18,7 @@ use plotforge_schema::{
     redact_trace_text,
 };
 
+use crate::providers_text::TextProviderConfig;
 use crate::shared::{
     SCENE_BACKGROUND_SLOT, insert_media_bytes, parse_retry_after, stable_prompt_hash,
 };
@@ -657,6 +658,7 @@ where
         entry: &ImageProviderEntry,
         credential_resolver: R,
     ) -> Result<Self, ImageProviderError> {
+        validate_image_provider_entry(entry)?;
         let client = image_blocking_client()?;
         Ok(Self {
             provider_id: entry.id.clone(),
@@ -685,6 +687,24 @@ where
         let trimmed = self.endpoint_url.trim_end_matches('/');
         format!("{trimmed}/images/generations")
     }
+}
+
+pub(crate) fn validate_image_provider_entry(
+    entry: &ImageProviderEntry,
+) -> Result<(), ImageProviderError> {
+    TextProviderConfig {
+        enabled: entry.enabled,
+        provider: entry.id.clone(),
+        model: entry.model.clone(),
+        endpoint_url: Some(entry.endpoint_url.clone()),
+        credential_env_var: entry.credential_env_var.clone(),
+        max_output_tokens: None,
+        supports_json_schema: false,
+    }
+    .validate()
+    .map_err(|error| {
+        ImageProviderError::provider("image_provider_invalid_configuration", error.to_string())
+    })
 }
 
 impl<R> ImageProvider for OpenAiImageClient<R>

@@ -52,6 +52,7 @@ use plotforge_storage::{
 use serde::Serialize;
 
 pub type StudioCommandResult<T> = Result<T, StudioCommandError>;
+pub type PiAgentApplyCommandResult<T> = Result<T, PiAgentApplyError>;
 type SystemUsageLedger = plotforge_job::UsageLedger<plotforge_job::SystemJobClock>;
 
 /// Request-scoped usage reporter for one apply turn.
@@ -116,6 +117,38 @@ impl plotforge_agent::UsageReporter for ApplyUsageReporter {
 pub struct StudioCommandError {
     pub code: String,
     pub message: String,
+}
+
+/// Error surface for the request-scoped pi-Agent apply path.
+///
+/// Most Studio commands only need a code and redaction-safe message. Apply
+/// additionally carries usage that was already persisted before a later
+/// pre-flight or provider failure (for example, a moderation request that
+/// was billed and then flagged the input). Keeping this on the typed error
+/// prevents the desktop Evidence view from silently dropping paid work.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct PiAgentApplyError {
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_usage: Option<TurnUsageSummary>,
+}
+
+impl From<StudioCommandError> for PiAgentApplyError {
+    fn from(error: StudioCommandError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+            turn_usage: None,
+        }
+    }
+}
+
+impl PiAgentApplyError {
+    fn with_turn_usage(mut self, summary: &TurnUsageSummary) -> Self {
+        self.turn_usage = (summary != &TurnUsageSummary::default()).then(|| summary.clone());
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -326,19 +359,24 @@ fn screen_then_apply<T>(
     screen: Option<plotforge_agent::ModerationScreen<'_>>,
     request: &plotforge_agent::ModerationRequest,
     downstream: impl FnOnce(&mut ApplyUsageReporter) -> StudioCommandResult<T>,
-) -> StudioCommandResult<(
+) -> PiAgentApplyCommandResult<(
     Option<plotforge_agent::ModerationOutcome>,
     T,
     ApplyUsageReporter,
 )> {
-    let mut usage_reporter = ApplyUsageReporter::new(load_ledger()?);
+    let mut usage_reporter =
+        ApplyUsageReporter::new(load_ledger().map_err(PiAgentApplyError::from)?);
     let outcome = plotforge_agent::screen_with_moderation_with_usage_reporter(
         screen,
         request,
         Some(&mut usage_reporter),
     )
-    .map_err(map_moderation_loop_error)?;
-    let value = downstream(&mut usage_reporter)?;
+    .map_err(|error| {
+        PiAgentApplyError::from(map_moderation_loop_error(error))
+            .with_turn_usage(&usage_reporter.summary)
+    })?;
+    let value = downstream(&mut usage_reporter)
+        .map_err(|error| PiAgentApplyError::from(error).with_turn_usage(&usage_reporter.summary))?;
     Ok((outcome, value, usage_reporter))
 }
 
@@ -503,7 +541,9 @@ fn run_apply_text_provider(
 /// - `pi_agent_provider_timeout`: the HTTP call timed out.
 /// - `pi_agent_unsupported_payload`: the provider returned a payload kind
 ///   other than `scene_plan` (only scene plans are committable today).
-pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
+pub fn pi_agent_apply_run(
+    request: PiAgentApplyRequest,
+) -> PiAgentApplyCommandResult<PiAgentApplyResult> {
     let project_path = Path::new(&request.project_path);
     let project = load_project(project_path)
         .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
@@ -650,7 +690,8 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                     "pi-Agent returned a {} payload; only scene_plan is committable",
                     plotforge_agent::payload_kind(&other)
                 ),
-            });
+            }
+            .into());
         }
     };
 
@@ -1421,7 +1462,7 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
     // only surface at the next provider call.
     let config = plotforge_agent::TextProviderConfig {
         enabled: entry.enabled,
-        provider: entry.label.clone(),
+        provider: entry.id.clone(),
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
@@ -4409,6 +4450,15 @@ mod tests {
         .expect_err("flagged response");
 
         assert_eq!(error.code, "pi_agent_moderation_flagged");
+        assert_eq!(
+            error.turn_usage,
+            Some(super::TurnUsageSummary {
+                total_input_tokens: 29,
+                total_output_tokens: 4,
+                total_spent_cost_units: 7,
+            }),
+            "a billed moderation rejection must retain request-scoped evidence"
+        );
         assert_eq!(text_calls.get(), 0);
         let report = get_provider_cost_report_from_path(&usage_path, "stable-moderation-id".into())
             .expect("persisted moderation report");
@@ -4798,6 +4848,27 @@ mod tests {
         let error = upsert_provider(entry).expect_err("query-string credential rejected");
         assert_eq!(error.code, "upsert_provider_invalid");
         assert!(error.message.contains("credential"));
+    }
+
+    #[test]
+    fn upsert_text_provider_validates_stable_id_not_display_label() {
+        let entry = ProviderEntry {
+            id: "sk-secret-provider-id".into(),
+            kind: ProviderKind::OpenAiCompatible,
+            label: "Safe display label".into(),
+            endpoint_url: "https://host/v1".into(),
+            model: "model-a".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        };
+
+        let error = upsert_provider(entry).expect_err("unsafe stable id rejected");
+        assert_eq!(error.code, "upsert_provider_invalid");
+        assert!(!error.message.contains("sk-secret-provider-id"));
     }
 
     #[test]
