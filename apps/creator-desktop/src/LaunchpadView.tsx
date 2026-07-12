@@ -3,7 +3,6 @@ import {
   Folder,
   GitBranch,
   Loader2,
-  Plus,
   Send,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -13,9 +12,8 @@ import type {
   ModelOption,
 } from "../../../contracts/plotforge";
 import {
-  ModelSelect,
+  ModelThinkingDeck,
   PermissionSelect,
-  ThinkingSelect,
 } from "./agentConfigSelectors";
 import { useStudioI18n } from "./i18n";
 
@@ -55,6 +53,8 @@ export interface LaunchpadViewProps {
   onAgentConfigChange(config: AgentSessionConfig): void;
   /** Last agent-config persist error, or null when the last save succeeded. */
   configSaveError: string | null;
+  /** Project picker/load failure shown without hiding a successfully opened project. */
+  projectLoadError: string | null;
   /** Conversation input state (shared with the playtest/agent pipeline). */
   input: string;
   onInputChange(value: string): void;
@@ -77,6 +77,7 @@ export function LaunchpadView({
   agentConfig,
   onAgentConfigChange,
   configSaveError,
+  projectLoadError,
   input,
   onInputChange,
   onSubmit,
@@ -136,12 +137,17 @@ export function LaunchpadView({
               These are never silent — a failure to switch branches or persist
               the agent config leaves the user on the old state, so the error
               must be shown until the next successful operation. */}
-          {(switchError || configSaveError) && (
+          {(projectLoadError || switchError || configSaveError) && (
             <div
               role="alert"
               aria-label={t("home.aria.errorRow")}
               className="grid gap-1 rounded-xl border border-signal/30 bg-signal/10 px-3 py-2 text-sm text-signal"
             >
+              {projectLoadError && (
+                <p aria-label={t("home.aria.projectLoadError")}>
+                  {t("home.projectLoadError")}: {projectLoadError}
+                </p>
+              )}
               {switchError && (
                 <p aria-label={t("home.aria.switchError")}>
                   {t("home.branchSwitchError")}: {switchError}
@@ -175,32 +181,22 @@ export function LaunchpadView({
               of the textarea. */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-canvas-200/55 pt-3">
             <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                disabled
-                aria-label={t("home.aria.attach")}
-                title={t("home.aria.attachTooltip")}
-                className="grid h-9 w-9 place-items-center rounded-lg border border-canvas-200/70 bg-canvas-50 text-ink/40 transition ease-expo disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-canvas-200/70 disabled:hover:bg-canvas-50 disabled:active:translate-y-0 hover:border-copper-500 hover:bg-canvas-100 active:translate-y-px"
-              >
-                <Plus aria-hidden size={18} />
-              </button>
               <PermissionSelect
                 value={agentConfig.permission_level}
                 onChange={(permission_level) =>
                   onAgentConfigChange({ ...agentConfig, permission_level })
                 }
               />
-              <ModelSelect
+              <ModelThinkingDeck
                 models={availableModels}
-                value={agentConfig.model_id}
-                onChange={(model_id) =>
-                  onAgentConfigChange({ ...agentConfig, model_id })
-                }
-              />
-              <ThinkingSelect
-                value={agentConfig.thinking_level}
-                onChange={(thinking_level) =>
-                  onAgentConfigChange({ ...agentConfig, thinking_level })
+                modelId={agentConfig.model_id}
+                thinkingLevel={agentConfig.thinking_level}
+                onChange={({ modelId, thinkingLevel }) =>
+                  onAgentConfigChange({
+                    ...agentConfig,
+                    model_id: modelId,
+                    thinking_level: thinkingLevel,
+                  })
                 }
               />
             </div>
@@ -361,4 +357,3 @@ function GitBranchChip({
 // (shared with AgentConfigSection so the same AgentSessionConfig renders with
 // one UI in both the home toolbar and the Settings → Agent tab).
 // ---------------------------------------------------------------------------
-

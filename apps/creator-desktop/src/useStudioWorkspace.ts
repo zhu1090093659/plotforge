@@ -65,7 +65,7 @@ export interface StudioWorkspace {
   piAgentCapabilities: PiAgentCapability[];
 
   // Project-level methods
-  loadProject(path: string): Promise<void>;
+  loadProject(path: string, createIfMissing?: boolean): Promise<void>;
   refreshProjectOverview(path?: string): Promise<void>;
   selectSourceFile(file: SourceFileSummary): Promise<void>;
   saveSelectedFile(): Promise<void>;
@@ -185,12 +185,30 @@ export function useStudioWorkspace({
 
   // Core operations --------------------------------------------------------
 
-  async function loadProject(path: string) {
+  async function loadProject(path: string, createIfMissing = false) {
     setLoading(true);
     setError(null);
     try {
+      // Opening the canonical project is the load boundary. Once this
+      // succeeds the folder is a valid PlotForge project and the shell/home
+      // must reflect it immediately; secondary editor/index reads may still
+      // report an explicit error, but they must not roll the project back to
+      // the misleading "not loaded" state.
+      const project = createIfMissing
+        ? await dataSource.openOrCreateProject(path)
+        : await dataSource.openProject(path);
+      setLoadedPath(path);
+      setProjectPath(path);
+      setProjectData(project);
+      setAssetRecords(project.asset_records);
+      setProjectSummary(summarizeProject(project));
+      setCheckReport(null);
+      setSourceFiles([]);
+      setSelectedFile(null);
+      setEditorContent("");
+      setSavedContent("");
+
       const [
-        project,
         report,
         profiles,
         files,
@@ -205,7 +223,6 @@ export function useStudioWorkspace({
         records,
         piCapabilities,
       ] = await Promise.all([
-        dataSource.openProject(path),
         dataSource.checkProject(path),
         dataSource.listExportProfiles(),
         dataSource.listSourceFiles(path),
@@ -231,8 +248,6 @@ export function useStudioWorkspace({
         audioBibleDocument,
       );
 
-      setLoadedPath(path);
-      setProjectPath(path);
       setProjectData(projectWithBible);
       setAssetRecords(records);
       setProjectSummary(summarizeProject(projectWithBible));

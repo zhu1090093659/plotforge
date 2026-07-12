@@ -5,6 +5,19 @@ import type { AgentTurn } from "./useAgentConversation";
 import { demoPlayOnceReport } from "./demoStudioData";
 import { StudioI18nProvider } from "./i18n";
 
+const availableModels = [
+  { id: "local-pi", label: "Local pi-Agent", provider: "local" },
+  { id: "story-pro", label: "Story Pro", provider: "studio" },
+];
+
+const agentConfig = {
+  model_id: "local-pi",
+  permission_level: "ask_every_time" as const,
+  thinking_level: "medium" as const,
+  enabled_skills: [],
+  enabled_mcp_servers: [],
+};
+
 afterEach(() => {
   cleanup();
 });
@@ -27,6 +40,7 @@ function renderRail(overrides: Partial<Parameters<typeof AgentChatRail>[0]> = {}
   const onInputChange = vi.fn();
   const onSubmit = vi.fn();
   const onOpenTrace = vi.fn();
+  const onAgentConfigChange = vi.fn();
   render(
     <StudioI18nProvider>
       <AgentChatRail
@@ -37,12 +51,15 @@ function renderRail(overrides: Partial<Parameters<typeof AgentChatRail>[0]> = {}
         canSubmit={true}
         onSubmit={onSubmit}
         onOpenTrace={onOpenTrace}
+        availableModels={availableModels}
+        agentConfig={agentConfig}
+        onAgentConfigChange={onAgentConfigChange}
         evidence={<p>boundary-evidence-marker</p>}
         {...overrides}
       />
     </StudioI18nProvider>,
   );
-  return { onInputChange, onSubmit, onOpenTrace };
+  return { onInputChange, onSubmit, onOpenTrace, onAgentConfigChange };
 }
 
 describe("AgentChatRail", () => {
@@ -199,6 +216,45 @@ describe("AgentChatRail", () => {
       target: { value: "raise taxes" },
     });
     expect(onInputChange).toHaveBeenCalledWith("raise taxes");
+  });
+
+  it("opens the model deck and applies a model + thinking slot together", () => {
+    const { onAgentConfigChange } = renderRail();
+
+    fireEvent.click(screen.getByRole("button", { name: "Model and thinking level" }));
+    expect(screen.getByRole("dialog", { name: "Choose model and thinking level" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("gridcell", { name: "Story Pro — studio, High" }));
+    expect(onAgentConfigChange).toHaveBeenCalledWith({
+      ...agentConfig,
+      model_id: "story-pro",
+      thinking_level: "high",
+    });
+  });
+
+  it("navigates model deck slots with arrow keys", () => {
+    const { onAgentConfigChange } = renderRail();
+
+    fireEvent.click(screen.getByRole("button", { name: "Model and thinking level" }));
+    const selected = screen.getByRole("gridcell", {
+      name: "Local pi-Agent — local, Medium",
+    });
+    fireEvent.keyDown(selected, { key: "ArrowRight" });
+
+    expect(onAgentConfigChange).toHaveBeenCalledWith({
+      ...agentConfig,
+      thinking_level: "high",
+    });
+  });
+
+  it("keeps the model deck disabled when no configured model is available", () => {
+    renderRail({ availableModels: [] });
+
+    const trigger = screen.getByRole("button", {
+      name: "Model and thinking level",
+    });
+    expect(trigger.hasAttribute("disabled")).toBe(true);
+    expect(trigger.textContent).toContain("None");
   });
 
   it("toggles the Evidence popover open and closed", () => {

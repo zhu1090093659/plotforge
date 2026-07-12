@@ -36,7 +36,7 @@
 24. [MVP 功能需求](#24-mvp-功能需求)
 25. [非功能需求](#25-非功能需求)
 26. [单人 + Codex 开发路线图](#26-单人--codex-开发路线图)
-27. [首个内置 Demo：王朝余烬](#27-首个内置-demo王朝余烬)
+27. [项目创建基线](#27-项目创建基线)
 28. [风险与应对](#28-风险与应对)
 29. [待决问题](#29-待决问题)
 30. [附录：建议的首批 Codex 任务](#30-附录建议的首批-codex-任务)
@@ -76,7 +76,7 @@
 | Steam 路线 | 仅讨论 Web/桌面导出 | 新增 Steam 产品化策略：Steam 游戏本体 + Workshop UGC + 导出 Steam Submission Kit |
 | AI 合规 | 说明 API Key 和内容安全 | 增加 Steam AI 内容披露、Live-generated guardrails、UGC 审核策略 |
 | 版权风险 | 未充分展开 | 明确扫榜/拆文/参考库默认不抓取版权正文；只允许用户授权导入或公开许可资料 |
-| MVP 范围 | 偏“引擎” | 收窄为“一个强剧情历史危机模拟 Demo + 创作工作台骨架” |
+| MVP 范围 | 偏“引擎” | 收窄为“用户输入驱动的可玩项目闭环 + 创作工作台骨架” |
 
 ## 1.3 最终建议
 
@@ -376,7 +376,7 @@ remix = 复制为本地工程
 
 ### 创作者侧
 
-- 30 分钟内创建一个可玩的 Demo。
+- 30 分钟内创建一个可玩的项目。
 - 能配置至少 5 个角色。
 - 能配置至少 5 个世界状态变量。
 - 能创建至少 3 个事件规则。
@@ -403,7 +403,7 @@ remix = 复制为本地工程
 
 - 核心引擎可用 CLI 跑通。
 - 所有 schema 可测试。
-- Agent 可 mock。
+- Agent Provider 可通过测试端口注入。
 - `cargo check --workspace` 可通过。
 - Codex 可以按 crate 独立执行任务。
 
@@ -450,13 +450,8 @@ Steam Workshop 集成
 
 ## 7.3 范围控制原则
 
-第一阶段只围绕一个强验证 Demo：
-
-```text
-《王朝余烬》：历史危机模拟 + 剧情驱动 + 世界状态推演
-```
-
-所有架构都服务于这个 Demo 跑通。
+第一阶段只围绕一个用户输入驱动的项目闭环：创建、编辑、试玩、追踪与导出。
+仓库不提交或自动加载内置故事、示例角色、固定资源或占位媒体；验证流程使用临时目录中的 starter project。
 
 ---
 
@@ -1219,7 +1214,7 @@ Steam 导出包应自动生成 AI 披露草稿，但不替用户作法律保证�
 | 阶段 | 目标 |
 |---|---|
 | S0 | 本地桌面工具，不上 Steam |
-| S1 | 做 Steam Demo：内置作品 + 创作模式预览 |
+| S1 | 做 Steam 包装探索：用户项目 + 创作模式预览 |
 | S2 | 支持 Workshop 订阅和加载作品 |
 | S3 | 支持 Workshop 上传作品 |
 | S4 | 支持 Steam Submission Kit 导出 |
@@ -1600,7 +1595,7 @@ UGC 必须有举报/删除/本地屏蔽机制
 验收：
 
 - 不接模型也能跑通。
-- CLI 可执行完整 Demo。
+- CLI 可执行完整的临时 starter project 流程。
 
 ### FR-AGENT-002 LLM Pipeline
 
@@ -1640,16 +1635,16 @@ UGC 必须有举报/删除/本地屏蔽机制
 核心引擎与 Tauri 解耦
 所有 schema 可测试
 所有规则可测试
-所有 Agent 输出可 mock
+所有 Agent Provider 边界可用测试替身验证
 ```
 
 ## 25.2 稳定性
 
 ```text
 AI JSON 输出必须 repair + validate
-Agent 失败必须 fallback
-图片失败必须 placeholder
-语音失败必须 silent fallback
+Agent 失败必须显式返回错误或标记为 fallback evidence，不得修改项目源
+图片失败必须保留可见错误与来源信息
+语音失败必须保留可见错误与来源信息
 规则执行失败不能破坏存档
 ```
 
@@ -1682,9 +1677,9 @@ TTS 懒加载
 ```text
 先 CLI，后 UI
 先 schema，后模型
-先 mock，后真实 Provider
+先定义 Provider 端口，后接入显式配置的真实 Provider
 先剧情质量，后多模板
-先一个 Demo，后平台化
+先跑通通用项目闭环，后平台化
 ```
 
 ## 26.2 v0.1：Core CLI Prototype
@@ -1699,8 +1694,8 @@ TTS 懒加载
 3. plotforge-runtime
 4. plotforge-rule
 5. plotforge-storycraft 基础类型
-6. mock agent
-7. demo project loader
+6. scene planner port + test double
+7. temporary starter project creation
 8. CLI play loop
 ```
 
@@ -1715,8 +1710,8 @@ TTS 懒加载
 2. PlotThread Registry
 3. EmotionalArc
 4. NarrativeReview
-5. PlotDoctor mock
-6. ConsistencyChecker mock
+5. PlotDoctor port + tests
+6. ConsistencyChecker port + tests
 ```
 
 ## 26.4 v0.3：Desktop Shell Prototype
@@ -1731,78 +1726,25 @@ TTS 懒加载
 
 目标：Scene 能生成图并缓存。
 
-## 26.7 v0.6：Simulation Demo
+## 26.7 v0.6：Simulation Workflow
 
-目标：《王朝余烬》跑通。
+目标：用户输入创建的项目可以完成状态推演与运行时追踪。
 
 ## 26.8 v0.7：Static Export
 
 目标：导出静态 Web 包。
 
-## 26.9 v0.8：Steam Demo Exploration
+## 26.9 v0.8：Steam Packaging Exploration
 
 目标：评估是否包装为 Steam 创作型游戏。
 
 ---
 
-# 27. 首个内置 Demo：王朝余烬
+# 27. 项目创建基线
 
-## 27.1 定位
-
-```text
-类型：历史危机模拟 + 剧情驱动
-玩家身份：末代皇帝
-核心循环：看国情 → 问大臣 → 下诏 → 推演后果 → 新危机
-```
-
-## 27.2 初始资源
-
-```text
-国库 treasury
-民心 public_order
-军心 army_morale
-朝堂稳定 court_stability
-地方控制 local_control
-外敌压力 enemy_pressure
-```
-
-## 27.3 初始角色
-
-```text
-首辅
-兵部尚书
-司礼监太监
-边将
-言官
-地方总督
-```
-
-## 27.4 Story Craft 目标
-
-```text
-主线问题：玩家能否在内忧外患中延续王朝？
-情绪承诺：权力压力、孤独决策、短期收益与长期代价
-核心伏笔：边军真实军饷缺口、朝中内鬼、地方税乱、迁都争议
-场景节奏：每 2-3 个 Scene 出现一次明确危机升级
-```
-
-## 27.5 示例玩家行动
-
-```text
-朕决定加征辽饷，同时命锦衣卫严查贪墨官员。
-```
-
-## 27.6 示例状态变化
-
-```json
-{
-  "treasury": 12,
-  "public_order": -8,
-  "court_stability": -5,
-  "army_morale": 4,
-  "triggered_events": ["local_tax_resistance", "officials_submit_memorials"]
-}
-```
+- 新项目只写入创建请求中的 concept、visual style 与 initial scene request。
+- 资源、角色、规则、视觉卡、声音卡和媒体资产默认为空，由创作者或已配置 Provider 明确创建。
+- 缺失内容以空态呈现；不得写入固定故事、示例角色、占位图片或伪造评审分数。
 
 ---
 
@@ -1810,7 +1752,7 @@ TTS 懒加载
 
 ## 28.1 范围过大
 
-应对：第一版只做《王朝余烬》一个模板。
+应对：第一版只做一个通用项目模板，具体内容完全来自用户输入。
 
 ## 28.2 剧情空洞
 
@@ -1861,7 +1803,7 @@ Steam / itch / GitHub / 域名可用性检查
 
 ```text
 先桌面工具 alpha
-再 Steam Demo
+再做 Steam 包装探索
 最后 Workshop UGC
 ```
 
@@ -1871,7 +1813,7 @@ Steam / itch / GitHub / 域名可用性检查
 
 ```text
 OpenAI-compatible text
-OpenAI-compatible image / Runware / local placeholder
+OpenAI-compatible image / Runware
 TTS P1 后接
 ```
 
@@ -1916,11 +1858,11 @@ Add JSON roundtrip tests.
 
 ```text
 Implement PlotThread, EmotionalArc, NarrativeReview, NarrativeIssue.
-Add a mock PlotDoctor that checks:
+Add a test-only PlotDoctor double that checks:
 - missing dramaticPurpose
 - no hook
 - no plotThread update
-- fake choice
+- non-meaningful choice
 ```
 
 ## Task 004：实现 Rule Engine MVP
@@ -1934,14 +1876,14 @@ Implement declarative rule engine:
 Add tests.
 ```
 
-## Task 005：实现 mock runtime
+## Task 005：实现 runtime
 
 ```text
-Load demo project.
+Create a temporary project from an explicit request.
 Start session.
 Show first scene.
 Apply one player action.
-Generate next mock scene.
+Require an explicit scene planner before crossing a scene boundary.
 Write runtime trace.
 ```
 

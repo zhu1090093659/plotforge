@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // useStudioRail — shell-level UI state for the agent rail.
@@ -9,17 +9,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // Sinking it here keeps App.tsx thin (App.tsx only orchestrates), per the
 // AGENTS.md "App.tsx only does routing/layout/form-sinking" boundary.
 //
-// Responsive default: on a wide desktop (xl / >=1280px) the rail starts
-// expanded so the director entry point is visible; on a narrower viewport
-// (lg, 1024–1280px) it starts collapsed so the main content area is not
-// squeezed into a scroll-prone narrow column. The user's explicit toggle is
-// then persisted to localStorage and wins on subsequent loads. In jsdom (where
-// matchMedia is unavailable) the rail defaults to expanded so existing
-// behavior-based tests keep seeing the Agent rail.
+// Both chrome rails start collapsed on every app launch so the creator enters
+// a focused canvas. Toggle state is intentionally session-only: reopening the
+// desktop app always restores the same compact starting layout.
 // ---------------------------------------------------------------------------
-
-const railStorageKey = "plotforge:creator-desktop:rail-collapsed";
-const sidebarStorageKey = "plotforge:creator-desktop:sidebar-collapsed";
 
 export interface StudioRailWorkspace {
   railCollapsed: boolean;
@@ -29,50 +22,10 @@ export interface StudioRailWorkspace {
 }
 
 export function useStudioRail(
-  initialCollapsed: boolean | undefined = undefined,
+  initialCollapsed = true,
 ): StudioRailWorkspace {
-  const [railCollapsed, setRailCollapsed] = useState<boolean>(() =>
-    resolveInitialCollapsed(initialCollapsed),
-  );
-  // Sidebar collapse is pure shell-UI state (icon-only rail vs full rail).
-  // Defaults to expanded so labels are visible on first run; an explicit
-  // user toggle is persisted to localStorage and wins on subsequent loads.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    const storage = storageFor(globalThis.window);
-    const stored = storage?.getItem(sidebarStorageKey);
-    if (stored === "true") return true;
-    if (stored === "false") return false;
-    return false;
-  });
-
-  // Only persist an explicit user toggle — skip the very first effect run so
-  // the auto-resolved default (responsive / jsdom) is not written back as if
-  // it were a deliberate choice. A subsequent load then re-derives the
-  // default from viewport, instead of being locked to the first load's width.
-  const initialized = useRef(false);
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      return;
-    }
-    const storage = storageFor(globalThis.window);
-    if (storage) {
-      storage.setItem(railStorageKey, String(railCollapsed));
-    }
-  }, [railCollapsed]);
-
-  // Sidebar uses the same skip-first-effect guard as the rail so the
-  // default-expanded first-run state is not persisted as a deliberate choice;
-  // only an explicit user toggle is written back to localStorage.
-  useEffect(() => {
-    if (!initialized.current) {
-      return;
-    }
-    const storage = storageFor(globalThis.window);
-    if (storage) {
-      storage.setItem(sidebarStorageKey, String(sidebarCollapsed));
-    }
-  }, [sidebarCollapsed]);
+  const [railCollapsed, setRailCollapsed] = useState(initialCollapsed);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const toggleRail = useCallback(() => {
     setRailCollapsed((prev) => !prev);
@@ -83,39 +36,4 @@ export function useStudioRail(
   }, []);
 
   return { railCollapsed, toggleRail, sidebarCollapsed, toggleSidebar };
-}
-
-function resolveInitialCollapsed(
-  initialCollapsed: boolean | undefined,
-): boolean {
-  // An explicit caller argument wins (used by tests and deterministic
-  // call sites). When omitted (the App shell path), consult localStorage so
-  // the user's last explicit toggle persists, then fall back to a responsive
-  // default based on viewport width.
-  if (initialCollapsed !== undefined) return initialCollapsed;
-  const storage = storageFor(globalThis.window);
-  const stored = storage?.getItem(railStorageKey);
-  if (stored === "true") return true;
-  if (stored === "false") return false;
-  // No stored preference: pick a sensible responsive default. Only expand by
-  // default on genuinely wide desktops; collapse on lg (1024–1280px) so the
-  // 3-column layout does not squeeze main content into a scroll-prone column.
-  const view = globalThis.window;
-  if (view && typeof view.matchMedia === "function") {
-    return !view.matchMedia("(min-width: 1280px)").matches;
-  }
-  // jsdom / non-browser: default expanded to preserve existing test behavior.
-  return false;
-}
-
-function storageFor(view: Window | undefined): Storage | null {
-  const storage = view?.localStorage;
-  if (
-    storage &&
-    typeof storage.getItem === "function" &&
-    typeof storage.setItem === "function"
-  ) {
-    return storage;
-  }
-  return null;
 }

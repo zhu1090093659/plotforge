@@ -106,6 +106,31 @@ fn create_project_from_request_persists_wizard_fields_and_reopens() {
     assert!(story.contains("Open on an empty granary ledger."));
     assert!(style.contains("ink wash civic drama"));
     assert!(style.contains("Voice generation requested"));
+
+    let all_source = report
+        .files_created
+        .iter()
+        .filter_map(|relative| fs::read_to_string(project.join(relative)).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for forbidden in [
+        "placeholder.png",
+        "replace this starter beat",
+        "starter sequence is complete",
+        "Civic Hall",
+        "court-censor",
+        "war-minister",
+    ] {
+        assert!(
+            !all_source
+                .to_ascii_lowercase()
+                .contains(&forbidden.to_ascii_lowercase()),
+            "starter project must not contain canned placeholder data: {forbidden}"
+        );
+    }
+    assert!(loaded.asset_records.is_empty());
+    assert!(loaded.visual_bible.style_cards.is_empty());
+    assert!(loaded.audio_bible.voice_cards.is_empty());
 }
 
 #[test]
@@ -423,17 +448,21 @@ fn generation_requests_build_from_project_source_and_reports_apply() {
     story_document
         .style_guide_markdown
         .push_str("\nKeep council reversals concrete.\n");
-    apply_story_craft_generation_report(
+    let error = apply_story_craft_generation_report(
         &project,
         StoryCraftGenerationReport {
             document: story_document.clone(),
             evidence: sample_generation_evidence(GenerationStatus::Fallback),
         },
     )
-    .expect("apply fallback story report");
+    .expect_err("fallback reports cannot modify source");
+    assert!(matches!(
+        error,
+        StorageError::InvalidGenerationReport { .. }
+    ));
     assert_eq!(
         read_story_craft_edit_document(&project).expect("read story report"),
-        story_document
+        story_request.document
     );
 
     let character_request =
@@ -518,6 +547,17 @@ fn structured_edit_documents_reject_invalid_data_explicitly() {
                 && reason.contains("secret markers")
     ));
 
+    create_resource(
+        &project,
+        ResourceDefinition {
+            key: "momentum".into(),
+            label: "Momentum".into(),
+            initial: 0,
+            min: 0,
+            max: 100,
+        },
+    )
+    .expect("seed resource");
     let mut state = read_state_variables_edit_document(&project).expect("read state");
     state.resources[0].initial = state.resources[0].max + 1;
     let error = update_state_variables_edit_document(&project, state)
@@ -723,7 +763,7 @@ fn sqlite_cache_migrates_and_rebuilds_from_folder_state() {
     assert_eq!(summary.project_id, "starter-project");
     assert_eq!(summary.title, "Starter Project");
     assert_eq!(summary.scene_count, 1);
-    assert_eq!(summary.asset_count, 1);
+    assert_eq!(summary.asset_count, 0);
     assert_eq!(summary.trace_count, 1);
     assert!(summary.source_file_count > 0);
     assert_eq!(
@@ -756,7 +796,7 @@ fn sqlite_cache_migrates_and_rebuilds_from_folder_state() {
     assert_eq!(user_version, SQLITE_CACHE_SCHEMA_VERSION);
     assert_eq!(migration_count, 1);
     assert!(source_file_count > 0);
-    assert_eq!(image_asset_count, 1);
+    assert_eq!(image_asset_count, 0);
 }
 
 #[test]

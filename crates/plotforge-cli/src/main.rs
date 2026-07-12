@@ -424,6 +424,9 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
         "open_project" => print_studio_json(studio_result(plotforge_studio::open_project(
             studio_arg::<PathBuf>(&payload, "path")?,
         ))?),
+        "open_or_create_project" => print_studio_json(studio_result(
+            plotforge_studio::open_or_create_project(studio_arg::<PathBuf>(&payload, "path")?),
+        )?),
         "check_project" => print_studio_json(studio_result(plotforge_studio::check_project(
             studio_arg::<PathBuf>(&payload, "path")?,
         ))?),

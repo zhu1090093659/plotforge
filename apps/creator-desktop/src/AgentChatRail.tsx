@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, Send, ShieldQuestion, TerminalSquare } from "lucide-react";
+import type { AgentSessionConfig, ModelOption } from "../../../contracts/plotforge";
+import { ModelThinkingDeck } from "./agentConfigSelectors";
 import { useStudioI18n } from "./i18n";
-import { StudioButton, StudioStatusChip } from "./studioUi";
+import { StudioStatusChip } from "./studioUi";
 import type { AgentTurn } from "./useAgentConversation";
 
 // ---------------------------------------------------------------------------
@@ -23,6 +25,9 @@ export interface AgentChatRailProps {
   canSubmit: boolean;
   onSubmit(): void;
   onOpenTrace(): void;
+  availableModels: ModelOption[];
+  agentConfig: AgentSessionConfig;
+  onAgentConfigChange(config: AgentSessionConfig): void;
   /** Honesty-surface evidence (boundary block); shown in the Evidence popover. */
   evidence: ReactNode;
 }
@@ -35,6 +40,9 @@ export function AgentChatRail({
   canSubmit,
   onSubmit,
   onOpenTrace,
+  availableModels,
+  agentConfig,
+  onAgentConfigChange,
   evidence,
 }: AgentChatRailProps) {
   const { t } = useStudioI18n();
@@ -173,30 +181,48 @@ export function AgentChatRail({
       <div className="hairline mx-3" />
       <form
         onSubmit={handleSubmit}
-        className="grid gap-2 px-3 py-3"
+        className="px-3 py-3"
       >
-        <textarea
-          aria-label={t("agent.directPrompt")}
-          value={input}
-          onChange={(event) => onInputChange(event.target.value)}
-          placeholder={t("agent.directPrompt")}
-          rows={2}
-          spellCheck={false}
-          className="w-full resize-none rounded-md border border-canvas-200 bg-canvas-50 px-3 py-2 text-sm leading-6 text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
-        />
-        <div className="flex items-center justify-end gap-2">
-          <StudioButton
-            variant="primary"
+        <div className="overflow-visible rounded-2xl border border-canvas-200/80 bg-canvas-50 shadow-[0_12px_30px_rgba(90,70,130,0.1)] transition ease-expo focus-within:border-accent-400 focus-within:ring-1 focus-within:ring-accent-400/25">
+          <textarea
+            aria-label={t("agent.directPrompt")}
+            value={input}
+            onChange={(event) => onInputChange(event.target.value)}
+            placeholder={t("agent.directPrompt")}
+            rows={3}
+            spellCheck={false}
+            className="min-h-[5.5rem] w-full resize-none rounded-t-2xl bg-transparent px-3.5 pb-2 pt-3 text-sm leading-6 text-ink outline-none placeholder:text-ink/35"
+          />
+          <div className="mx-3 border-t border-canvas-200/60" />
+          <div className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-2">
+            <div className="min-w-0 flex-1">
+              <ModelThinkingDeck
+                models={availableModels}
+                modelId={agentConfig.model_id}
+                thinkingLevel={agentConfig.thinking_level}
+                onChange={({ modelId, thinkingLevel }) =>
+                  onAgentConfigChange({
+                    ...agentConfig,
+                    model_id: modelId,
+                    thinking_level: thinkingLevel,
+                  })
+                }
+              />
+            </div>
+            <button
             type="submit"
             disabled={!canSubmit}
+            aria-label={t("agent.send")}
+            title={t("agent.send")}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-canvas-50 shadow-[inset_0_-1px_0_rgba(138,100,80,0.35)] transition ease-expo hover:bg-ink/90 active:translate-y-px disabled:cursor-not-allowed disabled:bg-ink/30"
           >
             {running ? (
               <Loader2 aria-hidden size={16} className="animate-spin" />
             ) : (
               <Send aria-hidden size={16} />
             )}
-            {t("agent.send")}
-          </StudioButton>
+            </button>
+          </div>
         </div>
       </form>
     </div>

@@ -223,6 +223,7 @@ function renderSettingsView(
     loadedPath?: string;
     locale?: StudioLocale;
     onAgentConfigChange?: (config: AgentSessionConfig) => void;
+    onModelsChanged?: () => Promise<void> | void;
   } = {},
 ) {
   const onAgentConfigChange =
@@ -234,9 +235,17 @@ function renderSettingsView(
       <SettingsView
         dataSource={dataSource}
         loadedPath={overrides.loadedPath ?? "/tmp/starter-project"}
+        availableModels={[
+          {
+            id: "local-pi",
+            label: "Local pi-Agent (offline)",
+            provider: "local",
+          },
+        ]}
         agentConfig={overrides.agentConfig ?? defaultConfig}
         onAgentConfigChange={onAgentConfigChange}
         configSaveError={null}
+        onModelsChanged={overrides.onModelsChanged}
       />
     </StudioI18nProvider>,
   );
@@ -402,6 +411,7 @@ describe("SettingsView", () => {
 
   it("persists a provider through the editor (saves credential_env_var name only, never the value)", async () => {
     const upsert = vi.fn(async (entry: ProviderEntry) => entry);
+    const onModelsChanged = vi.fn(async () => undefined);
     const dataSource = settingsTestDataSource({
       async upsertProvider(entry) {
         return upsert(entry);
@@ -410,7 +420,7 @@ describe("SettingsView", () => {
         return [];
       },
     });
-    renderSettingsView({ dataSource });
+    renderSettingsView({ dataSource, onModelsChanged });
 
     fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
     fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
@@ -431,6 +441,7 @@ describe("SettingsView", () => {
     expect(saved.id).toBe("anthropic-prod");
     // The persisted entry carries only the env-var NAME, never a value.
     expect(saved.credential_env_var).toBe("ANTHROPIC_API_KEY");
+    expect(onModelsChanged).toHaveBeenCalledTimes(1);
     // No secret-bearing field exists on the contract at all.
     expect(
       (saved as unknown as Record<string, unknown>).credential_value,

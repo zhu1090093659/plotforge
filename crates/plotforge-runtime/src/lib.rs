@@ -1,5 +1,5 @@
 use plotforge_agent::{
-    MockAgentPipeline, ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
+    NoScenePlanner, ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
 };
 use plotforge_rule::{RuleEngine, RuleError};
 use plotforge_schema::{
@@ -44,7 +44,7 @@ pub enum RuntimeEngineError {
 }
 
 #[derive(Clone, Debug)]
-pub struct RuntimeSession<P = MockAgentPipeline> {
+pub struct RuntimeSession<P = NoScenePlanner> {
     project: ProjectData,
     story_state: StoryState,
     world_state: WorldState,
@@ -98,16 +98,16 @@ pub struct RuntimeStep {
     pub trace: RuntimeTrace,
 }
 
-impl RuntimeSession<MockAgentPipeline> {
+impl RuntimeSession<NoScenePlanner> {
     pub fn new(project: ProjectData) -> Self {
-        Self::with_scene_planner(project, MockAgentPipeline)
+        Self::with_scene_planner(project, NoScenePlanner)
     }
 
     pub fn from_snapshot(
         project: ProjectData,
         snapshot: RuntimeSnapshot,
     ) -> Result<Self, RuntimeEngineError> {
-        Self::with_scene_planner_from_snapshot(project, snapshot, MockAgentPipeline)
+        Self::with_scene_planner_from_snapshot(project, snapshot, NoScenePlanner)
     }
 }
 
@@ -119,7 +119,7 @@ where
         Self {
             story_state: project.story_state.clone(),
             world_state: project.world_state.clone(),
-            reproducibility: ReproducibilityMetadata::local_mock(project.game.run_seed),
+            reproducibility: ReproducibilityMetadata::local_runtime(project.game.run_seed),
             project,
             scene_planner,
         }
@@ -312,14 +312,18 @@ where
             let review = plan.review;
             let planned_scene = plan.scene;
             let next_beat_id = entry_beat_id(&planned_scene)?.to_string();
+            let reviewed_scene_key = review
+                .as_ref()
+                .map(|review| review.scene_key.clone())
+                .unwrap_or_else(|| planned_scene.key.clone());
             (
                 planned_scene,
                 next_beat_id,
                 planner_fallback_used,
                 planner_error,
-                Some(review.scene_key.clone()),
+                Some(reviewed_scene_key),
                 planner_reproducibility,
-                Some(review),
+                review,
             )
         } else {
             let current_scene = current_scene
@@ -643,7 +647,7 @@ fn fallback_errors(fallback_used: bool) -> Vec<RuntimeError> {
     if fallback_used {
         vec![RuntimeError::redacted(
             "fallback_scene",
-            "Mock agent used a fallback scene because the requested scene was missing.",
+            "Scene planner used a fallback scene because the requested scene was missing.",
         )]
     } else {
         Vec::new()
@@ -651,14 +655,17 @@ fn fallback_errors(fallback_used: bool) -> Vec<RuntimeError> {
 }
 
 fn scene_media_references(scene: &Scene, beat_id: Option<&str>) -> Vec<RuntimeMediaReference> {
-    let mut references = vec![RuntimeMediaReference {
-        reference: AssetReference {
-            reference_kind: AssetReferenceKind::Scene,
-            reference_id: redact_trace_text(&scene.key),
-            slot: "background_asset".into(),
-        },
-        project_path: redact_trace_text(&scene.background_asset),
-    }];
+    let mut references = Vec::new();
+    if !scene.background_asset.trim().is_empty() {
+        references.push(RuntimeMediaReference {
+            reference: AssetReference {
+                reference_kind: AssetReferenceKind::Scene,
+                reference_id: redact_trace_text(&scene.key),
+                slot: "background_asset".into(),
+            },
+            project_path: redact_trace_text(&scene.background_asset),
+        });
+    }
     references.extend(
         scene
             .audio_refs
@@ -756,7 +763,8 @@ mod tests {
     #[test]
     fn play_once_commits_rule_delta_and_trace() {
         let project = test_project();
-        let mut session = RuntimeSession::new(project);
+        let mut session =
+            RuntimeSession::with_scene_planner(project, plotforge_agent::MockAgentPipeline);
 
         let step = session.play_once("决定加征港税").expect("play");
 
@@ -807,7 +815,7 @@ mod tests {
         };
         let plan = ScenePlan {
             scene: planned_scene.clone(),
-            review: plotforge_schema::NarrativeReview {
+            review: Some(plotforge_schema::NarrativeReview {
                 scene_key: planned_scene.key.clone(),
                 score: 80,
                 hook_score: 80,
@@ -817,7 +825,7 @@ mod tests {
                 choice_meaningfulness_score: 80,
                 ai_slop_risk: 10,
                 issues: Vec::new(),
-            },
+            }),
             reproducibility: ReproducibilityMetadata::local_mock(7),
             fallback_used: false,
             error: None,
@@ -965,7 +973,7 @@ mod tests {
         };
         let plan = ScenePlan {
             scene: planned_scene.clone(),
-            review: plotforge_schema::NarrativeReview {
+            review: Some(plotforge_schema::NarrativeReview {
                 scene_key: planned_scene.key.clone(),
                 score: 50,
                 hook_score: 50,
@@ -975,7 +983,7 @@ mod tests {
                 choice_meaningfulness_score: 50,
                 ai_slop_risk: 20,
                 issues: Vec::new(),
-            },
+            }),
             reproducibility: ReproducibilityMetadata::local_mock(7),
             fallback_used: false,
             error: None,
@@ -1037,7 +1045,7 @@ mod tests {
         };
         let plan = ScenePlan {
             scene: planned_scene,
-            review: plotforge_schema::NarrativeReview {
+            review: Some(plotforge_schema::NarrativeReview {
                 scene_key: "agent-scene-r6".into(),
                 score: 50,
                 hook_score: 50,
@@ -1047,7 +1055,7 @@ mod tests {
                 choice_meaningfulness_score: 50,
                 ai_slop_risk: 20,
                 issues: Vec::new(),
-            },
+            }),
             reproducibility: ReproducibilityMetadata::local_mock(7),
             fallback_used: false,
             error: None,

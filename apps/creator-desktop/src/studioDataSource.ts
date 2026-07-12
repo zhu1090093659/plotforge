@@ -56,15 +56,18 @@ import {
   type SourceFileContent,
   type SourceFileSummary,
 } from "./tauriBridge";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 export interface StudioDataSource {
   runtimeName: string;
+  pickProjectDirectory(): Promise<string | null>;
   createProject(
     path: string,
     request: ProjectCreationRequest,
     force: boolean,
   ): Promise<ProjectCreationReport>;
   openProject(path: string): Promise<ProjectData>;
+  openOrCreateProject(path: string): Promise<ProjectData>;
   checkProject(path: string): Promise<ProjectCheckReport>;
   listExportProfiles(): Promise<ExportProfile[]>;
   readWorldEditDocument(path: string): Promise<WorldEditDocument>;
@@ -228,13 +231,18 @@ export interface StudioDataSource {
 }
 
 export function createTauriStudioDataSource(): StudioDataSource {
-  return createStudioDataSource("Tauri desktop", studioBridge);
+  return createStudioDataSource(
+    "Tauri desktop",
+    studioBridge,
+    pickTauriProjectDirectory,
+  );
 }
 
 export function createHttpStudioDataSource(): StudioDataSource {
   return createStudioDataSource(
     "HTTP dev bridge",
     createStudioBridge(createHttpStudioInvoke()),
+    pickHttpProjectDirectory,
   );
 }
 
@@ -258,11 +266,14 @@ function isTauriRuntime() {
 function createStudioDataSource(
   runtimeName: string,
   bridge: ReturnType<typeof createStudioBridge>,
+  pickProjectDirectory: () => Promise<string | null>,
 ): StudioDataSource {
   return {
     runtimeName,
+    pickProjectDirectory,
     createProject: bridge.createProject,
     openProject: bridge.openProject,
+    openOrCreateProject: bridge.openOrCreateProject,
     checkProject: bridge.checkProject,
     listExportProfiles: bridge.listExportProfiles,
     readWorldEditDocument: bridge.readWorldEditDocument,
@@ -345,4 +356,28 @@ function createStudioDataSource(
     invokeMcpTool: bridge.invokeMcpTool,
     enableMcpServerForProject: bridge.enableMcpServerForProject,
   };
+}
+
+async function pickTauriProjectDirectory(): Promise<string | null> {
+  const selected = await openDialog({
+    directory: true,
+    multiple: false,
+    title: "Open PlotForge project folder",
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+async function pickHttpProjectDirectory(): Promise<string | null> {
+  const response = await fetch("/__plotforge_studio/pick-directory", {
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "message" in payload
+        ? String(payload.message)
+        : `Directory picker failed with HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return typeof payload === "string" ? payload : null;
 }

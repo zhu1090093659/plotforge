@@ -62,7 +62,7 @@ describe("StudioCommandPalette", () => {
     });
     // The typed query matches no nav action and is not path-like, but the
     // open-project fallback is still offered (loaded on Enter below).
-    expect(screen.getByText(/Open project "zzzz-no-match"/)).toBeTruthy();
+    expect(screen.getByText(/Open or create project "zzzz-no-match"/)).toBeTruthy();
   });
 
   it("renders the true empty state when there are no actions and no query", () => {
@@ -75,7 +75,7 @@ describe("StudioCommandPalette", () => {
     const { onOpenProject, onClose } = renderPalette();
     const input = screen.getByLabelText("Type a command or project path…");
     fireEvent.change(input, { target: { value: "/tmp/some-project" } });
-    expect(screen.getByText(/Open project "\/tmp\/some-project"/)).toBeTruthy();
+    expect(screen.getByText(/Open or create project "\/tmp\/some-project"/)).toBeTruthy();
     // It is the first (active) option; Enter runs it.
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onOpenProject).toHaveBeenCalledWith("/tmp/some-project");

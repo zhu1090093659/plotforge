@@ -1,5 +1,5 @@
 import { Command, Loader2, RefreshCcw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AgentChatRail } from "./AgentChatRail";
 import { AssetMaintenanceView } from "./AssetMaintenanceView";
 import { LaunchpadView } from "./LaunchpadView";
@@ -34,6 +34,7 @@ import {
 import { useStudioWorkspace } from "./useStudioWorkspace";
 import { LanguageToggle, StudioI18nProvider, useStudioI18n } from "./i18n";
 import { useStudioRail } from "./useStudioRail";
+import { errorMessage } from "./errorMessage";
 
 export interface AppProps {
   dataSource?: StudioDataSource;
@@ -41,22 +42,30 @@ export interface AppProps {
 }
 
 export function App(props: AppProps) {
+  const defaultDataSource = useMemo(
+    () => createDefaultStudioDataSource(),
+    [],
+  );
   return (
     <StudioI18nProvider>
-      <AppContent {...props} />
+      <AppContent
+        {...props}
+        dataSource={props.dataSource ?? defaultDataSource}
+      />
     </StudioI18nProvider>
   );
 }
 
 function AppContent({
-  dataSource = createDefaultStudioDataSource(),
+  dataSource,
   initialProjectPath = defaultProjectPath(),
-}: AppProps) {
+}: AppProps & { dataSource: StudioDataSource }) {
   const { t } = useStudioI18n();
   const [activeSection, setActiveSection] =
     useState<StudioSectionId>("home");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [projectPickerError, setProjectPickerError] = useState<string | null>(null);
   const rail = useStudioRail();
 
   const {
@@ -106,8 +115,20 @@ function AppContent({
 
   // Routing helpers -------------------------------------------------------
 
-  async function loadProject(path: string) {
-    await loadWorkspaceProject(path);
+  async function loadProject(path: string, createIfMissing = false) {
+    await loadWorkspaceProject(path, createIfMissing);
+  }
+
+  async function pickAndLoadProject() {
+    setProjectPickerError(null);
+    try {
+      const path = await dataSource.pickProjectDirectory();
+      if (!path) return;
+      setProjectPath(path);
+      await loadProject(path, true);
+    } catch (source) {
+      setProjectPickerError(errorMessage(source));
+    }
   }
 
   async function runPlaytest() {
@@ -169,7 +190,8 @@ function AppContent({
             availableModels={agentConfig.availableModels}
             agentConfig={agentConfig.agentConfig}
             onAgentConfigChange={agentConfig.setAgentConfig}
-            configSaveError={agentConfig.saveError}
+            configSaveError={agentConfig.loadError ?? agentConfig.saveError}
+            projectLoadError={projectPickerError ?? error}
             input={agent.input}
             onInputChange={agent.setInput}
             onSubmit={async () => {
@@ -375,9 +397,11 @@ function AppContent({
           <SettingsView
             dataSource={dataSource}
             loadedPath={loadedPath}
+            availableModels={agentConfig.availableModels}
             agentConfig={agentConfig.agentConfig}
             onAgentConfigChange={agentConfig.setAgentConfig}
-            configSaveError={agentConfig.saveError}
+            configSaveError={agentConfig.loadError ?? agentConfig.saveError}
+            onModelsChanged={agentConfig.refreshAvailableModels}
           />
         );
     }
@@ -398,6 +422,9 @@ function AppContent({
           }
         }}
         onOpenTrace={() => openStudioSection("trace")}
+        availableModels={agentConfig.availableModels}
+        agentConfig={agentConfig.agentConfig}
+        onAgentConfigChange={agentConfig.setAgentConfig}
         evidence={renderEvidencePopover()}
       />
     );
@@ -422,9 +449,6 @@ function AppContent({
         <div className="rounded-lg border border-canvas-200 bg-canvas-50 p-3">
         <div className="flex flex-wrap gap-2">
           <StudioStatusChip tone={healthTone}>{healthLabel}</StudioStatusChip>
-          <StudioStatusChip tone="agent">
-            {t(activeSectionMeta.statusKey)}
-          </StudioStatusChip>
         </div>
           <div className="mt-3 grid gap-2 text-sm">
             <EvidenceLine label={t("app.project")} value={projectSummary?.title ?? t("common.none")} />
@@ -510,7 +534,7 @@ function AppContent({
     <StudioShell
       projectPath={loadedPath}
       projectLoading={loading}
-      onOpenProject={() => void loadProject(projectPath)}
+      onOpenProject={() => void pickAndLoadProject()}
       navItems={navItems}
       expandedIds={new Set()}
       onToggleExpand={() => {}}
@@ -558,7 +582,7 @@ function AppContent({
       actions={paletteActions}
       onOpenProject={(path) => {
         setProjectPath(path);
-        void loadProject(path);
+        void loadProject(path, true);
       }}
     />
     </>

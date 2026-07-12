@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
   demoExportProfiles,
@@ -69,11 +69,51 @@ afterEach(() => {
   if (typeof window.localStorage?.removeItem === "function") {
     window.localStorage.removeItem("plotforge:creator-desktop:locale");
     window.localStorage.removeItem("plotforge:creator-desktop:rail-collapsed");
+    window.localStorage.removeItem("plotforge:creator-desktop:sidebar-collapsed");
   }
   cleanup();
 });
 
 describe("App", () => {
+  it("opens a selected project folder from the sidebar Open Project button", async () => {
+    const pickProjectDirectory = vi.fn(async () => "/tmp/starter-project");
+    const openOrCreateProject = vi.fn(async () => demoProjectData);
+    render(
+      <App
+        dataSource={appTestDataSource({ pickProjectDirectory, openOrCreateProject })}
+        initialProjectPath=""
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle(/Open or create project/i));
+
+    await waitFor(() => {
+      expect(pickProjectDirectory).toHaveBeenCalledTimes(1);
+      expect(openOrCreateProject).toHaveBeenCalledWith("/tmp/starter-project");
+    });
+  });
+
+  it("keeps a canonical project loaded when a secondary workspace read fails", async () => {
+    const dataSource = appTestDataSource({
+      async pickProjectDirectory() {
+        return "/tmp/starter-project";
+      },
+      async checkProject() {
+        throw new Error("cannot hydrate project overview");
+      },
+    });
+    render(<App dataSource={dataSource} initialProjectPath="" />);
+
+    fireEvent.click(screen.getByTitle(/Open or create project/i));
+
+    expect((await screen.findAllByText("starter-project")).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByText(
+        /Failed to open project folder: cannot hydrate project overview/,
+      ),
+    ).toBeTruthy();
+  });
+
   it("loads project data, lists source files, and saves editable text", async () => {
     const writes: Array<{ relativePath: string; content: string }> = [];
     const files: SourceFileSummary[] = [
@@ -168,8 +208,9 @@ describe("App", () => {
     expect(getNavButton("Settings")).toBeTruthy();
     // Source is the active section after waitForDefaultSourceCanvas navigates there.
     expect(getNavButton("Source").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByLabelText("Agent rail")).toBeTruthy();
-    expect(screen.getByLabelText("Collapse agent rail")).toBeTruthy();
+    expect(screen.queryByLabelText("Agent rail")).toBeNull();
+    expect(screen.getByLabelText("Expand agent rail")).toBeTruthy();
+    expect(screen.getByLabelText("Expand sidebar")).toBeTruthy();
   });
 
   it("renders sidebar nav without duplicate second-level buttons", async () => {
@@ -193,6 +234,47 @@ describe("App", () => {
       .toHaveLength(1);
   });
 
+  it("keeps the Launchpad and Agent rail model decks synchronized", async () => {
+    render(
+      <App
+        dataSource={appTestDataSource()}
+        initialProjectPath="/tmp/starter-project"
+      />,
+    );
+
+    await waitForDefaultSourceCanvas();
+    fireEvent.click(getNavButton("Home"));
+    fireEvent.click(screen.getByLabelText("Expand agent rail"));
+
+    const main = screen.getByRole("main");
+    const rail = screen.getByLabelText("Agent rail");
+    const launchpadDeck = within(main).getByRole("button", {
+      name: "Model and thinking level",
+    });
+    const railDeck = within(rail).getByRole("button", {
+      name: "Model and thinking level",
+    });
+
+    fireEvent.click(launchpadDeck);
+    fireEvent.click(
+      screen.getByRole("gridcell", {
+        name: "Local pi-Agent (offline) — local, High",
+      }),
+    );
+    await waitFor(() => expect(railDeck.textContent).toContain("High"));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close model selector" }),
+    );
+    fireEvent.click(railDeck);
+    fireEvent.click(
+      screen.getByRole("gridcell", {
+        name: "Local pi-Agent (offline) — local, Low",
+      }),
+    );
+    await waitFor(() => expect(launchpadDeck.textContent).toContain("Low"));
+  });
+
   it("does not render injected fake agent workers or approval queues", async () => {
     const dataSource = appTestDataSource();
 
@@ -201,6 +283,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
+    fireEvent.click(screen.getByLabelText("Expand agent rail"));
     // Honesty-surface evidence lives inside the AgentChatRail "Evidence" popover
     // (default closed). Open it to assert no-fake details + creator-facing
     // boundaries.
@@ -426,6 +509,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
+    fireEvent.click(screen.getByLabelText("Expand agent rail"));
     // The Agent rail is the single "describe a change / run a turn" entry.
     fireEvent.change(screen.getByLabelText("Direct the agent — describe a change…"), {
       target: { value: "continue" },
@@ -562,6 +646,7 @@ describe("App", () => {
     );
 
     await waitForDefaultSourceCanvas();
+    fireEvent.click(screen.getByLabelText("Expand agent rail"));
 
     // First turn: explicit snapshot restore + save id.
     fireEvent.change(screen.getByLabelText("Direct the agent — describe a change…"), {
@@ -1087,6 +1172,9 @@ function appTestDataSource(
 
   const base: StudioDataSource = {
     runtimeName: "Test runtime",
+    async pickProjectDirectory() {
+      return null;
+    },
     async createProject(path, request) {
       return {
         project_path: path,
@@ -1100,6 +1188,9 @@ function appTestDataSource(
       };
     },
     async openProject() {
+      return demoProjectData;
+    },
+    async openOrCreateProject() {
       return demoProjectData;
     },
     async checkProject() {
@@ -1295,7 +1386,7 @@ function appTestDataSource(
     },
     async listAvailableModels() {
       return [
-        { id: "local-pi", label: "Local pi-Agent (mock)", provider: "local-mock" },
+        { id: "local-pi", label: "Local pi-Agent (offline)", provider: "local" },
       ];
     },
     async getAgentSessionConfig() {

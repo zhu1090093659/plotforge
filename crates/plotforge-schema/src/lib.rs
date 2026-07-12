@@ -779,7 +779,7 @@ pub struct ReproducibilityMetadata {
     /// tool-call turn (mirrors `provider_config_hash`). Derived only from
     /// non-secret config fields (server id, transport kind, endpoint_url,
     /// credential_env_var *name*); never the credential value. `None` when no
-    /// MCP server was invoked on this turn (the local-mock path, or a turn
+    /// MCP server was invoked on this turn (the offline-local path, or a turn
     /// without MCP tool use). Carried for reproducibility per AGENTS.md's MCP
     /// carve-out; raw tool-call arguments/results never enter this field.
     #[serde(default)]
@@ -798,11 +798,25 @@ pub struct ReproducibilityMetadata {
 
 impl Default for ReproducibilityMetadata {
     fn default() -> Self {
-        Self::local_mock(0)
+        Self::local_runtime(0)
     }
 }
 
 impl ReproducibilityMetadata {
+    pub fn local_runtime(run_seed: u64) -> Self {
+        Self {
+            run_seed,
+            prompt_version: "plotforge-local-runtime-prompt-v1".into(),
+            model_version: "plotforge-local-runtime-v1".into(),
+            provider_config_hash: "sha256:plotforge-local-runtime-config-v1".into(),
+            mcp_tool_call_hash: None,
+            moderation_config_hash: None,
+            trace_id: None,
+            snapshot_id: None,
+        }
+    }
+
+    /// Deterministic identity reserved for hermetic test providers.
     pub fn local_mock(run_seed: u64) -> Self {
         Self {
             run_seed,
@@ -2238,8 +2252,8 @@ mod tests {
     fn model_option_roundtrips_json() {
         let model = ModelOption {
             id: "local-pi".into(),
-            label: "Local pi-Agent (mock)".into(),
-            provider: "local-mock".into(),
+            label: "Local pi-Agent (offline)".into(),
+            provider: "local".into(),
         };
         let encoded = serde_json::to_string_pretty(&model).expect("serialize model");
         let decoded: ModelOption = serde_json::from_str(&encoded).expect("deserialize model");

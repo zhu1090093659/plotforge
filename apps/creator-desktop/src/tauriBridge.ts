@@ -54,6 +54,7 @@ import type {
 export const studioCommandNames = {
   createProject: "create_project",
   openProject: "open_project",
+  openOrCreateProject: "open_or_create_project",
   checkProject: "check_project",
   listExportProfiles: "list_export_profiles",
   readWorldEditDocument: "read_world_edit_document",
@@ -232,6 +233,11 @@ export function createStudioBridge(invokeCommand: StudioInvoke = invoke) {
     },
     openProject(path: string): Promise<ProjectData> {
       return invokeCommand<ProjectData>(studioCommandNames.openProject, { path });
+    },
+    openOrCreateProject(path: string): Promise<ProjectData> {
+      return invokeCommand<ProjectData>(studioCommandNames.openOrCreateProject, {
+        path,
+      });
     },
     checkProject(path: string): Promise<ProjectCheckReport> {
       return invokeCommand<ProjectCheckReport>(studioCommandNames.checkProject, {

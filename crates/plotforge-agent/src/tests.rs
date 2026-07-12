@@ -18,10 +18,9 @@ use super::{
     ProviderAgentPipeline, ProviderCredentialError, ProviderCredentialResolver, SceneImagePipeline,
     SceneImageRequest, ScenePlanRequest, ScenePlanner, TextModelClient, TextModelClientRequest,
     TextModelProviderError, TextModelResponse, TextProviderConfig, TtsPipeline, TtsProvider,
-    TtsProviderError, TtsProviderOutput, TtsRequest, fake_success_response, generate_character,
-    generate_character_with_provider, generate_story_craft, generate_story_craft_with_provider,
-    generate_world_expansion, generate_world_expansion_with_provider, scene_from_proposals,
-    validate_agent_output_proposal,
+    TtsProviderError, TtsProviderOutput, TtsRequest, fake_success_response,
+    generate_character_with_provider, generate_story_craft_with_provider,
+    generate_world_expansion_with_provider, scene_from_proposals, validate_agent_output_proposal,
 };
 
 #[derive(Clone, Debug)]
@@ -248,7 +247,7 @@ fn mock_pipeline_returns_valid_scene_and_review() {
         .expect("plan");
 
     assert_eq!(plan.scene.key, "civic-crisis-001");
-    assert!(plan.review.passes());
+    assert!(plan.review.as_ref().expect("review").passes());
     assert!(!plan.fallback_used);
 }
 
@@ -399,8 +398,11 @@ fn fake_text_provider_pipeline_builds_scene_from_json_proposals() {
         .expect("provider plan");
 
     assert_eq!(plan.scene.key, "provider-scene-001");
-    assert_eq!(plan.review.scene_key, "provider-scene-001");
-    assert_eq!(plan.review.score, 96);
+    assert_eq!(
+        plan.review.as_ref().expect("review").scene_key,
+        "provider-scene-001"
+    );
+    assert_eq!(plan.review.as_ref().expect("review").score, 96);
     assert_eq!(plan.reproducibility.run_seed, 7);
     assert_eq!(
         plan.reproducibility.prompt_version,
@@ -427,7 +429,10 @@ fn fake_text_provider_pipeline_repairs_wrapped_json_output() {
         .expect("provider plan");
 
     assert_eq!(plan.scene.key, "provider-scene-001");
-    assert_eq!(plan.review.scene_key, "provider-scene-001");
+    assert_eq!(
+        plan.review.as_ref().expect("review").scene_key,
+        "provider-scene-001"
+    );
     assert_eq!(
         plan.reproducibility.provider_config_hash,
         "sha256:fake-text-provider-config-v1"
@@ -527,7 +532,11 @@ fn fake_text_provider_pipeline_falls_back_on_invalid_json() {
 
 #[test]
 fn world_generation_success_records_envelope_evidence() {
-    let report = generate_world_expansion(world_generation_request(), 41);
+    let report = generate_world_expansion_with_provider(
+        &FakeTextModelProvider::success(),
+        world_generation_request(),
+        41,
+    );
 
     assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
     assert!(!report.evidence.fallback_used);
@@ -557,7 +566,11 @@ fn world_generation_success_records_envelope_evidence() {
 
 #[test]
 fn story_craft_generation_success_builds_plot_threads_and_arc() {
-    let report = generate_story_craft(story_craft_generation_request(), 42);
+    let report = generate_story_craft_with_provider(
+        &FakeTextModelProvider::success(),
+        story_craft_generation_request(),
+        42,
+    );
 
     assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
     assert!(!report.evidence.fallback_used);
@@ -589,7 +602,11 @@ fn story_craft_generation_success_builds_plot_threads_and_arc() {
 
 #[test]
 fn character_generation_success_includes_visual_voice_and_portrait_request() {
-    let report = generate_character(character_generation_request(), 43);
+    let report = generate_character_with_provider(
+        &FakeTextModelProvider::success(),
+        character_generation_request(),
+        43,
+    );
 
     assert_eq!(report.evidence.status, GenerationStatus::Succeeded);
     assert!(!report.evidence.fallback_used);

@@ -311,8 +311,8 @@ pub fn pi_agent_capabilities_with_mcp(mcp_enabled: bool) -> Vec<PiAgentCapabilit
             id: "pi-agent.text-generation".into(),
             label: "Text generation".into(),
             status: "wired".into(),
-            source: "local-mock-text-provider".into(),
-            evidence: "FakeTextModelProvider produces validated agent output envelopes.".into(),
+            source: "local-pi-offline-provider".into(),
+            evidence: "The offline pi-Agent derives a validated scene plan from creator input and project context.".into(),
         },
         PiAgentCapability {
             id: "pi-agent.mcp-tool-use".into(),

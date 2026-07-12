@@ -266,6 +266,9 @@ function workspaceTestDataSource(
 
   const base: StudioDataSource = {
     runtimeName: "Hook test runtime",
+    async pickProjectDirectory() {
+      return null;
+    },
     async createProject(path, request) {
       return {
         project_path: path,
@@ -277,6 +280,9 @@ function workspaceTestDataSource(
         files_created: ["game.toml"],
         project: demoProjectData,
       };
+    },
+    async openOrCreateProject() {
+      return demoProjectData;
     },
     async openProject() {
       return demoProjectData;
@@ -474,7 +480,7 @@ function workspaceTestDataSource(
     },
     async listAvailableModels() {
       return [
-        { id: "local-pi", label: "Local pi-Agent (mock)", provider: "local-mock" },
+        { id: "local-pi", label: "Local pi-Agent (offline)", provider: "local" },
       ];
     },
     async getAgentSessionConfig() {

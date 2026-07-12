@@ -28,6 +28,20 @@ use plotforge_schema::{
 
 mod common;
 
+fn expected_asset_free_export_files() -> BTreeSet<PathBuf> {
+    common::expected_export_files()
+        .into_iter()
+        .filter(|path| path != Path::new("assets/generated/placeholder.png"))
+        .collect()
+}
+
+fn expected_asset_free_desktop_files() -> BTreeSet<PathBuf> {
+    common::expected_desktop_export_files()
+        .into_iter()
+        .filter(|path| path != Path::new("assets/generated/placeholder.png"))
+        .collect()
+}
+
 /// A redaction-safe `AgentSessionConfig` fixture with MCP enabled, mirroring
 /// the per-project `.plotforge/agent-config.json` shape persisted by the
 /// Studio `set_agent_session_config` command.
@@ -181,9 +195,7 @@ fn static_export_omits_mcp_config_when_project_has_mcp_enabled() {
             .files_found
             .into_iter()
             .collect::<BTreeSet<_>>(),
-        common::expected_export_files()
-            .into_iter()
-            .collect::<BTreeSet<_>>()
+        expected_asset_free_export_files()
     );
     assert!(!output_dir.join(".plotforge").exists());
     assert!(!output_dir.join("mcp.json").exists());
@@ -204,12 +216,7 @@ fn static_export_zip_omits_mcp_config_when_project_has_mcp_enabled() {
 
     // The zip archive mirrors the audited source bundle exactly.
     let archived = report.archived_files.into_iter().collect::<BTreeSet<_>>();
-    assert_eq!(
-        archived,
-        common::expected_export_files()
-            .into_iter()
-            .collect::<BTreeSet<_>>()
-    );
+    assert_eq!(archived, expected_asset_free_export_files());
     assert!(
         !archived.iter().any(|path| {
             path.components()
@@ -238,9 +245,7 @@ fn desktop_runtime_draft_export_omits_mcp_config_when_project_has_mcp_enabled() 
 
     let report = export_desktop_runtime_draft(&project_path, &output_dir).expect("desktop export");
 
-    let expected_files: BTreeSet<PathBuf> = common::expected_desktop_export_files()
-        .into_iter()
-        .collect();
+    let expected_files = expected_asset_free_desktop_files();
     assert_eq!(
         report
             .audit

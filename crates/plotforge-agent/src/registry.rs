@@ -65,7 +65,7 @@ pub fn provider_registry_path() -> Option<PathBuf> {
 
 /// Loads the user-global provider registry. A missing file returns an empty
 /// registry (not an error) so a fresh install keeps working with the
-/// `local-pi` mock default. A corrupt or unreadable file returns an error so
+/// offline `local-pi` default. A corrupt or unreadable file returns an error so
 /// the user can fix it; we never silently fall back to an empty registry
 /// from a file that exists.
 pub fn load_provider_registry() -> Result<ProviderRegistry, ProviderRegistryError> {
@@ -1233,7 +1233,7 @@ mod tests {
         assert!(resolve_provider_for_model("claude", &registry).is_none());
         // Unknown model ids return None (no silent fallback).
         assert!(resolve_provider_for_model("unknown", &registry).is_none());
-        // local-pi returns None so the caller routes to the mock.
+        // local-pi returns None so the caller routes to the offline provider.
         assert!(resolve_provider_for_model(LOCAL_PI_MODEL_ID, &registry).is_none());
     }
 

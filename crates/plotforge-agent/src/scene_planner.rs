@@ -35,7 +35,7 @@ pub struct ScenePlanRequest<'a> {
 #[derive(Clone, Debug)]
 pub struct ScenePlan {
     pub scene: Scene,
-    pub review: NarrativeReview,
+    pub review: Option<NarrativeReview>,
     pub reproducibility: ReproducibilityMetadata,
     pub fallback_used: bool,
     pub error: Option<RuntimeError>,
@@ -46,10 +46,8 @@ impl ScenePlan {
     /// The proposal carries the scene skeleton (key, title, location,
     /// dramatic purpose, hook, cast, entry beat id, background asset); this
     /// constructor seeds a single entry beat with `BeatNext::None` so the
-    /// runtime has a committable scene. The narrative review is a neutral
-    /// pass/fail baseline (the pi-Agent surface does not yet produce a
-    /// `ReviewProposal`; that is deferred). Reproducibility is carried
-    /// through from the envelope.
+    /// runtime has a committable scene. No narrative review is fabricated:
+    /// the field remains absent until a real review pipeline has run.
     pub fn from_proposal(
         proposal: &plotforge_schema::ScenePlanProposal,
         reproducibility: ReproducibilityMetadata,
@@ -81,20 +79,9 @@ impl ScenePlan {
             beats: vec![beat],
             entry_beat_id: Some(beat_id),
         };
-        let review = NarrativeReview {
-            scene_key: scene.key.clone(),
-            score: 50,
-            hook_score: 50,
-            pacing_score: 50,
-            character_consistency_score: 50,
-            payoff_score: 50,
-            choice_meaningfulness_score: 50,
-            ai_slop_risk: 20,
-            issues: Vec::new(),
-        };
         Ok(Self {
             scene,
-            review,
+            review: None,
             reproducibility,
             fallback_used: false,
             error: None,
@@ -204,7 +191,7 @@ where
             );
             return Ok(ScenePlan {
                 scene,
-                review,
+                review: Some(review),
                 reproducibility: local_reproducibility(&request),
                 fallback_used,
                 error,
@@ -233,7 +220,7 @@ where
 
                 Ok(ScenePlan {
                     scene: generated.scene,
-                    review: generated.review,
+                    review: Some(generated.review),
                     reproducibility: generated.reproducibility,
                     fallback_used: image_result.fallback_used,
                     error: image_result.error,
@@ -249,7 +236,7 @@ where
                 );
                 Ok(ScenePlan {
                     scene,
-                    review,
+                    review: Some(review),
                     reproducibility: local_reproducibility(&request),
                     fallback_used: true,
                     error: Some(runtime_error),
@@ -310,7 +297,7 @@ where
             );
             return Ok(ScenePlan {
                 scene,
-                review,
+                review: Some(review),
                 reproducibility: local_reproducibility(&request),
                 fallback_used,
                 error,
@@ -320,7 +307,7 @@ where
         match self.provider_scene_plan(&request, &scene_key) {
             Ok(generated) => Ok(ScenePlan {
                 scene: generated.scene,
-                review: generated.review,
+                review: Some(generated.review),
                 reproducibility: generated.reproducibility,
                 fallback_used: false,
                 error: None,
@@ -335,7 +322,7 @@ where
                 );
                 Ok(ScenePlan {
                     scene,
-                    review,
+                    review: Some(review),
                     reproducibility: local_reproducibility(&request),
                     fallback_used: true,
                     error: Some(runtime_error),
@@ -517,6 +504,21 @@ fn text_model_prompt(agent: &AgentRole, request: &ScenePlanRequest<'_>, scene_ke
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct NoScenePlanner;
+
+impl ScenePlanner for NoScenePlanner {
+    fn plan_next_scene(
+        &self,
+        _request: ScenePlanRequest<'_>,
+    ) -> Result<ScenePlan, ScenePlannerError> {
+        Err(ScenePlannerError::new(
+            "scene_planner_required",
+            "this runtime session has no scene planner; use pi-Agent or configure a text provider before crossing a scene boundary",
+        ))
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct MockAgentPipeline;
 
 impl ScenePlanner for MockAgentPipeline {
@@ -549,7 +551,7 @@ impl ScenePlanner for MockAgentPipeline {
             );
             return Ok(ScenePlan {
                 scene,
-                review,
+                review: Some(review),
                 reproducibility: local_reproducibility(&request),
                 fallback_used,
                 error,
@@ -564,7 +566,7 @@ impl ScenePlanner for MockAgentPipeline {
         );
         Ok(ScenePlan {
             scene,
-            review,
+            review: Some(review),
             reproducibility: local_reproducibility(&request),
             fallback_used: false,
             error: None,

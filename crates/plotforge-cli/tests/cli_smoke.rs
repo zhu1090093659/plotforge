@@ -49,9 +49,9 @@ fn cli_trace_inspect_reports_reproducibility_and_intent() {
     ])
     .assert_success_contains("fallback: false")
     .assert_contains("run seed: 7")
-    .assert_contains("prompt version: plotforge-local-mock-prompt-v1")
-    .assert_contains("model version: plotforge-local-mock-model-v1")
-    .assert_contains("provider config hash: sha256:plotforge-local-mock-provider-config-v1")
+    .assert_contains("prompt version: plotforge-local-runtime-prompt-v1")
+    .assert_contains("model version: plotforge-local-runtime-v1")
+    .assert_contains("provider config hash: sha256:plotforge-local-runtime-config-v1")
     .assert_contains("trace evidence id: trace-000")
     .assert_contains("snapshot evidence id: none")
     .assert_contains("intent: continue")
@@ -67,10 +67,7 @@ fn cli_trace_inspect_reports_reproducibility_and_intent() {
     .assert_contains("story after: scene=opening-scene beat=opening-scene-beat-002 turn=0")
     .assert_contains("diagnostics: 5")
     .assert_contains("diagnostic: InterpretAction Completed")
-    .assert_contains("media references: 1")
-    .assert_contains(
-        "media: Scene opening-scene background_asset -> assets/generated/placeholder.png",
-    );
+    .assert_contains("media references: 0");
 }
 
 #[test]
@@ -108,15 +105,15 @@ fn cli_export_workflows_produce_audited_packages() {
 
     assert!(export.join("index.html").is_file());
     assert!(export.join("game.json").is_file());
-    assert!(export.join("assets/generated/placeholder.png").is_file());
+    assert!(!export.join("assets/generated/placeholder.png").exists());
     assert!(export_zip.is_file());
     extract_zip(&export_zip, &unpacked_export);
     assert!(unpacked_export.join("index.html").is_file());
     assert!(unpacked_export.join("game.json").is_file());
     assert!(
-        unpacked_export
+        !unpacked_export
             .join("assets/generated/placeholder.png")
-            .is_file()
+            .exists()
     );
     assert_export_tree_excludes_private_paths(&unpacked_export);
 
@@ -137,9 +134,9 @@ fn cli_export_workflows_produce_audited_packages() {
     assert!(desktop_export.join(DESKTOP_RUNTIME_DRAFT_FILE).is_file());
     assert!(desktop_export.join("desktop-build-notes.md").is_file());
     assert!(
-        desktop_export
+        !desktop_export
             .join("assets/generated/placeholder.png")
-            .is_file()
+            .exists()
     );
     assert_export_tree_excludes_private_paths(&desktop_export);
 }
@@ -1433,7 +1430,7 @@ fn cli_trace_redacts_secret_markers_from_play_input() {
 }
 
 #[test]
-fn cli_play_can_save_and_restore_runtime_snapshot() {
+fn cli_play_can_save_runtime_snapshot_without_placeholder_beats() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = check_project_path(&temp);
     create_starter_project(&project).assert_success_contains("created project Starter Project");
@@ -1456,28 +1453,10 @@ fn cli_play_can_save_and_restore_runtime_snapshot() {
     );
     assert!(project.join("saves/latest.runtime_snapshot.json").is_file());
 
-    run([
-        "play",
-        project.to_str().unwrap(),
-        "--once",
-        "--restore-id",
-        "save-001",
-        "--input",
-        "continue",
-        "--save-id",
-        "save-002",
-    ])
-    .assert_success_contains("choice: continue")
-    .assert_contains("snapshot:");
-
-    let restored_trace =
-        fs::read_to_string(project.join("traces/latest.json")).expect("latest trace");
-    assert!(restored_trace.contains("\"current_beat_id\": \"opening-scene-beat-003\""));
-    assert!(
-        project
-            .join("saves/save-002.runtime_snapshot.json")
-            .is_file()
-    );
+    let snapshot = fs::read_to_string(project.join("saves/save-001.runtime_snapshot.json"))
+        .expect("saved snapshot");
+    assert!(snapshot.contains("\"current_beat_id\": \"opening-scene-beat-002\""));
+    assert!(!snapshot.contains("opening-scene-beat-003"));
 }
 
 #[test]

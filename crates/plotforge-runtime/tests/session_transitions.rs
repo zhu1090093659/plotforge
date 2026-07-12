@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use plotforge_agent::{
-    FakeImageProvider, FakeTextModelProvider, ImageProviderAgentPipeline, ProviderAgentPipeline,
-    ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
+    FakeImageProvider, FakeTextModelProvider, ImageProviderAgentPipeline, MockAgentPipeline,
+    ProviderAgentPipeline, ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
 };
 use plotforge_job::JobClock;
 use plotforge_runtime::{RuntimeEngineError, RuntimeSession, interpret_action, summarize_delta};
@@ -116,7 +116,7 @@ fn runtime_trace_records_scene_and_current_beat_audio_references() {
 
 #[test]
 fn multiple_turns_accumulate_world_state_and_completed_scenes() {
-    let mut session = RuntimeSession::new(runtime_test_project());
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), MockAgentPipeline);
 
     let first = session.play_once("决定加征港税").expect("first turn");
     let second = session
@@ -242,7 +242,7 @@ fn missing_same_scene_beat_transition_is_explicit_error_without_commit() {
 
 #[test]
 fn unsupported_input_does_not_commit_state() {
-    let mut session = RuntimeSession::new(runtime_test_project());
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), MockAgentPipeline);
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
@@ -257,7 +257,7 @@ fn unsupported_input_does_not_commit_state() {
 
 #[test]
 fn ambiguous_input_does_not_commit_state() {
-    let mut session = RuntimeSession::new(runtime_test_project());
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), MockAgentPipeline);
     let story_before = session.story_state().clone();
     let world_before = session.world_state().clone();
 
@@ -463,7 +463,7 @@ fn image_provider_failures_are_trace_visible() {
 
 #[test]
 fn summarize_delta_keeps_human_readable_lines() {
-    let mut session = RuntimeSession::new(runtime_test_project());
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), MockAgentPipeline);
     let step = session.play_once("决定加征港税").expect("play");
 
     let lines = summarize_delta(&step.trace.world_state_delta);
@@ -474,7 +474,7 @@ fn summarize_delta_keeps_human_readable_lines() {
 
 #[test]
 fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
-    let mut session = RuntimeSession::new(runtime_test_project());
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), MockAgentPipeline);
 
     let step = session.play_once("决定加征港税").expect("play");
 
@@ -522,7 +522,7 @@ fn runtime_trace_records_intent_rule_planner_and_diagnostics() {
 
 #[test]
 fn runtime_trace_json_redacts_secret_markers() {
-    let mut session = RuntimeSession::new(runtime_test_project());
+    let mut session = RuntimeSession::with_scene_planner(runtime_test_project(), MockAgentPipeline);
 
     let step = session
         .play_once("决定加征港税 OPENAI_API_KEY=sk-test-secret-marker bearer token=value")
@@ -677,7 +677,7 @@ impl ScenePlanner for FakePlanner {
         Ok(ScenePlan {
             reproducibility: ReproducibilityMetadata::local_mock(request.project.game.run_seed),
             scene,
-            review,
+            review: Some(review),
             fallback_used: self.fallback_used,
             error: None,
         })
@@ -914,7 +914,7 @@ impl ScenePlanner for MissingEntryBeatPlanner {
         Ok(ScenePlan {
             reproducibility: ReproducibilityMetadata::local_mock(request.project.game.run_seed),
             scene,
-            review,
+            review: Some(review),
             fallback_used: false,
             error: None,
         })

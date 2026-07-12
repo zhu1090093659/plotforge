@@ -149,6 +149,9 @@ impl AssetRegistry {
     ) -> Result<(), MediaError> {
         let project_root = project_root.as_ref();
         for scene in &project.scenes {
+            if scene.background_asset.trim().is_empty() {
+                continue;
+            }
             let reference = AssetReference {
                 reference_kind: AssetReferenceKind::Scene,
                 reference_id: scene.key.clone(),
@@ -419,7 +422,10 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let project_path = temp.path().join("project");
         create_starter_project(&project_path);
-        let project = load_project(&project_path).expect("load project");
+        let mut project = load_project(&project_path).expect("load project");
+        let background_path = "assets/generated/opening-scene.png";
+        fs::write(project_path.join(background_path), b"scene image").expect("write image");
+        project.scenes[0].background_asset = background_path.into();
         let mut registry = AssetRegistry::new();
 
         registry
@@ -429,7 +435,7 @@ mod tests {
         assert_eq!(registry.len(), 1);
         assert_eq!(
             registry.exportable_paths(),
-            vec!["assets/generated/placeholder.png"]
+            vec!["assets/generated/opening-scene.png"]
         );
         let scene_records =
             registry.records_referenced_by(AssetReferenceKind::Scene, "opening-scene");
@@ -447,6 +453,9 @@ mod tests {
         let project_path = temp.path().join("project");
         create_starter_project(&project_path);
         let mut project = load_project(&project_path).expect("load project");
+        let background_path = "assets/generated/opening-scene.png";
+        fs::write(project_path.join(background_path), b"scene image").expect("write image");
+        project.scenes[0].background_asset = background_path.into();
         let audio_path = project_path.join("assets/generated/opening-scene-beat-001.wav");
         fs::write(&audio_path, b"fake wav bytes").expect("write audio");
         let audio_reference = MediaAssetReference {

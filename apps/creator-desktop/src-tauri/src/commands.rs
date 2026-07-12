@@ -28,6 +28,11 @@ pub fn open_project(path: String) -> Result<ProjectData, StudioCommandError> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn open_or_create_project(path: String) -> Result<ProjectData, StudioCommandError> {
+    plotforge_studio::open_or_create_project(path)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn check_project(path: String) -> Result<ProjectCheckReport, StudioCommandError> {
     plotforge_studio::check_project(path)
 }

@@ -169,3 +169,39 @@ select {
     );
   background-color: #fdfbff;
 }
+
+/* Model deck — an editorial take on a mechanical slot console. The dotted
+ * registration texture and inset rails make the model/thinking matrix feel
+ * tactile without abandoning PlotForge's parchment, sage, and aged-copper
+ * palette for a generic neon gaming skin. */
+.model-deck {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(111, 84, 163, 0.11) 1px, transparent 1.2px),
+    linear-gradient(145deg, rgba(253, 251, 255, 0.98), rgba(243, 240, 251, 0.98));
+  background-size: 12px 12px, 100% 100%;
+}
+
+.model-deck__matrix {
+  box-shadow:
+    inset 0 1px 2px rgba(43, 34, 56, 0.08),
+    inset 0 -1px 0 rgba(253, 251, 255, 0.9);
+}
+
+.model-deck__lever {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(138, 100, 80, 0.16) 1px, transparent 1.15px),
+    rgba(235, 230, 245, 0.9);
+  background-size: 8px 8px;
+  box-shadow: inset 0 1px 2px rgba(43, 34, 56, 0.08);
+}
+
+.model-deck__lever-knob::after {
+  position: absolute;
+  top: 0.35rem;
+  left: 0.48rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: rgba(253, 251, 255, 0.72);
+  content: "";
+}

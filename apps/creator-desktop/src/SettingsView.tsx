@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AgentSessionConfig } from "../../../contracts/plotforge";
+import type { AgentSessionConfig, ModelOption } from "../../../contracts/plotforge";
 import type { StudioDataSource } from "./studioDataSource";
 import { AgentConfigSection } from "./AgentConfigSection";
 import { McpSection } from "./McpSection";
@@ -24,9 +24,11 @@ import { useStudioI18n } from "./i18n";
 export interface SettingsViewProps {
   dataSource: StudioDataSource;
   loadedPath: string;
+  availableModels: ModelOption[];
   agentConfig: AgentSessionConfig;
   onAgentConfigChange: (config: AgentSessionConfig) => void;
   configSaveError: string | null;
+  onModelsChanged?: () => Promise<void> | void;
 }
 
 type SettingsTab = "agent" | "mcp" | "skills";
@@ -34,9 +36,11 @@ type SettingsTab = "agent" | "mcp" | "skills";
 export function SettingsView({
   dataSource,
   loadedPath,
+  availableModels,
   agentConfig,
   onAgentConfigChange,
   configSaveError,
+  onModelsChanged,
 }: SettingsViewProps) {
   const { t } = useStudioI18n();
   const [activeTab, setActiveTab] = useState<SettingsTab>("agent");
@@ -49,9 +53,11 @@ export function SettingsView({
         <AgentConfigSection
           dataSource={dataSource}
           loadedPath={loadedPath}
+          availableModels={availableModels}
           agentConfig={agentConfig}
           onAgentConfigChange={onAgentConfigChange}
           configSaveError={configSaveError}
+          onModelsChanged={onModelsChanged}
         />
       ),
     },

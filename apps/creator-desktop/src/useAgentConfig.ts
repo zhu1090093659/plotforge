@@ -38,6 +38,10 @@ export interface AgentConfigWorkspace {
   setAgentConfig(config: AgentSessionConfig): void;
   /** Last persist error (cleared on next successful save). */
   saveError: string | null;
+  /** Explicit model/config load failure; never replaced with fabricated data. */
+  loadError: string | null;
+  /** Reload configured model options after provider registry mutations. */
+  refreshAvailableModels(): Promise<void>;
 }
 
 export function useAgentConfig(
@@ -50,27 +54,28 @@ export function useAgentConfig(
   );
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const [configLoadError, setConfigLoadError] = useState<string | null>(null);
 
-  // Load available models once (static list).
-  useEffect(() => {
-    let cancelled = false;
-    dataSource
-      .listAvailableModels()
-      .then((models) => {
-        if (!cancelled) setAvailableModels(models);
-      })
-      .catch(() => {
-        // Models list is a static fallback; silently keep empty on error.
-      });
-    return () => {
-      cancelled = true;
-    };
+  const refreshAvailableModels = useCallback(async () => {
+    try {
+      setAvailableModels(await dataSource.listAvailableModels());
+      setModelLoadError(null);
+    } catch (source) {
+      setAvailableModels([]);
+      setModelLoadError(errorMessage(source));
+    }
   }, [dataSource]);
+
+  useEffect(() => {
+    void refreshAvailableModels();
+  }, [refreshAvailableModels]);
 
   // Load persisted config when the loaded path changes.
   useEffect(() => {
     if (!loadedPath) {
       setAgentConfigState(defaultAgentConfig);
+      setConfigLoadError(null);
       return;
     }
     let cancelled = false;
@@ -78,11 +83,13 @@ export function useAgentConfig(
     dataSource
       .getAgentSessionConfig(loadedPath)
       .then((config) => {
-        if (!cancelled) setAgentConfigState(config);
+        if (!cancelled) {
+          setAgentConfigState(config);
+          setConfigLoadError(null);
+        }
       })
-      .catch(() => {
-        // If the read fails, fall back to defaults — never block the home page.
-        if (!cancelled) setAgentConfigState(defaultAgentConfig);
+      .catch((source) => {
+        if (!cancelled) setConfigLoadError(errorMessage(source));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -123,5 +130,7 @@ export function useAgentConfig(
     loading,
     setAgentConfig,
     saveError,
+    loadError: configLoadError ?? modelLoadError,
+    refreshAvailableModels,
   };
 }

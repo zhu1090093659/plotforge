@@ -5,19 +5,18 @@ use std::{
 };
 
 use plotforge_schema::{
-    AiSafetyPolicy, AiUsageContentKind, AssetKind, AssetRecord, AssetReference, AssetReferenceKind,
-    AssetSourceKind, AudioBible, AudioVoiceCard, Beat, BeatNext, Character, CharacterArc,
-    CharacterEditDocument, CharacterGenerationReport, CharacterGenerationRequest, Choice,
-    Condition, Effect, EmotionalArcPoint, GameProject, GenerationEvidence, GenerationStatus,
-    HookStrategy, MAX_REFERENCE_STRUCTURE_NOTE_CHARS, MAX_REFERENCE_SUMMARY_CHARS,
-    MediaAssetReference, PacingProfile, PlotThread, ProjectCreationReport, ProjectCreationRequest,
-    ProjectData, ProjectTemplateId, PromptTemplate, PromptTemplateFile, ReferenceAnalysis,
-    ReferenceModule, ReferenceRights, ReferenceSource, ReferenceSourceType, ResourceDefinition,
-    Rule, RulesEditDocument, RuntimeSnapshot, Scene, Severity, StateVariablesEditDocument,
-    StoryCraftBible, StoryCraftEditDocument, StoryCraftGenerationReport,
-    StoryCraftGenerationRequest, StoryCraftState, StoryPromise, StoryPromiseStatus, StoryState,
-    VisualBible, VisualStyleCard, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest,
-    WorldState, contains_secret_marker_text,
+    AiSafetyPolicy, AiUsageContentKind, AssetKind, AssetRecord, AssetSourceKind, AudioBible, Beat,
+    BeatNext, Character, CharacterArc, CharacterEditDocument, CharacterGenerationReport,
+    CharacterGenerationRequest, Choice, Condition, Effect, GameProject, GenerationEvidence,
+    GenerationStatus, HookStrategy, MAX_REFERENCE_STRUCTURE_NOTE_CHARS,
+    MAX_REFERENCE_SUMMARY_CHARS, MediaAssetReference, PacingProfile, PlotThread,
+    ProjectCreationReport, ProjectCreationRequest, ProjectData, ProjectTemplateId, PromptTemplate,
+    PromptTemplateFile, ReferenceAnalysis, ReferenceRights, ReferenceSource, ReferenceSourceType,
+    ResourceDefinition, Rule, RulesEditDocument, RuntimeSnapshot, Scene,
+    StateVariablesEditDocument, StoryCraftBible, StoryCraftEditDocument,
+    StoryCraftGenerationReport, StoryCraftGenerationRequest, StoryCraftState, StoryState,
+    VisualBible, WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, WorldState,
+    contains_secret_marker_text,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
@@ -141,7 +140,7 @@ pub fn create_project_from_request(
     let project = project_from_creation_request(path, &request);
     fs::create_dir_all(path).map_io(path)?;
     create_project_dirs(path)?;
-    let files_created = write_project(path, &project, Some(&request))?
+    let files_created = write_project(path, &project, &request)?
         .into_iter()
         .map(|path| path.display().to_string())
         .collect();
@@ -803,11 +802,10 @@ fn ensure_generation_report_applicable(
             "succeeded report marked fallback_used",
         )),
         GenerationStatus::Succeeded => Ok(()),
-        GenerationStatus::Fallback if !evidence.fallback_used => Err(invalid_generation_report(
+        GenerationStatus::Fallback => Err(invalid_generation_report(
             surface,
-            "fallback report must mark fallback_used",
+            "fallback generation reports are evidence only and cannot modify project source",
         )),
-        GenerationStatus::Fallback => Ok(()),
         GenerationStatus::Failed => Err(invalid_generation_report(
             surface,
             "failed generation reports are not applicable",
@@ -917,57 +915,13 @@ fn default_ai_safety_policy() -> AiSafetyPolicy {
 
 fn default_visual_bible() -> VisualBible {
     VisualBible {
-        style_cards: vec![
-            VisualStyleCard {
-                id: "winter-court-ink".into(),
-                title: "Winter court ink wash".into(),
-                summary: "Cold parchment, controlled brush texture, and restrained imperial color."
-                    .into(),
-                prompt: "Restrained historical court drama, ink wash texture, clear rank signals."
-                    .into(),
-                palette: vec!["soot".into(), "aged jade".into(), "muted vermilion".into()],
-                tags: vec!["court".into(), "historical".into(), "grounded".into()],
-                reference_asset_ids: Vec::new(),
-            },
-            VisualStyleCard {
-                id: "official-portrait".into(),
-                title: "Official portrait restraint".into(),
-                summary: "Half-length figures with clear office markers and no fantasy armor."
-                    .into(),
-                prompt: "Grounded official portrait, reserved posture, simple palace background."
-                    .into(),
-                palette: vec!["ink".into(), "paper".into(), "dark red".into()],
-                tags: vec!["portrait".into(), "character".into()],
-                reference_asset_ids: Vec::new(),
-            },
-        ],
+        style_cards: Vec::new(),
     }
 }
 
 fn default_audio_bible() -> AudioBible {
     AudioBible {
-        voice_cards: vec![
-            AudioVoiceCard {
-                id: "court-censor".into(),
-                title: "Court Censor".into(),
-                summary: "Precise, public-minded, and clipped under pressure.".into(),
-                voice: "formal senior court official".into(),
-                delivery: "measured accusation, low volume, hard consonants".into(),
-                tags: vec!["voice".into(), "court".into(), "discipline".into()],
-                sample_text: Some("The law remembers what favor tries to hide.".into()),
-                reference_asset_ids: Vec::new(),
-            },
-            AudioVoiceCard {
-                id: "war-minister".into(),
-                title: "Minister of War".into(),
-                summary: "Terse logistics language with visible urgency.".into(),
-                voice: "military administrator".into(),
-                delivery: "short phrases, controlled urgency".into(),
-                tags: vec!["voice".into(), "military".into()],
-                sample_text: Some("A payroll delay becomes a frontier order.".into()),
-                reference_asset_ids: Vec::new(),
-            },
-        ],
+        voice_cards: Vec::new(),
     }
 }
 
@@ -983,30 +937,6 @@ fn rebuild_asset_records(
             source,
         })?;
     Ok(registry.records().cloned().collect())
-}
-
-fn rebuild_asset_records_from_project_files(project: &ProjectData) -> Vec<AssetRecord> {
-    let mut registry = plotforge_media::AssetRegistry::new();
-    for scene in &project.scenes {
-        registry
-            .insert_bytes(
-                plotforge_media::AssetRecordInput {
-                    kind: AssetKind::Image,
-                    source: AssetSourceKind::Generated,
-                    project_path: scene.background_asset.clone(),
-                    export_path: Some(scene.background_asset.clone()),
-                    provider_metadata: None,
-                    references: vec![AssetReference {
-                        reference_kind: AssetReferenceKind::Scene,
-                        reference_id: scene.key.clone(),
-                        slot: "background_asset".into(),
-                    }],
-                },
-                PLACEHOLDER_PNG,
-            )
-            .expect("built-in demo asset path and bytes are valid");
-    }
-    registry.records().cloned().collect()
 }
 
 fn validate_world_edit_document(document: &WorldEditDocument) -> Result<(), StorageError> {
@@ -1634,47 +1564,40 @@ fn title_from_project_id(project_id: &str) -> String {
         .join(" ")
 }
 
-fn world_bible_markdown(request: Option<&ProjectCreationRequest>) -> String {
-    match request {
-        Some(request) => format!(
-            "# World Bible\n\n## Concept\n\n{}\n\n## Template\n\n{}\n",
-            request.concept.trim(),
-            template_label(&request.template)
-        ),
-        None => {
-            "# World Bible\n\nThe city is still standing, but every resource is under pressure.\n"
-                .into()
-        }
-    }
+fn world_bible_markdown(request: &ProjectCreationRequest) -> String {
+    format!(
+        "# World Bible\n\n## Concept\n\n{}\n\n## Template\n\n{}\n",
+        request.concept.trim(),
+        template_label(&request.template)
+    )
 }
 
-fn story_bible_markdown(request: Option<&ProjectCreationRequest>) -> String {
-    match request {
-        Some(request) => format!(
-            "# Story Bible\n\n## Concept\n\n{}\n\n## Initial Scene Request\n\n{}\n",
-            request.concept.trim(),
-            request.initial_scene_request.trim()
-        ),
-        None => {
-            "# Story Bible\n\nThe council must trade stability, silver, and legitimacy to survive.\n"
-                .into()
-        }
-    }
+fn story_bible_markdown(request: &ProjectCreationRequest) -> String {
+    format!(
+        "# Story Bible\n\n## Concept\n\n{}\n\n## Initial Scene Request\n\n{}\n",
+        request.concept.trim(),
+        request.initial_scene_request.trim()
+    )
 }
 
-fn style_guide_markdown(request: Option<&ProjectCreationRequest>) -> String {
-    match request {
-        Some(request) => format!(
-            "# Style Guide\n\n## Visual Style\n\n{}\n\n## Voice\n\n{}\n",
-            request.visual_style.trim(),
-            if request.voice_enabled {
-                "Voice generation requested for this project."
-            } else {
-                "Voice generation disabled for this project."
-            }
-        ),
-        None => "# Style Guide\n\nTense, concrete, political, and consequence-driven. Avoid empty grandeur.\n".into(),
-    }
+fn style_guide_markdown(request: &ProjectCreationRequest) -> String {
+    format!(
+        "# Style Guide\n\n## Visual Style\n\n{}\n\n## Voice\n\n{}\n",
+        request.visual_style.trim(),
+        if request.voice_enabled {
+            "Voice generation requested for this project."
+        } else {
+            "Voice generation disabled for this project."
+        }
+    )
+}
+
+fn canon_markdown(request: &ProjectCreationRequest) -> String {
+    format!(
+        "# Canon Rules\n\n- Project concept: {}\n- Opening condition: {}\n- Additional setting facts must come from creator-authored project sources.\n",
+        request.concept.trim(),
+        request.initial_scene_request.trim()
+    )
 }
 
 fn template_label(template: &ProjectTemplateId) -> &'static str {
@@ -1691,12 +1614,10 @@ fn starter_project(
     let scene_key = "opening-scene".to_string();
     let first_beat_id = "opening-scene-beat-001".to_string();
     let second_beat_id = "opening-scene-beat-002".to_string();
-    let third_beat_id = "opening-scene-beat-003".to_string();
-    let fourth_beat_id = "opening-scene-beat-004".to_string();
     let concept = request.concept.trim().to_string();
     let initial_scene = request.initial_scene_request.trim().to_string();
     let visual_style = request.visual_style.trim().to_string();
-    let resources = vec![resource("momentum", "Momentum", 50, 0, 100)];
+    let resources: Vec<ResourceDefinition> = Vec::new();
     let world_state = WorldState {
         resources: resources
             .iter()
@@ -1712,7 +1633,7 @@ fn starter_project(
         turn: 0,
     };
 
-    let mut project = ProjectData {
+    ProjectData {
         game: GameProject {
             id: project_id,
             title,
@@ -1724,16 +1645,16 @@ fn starter_project(
         resources,
         world_state,
         story_state,
-        story_craft: starter_story_craft(&scene_key, &concept, &visual_style),
+        story_craft: starter_story_craft(&concept, &visual_style, &initial_scene),
         characters: Vec::new(),
         rules: Vec::new(),
         scenes: vec![Scene {
             key: scene_key,
             title: "Opening Scene".into(),
-            location: "Unspecified".into(),
+            location: String::new(),
             dramatic_purpose: initial_scene.clone(),
             hook: initial_scene.clone(),
-            background_asset: "assets/generated/placeholder.png".into(),
+            background_asset: String::new(),
             audio_refs: Vec::new(),
             character_ids: Vec::new(),
             plot_thread_updates: BTreeMap::new(),
@@ -1750,47 +1671,14 @@ fn starter_project(
                         label: "Continue".into(),
                         action_type: "continue".into(),
                         input_terms: vec!["continue".into(), "next".into()],
-                        dramatic_purpose: "Advance the opening beat.".into(),
+                        dramatic_purpose: concept.clone(),
                         change_scene: false,
                     }],
                     next: BeatNext::Beat(second_beat_id.clone()),
                 },
                 Beat {
                     id: second_beat_id,
-                    text: "The project is ready for the creator to replace this starter beat."
-                        .into(),
-                    speaker: None,
-                    line_delivery: None,
-                    audio_refs: Vec::new(),
-                    choices: vec![Choice {
-                        id: "continue".into(),
-                        label: "Continue".into(),
-                        action_type: "continue".into(),
-                        input_terms: vec!["continue".into(), "next".into()],
-                        dramatic_purpose: "Advance the starter beat.".into(),
-                        change_scene: false,
-                    }],
-                    next: BeatNext::Beat(third_beat_id.clone()),
-                },
-                Beat {
-                    id: third_beat_id,
-                    text: "Replace this beat with the next authored scene moment.".into(),
-                    speaker: None,
-                    line_delivery: None,
-                    audio_refs: Vec::new(),
-                    choices: vec![Choice {
-                        id: "continue".into(),
-                        label: "Continue".into(),
-                        action_type: "continue".into(),
-                        input_terms: vec!["continue".into(), "next".into()],
-                        dramatic_purpose: "Advance the final starter beat.".into(),
-                        change_scene: false,
-                    }],
-                    next: BeatNext::Beat(fourth_beat_id.clone()),
-                },
-                Beat {
-                    id: fourth_beat_id,
-                    text: "The starter sequence is complete.".into(),
+                    text: concept,
                     speaker: None,
                     line_delivery: None,
                     audio_refs: Vec::new(),
@@ -1803,62 +1691,40 @@ fn starter_project(
         audio_bible: default_audio_bible(),
         asset_records: Vec::new(),
         ai_safety_policy: default_ai_safety_policy(),
-    };
-    project.asset_records = rebuild_asset_records_from_project_files(&project);
-    project
+    }
 }
 
-fn starter_story_craft(scene_key: &str, concept: &str, visual_style: &str) -> StoryCraftState {
+fn starter_story_craft(concept: &str, visual_style: &str, initial_scene: &str) -> StoryCraftState {
     StoryCraftState {
         bible: StoryCraftBible {
             target_audience: None,
             genre_promise: concept.into(),
-            central_question: "What must change for this story to become playable?".into(),
-            target_emotions: vec!["curiosity".into()],
+            central_question: concept.into(),
+            target_emotions: Vec::new(),
             core_foreshadowing: Vec::new(),
-            emotional_contract: vec!["creator-authored consequence".into()],
+            emotional_contract: Vec::new(),
             pacing_profile: PacingProfile {
                 escalation_interval_scenes: 2,
-                target_tension_curve: vec![50],
+                target_tension_curve: Vec::new(),
                 breather_scene_frequency: None,
             },
             hook_strategy: HookStrategy {
-                primary_hook: "Start with the creator-provided opening scene request.".into(),
+                primary_hook: initial_scene.into(),
                 recurring_hook_patterns: Vec::new(),
             },
             reversal_strategy: None,
             prose_style_guide: Some(visual_style.into()),
             banned_cliches: Vec::new(),
-            reference_modules: vec![ReferenceModule {
-                id: "creator-brief".into(),
-                title: "Creator brief".into(),
-                summary: "Use the creator's concept as the source of truth for expansion.".into(),
-            }],
+            reference_modules: Vec::new(),
         },
-        active_promises: vec![StoryPromise {
-            id: "opening-promise".into(),
-            text: "The opening scene establishes a playable direction.".into(),
-            status: StoryPromiseStatus::Active,
-            introduced_at: scene_key.into(),
-            payoff_hint: None,
-        }],
-        emotional_arc: vec![EmotionalArcPoint {
-            scene_key: scene_key.into(),
-            target_emotion: "curiosity".into(),
-            intensity: 50,
-        }],
+        active_promises: Vec::new(),
+        emotional_arc: Vec::new(),
         plot_threads: Vec::new(),
         character_arcs: Vec::<CharacterArc>::new(),
         pacing_score: None,
         tension_score: None,
         ai_slop_risk: None,
-        review_notes: vec![plotforge_schema::NarrativeReviewNote {
-            id: "starter-project".into(),
-            scene_key: Some(scene_key.into()),
-            severity: Severity::Info,
-            message: "Starter project created without bundled story examples.".into(),
-            resolved: true,
-        }],
+        review_notes: Vec::new(),
     }
 }
 
@@ -1971,7 +1837,7 @@ fn create_project_dirs(path: &Path) -> Result<(), StorageError> {
 fn write_project(
     path: &Path,
     project: &ProjectData,
-    request: Option<&ProjectCreationRequest>,
+    request: &ProjectCreationRequest,
 ) -> Result<Vec<PathBuf>, StorageError> {
     let mut files = Vec::new();
 
@@ -1996,12 +1862,7 @@ fn write_project(
         &world_bible_markdown(request),
         &mut files,
     )?;
-    write_text_tracked(
-        path,
-        "world/canon.md",
-        "# Canon Rules\n\n- The player is the final authority.\n- Every order has visible state consequences.\n- Court factions respond to short-term tradeoffs.\n",
-        &mut files,
-    )?;
+    write_text_tracked(path, "world/canon.md", &canon_markdown(request), &mut files)?;
     write_json_tracked(
         path,
         "world/forbidden_facts.json",
@@ -2107,14 +1968,6 @@ fn write_project(
         &mut files,
     )?;
     write_text_tracked(path, "AGENTS.md", project_agents_md(), &mut files)?;
-    write_placeholder_png_tracked(path, "assets/generated/placeholder.png", &mut files)?;
-    for scene in &project.scenes {
-        if scene.background_asset.starts_with("assets/generated/")
-            && scene.background_asset != "assets/generated/placeholder.png"
-        {
-            write_placeholder_png_tracked(path, &scene.background_asset, &mut files)?;
-        }
-    }
     files.sort();
     files.dedup();
     Ok(files)
@@ -2149,16 +2002,6 @@ fn write_text_tracked(
     files: &mut Vec<PathBuf>,
 ) -> Result<(), StorageError> {
     write_text(&project_path.join(relative_path), text)?;
-    files.push(PathBuf::from(relative_path));
-    Ok(())
-}
-
-fn write_placeholder_png_tracked(
-    project_path: &Path,
-    relative_path: &str,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), StorageError> {
-    write_placeholder_png(&project_path.join(relative_path))?;
     files.push(PathBuf::from(relative_path));
     Ok(())
 }
@@ -2211,13 +2054,6 @@ fn write_text(path: &Path, text: &str) -> Result<(), StorageError> {
 
 fn read_text(path: &Path) -> Result<String, StorageError> {
     fs::read_to_string(path).map_io(path)
-}
-
-pub fn write_placeholder_png(path: &Path) -> Result<(), StorageError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_io(parent)?;
-    }
-    fs::write(path, PLACEHOLDER_PNG).map_io(path)
 }
 
 fn read_toml<T: DeserializeOwned>(path: &Path) -> Result<T, StorageError> {
@@ -2469,16 +2305,6 @@ pub fn validate_runtime_snapshot_id(snapshot_id: &str) -> Result<(), StorageErro
     }
 }
 
-fn resource(key: &str, label: &str, initial: i32, min: i32, max: i32) -> ResourceDefinition {
-    ResourceDefinition {
-        key: key.into(),
-        label: label.into(),
-        initial,
-        min,
-        max,
-    }
-}
-
 fn project_agents_md() -> &'static str {
     "# AGENTS.md\n\n## Project goal\n\nBuild a playable PlotForge story project from local files.\n\n## Commands\n\n- `plotforge check .`\n- `plotforge play . --once`\n- `plotforge export static . --out exports/static`\n\n## Rules\n\n- Files are source of truth.\n- Do not put API keys in project files or exports.\n- AI output proposes content; engine rules commit state.\n- Reference imports store metadata, rights, short summaries, and structure notes only; do not store large raw copyrighted bodies.\n"
 }
@@ -2495,9 +2321,3 @@ impl<T> IoContext<T> for Result<T, std::io::Error> {
         })
     }
 }
-
-const PLACEHOLDER_PNG: &[u8] = &[
-    137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0,
-    0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 100, 96, 96, 248, 15, 0, 1,
-    5, 1, 2, 161, 13, 197, 111, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
-];

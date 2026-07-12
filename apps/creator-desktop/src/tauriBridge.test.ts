@@ -276,6 +276,7 @@ describe("createStudioBridge", () => {
       },
       true,
     );
+    await bridge.openOrCreateProject("/tmp/starter-project");
     await bridge.checkProject("/tmp/starter-project");
     await bridge.listExportProfiles();
     await bridge.readWorldEditDocument("/tmp/starter-project");
@@ -364,6 +365,10 @@ describe("createStudioBridge", () => {
           },
           force: true,
         },
+      },
+      {
+        command: "open_or_create_project",
+        args: { path: "/tmp/starter-project" },
       },
       {
         command: "check_project",

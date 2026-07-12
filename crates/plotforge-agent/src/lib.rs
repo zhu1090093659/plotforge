@@ -39,8 +39,7 @@ pub use moderation_loop::{
 };
 pub use pi_agent::{PiAgent, PiAgentError, pi_agent_capabilities, pi_agent_capabilities_with_mcp};
 pub use pipelines::{
-    generate_character, generate_character_with_provider, generate_story_craft,
-    generate_story_craft_with_provider, generate_world_expansion,
+    generate_character_with_provider, generate_story_craft_with_provider,
     generate_world_expansion_with_provider,
 };
 pub use providers_http::{
@@ -84,8 +83,8 @@ pub use registry::{
     resolve_tts_provider, user_config_dir, write_provider_registry, write_provider_registry_to,
 };
 pub use scene_planner::{
-    ImageProviderAgentPipeline, MockAgentPipeline, ProviderAgentPipeline, ScenePlan,
-    ScenePlanRequest, ScenePlanner, ScenePlannerError,
+    ImageProviderAgentPipeline, MockAgentPipeline, NoScenePlanner, ProviderAgentPipeline,
+    ScenePlan, ScenePlanRequest, ScenePlanner, ScenePlannerError,
 };
 pub use skills::{
     SkillError, discover_skill_roots, import_external_skill, import_external_skill_to,

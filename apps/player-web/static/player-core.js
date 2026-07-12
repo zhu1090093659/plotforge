@@ -151,8 +151,15 @@ function renderSceneBeat(manifest, scene, beat, root, mount, saveStore, ui) {
   text(root, "outcome", "");
   text(root, "beat", beat?.text ?? "");
   text(root, "progress", progressLabel(sceneIndex, manifest.scenes.length, beatIndex, scene.beats.length, ui));
-  image.setAttribute("src", scene.background_asset);
-  image.setAttribute("alt", ui.t("sceneArtwork", { title: scene.title }));
+  if (scene.background_asset) {
+    image.hidden = false;
+    image.setAttribute("src", scene.background_asset);
+    image.setAttribute("alt", ui.t("sceneArtwork", { title: scene.title }));
+  } else {
+    image.hidden = true;
+    image.removeAttribute("src");
+    image.setAttribute("alt", "");
+  }
   renderAudio(manifest, scene, beat, root, mount, ui);
   saveStore.save({ sceneKey: scene.key, beatId: beat?.id ?? null });
   renderChoices(manifest, beat, scene, root, mount, saveStore, ui);

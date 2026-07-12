@@ -33,8 +33,7 @@ export function resolveScenePreviewImage({
   // Only resolve real image URLs when running inside the Tauri desktop
   // shell, where convertFileSrc can map a local file path onto the
   // asset:// protocol. In the HTTP dev bridge (or under jsdom in tests)
-  // there is no such protocol, so we fall back to the placeholder and
-  // never emit a broken img src.
+  // there is no such protocol, so the UI renders its explicit empty state.
   if (!isTauriRuntime()) {
     return null;
   }

@@ -7,11 +7,13 @@ import type {
   TtsProviderEntry,
   PromptScope,
   PromptTemplate,
+  ModelOption,
 } from "../../../contracts/plotforge";
 import type { StudioDataSource } from "./studioDataSource";
 import type { ProviderTestResult } from "./tauriBridge";
 import {
   ModelCombobox,
+  ModelSelect,
   PermissionSelect,
   ThinkingSelect,
 } from "./agentConfigSelectors";
@@ -85,17 +87,21 @@ const EMPTY_TTS_ENTRY: TtsProviderEntry = {
 export interface AgentConfigSectionProps {
   dataSource: StudioDataSource;
   loadedPath: string;
+  availableModels: ModelOption[];
   agentConfig: AgentSessionConfig;
   onAgentConfigChange: (config: AgentSessionConfig) => void;
   configSaveError: string | null;
+  onModelsChanged?: () => Promise<void> | void;
 }
 
 export function AgentConfigSection({
   dataSource,
   loadedPath,
+  availableModels,
   agentConfig,
   onAgentConfigChange,
   configSaveError,
+  onModelsChanged,
 }: AgentConfigSectionProps) {
   const { t } = useStudioI18n();
 
@@ -200,6 +206,7 @@ export function AgentConfigSection({
       await dataSource.upsertProvider(entry);
       setEditingEntry(null);
       await reloadProviders();
+      await onModelsChanged?.();
     } catch (error) {
       setProviderError(error instanceof Error ? error.message : String(error));
     }
@@ -209,6 +216,7 @@ export function AgentConfigSection({
     try {
       await dataSource.deleteProvider(id);
       await reloadProviders();
+      await onModelsChanged?.();
     } catch (error) {
       setProviderError(error instanceof Error ? error.message : String(error));
     }
@@ -328,6 +336,7 @@ export function AgentConfigSection({
         onAdd={() => setEditingEntry({ ...EMPTY_ENTRY })}
       />
       <ModelArea
+        availableModels={availableModels}
         agentConfig={agentConfig}
         onAgentConfigChange={onAgentConfigChange}
         saveError={configSaveError}
@@ -637,12 +646,18 @@ function ProviderEditor({ dataSource, entry, onCancel, onSave }: ProviderEditorP
 // ---------------------------------------------------------------------------
 
 interface ModelAreaProps {
+  availableModels: ModelOption[];
   agentConfig: AgentSessionConfig;
   onAgentConfigChange: (config: AgentSessionConfig) => void;
   saveError: string | null;
 }
 
-function ModelArea({ agentConfig, onAgentConfigChange, saveError }: ModelAreaProps) {
+function ModelArea({
+  availableModels,
+  agentConfig,
+  onAgentConfigChange,
+  saveError,
+}: ModelAreaProps) {
   const { t } = useStudioI18n();
   const update = <K extends keyof AgentSessionConfig>(key: K, value: AgentSessionConfig[K]) =>
     onAgentConfigChange({ ...agentConfig, [key]: value });
@@ -652,19 +667,16 @@ function ModelArea({ agentConfig, onAgentConfigChange, saveError }: ModelAreaPro
         {t("home.modelLabel")}
       </h4>
       <div className="grid max-w-xl gap-3">
-        <label className="grid gap-1">
+        <div className="grid gap-1">
           <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
             {t("home.modelLabel")}
           </span>
-          <select
-            aria-label={t("home.modelLabel")}
+          <ModelSelect
+            models={availableModels}
             value={agentConfig.model_id}
-            onChange={(e) => update("model_id", e.target.value)}
-            className="h-10 min-w-0 rounded-md border border-canvas-200 bg-canvas-50 px-3 text-sm text-ink outline-none transition ease-expo focus:border-accent-400 focus:ring-1 focus:ring-accent-400/30"
-          >
-            <option value="local-pi">Local pi-Agent (mock)</option>
-          </select>
-        </label>
+            onChange={(modelId) => update("model_id", modelId)}
+          />
+        </div>
         <div className="grid gap-1">
           <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink/55">
             {t("home.permissionLabel")}

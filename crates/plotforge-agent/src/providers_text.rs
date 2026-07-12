@@ -640,6 +640,7 @@ fn map_text_throttle_error(
 pub struct FakeTextModelProvider {
     failure: Option<FakeTextModelFailure>,
     reproducibility: FakeTextReproducibility,
+    local_pi: bool,
 }
 
 /// Reproducibility identity used by `FakeTextModelProvider`. The generic mock
@@ -687,6 +688,7 @@ impl FakeTextModelProvider {
                 model_version: PI_AGENT_MODEL_VERSION,
                 provider_config_hash: PI_AGENT_PROVIDER_CONFIG_HASH,
             },
+            local_pi: true,
         }
     }
 
@@ -718,6 +720,7 @@ impl FakeTextModelProvider {
         Self {
             failure: Some(FakeTextModelFailure { agent, kind }),
             reproducibility: FakeTextReproducibility::default(),
+            local_pi: false,
         }
     }
 }
@@ -761,7 +764,77 @@ impl TextModelProvider for FakeTextModelProvider {
             };
         }
 
-        fake_success_response(request)
+        if self.local_pi {
+            local_pi_success_response(request)
+        } else {
+            fake_success_response(request)
+        }
+    }
+}
+
+fn local_pi_success_response(
+    request: &TextModelRequest,
+) -> Result<TextModelResponse, TextModelProviderError> {
+    if request.agent != AgentRole::ScenePlanner {
+        return Err(TextModelProviderError::provider(
+            "local_pi_unsupported_agent",
+            format!(
+                "local pi-Agent supports scene planning only; requested {:?}",
+                request.agent
+            ),
+        ));
+    }
+
+    let instruction = local_pi_instruction(request);
+    let title = instruction
+        .split(['.', '!', '?', '。', '！', '？'])
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Next Scene")
+        .chars()
+        .take(72)
+        .collect::<String>();
+    let proposal = AgentOutputProposal {
+        id: format!("{}-scene-plan", request.call_id),
+        agent: AgentRole::ScenePlanner,
+        output: AgentProposalPayload::ScenePlan(Box::new(ScenePlanProposal {
+            scene_key: request.scene_key.clone(),
+            title,
+            location: String::new(),
+            scene_summary: instruction.clone(),
+            dramatic_purpose: instruction.clone(),
+            hook: instruction,
+            emotional_goal: None,
+            cast: Vec::new(),
+            entry_beat_id: format!("{}-beat-001", request.scene_key),
+            background_asset: None,
+        })),
+    };
+    encode_fake_response(&proposal, request)
+}
+
+fn local_pi_instruction(request: &TextModelRequest) -> String {
+    let source = request
+        .messages
+        .as_ref()
+        .and_then(|messages| {
+            messages
+                .iter()
+                .rev()
+                .find(|message| message.role == crate::prompts::MessageRole::User)
+        })
+        .map(|message| message.content.as_str())
+        .unwrap_or(request.prompt.as_str());
+    let instruction = source
+        .split("\n\n# Project Context")
+        .next()
+        .unwrap_or(source)
+        .trim();
+    if instruction.is_empty() {
+        "Continue from the current project state.".into()
+    } else {
+        instruction.chars().take(500).collect()
     }
 }
 

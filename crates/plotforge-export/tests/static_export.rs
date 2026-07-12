@@ -41,11 +41,7 @@ fn export_manifest_contains_entry_scene_and_assets() {
     assert!(!manifest.profile.includes_private_traces);
     assert!(!manifest.profile.platform_submission_ready);
     assert_eq!(manifest.ai_usage_manifest_path, AI_USAGE_MANIFEST_FILE);
-    assert!(
-        manifest
-            .assets
-            .contains(&"assets/generated/placeholder.png".into())
-    );
+    assert!(manifest.assets.is_empty());
     for asset in manifest.assets {
         assert!(output_dir.join(asset).is_file());
     }
@@ -90,11 +86,12 @@ fn export_writes_ai_usage_manifest_without_secrets_or_legal_guarantees() {
     assert!(!usage.raw_provider_responses_included);
     assert!(!usage.private_traces_included);
     assert_eq!(usage.ai_safety_policy, policy);
-    assert!(usage.disclosures.iter().any(|disclosure| {
-        disclosure
-            .asset_paths
-            .contains(&"assets/generated/placeholder.png".into())
-    }));
+    assert!(
+        usage
+            .disclosures
+            .iter()
+            .all(|disclosure| disclosure.asset_paths.is_empty())
+    );
     assert_secret_free(&usage_text);
     assert!(!usage_text.contains("raw_response"));
     assert!(!usage_text.contains("request_id"));
@@ -296,18 +293,23 @@ fn export_copies_only_referenced_media_registry_assets() {
     let project_path = temp.path().join("project");
     let output_dir = temp.path().join("export");
     create_starter_project(&project_path);
+    seed_scene_background(
+        &project_path,
+        "assets/generated/opening-scene.png",
+        b"scene image",
+    );
     fs::write(
         project_path.join("assets/generated/unused-generated.png"),
         b"unused generated image bytes",
     )
     .expect("write unused asset");
     let source_bytes =
-        fs::read(project_path.join("assets/generated/placeholder.png")).expect("source png");
+        fs::read(project_path.join("assets/generated/opening-scene.png")).expect("source png");
 
     let report = export_static_web(&project_path, &output_dir).expect("export");
 
     assert_eq!(
-        fs::read(output_dir.join("assets/generated/placeholder.png")).expect("exported png"),
+        fs::read(output_dir.join("assets/generated/opening-scene.png")).expect("exported png"),
         source_bytes
     );
     assert!(
@@ -460,11 +462,7 @@ fn export_desktop_runtime_draft_writes_local_package_evidence_without_private_fi
     assert!(output_dir.join(AI_USAGE_MANIFEST_FILE).is_file());
     assert!(output_dir.join(DESKTOP_RUNTIME_DRAFT_FILE).is_file());
     assert!(output_dir.join("desktop-build-notes.md").is_file());
-    assert!(
-        output_dir
-            .join("assets/generated/placeholder.png")
-            .is_file()
-    );
+    assert!(!output_dir.join("assets/generated/placeholder.png").exists());
     assert!(!output_dir.join("traces/latest.json").exists());
     assert!(!output_dir.join("providers/config.json").exists());
     assert!(!output_dir.join("agents/raw_responses/scene.json").exists());
@@ -594,7 +592,10 @@ fn export_rejects_unsafe_asset_paths_before_writing_assets() {
     let scene_path = project_path.join("scenes/opening-scene.scene.json");
     let scene = fs::read_to_string(&scene_path)
         .expect("read scene")
-        .replace("assets/generated/placeholder.png", "../traces/latest.json");
+        .replace(
+            "\"background_asset\": \"\"",
+            "\"background_asset\": \"../traces/latest.json\"",
+        );
     fs::write(&scene_path, scene).expect("write scene");
 
     let error = export_static_web(&project_path, &output_dir).expect_err("unsafe asset");
@@ -619,6 +620,20 @@ fn create_starter_project(project_path: &Path) {
         false,
     )
     .expect("create starter project");
+}
+
+fn seed_scene_background(project_path: &Path, relative_path: &str, bytes: &[u8]) {
+    let scene_path = project_path.join("scenes/opening-scene.scene.json");
+    let scene = fs::read_to_string(&scene_path)
+        .expect("read scene")
+        .replace(
+            "\"background_asset\": \"\"",
+            &format!("\"background_asset\": \"{relative_path}\""),
+        );
+    fs::write(&scene_path, scene).expect("write scene");
+    let asset_path = project_path.join(relative_path);
+    fs::create_dir_all(asset_path.parent().expect("asset parent")).expect("asset dir");
+    fs::write(asset_path, bytes).expect("write asset");
 }
 
 fn expected_export_files() -> Vec<PathBuf> {

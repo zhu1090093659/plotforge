@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 const defaultModels: ModelOption[] = [
-  { id: "local-pi", label: "Local pi-Agent (mock)", provider: "local-mock" },
+  { id: "local-pi", label: "Local pi-Agent (offline)", provider: "local" },
   { id: "glm-5.2", label: "GLM 5.2", provider: "zai" },
 ];
 
@@ -49,6 +49,7 @@ function baseProps(
     agentConfig: defaultConfig,
     onAgentConfigChange: vi.fn(),
     configSaveError: null,
+    projectLoadError: null,
     input: "",
     onInputChange: vi.fn(),
     onSubmit: vi.fn(),
@@ -133,16 +134,35 @@ describe("LaunchpadView", () => {
     ).toHaveProperty("disabled", true);
   });
 
-  it("calls onAgentConfigChange when the model selector changes", () => {
+  it("uses the shared model deck to change model and thinking together", () => {
     const onAgentConfigChange = vi.fn();
     renderLaunchpad({ onAgentConfigChange });
 
-    const modelSelect = screen.getByLabelText(/模型|Model/i);
-    fireEvent.change(modelSelect, { target: { value: "glm-5.2" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /模型与思考级别|Model and thinking level/i,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("gridcell", { name: /GLM 5\.2 — zai, (高|High)/i }),
+    );
 
     expect(onAgentConfigChange).toHaveBeenCalledWith(
-      expect.objectContaining({ model_id: "glm-5.2" }),
+      expect.objectContaining({
+        model_id: "glm-5.2",
+        thinking_level: "high",
+      }),
     );
+  });
+
+  it("shows None and disables the shared model deck when no provider model exists", () => {
+    renderLaunchpad({ availableModels: [] });
+
+    const modelDeck = screen.getByRole("button", {
+      name: /模型与思考级别|Model and thinking level/i,
+    });
+    expect(modelDeck).toHaveProperty("disabled", true);
+    expect(modelDeck.textContent).toMatch(/无|None/i);
   });
 
   it("calls onAgentConfigChange when the permission selector changes", () => {
@@ -161,8 +181,16 @@ describe("LaunchpadView", () => {
     const onAgentConfigChange = vi.fn();
     renderLaunchpad({ onAgentConfigChange });
 
-    const thinkingSelect = screen.getByLabelText(/思考级别|Thinking level/i);
-    fireEvent.change(thinkingSelect, { target: { value: "high" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /模型与思考级别|Model and thinking level/i,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("gridcell", {
+        name: /Local pi-Agent \(offline\) — local, (高|High)/i,
+      }),
+    );
 
     expect(onAgentConfigChange).toHaveBeenCalledWith(
       expect.objectContaining({ thinking_level: "high" }),
@@ -182,14 +210,10 @@ describe("LaunchpadView", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("renders the attach-context button as disabled (affordance not yet wired)", () => {
+  it("does not render an attachment control before the capability is wired", () => {
     renderLaunchpad();
 
-    // The attach button announces an "Attach context (coming soon)" label so
-    // the dead control is not mistaken for a working action.
-    const attach = screen.getByLabelText(/附加上下文|Attach context/i);
-    expect(attach).toBeTruthy();
-    expect(attach).toHaveProperty("disabled", true);
+    expect(screen.queryByLabelText(/附加上下文|Attach context/i)).toBeNull();
   });
 
   it("surfaces switchError so a failed branch switch is never silent", () => {

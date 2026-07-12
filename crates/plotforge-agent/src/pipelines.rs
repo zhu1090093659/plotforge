@@ -16,9 +16,10 @@ use plotforge_schema::{
     WorldEditDocument, WorldGenerationReport, WorldGenerationRequest, contains_secret_marker_text,
 };
 
+#[cfg(test)]
+use crate::providers_text::FakeTextModelProvider;
 use crate::providers_text::{
-    FakeTextModelProvider, TextModelProvider, TextModelProviderError, TextModelProviderErrorKind,
-    TextModelResponse,
+    TextModelProvider, TextModelProviderError, TextModelProviderErrorKind, TextModelResponse,
 };
 use crate::shared::{payload_kind, stable_sha256_hash};
 use crate::validation::validate_agent_output_proposal;
@@ -600,21 +601,13 @@ pub(crate) fn repair_json_text(raw_json: &str) -> Result<String, String> {
     Err("unable to repair provider JSON envelope".into())
 }
 
-pub fn generate_world_expansion(
-    request: WorldGenerationRequest,
-    run_seed: u64,
-) -> WorldGenerationReport {
-    let provider = FakeTextModelProvider::success();
-    generate_world_expansion_with_provider(&provider, request, run_seed)
-}
-
 pub fn generate_world_expansion_with_provider<P>(
     provider: &P,
     request: WorldGenerationRequest,
     run_seed: u64,
 ) -> WorldGenerationReport
 where
-    P: TextModelProvider,
+    P: TextModelProvider + ?Sized,
 {
     match complete_text_agent_output(
         provider,
@@ -655,21 +648,13 @@ where
     }
 }
 
-pub fn generate_story_craft(
-    request: StoryCraftGenerationRequest,
-    run_seed: u64,
-) -> StoryCraftGenerationReport {
-    let provider = FakeTextModelProvider::success();
-    generate_story_craft_with_provider(&provider, request, run_seed)
-}
-
 pub fn generate_story_craft_with_provider<P>(
     provider: &P,
     request: StoryCraftGenerationRequest,
     run_seed: u64,
 ) -> StoryCraftGenerationReport
 where
-    P: TextModelProvider,
+    P: TextModelProvider + ?Sized,
 {
     match complete_text_agent_output(
         provider,
@@ -710,21 +695,13 @@ where
     }
 }
 
-pub fn generate_character(
-    request: CharacterGenerationRequest,
-    run_seed: u64,
-) -> CharacterGenerationReport {
-    let provider = FakeTextModelProvider::success();
-    generate_character_with_provider(&provider, request, run_seed)
-}
-
 pub fn generate_character_with_provider<P>(
     provider: &P,
     request: CharacterGenerationRequest,
     run_seed: u64,
 ) -> CharacterGenerationReport
 where
-    P: TextModelProvider,
+    P: TextModelProvider + ?Sized,
 {
     match complete_text_agent_output(
         provider,

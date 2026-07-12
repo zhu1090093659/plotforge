@@ -127,7 +127,6 @@ pub fn validate_scene_plan_proposal(
 ) -> Result<(), AgentProposalValidationError> {
     require_non_empty(&scene_plan.scene_key, "scene_plan.scene_key")?;
     require_non_empty(&scene_plan.title, "scene_plan.title")?;
-    require_non_empty(&scene_plan.location, "scene_plan.location")?;
     require_non_empty(&scene_plan.scene_summary, "scene_plan.scene_summary")?;
     require_non_empty(&scene_plan.dramatic_purpose, "scene_plan.dramatic_purpose")?;
     require_non_empty(&scene_plan.hook, "scene_plan.hook")?;

@@ -20,3 +20,4 @@ tauri-build = { version = "2", features = [] }
 plotforge-studio = { path = "../../../crates/plotforge-studio" }
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"

@@ -743,7 +743,7 @@ mod tests {
                 .join(plotforge_schema::AI_USAGE_MANIFEST_FILE)
                 .exists()
         );
-        assert!(output_dir.join("assets/generated/placeholder.png").exists());
+        assert!(!output_dir.join("assets/generated/placeholder.png").exists());
         assert!(report.files_written.len() >= 3);
         assert_eq!(report.audit.allowed_files, report.audit.files_found);
     }

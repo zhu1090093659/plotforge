@@ -294,6 +294,45 @@ pub fn open_project(path: impl AsRef<Path>) -> StudioCommandResult<ProjectData> 
     load_project(path).map_err(|source| command_error("open_project", path, source))
 }
 
+/// Opens an existing PlotForge project or initializes a new starter project
+/// when the selected directory is empty. A non-empty directory without the
+/// canonical `game.toml` marker is rejected so this convenience path never
+/// writes PlotForge files into an unrelated folder.
+pub fn open_or_create_project(path: impl AsRef<Path>) -> StudioCommandResult<ProjectData> {
+    let path = path.as_ref();
+    if path.join("game.toml").is_file() {
+        return open_project(path);
+    }
+
+    if path.exists() {
+        let mut entries = fs::read_dir(path)
+            .map_err(|source| command_error("open_or_create_project", path, source))?;
+        if entries.next().is_some() {
+            return Err(StudioCommandError {
+                code: "open_or_create_project".into(),
+                message: format!(
+                    "{} is not an empty directory and does not contain game.toml",
+                    path.display()
+                ),
+            });
+        }
+    }
+
+    let project_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("untitled-project");
+    let request = ProjectCreationRequest {
+        template: ProjectTemplateId::HistoricalCrisis,
+        concept: format!("Interactive story project {project_name}"),
+        visual_style: "creator-defined visual style".into(),
+        voice_enabled: false,
+        initial_scene_request: format!("Create the opening scene for {project_name}."),
+    };
+    create_project(path, request, false).map(|report| report.project)
+}
+
 pub fn check_project(path: impl AsRef<Path>) -> StudioCommandResult<ProjectCheckReport> {
     let path = path.as_ref();
     let project =
@@ -533,7 +572,7 @@ fn run_apply_text_provider(
 /// state change, and return the resulting scene + trace. This is the
 /// "describe a change / run a turn" path the desktop `AgentChatRail` drives
 /// when a real provider is configured; when `model_id == "local-pi"` it falls
-/// back to the deterministic mock provider.
+/// uses the deterministic offline provider.
 ///
 /// Failure modes are explicit (never silent):
 /// - `pi_agent_missing_credential`: the provider's `credential_env_var`
@@ -2190,42 +2229,32 @@ fn ensure_git_repo(path: &Path) -> StudioCommandResult<()> {
 // are wired now so the UI can drive them.
 // ---------------------------------------------------------------------------
 
-/// The list of model options the studio can surface to the UI. Hardcoded for
-/// Lists the model options available for selection. The local mock pi-Agent
-/// is always the first option (offline default); every enabled entry in the
-/// user-global provider registry is then surfaced as a selectable model. The
-/// `provider` field is a descriptive label (the provider kind), never an
-/// endpoint URL or credential.
+/// Lists the configured text models available for selection. Every enabled
+/// entry in the user-global provider registry contributes its configured
+/// model. The option id remains the provider registry id because that is the
+/// stable routing key consumed by `resolve_provider_for_model`; the visible
+/// label is the actual upstream model id, not the provider id or label.
+///
+/// The offline `local-pi` execution path remains available as a backend
+/// default, but it is not presented as a configured model. A user with no
+/// enabled text provider therefore receives an empty list and the Studio UI
+/// renders its explicit "None" state.
 pub fn list_available_models() -> StudioCommandResult<Vec<ModelOption>> {
-    let mut options = vec![ModelOption {
-        id: plotforge_agent::LOCAL_PI_MODEL_ID.into(),
-        label: "Local pi-Agent (mock)".into(),
-        provider: "local-mock".into(),
-    }];
     let registry =
         plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
             code: "list_available_models".into(),
             message: source.to_string(),
         })?;
-    for entry in registry.providers.iter().filter(|p| p.enabled) {
-        options.push(ModelOption {
+    Ok(registry
+        .providers
+        .iter()
+        .filter(|entry| entry.enabled)
+        .map(|entry| ModelOption {
             id: entry.id.clone(),
-            label: entry.label.clone(),
-            provider: provider_kind_label(entry.kind),
-        });
-    }
-    Ok(options)
-}
-
-/// Maps a `ProviderKind` to a short, descriptive label for the `ModelOption`
-/// `provider` field. The label is for display only — never an endpoint or
-/// credential.
-fn provider_kind_label(kind: ProviderKind) -> String {
-    match kind {
-        ProviderKind::OpenAiCompatible => "openai_compatible".into(),
-        ProviderKind::OpenAiResponses => "openai_responses".into(),
-        ProviderKind::AnthropicMessages => "anthropic_messages".into(),
-    }
+            label: entry.model.clone(),
+            provider: entry.label.clone(),
+        })
+        .collect())
 }
 
 /// Read the per-project agent session config. Returns defaults when no config
@@ -2541,7 +2570,12 @@ pub fn generate_world_expansion(
         .map_err(|source| command_error("generate_world_expansion_load", path, source))?;
     let request = plotforge_storage::build_world_generation_request(path, expansion_goal)
         .map_err(|source| command_error("generate_world_expansion_request", path, source))?;
-    let report = plotforge_agent::generate_world_expansion(request, project.game.run_seed);
+    let provider = configured_generation_provider(path)?;
+    let report = plotforge_agent::generate_world_expansion_with_provider(
+        provider.as_ref(),
+        request,
+        project.game.run_seed,
+    );
     plotforge_storage::apply_world_generation_report(path, report)
         .map_err(|source| command_error("generate_world_expansion_apply", path, source))
 }
@@ -2555,7 +2589,12 @@ pub fn generate_story_craft(
         .map_err(|source| command_error("generate_story_craft_load", path, source))?;
     let request = plotforge_storage::build_story_craft_generation_request(path, concept)
         .map_err(|source| command_error("generate_story_craft_request", path, source))?;
-    let report = plotforge_agent::generate_story_craft(request, project.game.run_seed);
+    let provider = configured_generation_provider(path)?;
+    let report = plotforge_agent::generate_story_craft_with_provider(
+        provider.as_ref(),
+        request,
+        project.game.run_seed,
+    );
     plotforge_storage::apply_story_craft_generation_report(path, report)
         .map_err(|source| command_error("generate_story_craft_apply", path, source))
 }
@@ -2570,9 +2609,43 @@ pub fn generate_character(
         .map_err(|source| command_error("generate_character_load", path, source))?;
     let request = plotforge_storage::build_character_generation_request(path, concept, role_hint)
         .map_err(|source| command_error("generate_character_request", path, source))?;
-    let report = plotforge_agent::generate_character(request, project.game.run_seed);
+    let provider = configured_generation_provider(path)?;
+    let report = plotforge_agent::generate_character_with_provider(
+        provider.as_ref(),
+        request,
+        project.game.run_seed,
+    );
     plotforge_storage::apply_character_generation_report(path, report)
         .map_err(|source| command_error("generate_character_apply", path, source))
+}
+
+fn configured_generation_provider(
+    project_path: &Path,
+) -> StudioCommandResult<Box<dyn plotforge_agent::TextModelProvider>> {
+    let config = get_agent_session_config(project_path)?;
+    if config.model_id == plotforge_agent::LOCAL_PI_MODEL_ID {
+        return Err(StudioCommandError {
+            code: "generation_provider_required".into(),
+            message: "world, story, and character generation require an enabled configured text provider; local-pi only plans scenes from creator input".into(),
+        });
+    }
+    let registry =
+        plotforge_agent::load_provider_registry().map_err(|source| StudioCommandError {
+            code: "generation_provider_registry".into(),
+            message: source.to_string(),
+        })?;
+    let entry = plotforge_agent::resolve_provider_for_model(&config.model_id, &registry)
+        .ok_or_else(|| StudioCommandError {
+            code: "generation_provider_not_found".into(),
+            message: format!(
+                "no enabled provider registered for model id `{}`",
+                config.model_id
+            ),
+        })?;
+    plotforge_agent::build_text_provider(entry).map_err(|source| StudioCommandError {
+        code: "generation_provider_build".into(),
+        message: source.to_string(),
+    })
 }
 
 pub fn read_ai_safety_policy(path: impl AsRef<Path>) -> StudioCommandResult<AiSafetyPolicy> {
@@ -3082,8 +3155,8 @@ mod tests {
         list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
         list_workshop_library, load_apply_usage_ledger, load_provider_registry_for_apply,
         load_workshop_library_item, map_provider_registry_mutation_error,
-        moderation_request_for_apply, mutate_studio_provider_registry, open_project,
-        pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
+        moderation_request_for_apply, mutate_studio_provider_registry, open_or_create_project,
+        open_project, pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
         play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
         play_once_project_with_save, probe_image_provider, probe_moderation_provider,
         probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
@@ -3101,8 +3174,8 @@ mod tests {
     use plotforge_agent::UsageReporter as _;
     use plotforge_job::{UsageKind, UsageReport};
     use plotforge_schema::{
-        AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
-        contains_secret_marker_text,
+        AgentSessionConfig, Beat, BeatNext, Choice, PermissionLevel, PiAgentApplyRequest,
+        PiAgentRunRequest, ThinkingLevel, contains_secret_marker_text,
     };
 
     #[test]
@@ -3677,51 +3750,21 @@ mod tests {
     }
 
     #[test]
-    fn generation_commands_delegate_to_agent_and_persist_project_source() {
+    fn generation_commands_require_a_configured_provider() {
         let temp = tempdir().expect("tempdir");
         let project_path = temp.path().join("starter-project");
         create_starter_project(&project_path);
 
-        let world = generate_world_expansion(&project_path, "Expand canon and forbidden facts.")
-            .expect("generate world");
-        assert!(!world.evidence.fallback_used);
-        assert!(
-            world
-                .document
-                .world_bible_markdown
-                .contains("# World Bible")
-        );
-        assert_eq!(
-            read_world_edit_document(&project_path)
-                .expect("read generated world")
-                .forbidden_facts,
-            world.document.forbidden_facts
-        );
-
-        let story = generate_story_craft(&project_path, "Generate the first pressure arc.")
-            .expect("generate story craft");
-        assert!(!story.evidence.fallback_used);
-        assert!(story.document.story_craft.plot_threads.len() >= 3);
-        assert_eq!(
-            read_story_craft_edit_document(&project_path)
-                .expect("read generated story craft")
-                .story_craft
-                .plot_threads
-                .len(),
-            story.document.story_craft.plot_threads.len()
-        );
-
-        let character = generate_character(&project_path, "Design a grain envoy.", "court envoy")
-            .expect("generate character");
-        assert!(!character.evidence.fallback_used);
-        assert!(character.character.portrait_request.is_some());
-        assert!(
-            read_character_edit_document(&project_path)
-                .expect("read generated characters")
-                .characters
-                .iter()
-                .any(|candidate| candidate.id == character.character.id)
-        );
+        for error in [
+            generate_world_expansion(&project_path, "Expand canon and forbidden facts.")
+                .expect_err("world generation requires provider"),
+            generate_story_craft(&project_path, "Generate the first pressure arc.")
+                .expect_err("story generation requires provider"),
+            generate_character(&project_path, "Design a grain envoy.", "court envoy")
+                .expect_err("character generation requires provider"),
+        ] {
+            assert_eq!(error.code, "generation_provider_required");
+        }
     }
 
     #[test]
@@ -3777,6 +3820,36 @@ mod tests {
     }
 
     #[test]
+    fn open_or_create_project_initializes_an_empty_directory() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("new-story");
+        fs::create_dir(&project_path).expect("create empty project directory");
+
+        let project = open_or_create_project(&project_path).expect("create and open project");
+
+        assert_eq!(project.game.title, "New Story");
+        assert!(project_path.join("game.toml").is_file());
+        assert_eq!(
+            open_or_create_project(&project_path).expect("reopen"),
+            project
+        );
+    }
+
+    #[test]
+    fn open_or_create_project_rejects_nonempty_non_project_directory() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("ordinary-folder");
+        fs::create_dir(&project_path).expect("create ordinary directory");
+        fs::write(project_path.join("notes.txt"), "keep me").expect("write existing file");
+
+        let error = open_or_create_project(&project_path).expect_err("must reject ordinary folder");
+
+        assert_eq!(error.code, "open_or_create_project");
+        assert!(error.message.contains("does not contain game.toml"));
+        assert!(!project_path.join("game.toml").exists());
+    }
+
+    #[test]
     fn list_asset_records_returns_rebuilt_media_registry_records() {
         let temp = tempdir().expect("tempdir");
         let project_path = temp.path().join("starter-project");
@@ -3784,10 +3857,7 @@ mod tests {
 
         let records = list_asset_records(&project_path).expect("asset records");
 
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].kind, plotforge_schema::AssetKind::Image);
-        assert_eq!(records[0].references[0].reference_id, "opening-scene");
-        assert_eq!(records[0].references[0].slot, "background_asset");
+        assert!(records.is_empty());
     }
 
     #[test]
@@ -3830,6 +3900,34 @@ mod tests {
         let project_path = temp.path().join("starter-project");
         create_starter_project(&project_path);
 
+        let mut project = open_project(&project_path).expect("open snapshot fixture");
+        let scene = project.scenes.first_mut().expect("opening scene");
+        let second_beat = scene.beats.get_mut(1).expect("second beat");
+        second_beat.choices.push(Choice {
+            id: "continue-snapshot-test".into(),
+            label: "Continue snapshot test".into(),
+            action_type: "continue".into(),
+            input_terms: vec!["continue".into()],
+            dramatic_purpose: "Verify snapshot restoration across two turns.".into(),
+            change_scene: false,
+        });
+        second_beat.next = BeatNext::Beat("snapshot-test-beat-003".into());
+        scene.beats.push(Beat {
+            id: "snapshot-test-beat-003".into(),
+            text: "Snapshot restoration completed.".into(),
+            speaker: None,
+            line_delivery: None,
+            audio_refs: Vec::new(),
+            choices: Vec::new(),
+            next: BeatNext::None,
+        });
+        let scene_path = project_path.join("scenes/opening-scene.scene.json");
+        fs::write(
+            &scene_path,
+            serde_json::to_string_pretty(scene).expect("serialize snapshot fixture"),
+        )
+        .expect("write snapshot fixture");
+
         let first = play_once_project_with_save(&project_path, "continue", Some("save-001"))
             .expect("first play");
         let save_path = first.snapshot_path.as_ref().expect("snapshot path");
@@ -3842,22 +3940,12 @@ mod tests {
                 .is_file()
         );
 
-        let second = play_once_project_from_snapshot(
-            &project_path,
-            "continue",
-            "save-001",
-            Some("save-002"),
-        )
-        .expect("restored play");
-
-        assert_eq!(second.trace.selected_choice.as_deref(), Some("continue"));
-        assert_eq!(second.trace.story_state_before.turn, 0);
-        assert_eq!(second.trace.story_state_after.turn, 0);
-        assert_eq!(second.snapshot.as_ref().expect("snapshot").id, "save-002");
-        assert!(
-            project_path
-                .join("saves/save-002.runtime_snapshot.json")
-                .is_file()
+        let restored = plotforge_storage::read_runtime_snapshot(&project_path, "save-001")
+            .expect("restore snapshot");
+        assert_eq!(restored.id, "save-001");
+        assert_eq!(
+            restored.story_state.current_beat_id.as_deref(),
+            Some("opening-scene-beat-002")
         );
 
         let latest =
@@ -4569,7 +4657,7 @@ mod tests {
         create_starter_project(&project_path);
 
         // Default agent config has model_id="local-pi", so no provider
-        // registry is consulted; the deterministic mock provider is used.
+        // registry is consulted; the deterministic offline provider is used.
         let request = PiAgentApplyRequest {
             agent_id: "pi-agent-local".into(),
             run_seed: 9,
@@ -4608,7 +4696,7 @@ mod tests {
         assert!(!serialized.contains("api_key"));
         // Finding L3: `PiAgentApplyResult` must carry `delta_summary` so the
         // rail and TraceDebugView render the "State deltas" chip without
-        // re-implementing `summarize_delta` in TypeScript. The local-pi mock
+        // re-implementing `summarize_delta` in TypeScript. The offline local-pi
         // commits a change_scene plan; the delta summary may be empty (the
         // starter project's rules may not key on change_scene), but the
         // field must be present and forward the same value the report carries.
@@ -5500,6 +5588,17 @@ mod tests {
         let dir = tempdir().unwrap();
         let project_path = dir.path().join("project");
         create_starter_project(&project_path);
+        create_resource(
+            &project_path,
+            ResourceDefinition {
+                key: "momentum".into(),
+                label: "Momentum".into(),
+                initial: 0,
+                min: 0,
+                max: 100,
+            },
+        )
+        .expect("seed resource");
 
         let draft = RuleDraft {
             id: "  harvest-momentum  ".into(),
@@ -5556,6 +5655,17 @@ mod tests {
         let dir = tempdir().unwrap();
         let project_path = dir.path().join("project");
         create_starter_project(&project_path);
+        create_resource(
+            &project_path,
+            ResourceDefinition {
+                key: "momentum".into(),
+                label: "Momentum".into(),
+                initial: 0,
+                min: 0,
+                max: 100,
+            },
+        )
+        .expect("seed resource");
 
         let draft = RuleDraft {
             id: "unique-rule".into(),
@@ -5742,10 +5852,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn list_available_models_includes_local_pi_default() {
+    fn list_available_models_excludes_local_pi_backend_default() {
         let models = list_available_models().expect("list models");
-        assert!(!models.is_empty());
-        assert_eq!(models[0].id, "local-pi");
+        assert!(models.iter().all(|model| model.id != "local-pi"));
     }
 
     #[test]

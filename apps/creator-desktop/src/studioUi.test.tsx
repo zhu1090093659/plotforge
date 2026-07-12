@@ -383,7 +383,7 @@ describe("studioUi", () => {
       </StudioI18nProvider>,
     );
 
-    fireEvent.click(screen.getByTitle("Open Project"));
+    fireEvent.click(screen.getByTitle("Open or create project"));
     expect(openProject).toHaveBeenCalledTimes(1);
   });
 });
