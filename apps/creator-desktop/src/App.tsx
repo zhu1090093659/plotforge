@@ -406,6 +406,8 @@ function AppContent({
   // The no-fake honesty surface (boundary evidence). Shown on demand via
   // the AgentChatRail "Evidence" popover instead of always-painted.
   function renderEvidencePopover() {
+    const latestTurn = agent.turns[agent.turns.length - 1];
+    const turnUsage = latestTurn?.turnUsage;
     const healthTone =
       error || playtest.playtestError || exportWorkspace.exportError
         ? "danger"
@@ -435,6 +437,23 @@ function AppContent({
                   .length,
               )}
             />
+            {turnUsage ? (
+              <>
+                <div className="my-1 hairline" />
+                <EvidenceLine
+                  label={t("agent.evidence.inputTokens")}
+                  value={String(turnUsage.total_input_tokens)}
+                />
+                <EvidenceLine
+                  label={t("agent.evidence.outputTokens")}
+                  value={String(turnUsage.total_output_tokens)}
+                />
+                <EvidenceLine
+                  label={t("agent.evidence.costUnits")}
+                  value={String(turnUsage.total_spent_cost_units)}
+                />
+              </>
+            ) : null}
           </div>
         </div>
 

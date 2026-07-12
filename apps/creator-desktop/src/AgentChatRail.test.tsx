@@ -19,6 +19,7 @@ function makeTurn(intent: string, withError = false): AgentTurn {
     errorCode: withError ? "pi_agent_provider_timeout" : null,
     errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
   };
 }
 
@@ -82,6 +83,7 @@ describe("AgentChatRail", () => {
       errorCode: "pi_agent_missing_credential",
       errorEnvVar: "OPENAI_API_KEY",
       imageWarning: null,
+      turnUsage: null,
     };
     renderRail({ turns: [turn] });
     // The friendly message names the env var. The raw redacted error is also
@@ -101,6 +103,7 @@ describe("AgentChatRail", () => {
       errorCode: "pi_agent_provider_timeout",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Provider timed out/)).toBeTruthy();
@@ -118,6 +121,7 @@ describe("AgentChatRail", () => {
       errorCode: "text_provider_rate_limit",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Rate limited; retrying with backoff/)).toBeTruthy();
@@ -132,6 +136,7 @@ describe("AgentChatRail", () => {
       errorCode: "text_provider_content_filtered",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(screen.getByText(/Content policy triggered; modify your prompt/)).toBeTruthy();
@@ -146,11 +151,33 @@ describe("AgentChatRail", () => {
       errorCode: "text_provider_output_truncated",
       errorEnvVar: null,
     imageWarning: null,
+    turnUsage: null,
     };
     renderRail({ turns: [turn] });
     expect(
       screen.getByText(/Output truncated; increase max_output_tokens or reduce context/),
     ).toBeTruthy();
+  });
+
+  it("renders an explicit moderation message while retaining the redacted detail", () => {
+    const turn: AgentTurn = {
+      id: "turn-moderation-flagged",
+      intent: "unsafe request",
+      report: null,
+      error:
+        'pi_agent_moderation_flagged: moderation provider flagged content in categories: ["violence"]',
+      errorCode: "pi_agent_moderation_flagged",
+      errorEnvVar: null,
+      imageWarning: null,
+      turnUsage: null,
+    };
+    renderRail({ turns: [turn] });
+
+    expect(
+      screen.getByText(/Moderation blocked this turn\. Revise the prompt before retrying\./),
+    ).toBeTruthy();
+    expect(screen.getByText(/categories: \["violence"\]/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("sk-");
   });
 
   it("calls onSubmit when the Send button is clicked", () => {

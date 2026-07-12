@@ -117,12 +117,12 @@ See `AGENTS.md` for the complete set of architecture boundaries, testing policy,
 
 ## Workspace Layout
 
-- **Cargo workspace**: 12 crates under `crates/`
+- **Cargo workspace**: 13 crates under `crates/`
 - **npm workspaces**: `apps/creator-desktop`, `apps/player-web`
 - **Tauri app**: `apps/creator-desktop/src-tauri` (excluded from Cargo workspace)
 - **Generated contracts**: `contracts/plotforge.d.ts`, `contracts/plotforge.schema.json`
 - **Project fixtures**: no default project fixture is committed; use tempdir starter projects for smoke flows
-- **UI design reference**: `docs/design/ui-mockups/agent-native-v1/`
+- **UI design source**: the running Studio implementation under `apps/creator-desktop/src`; the retired mockup directory must not be reintroduced
 
 ## Testing Patterns
 
@@ -134,4 +134,4 @@ See `AGENTS.md` for the complete set of architecture boundaries, testing policy,
 
 ## CI Jobs (GitHub Actions)
 
-Triggers on `main` and `mvp/**` branches: rust-static, rust-unit, creator-desktop, cli-smoke, export-smoke, player-web.
+Pushes to `main` / `mvp/**` and pull requests run rust-static, rust-unit, creator-desktop, cli-smoke, and export-smoke. Player Web QA runs inside the creator-desktop job.

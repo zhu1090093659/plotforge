@@ -626,7 +626,7 @@ fn handle_studio(args: StudioInvokeArgs) -> Result<()> {
                 &content,
             ))?)
         }
-        "pi_agent_apply_run" => print_studio_json(studio_result(
+        "pi_agent_apply_run" => print_studio_json(pi_agent_apply_result(
             plotforge_studio::pi_agent_apply_run(studio_arg(&payload, "request")?),
         )?),
         "get_usage_summary" => {
@@ -799,6 +799,10 @@ fn studio_arg<T: DeserializeOwned>(payload: &Value, name: &str) -> Result<T> {
 }
 
 fn studio_result<T>(result: plotforge_studio::StudioCommandResult<T>) -> Result<T> {
+    result.map_err(|source| anyhow::anyhow!("{}: {}", source.code, source.message))
+}
+
+fn pi_agent_apply_result<T>(result: plotforge_studio::PiAgentApplyCommandResult<T>) -> Result<T> {
     result.map_err(|source| anyhow::anyhow!("{}: {}", source.code, source.message))
 }
 

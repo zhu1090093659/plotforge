@@ -2573,6 +2573,17 @@
         "trace_path": {
           "type": "string"
         },
+        "turn_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TurnUsageSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Request-scoped totals reported by moderation, text/MCP, and image\nproviders during this apply turn. Absent for legacy payloads and fully\nlocal turns with no provider usage."
+        },
         "usage": {
           "anyOf": [
             {
@@ -4779,6 +4790,33 @@
       ],
       "type": "object"
     },
+    "TurnUsageSummary": {
+      "additionalProperties": false,
+      "description": "Redaction-safe usage totals for one pi-Agent apply turn.\n\nThis deliberately carries only numeric totals. Provider ids, prompts,\nresponse bodies, credentials, and global ledger state stay outside the\nper-turn evidence contract.",
+      "properties": {
+        "total_input_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_output_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_spent_cost_units": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_input_tokens",
+        "total_output_tokens",
+        "total_spent_cost_units"
+      ],
+      "type": "object"
+    },
     "UsageInfo": {
       "additionalProperties": false,
       "description": "Redaction-safe token usage reported by a model provider.\n\nBoth counts are optional because providers may omit one or both values.",
@@ -5423,6 +5461,9 @@
     "tts_provider_entry": {
       "$ref": "#/$defs/TtsProviderEntry"
     },
+    "turn_usage_summary": {
+      "$ref": "#/$defs/TurnUsageSummary"
+    },
     "usage_info": {
       "$ref": "#/$defs/UsageInfo"
     },
@@ -5462,6 +5503,7 @@
     "job_record",
     "usage_info",
     "usage_summary",
+    "turn_usage_summary",
     "provider_cost_report",
     "agent_output_proposal",
     "agent_output_envelope",

@@ -3,8 +3,9 @@ use plotforge_studio::{
     CharacterEditDocument, CharacterGenerationReport, ExportProfile, GitBranchInfo,
     GitSwitchResult, ImageProviderEntry, McpServerEntry, McpServerTestResult,
     McpToolCallRequest, McpToolCallResult, McpToolManifest, ModelOption, ModerationProviderEntry,
-    PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability, PiAgentRunRequest, PiAgentRunResult,
-    PlayOnceReport, ProjectCheckReport, ProjectCreationReport, ProjectCreationRequest, ProjectData,
+    PiAgentApplyError, PiAgentApplyRequest, PiAgentApplyResult, PiAgentCapability,
+    PiAgentRunRequest, PiAgentRunResult, PlayOnceReport, ProjectCheckReport,
+    ProjectCreationReport, ProjectCreationRequest, ProjectData,
     ProviderCostReport, ProviderEntry, ProviderTestResult, PromptTemplate, RemoteModelInfo,
     ResourceDefinition, Rule, RuleDraft, RulesEditDocument, SkillIndex, SkillManifest,
     SourceFileContent, SourceFileSummary, StateVariablesEditDocument, StaticExportReport,
@@ -348,7 +349,7 @@ pub fn set_agent_session_config(
 #[tauri::command(rename_all = "snake_case")]
 pub fn pi_agent_apply_run(
     request: PiAgentApplyRequest,
-) -> Result<PiAgentApplyResult, StudioCommandError> {
+) -> Result<PiAgentApplyResult, PiAgentApplyError> {
     plotforge_studio::pi_agent_apply_run(request)
 }
 

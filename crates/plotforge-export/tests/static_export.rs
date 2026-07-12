@@ -180,7 +180,7 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
     fs::create_dir_all(project_path.join("agents/raw_responses")).expect("raw dir");
     fs::write(
         project_path.join("traces/latest.json"),
-        r#"{"private":"sk-test-secret-marker"}"#,
+        r#"{"private":"sk-test-secret-marker","turn_usage":{"total_input_tokens":987654321,"total_output_tokens":123456789,"total_spent_cost_units":424242}}"#,
     )
     .expect("write trace");
     fs::write(
@@ -209,7 +209,8 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
         report
             .audit
             .files_found
-            .into_iter()
+            .iter()
+            .cloned()
             .collect::<BTreeSet<_>>(),
         expected_export_files().into_iter().collect::<BTreeSet<_>>()
     );
@@ -220,6 +221,13 @@ fn export_excludes_project_traces_provider_config_and_raw_responses() {
     assert!(!exported_manifest.contains("RAW_PROVIDER_BODY_SHOULD_NOT_EXPORT"));
     assert!(!exported_usage.contains("sk-test-secret-marker"));
     assert!(!exported_usage.contains("RAW_PROVIDER_BODY_SHOULD_NOT_EXPORT"));
+    for file in report.audit.files_found {
+        let content = fs::read(output_dir.join(file)).expect("read exported file");
+        assert!(
+            !String::from_utf8_lossy(&content).contains("turn_usage"),
+            "turn-scoped trace usage must not enter export packages"
+        );
+    }
 }
 
 #[test]

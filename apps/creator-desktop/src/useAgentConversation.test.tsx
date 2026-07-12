@@ -11,6 +11,9 @@ import type { PlayOnceReport } from "./tauriBridge";
 interface HarnessOptions {
   /** Force piAgentApplyRun to reject with this error message. */
   failWithError?: string;
+  /** Force the Tauri-shaped structured rejection used by packaged builds. */
+  rejectWith?: unknown;
+  turnUsage?: PiAgentApplyResult["turn_usage"];
 }
 
 const defaultAgentConfig: AgentSessionConfig = {
@@ -56,7 +59,10 @@ function demoApplyResult(report: PlayOnceReport): PiAgentApplyResult {
 // The mock is created OUTSIDE the render closure so the same `vi.fn` instance
 // is captured by the hook on every render (otherwise the hook's `dataSource`
 // dependency would rebuild and lose the call record).
-function useHarness(options: HarnessOptions = {}) {
+function useHarness(
+  options: HarnessOptions = {},
+  projectPath = "/tmp/starter-project",
+) {
   const [input, setInput] = useState("pay the army");
   // Keep a stable mock + data source across renders so the hook's
   // `useCallback([dataSource, ...])` does not rebuild and lose the call
@@ -64,11 +70,17 @@ function useHarness(options: HarnessOptions = {}) {
   const mockRef = useRef<ReturnType<typeof vi.fn> | null>(null);
   if (!mockRef.current) {
     mockRef.current = vi.fn(async () => {
+      if (options.rejectWith !== undefined) {
+        throw options.rejectWith;
+      }
       if (options.failWithError) {
         throw new Error(options.failWithError);
       }
       await new Promise((resolve) => setTimeout(resolve, 0));
-      return demoApplyResult(demoPlayOnceReport(input));
+      return {
+        ...demoApplyResult(demoPlayOnceReport(input)),
+        turn_usage: options.turnUsage,
+      };
     });
   }
   const piAgentApplyRun = mockRef.current;
@@ -88,7 +100,7 @@ function useHarness(options: HarnessOptions = {}) {
   return {
     workspace: useAgentConversation(
       playtest,
-      "/tmp/starter-project",
+      projectPath,
       dataSource,
       defaultAgentConfig,
     ),
@@ -116,6 +128,27 @@ describe("useAgentConversation", () => {
     expect(result.current.workspace.turns[0].report).not.toBeNull();
     expect(result.current.workspace.turns[0].error).toBeNull();
     expect(result.current.piAgentApplyRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the apply result turn usage as redaction-safe evidence", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        turnUsage: {
+          total_input_tokens: 41,
+          total_output_tokens: 13,
+          total_spent_cost_units: 7,
+        },
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+
+    expect(result.current.workspace.turns[0].turnUsage).toEqual({
+      total_input_tokens: 41,
+      total_output_tokens: 13,
+      total_spent_cost_units: 7,
+    });
   });
 
   it("does not submit when input is empty", async () => {
@@ -225,6 +258,70 @@ describe("useAgentConversation", () => {
     );
   });
 
+  it("maps a flagged moderation preflight to its explicit rail error code", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          'pi_agent_moderation_flagged: moderation provider flagged content in categories: ["violence"]',
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "pi_agent_moderation_flagged",
+    );
+  });
+
+  it("preserves typed Tauri moderation errors and failure usage evidence", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        rejectWith: {
+          code: "pi_agent_moderation_flagged",
+          message: 'moderation provider flagged content in categories: ["violence"]',
+          turn_usage: {
+            total_input_tokens: 8,
+            total_output_tokens: 0,
+            total_spent_cost_units: 1,
+          },
+        },
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+
+    const turn = result.current.workspace.turns[0];
+    expect(turn.error).toContain("pi_agent_moderation_flagged");
+    expect(turn.errorCode).toBe("pi_agent_moderation_flagged");
+    expect(turn.turnUsage).toEqual({
+      total_input_tokens: 8,
+      total_output_tokens: 0,
+      total_spent_cost_units: 1,
+    });
+  });
+
+  it("maps other moderation preflight failures without pretending text ran", async () => {
+    const { result } = renderHook(() =>
+      useHarness({
+        failWithError:
+          "pi_agent_moderation_rate_limit: moderation provider rate limited",
+      }),
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    await waitFor(() => {
+      expect(result.current.workspace.turns.length).toBe(1);
+    });
+    expect(result.current.workspace.turns[0].errorCode).toBe(
+      "pi_agent_moderation_failed",
+    );
+  });
+
   it("appends multiple turns with monotonic agent-turn-N ids", async () => {
     const { result } = renderHook(() => useHarness());
     await act(async () => {
@@ -241,6 +338,27 @@ describe("useAgentConversation", () => {
     expect(result.current.workspace.turns[0].intent).toBe("pay the army");
     expect(result.current.workspace.turns[1].id).toBe("agent-turn-2");
     expect(result.current.workspace.turns[1].intent).toBe("raise the levies");
+  });
+
+  it("clears prior-project turns when the loaded project path changes", async () => {
+    const options = {
+      turnUsage: {
+        total_input_tokens: 5,
+        total_output_tokens: 3,
+        total_spent_cost_units: 1,
+      },
+    };
+    const { result, rerender } = renderHook(
+      ({ projectPath }) => useHarness(options, projectPath),
+      { initialProps: { projectPath: "/tmp/project-a" } },
+    );
+    await act(async () => {
+      await result.current.workspace.submit();
+    });
+    expect(result.current.workspace.turns).toHaveLength(1);
+
+    rerender({ projectPath: "/tmp/project-b" });
+    await waitFor(() => expect(result.current.workspace.turns).toEqual([]));
   });
 
   // Finding M4: the `runningRef` synchronous dedup guard must prevent two

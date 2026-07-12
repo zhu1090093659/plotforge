@@ -10,7 +10,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{ReproducibilityMetadata, RuntimeSnapshot, RuntimeTrace, Scene, UsageInfo};
+use crate::{
+    ReproducibilityMetadata, RuntimeSnapshot, RuntimeTrace, Scene, TurnUsageSummary, UsageInfo,
+};
 
 /// A single pi-Agent capability.
 ///
@@ -127,6 +129,11 @@ pub struct PiAgentApplyResult {
     pub run: PiAgentRunResult,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageInfo>,
+    /// Request-scoped totals reported by moderation, text/MCP, and image
+    /// providers during this apply turn. Absent for legacy payloads and fully
+    /// local turns with no provider usage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_usage: Option<TurnUsageSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub moderation_outcome: Option<ModerationOutcomeSummary>,
     pub scene_key: String,
@@ -441,6 +448,7 @@ mod tests {
         PiAgentApplyResult {
             run: run.clone(),
             usage: None,
+            turn_usage: None,
             moderation_outcome: None,
             scene_key: scene.key.clone(),
             scene: scene.clone(),
@@ -484,6 +492,30 @@ mod tests {
     }
 
     #[test]
+    fn pi_agent_apply_result_roundtrips_turn_usage_and_defaults_when_absent() {
+        let mut result = sample_apply_result();
+        result.turn_usage = Some(TurnUsageSummary {
+            total_input_tokens: 31,
+            total_output_tokens: 9,
+            total_spent_cost_units: 17,
+        });
+
+        let encoded = serde_json::to_value(&result).expect("serialize turn usage");
+        let decoded: PiAgentApplyResult =
+            serde_json::from_value(encoded.clone()).expect("deserialize turn usage");
+        assert_eq!(decoded, result);
+
+        let mut legacy = encoded;
+        legacy
+            .as_object_mut()
+            .expect("apply result object")
+            .remove("turn_usage");
+        let decoded_legacy: PiAgentApplyResult =
+            serde_json::from_value(legacy).expect("deserialize legacy apply result");
+        assert_eq!(decoded_legacy.turn_usage, None);
+    }
+
+    #[test]
     fn pi_agent_apply_result_rejects_raw_provider_fields() {
         let result = PiAgentApplyResult {
             run: PiAgentRunResult {
@@ -494,6 +526,7 @@ mod tests {
                 evidence_summary: "redacted".into(),
             },
             usage: None,
+            turn_usage: None,
             moderation_outcome: None,
             scene_key: "provider-scene-011".into(),
             scene: Scene {
@@ -580,6 +613,7 @@ mod tests {
                 evidence_summary: "redacted".into(),
             },
             usage: None,
+            turn_usage: None,
             moderation_outcome: None,
             scene_key: "provider-scene-011".into(),
             scene: Scene {
@@ -670,6 +704,7 @@ mod tests {
                 evidence_summary: "redacted".into(),
             },
             usage: None,
+            turn_usage: None,
             moderation_outcome: None,
             scene_key: "scene-1".into(),
             scene: Scene {

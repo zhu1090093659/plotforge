@@ -28,7 +28,7 @@ use plotforge_schema::{
 use crate::providers_http::{
     AnthropicMessagesClient, OpenAiCompatibleClient, OpenAiResponsesClient,
 };
-use crate::providers_image::{ImageProvider, OpenAiImageClient};
+use crate::providers_image::{ImageProvider, OpenAiImageClient, validate_image_provider_entry};
 use crate::providers_moderation::{
     ModerationProvider, OpenAiModerationClient, validate_moderation_provider_entry,
 };
@@ -37,7 +37,7 @@ use crate::providers_text::{
     ProviderCredentialError, ProviderCredentialResolver, TextModelClient, TextModelProvider,
     TextProviderConfig,
 };
-use crate::providers_tts::OpenAiTtsClient;
+use crate::providers_tts::{OpenAiTtsClient, validate_tts_provider_entry};
 use crate::throttle::ProviderThrottleScope;
 
 /// The reserved model id for the offline local pi-Agent mock. Real providers
@@ -371,6 +371,11 @@ pub fn build_text_provider(
 pub fn build_image_provider(
     entry: &ImageProviderEntry,
 ) -> Result<Box<dyn ImageProvider>, ProviderBuildError> {
+    validate_image_provider_entry(entry).map_err(|error| {
+        ProviderBuildError::InvalidConfiguration {
+            message: error.message,
+        }
+    })?;
     reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
     let throttle = build_throttle(
         ProviderThrottleScope::Image,
@@ -417,6 +422,11 @@ pub fn resolve_image_provider(registry: &ProviderRegistry) -> Option<&ImageProvi
 pub fn build_tts_provider(
     entry: &TtsProviderEntry,
 ) -> Result<OpenAiTtsClient<EnvCredentialResolver>, ProviderBuildError> {
+    validate_tts_provider_entry(entry).map_err(|error| {
+        ProviderBuildError::InvalidConfiguration {
+            message: error.message,
+        }
+    })?;
     reject_media_daily_token_budget(&entry.id, entry.daily_token_budget)?;
     let throttle = build_throttle(
         ProviderThrottleScope::Tts,
@@ -1832,6 +1842,42 @@ mod tests {
                 || error.code.contains("image_provider_missing_credential"),
             "expected an http error, got: {error}"
         );
+    }
+
+    #[test]
+    fn persisted_unsafe_media_provider_ids_are_rejected_before_client_use() {
+        let image = sample_image_entry("sk-image-secret", "", true);
+        let image_error = match build_image_provider(&image) {
+            Ok(_) => panic!("unsafe image provider id must not build"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            image_error,
+            ProviderBuildError::InvalidConfiguration { .. }
+        ));
+        assert!(!image_error.to_string().contains("sk-image-secret"));
+
+        let tts = TtsProviderEntry {
+            id: "sk-tts-secret".into(),
+            endpoint_url: "https://api.openai.com/v1".into(),
+            model: "gpt-4o-mini-tts".into(),
+            credential_env_var: String::new(),
+            enabled: true,
+            voice: "coral".into(),
+            format: "mp3".into(),
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        };
+        let tts_error = match build_tts_provider(&tts) {
+            Ok(_) => panic!("unsafe TTS provider id must not build"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            tts_error,
+            ProviderBuildError::InvalidConfiguration { .. }
+        ));
+        assert!(!tts_error.to_string().contains("sk-tts-secret"));
     }
 
     #[test]

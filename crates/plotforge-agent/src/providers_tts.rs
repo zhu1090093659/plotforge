@@ -16,6 +16,7 @@ use plotforge_schema::{
     RuntimeError, Scene, redact_trace_text,
 };
 
+use crate::providers_text::TextProviderConfig;
 use crate::shared::{insert_media_bytes, stable_prompt_hash};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -564,6 +565,7 @@ const TTS_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60)
 /// instead of mutating process-global env state.
 #[derive(Clone, Debug)]
 pub struct OpenAiTtsClient<R> {
+    provider_id: String,
     endpoint_url: String,
     model: String,
     default_voice: String,
@@ -585,7 +587,8 @@ where
         entry: &plotforge_schema::TtsProviderEntry,
         credential_resolver: R,
     ) -> Result<Self, TtsProviderError> {
-        Self::new(
+        Self::new_with_provider_id(
+            &entry.id,
             &entry.endpoint_url,
             &entry.model,
             &entry.voice,
@@ -604,6 +607,28 @@ where
         credential_env_var: &str,
         credential_resolver: R,
     ) -> Result<Self, TtsProviderError> {
+        Self::new_with_provider_id(
+            "openai_tts",
+            endpoint_url,
+            model,
+            default_voice,
+            format,
+            credential_env_var,
+            credential_resolver,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_provider_id(
+        provider_id: &str,
+        endpoint_url: &str,
+        model: &str,
+        default_voice: &str,
+        format: &str,
+        credential_env_var: &str,
+        credential_resolver: R,
+    ) -> Result<Self, TtsProviderError> {
+        validate_tts_provider_fields(provider_id, endpoint_url, model, credential_env_var)?;
         let client = reqwest::blocking::Client::builder()
             .timeout(TTS_HTTP_TIMEOUT)
             .connect_timeout(std::time::Duration::from_secs(10))
@@ -616,6 +641,7 @@ where
                 )
             })?;
         Ok(Self {
+            provider_id: provider_id.into(),
             endpoint_url: endpoint_url.into(),
             model: model.into(),
             default_voice: default_voice.into(),
@@ -634,6 +660,38 @@ where
         self.throttle = throttle;
         self
     }
+}
+
+pub(crate) fn validate_tts_provider_entry(
+    entry: &plotforge_schema::TtsProviderEntry,
+) -> Result<(), TtsProviderError> {
+    validate_tts_provider_fields(
+        &entry.id,
+        &entry.endpoint_url,
+        &entry.model,
+        &entry.credential_env_var,
+    )
+}
+
+fn validate_tts_provider_fields(
+    provider_id: &str,
+    endpoint_url: &str,
+    model: &str,
+    credential_env_var: &str,
+) -> Result<(), TtsProviderError> {
+    TextProviderConfig {
+        enabled: true,
+        provider: provider_id.into(),
+        model: model.into(),
+        endpoint_url: Some(endpoint_url.into()),
+        credential_env_var: credential_env_var.into(),
+        max_output_tokens: None,
+        supports_json_schema: false,
+    }
+    .validate()
+    .map_err(|error| {
+        TtsProviderError::provider("tts_provider_invalid_configuration", error.to_string())
+    })
 }
 
 impl<R> TtsProvider for OpenAiTtsClient<R>
@@ -748,7 +806,7 @@ where
         }
         Ok(TtsProviderOutput::audio(
             bytes.to_vec(),
-            "openai_tts",
+            self.provider_id.clone(),
             Some(self.model.clone()),
             None,
             1,

@@ -410,7 +410,14 @@ describe("App", () => {
         return fallbackReport;
       },
       async piAgentApplyRun() {
-        return applyResultFromReport(fallbackReport);
+        return {
+          ...applyResultFromReport(fallbackReport),
+          turn_usage: {
+            total_input_tokens: 41,
+            total_output_tokens: 13,
+            total_spent_cost_units: 7,
+          },
+        };
       },
     });
 
@@ -458,6 +465,14 @@ describe("App", () => {
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("State Delta").length).toBeGreaterThan(0);
     expect(screen.getByText("Media References")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Evidence$/ }));
+    const evidence = screen.getByRole("dialog", { name: "Evidence" });
+    expect(within(evidence).getByText("Turn input tokens")).toBeTruthy();
+    expect(within(evidence).getByText("41")).toBeTruthy();
+    expect(within(evidence).getByText("Turn output tokens")).toBeTruthy();
+    expect(within(evidence).getByText("13")).toBeTruthy();
+    expect(within(evidence).getByText("Turn cost units")).toBeTruthy();
+    expect(within(evidence).getByText("7")).toBeTruthy();
     expect(screen.getAllByText("continue-council").length).toBeGreaterThan(0);
     expect(screen.getAllByText("continue").length).toBeGreaterThan(0);
     expect(screen.getByText("background_asset")).toBeTruthy();

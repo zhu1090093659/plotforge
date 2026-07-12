@@ -21,9 +21,9 @@ pub use plotforge_schema::{
     SkillFrontmatter, SkillIndex, SkillInterface, SkillManifest, SkillOrigin, SkillSource,
     StateVariablesEditDocument, SteamSubmissionKitDraft, SteamSubmissionKitRequest,
     StoryCraftEditDocument, StoryCraftGenerationReport, StoryCraftGenerationRequest, ThinkingLevel,
-    TtsProviderEntry, UsageSummary, VisualBible, WorkshopDraftVisibility, WorkshopItemPackage,
-    WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument, WorldGenerationReport,
-    WorldGenerationRequest, redact_trace_text,
+    TtsProviderEntry, TurnUsageSummary, UsageSummary, VisualBible, WorkshopDraftVisibility,
+    WorkshopItemPackage, WorkshopPackageFile, WorkshopPublishDraft, WorldEditDocument,
+    WorldGenerationReport, WorldGenerationRequest, redact_trace_text,
 };
 // MCP schema types (Phase 5): re-exported publicly so the Tauri command
 // wrappers (`creator-desktop/src-tauri`) and downstream callers can import
@@ -52,12 +52,103 @@ use plotforge_storage::{
 use serde::Serialize;
 
 pub type StudioCommandResult<T> = Result<T, StudioCommandError>;
+pub type PiAgentApplyCommandResult<T> = Result<T, PiAgentApplyError>;
 type SystemUsageLedger = plotforge_job::UsageLedger<plotforge_job::SystemJobClock>;
+
+/// Request-scoped usage reporter for one apply turn.
+///
+/// The user-global ledger remains the persistence source of truth. Totals are
+/// accumulated only after the ledger accepts a report, so evidence cannot
+/// claim usage that failed to persist. Keeping the accumulator request-scoped
+/// avoids a before/after ledger diff that concurrent writers could pollute.
+#[derive(Debug)]
+struct ApplyUsageReporter {
+    ledger: SystemUsageLedger,
+    summary: TurnUsageSummary,
+}
+
+impl ApplyUsageReporter {
+    fn new(ledger: SystemUsageLedger) -> Self {
+        Self {
+            ledger,
+            summary: TurnUsageSummary::default(),
+        }
+    }
+}
+
+impl plotforge_agent::UsageReporter for ApplyUsageReporter {
+    fn report_usage(
+        &mut self,
+        report: plotforge_job::UsageReport,
+    ) -> Result<(), plotforge_job::UsageLedgerError> {
+        let next_input = self
+            .summary
+            .total_input_tokens
+            .checked_add(report.input_tokens)
+            .ok_or(plotforge_job::UsageLedgerError::InvalidReport(
+                "turn input token total overflowed",
+            ))?;
+        let next_output = self
+            .summary
+            .total_output_tokens
+            .checked_add(report.output_tokens)
+            .ok_or(plotforge_job::UsageLedgerError::InvalidReport(
+                "turn output token total overflowed",
+            ))?;
+        let next_cost = self
+            .summary
+            .total_spent_cost_units
+            .checked_add(report.spent_cost_units)
+            .ok_or(plotforge_job::UsageLedgerError::InvalidReport(
+                "turn cost unit total overflowed",
+            ))?;
+
+        self.ledger.report_usage(report)?;
+        self.summary = TurnUsageSummary {
+            total_input_tokens: next_input,
+            total_output_tokens: next_output,
+            total_spent_cost_units: next_cost,
+        };
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct StudioCommandError {
     pub code: String,
     pub message: String,
+}
+
+/// Error surface for the request-scoped pi-Agent apply path.
+///
+/// Most Studio commands only need a code and redaction-safe message. Apply
+/// additionally carries usage that was already persisted before a later
+/// pre-flight or provider failure (for example, a moderation request that
+/// was billed and then flagged the input). Keeping this on the typed error
+/// prevents the desktop Evidence view from silently dropping paid work.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct PiAgentApplyError {
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_usage: Option<TurnUsageSummary>,
+}
+
+impl From<StudioCommandError> for PiAgentApplyError {
+    fn from(error: StudioCommandError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+            turn_usage: None,
+        }
+    }
+}
+
+impl PiAgentApplyError {
+    fn with_turn_usage(mut self, summary: &TurnUsageSummary) -> Self {
+        self.turn_usage = (summary != &TurnUsageSummary::default()).then(|| summary.clone());
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -267,21 +358,26 @@ fn screen_then_apply<T>(
     load_ledger: impl FnOnce() -> StudioCommandResult<SystemUsageLedger>,
     screen: Option<plotforge_agent::ModerationScreen<'_>>,
     request: &plotforge_agent::ModerationRequest,
-    downstream: impl FnOnce(&mut SystemUsageLedger) -> StudioCommandResult<T>,
-) -> StudioCommandResult<(
+    downstream: impl FnOnce(&mut ApplyUsageReporter) -> StudioCommandResult<T>,
+) -> PiAgentApplyCommandResult<(
     Option<plotforge_agent::ModerationOutcome>,
     T,
-    SystemUsageLedger,
+    ApplyUsageReporter,
 )> {
-    let mut usage_ledger = load_ledger()?;
+    let mut usage_reporter =
+        ApplyUsageReporter::new(load_ledger().map_err(PiAgentApplyError::from)?);
     let outcome = plotforge_agent::screen_with_moderation_with_usage_reporter(
         screen,
         request,
-        Some(&mut usage_ledger),
+        Some(&mut usage_reporter),
     )
-    .map_err(map_moderation_loop_error)?;
-    let value = downstream(&mut usage_ledger)?;
-    Ok((outcome, value, usage_ledger))
+    .map_err(|error| {
+        PiAgentApplyError::from(map_moderation_loop_error(error))
+            .with_turn_usage(&usage_reporter.summary)
+    })?;
+    let value = downstream(&mut usage_reporter)
+        .map_err(|error| PiAgentApplyError::from(error).with_turn_usage(&usage_reporter.summary))?;
+    Ok((outcome, value, usage_reporter))
 }
 
 fn map_moderation_loop_error(error: plotforge_agent::ModerationLoopError) -> StudioCommandError {
@@ -445,7 +541,9 @@ fn run_apply_text_provider(
 /// - `pi_agent_provider_timeout`: the HTTP call timed out.
 /// - `pi_agent_unsupported_payload`: the provider returned a payload kind
 ///   other than `scene_plan` (only scene plans are committable today).
-pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<PiAgentApplyResult> {
+pub fn pi_agent_apply_run(
+    request: PiAgentApplyRequest,
+) -> PiAgentApplyCommandResult<PiAgentApplyResult> {
     let project_path = Path::new(&request.project_path);
     let project = load_project(project_path)
         .map_err(|source| command_error("pi_agent_apply_load", project_path, source))?;
@@ -483,7 +581,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             message: source.to_string(),
         })
     })?;
-    let (moderation, text_output, mut usage_ledger) = if model_id
+    let (moderation, text_output, mut usage_reporter) = if model_id
         == plotforge_agent::LOCAL_PI_MODEL_ID
     {
         // The deterministic local path never loads or resolves the provider
@@ -547,7 +645,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                     usage_identity: usage_identity.clone(),
                 },
             );
-        let (moderation, text_output, usage_ledger) = screen_then_apply(
+        let (moderation, text_output, usage_reporter) = screen_then_apply(
             || {
                 load_apply_usage_ledger(model_id, None)?.ok_or_else(|| StudioCommandError {
                     code: "pi_agent_usage_ledger".into(),
@@ -556,7 +654,7 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
             },
             screen,
             &moderation_request,
-            |usage_ledger| {
+            |usage_reporter| {
                 let provider =
                     plotforge_agent::build_text_provider(text_entry).map_err(|source| {
                         StudioCommandError {
@@ -569,11 +667,11 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                     &request.agent_id,
                     run_request,
                     enabled_mcp_servers,
-                    Some(usage_ledger),
+                    Some(usage_reporter),
                 )
             },
         )?;
-        (moderation, text_output, Some(usage_ledger))
+        (moderation, text_output, Some(usage_reporter))
     };
     let ApplyTextOutput {
         mut run_result,
@@ -592,7 +690,8 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
                     "pi-Agent returned a {} payload; only scene_plan is committable",
                     plotforge_agent::payload_kind(&other)
                 ),
-            });
+            }
+            .into());
         }
     };
 
@@ -657,13 +756,17 @@ pub fn pi_agent_apply_run(request: PiAgentApplyRequest) -> StudioCommandResult<P
         &visual_style,
         &committed_scene,
         &mut scene,
-        &mut usage_ledger,
+        &mut usage_reporter,
     );
     let usage = run_result.usage.clone();
+    let turn_usage = usage_reporter
+        .as_ref()
+        .map(|reporter| reporter.summary.clone());
 
     Ok(PiAgentApplyResult {
         run: run_result,
         usage,
+        turn_usage,
         moderation_outcome,
         scene_key,
         scene,
@@ -696,7 +799,7 @@ fn attempt_scene_image_generation(
     visual_style: &str,
     committed_scene: &Scene,
     result_scene: &mut Scene,
-    usage_ledger: &mut Option<SystemUsageLedger>,
+    usage_reporter: &mut Option<ApplyUsageReporter>,
 ) -> Option<String> {
     // Resolve the image provider. When none is configured (or all are
     // disabled), image generation is skipped — not an error. The turn
@@ -724,9 +827,9 @@ fn attempt_scene_image_generation(
             )));
         }
     };
-    if usage_ledger.is_none() {
+    if usage_reporter.is_none() {
         match plotforge_job::UsageLedger::load(plotforge_job::SystemJobClock) {
-            Ok(ledger) => *usage_ledger = Some(ledger),
+            Ok(ledger) => *usage_reporter = Some(ApplyUsageReporter::new(ledger)),
             Err(error) => {
                 return Some(redact_trace_text(&format!(
                     "image generation skipped: usage ledger load failed: {error}"
@@ -734,7 +837,7 @@ fn attempt_scene_image_generation(
             }
         }
     }
-    let Some(usage_reporter) = usage_ledger.as_mut() else {
+    let Some(usage_reporter) = usage_reporter.as_mut() else {
         return Some("image generation skipped: usage ledger unavailable".into());
     };
 
@@ -1359,7 +1462,7 @@ pub fn upsert_provider(entry: ProviderEntry) -> StudioCommandResult<ProviderEntr
     // only surface at the next provider call.
     let config = plotforge_agent::TextProviderConfig {
         enabled: entry.enabled,
-        provider: entry.label.clone(),
+        provider: entry.id.clone(),
         model: entry.model.clone(),
         endpoint_url: Some(entry.endpoint_url.clone()),
         credential_env_var: entry.credential_env_var.clone(),
@@ -2961,39 +3064,42 @@ mod tests {
 
     use super::{
         AiProviderSummary, AiSafetyPolicy, AiUsageContentKind, AiUsageDisclosure, AiUsageManifest,
-        AiUsageSourceKind, Character, CharacterDraft, Effect, ExportProfile, GIT_NOT_A_REPO_CODE,
-        ImageProviderEntry, ModerationProviderEntry, PromptScope, PromptTemplate, ProviderEntry,
-        ProviderKind, ProviderRegistry, ResourceDefinition, Rule, RuleDraft,
-        SteamSubmissionKitRequest, SystemUsageLedger, TtsProviderEntry, WorkshopDraftVisibility,
-        WorkshopItemPackage, WorkshopPackageFile, block_workshop_library_item, check_project,
-        create_character, create_character_from_draft, create_project, create_resource,
-        create_rule, create_rule_from_draft, delete_image_provider, delete_mcp_server,
-        delete_moderation_provider_entry, delete_project_prompt_template, delete_provider,
-        delete_tts_provider, delete_workshop_library_item, enable_mcp_server_for_project,
-        enable_skill_for_project, export_static_project, export_static_project_zip,
-        generate_character, generate_story_craft, generate_world_expansion,
-        get_agent_session_config, get_provider_cost_report_from_path, get_usage_summary_from_path,
-        git_current_branch, git_list_branches, git_project_dir_name, git_switch_branch,
-        import_workshop_library_package, list_asset_records, list_available_models,
-        list_export_profiles, list_mcp_servers, list_project_prompt_templates, list_providers,
-        list_remote_models, list_source_files, list_workshop_library, load_apply_usage_ledger,
-        load_provider_registry_for_apply, load_workshop_library_item,
-        map_provider_registry_mutation_error, moderation_request_for_apply,
-        mutate_studio_provider_registry, open_project, pi_agent_apply_run, pi_agent_capabilities,
-        pi_agent_run, play_once_project, play_once_project_from_latest_snapshot,
-        play_once_project_from_snapshot, play_once_project_with_save, probe_image_provider,
-        probe_moderation_provider, probe_tts_provider, read_ai_safety_policy,
-        read_character_edit_document, read_rules_edit_document, read_source_file,
-        read_state_variables_edit_document, read_story_craft_edit_document,
-        read_world_edit_document, remix_workshop_library_item, report_workshop_library_item,
-        screen_then_apply, set_agent_session_config, stamp_moderation_outcome,
-        update_ai_safety_policy, update_story_craft_edit_document, update_world_edit_document,
-        upsert_image_provider, upsert_image_provider_entry, upsert_moderation_provider,
-        upsert_moderation_provider_entry, upsert_project_prompt_template, upsert_provider,
-        upsert_tts_provider, upsert_tts_provider_entry, validate_provider_endpoint_fields,
-        validate_provider_quotas, validate_workshop_package, write_source_file,
-        write_steam_submission_kit, write_workshop_publish_draft,
+        AiUsageSourceKind, ApplyUsageReporter, Character, CharacterDraft, Effect, ExportProfile,
+        GIT_NOT_A_REPO_CODE, ImageProviderEntry, ModerationProviderEntry, PromptScope,
+        PromptTemplate, ProviderEntry, ProviderKind, ProviderRegistry, ResourceDefinition, Rule,
+        RuleDraft, SteamSubmissionKitRequest, SystemUsageLedger, TtsProviderEntry,
+        WorkshopDraftVisibility, WorkshopItemPackage, WorkshopPackageFile,
+        block_workshop_library_item, check_project, create_character, create_character_from_draft,
+        create_project, create_resource, create_rule, create_rule_from_draft,
+        delete_image_provider, delete_mcp_server, delete_moderation_provider_entry,
+        delete_project_prompt_template, delete_provider, delete_tts_provider,
+        delete_workshop_library_item, enable_mcp_server_for_project, enable_skill_for_project,
+        export_static_project, export_static_project_zip, generate_character, generate_story_craft,
+        generate_world_expansion, get_agent_session_config, get_provider_cost_report_from_path,
+        get_usage_summary_from_path, git_current_branch, git_list_branches, git_project_dir_name,
+        git_switch_branch, import_workshop_library_package, list_asset_records,
+        list_available_models, list_export_profiles, list_mcp_servers,
+        list_project_prompt_templates, list_providers, list_remote_models, list_source_files,
+        list_workshop_library, load_apply_usage_ledger, load_provider_registry_for_apply,
+        load_workshop_library_item, map_provider_registry_mutation_error,
+        moderation_request_for_apply, mutate_studio_provider_registry, open_project,
+        pi_agent_apply_run, pi_agent_capabilities, pi_agent_run, play_once_project,
+        play_once_project_from_latest_snapshot, play_once_project_from_snapshot,
+        play_once_project_with_save, probe_image_provider, probe_moderation_provider,
+        probe_tts_provider, read_ai_safety_policy, read_character_edit_document,
+        read_rules_edit_document, read_source_file, read_state_variables_edit_document,
+        read_story_craft_edit_document, read_world_edit_document, remix_workshop_library_item,
+        report_workshop_library_item, screen_then_apply, set_agent_session_config,
+        stamp_moderation_outcome, update_ai_safety_policy, update_story_craft_edit_document,
+        update_world_edit_document, upsert_image_provider, upsert_image_provider_entry,
+        upsert_moderation_provider, upsert_moderation_provider_entry,
+        upsert_project_prompt_template, upsert_provider, upsert_tts_provider,
+        upsert_tts_provider_entry, validate_provider_endpoint_fields, validate_provider_quotas,
+        validate_workshop_package, write_source_file, write_steam_submission_kit,
+        write_workshop_publish_draft,
     };
+    use plotforge_agent::UsageReporter as _;
+    use plotforge_job::{UsageKind, UsageReport};
     use plotforge_schema::{
         AgentSessionConfig, PermissionLevel, PiAgentApplyRequest, PiAgentRunRequest, ThinkingLevel,
         contains_secret_marker_text,
@@ -3009,6 +3115,50 @@ mod tests {
         assert_eq!(summary.total_output_tokens, 0);
         assert_eq!(summary.total_spent_cost_units, 0);
         assert!(summary.by_provider.is_empty());
+    }
+
+    #[test]
+    fn apply_usage_reporter_carries_request_scoped_totals_after_persistence() {
+        let mut reporter = ApplyUsageReporter::new(plotforge_job::UsageLedger::new(
+            plotforge_job::SystemJobClock,
+        ));
+
+        for report in [
+            UsageReport {
+                provider_id: "moderation".into(),
+                kind: UsageKind::Moderation,
+                model: "moderation-model".into(),
+                input_tokens: 5,
+                output_tokens: 0,
+                spent_cost_units: 2,
+            },
+            UsageReport {
+                provider_id: "text".into(),
+                kind: UsageKind::Text,
+                model: "text-model".into(),
+                input_tokens: 23,
+                output_tokens: 11,
+                spent_cost_units: 0,
+            },
+            UsageReport {
+                provider_id: "image".into(),
+                kind: UsageKind::Image,
+                model: "image-model".into(),
+                input_tokens: 0,
+                output_tokens: 0,
+                spent_cost_units: 7,
+            },
+        ] {
+            reporter.report_usage(report).expect("persist usage report");
+        }
+
+        assert_eq!(reporter.summary.total_input_tokens, 28);
+        assert_eq!(reporter.summary.total_output_tokens, 11);
+        assert_eq!(reporter.summary.total_spent_cost_units, 9);
+        let persisted = reporter.ledger.summary();
+        assert_eq!(persisted.total_input_tokens, 28);
+        assert_eq!(persisted.total_output_tokens, 11);
+        assert_eq!(persisted.total_spent_cost_units, 9);
     }
 
     #[test]
@@ -4262,7 +4412,7 @@ mod tests {
         )
         .expect("screened apply");
 
-        let report = ledger.provider_cost_report("stable-moderation-id");
+        let report = ledger.ledger.provider_cost_report("stable-moderation-id");
         assert_eq!(report.moderation_calls, 1);
         assert_eq!(report.text_calls, 0);
         assert_eq!(report.input_tokens, 29);
@@ -4300,6 +4450,15 @@ mod tests {
         .expect_err("flagged response");
 
         assert_eq!(error.code, "pi_agent_moderation_flagged");
+        assert_eq!(
+            error.turn_usage,
+            Some(super::TurnUsageSummary {
+                total_input_tokens: 29,
+                total_output_tokens: 4,
+                total_spent_cost_units: 7,
+            }),
+            "a billed moderation rejection must retain request-scoped evidence"
+        );
         assert_eq!(text_calls.get(), 0);
         let report = get_provider_cost_report_from_path(&usage_path, "stable-moderation-id".into())
             .expect("persisted moderation report");
@@ -4689,6 +4848,27 @@ mod tests {
         let error = upsert_provider(entry).expect_err("query-string credential rejected");
         assert_eq!(error.code, "upsert_provider_invalid");
         assert!(error.message.contains("credential"));
+    }
+
+    #[test]
+    fn upsert_text_provider_validates_stable_id_not_display_label() {
+        let entry = ProviderEntry {
+            id: "sk-secret-provider-id".into(),
+            kind: ProviderKind::OpenAiCompatible,
+            label: "Safe display label".into(),
+            endpoint_url: "https://host/v1".into(),
+            model: "model-a".into(),
+            credential_env_var: "OPENAI_API_KEY".into(),
+            enabled: true,
+            max_output_tokens: None,
+            max_concurrency: None,
+            requests_per_minute: None,
+            daily_token_budget: None,
+        };
+
+        let error = upsert_provider(entry).expect_err("unsafe stable id rejected");
+        assert_eq!(error.code, "upsert_provider_invalid");
+        assert!(!error.message.contains("sk-secret-provider-id"));
     }
 
     #[test]

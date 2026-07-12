@@ -1,5 +1,9 @@
-import { useCallback, useRef, useState } from "react";
-import type { AgentSessionConfig, PiAgentApplyResult } from "../../../contracts/plotforge";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  AgentSessionConfig,
+  PiAgentApplyResult,
+  TurnUsageSummary,
+} from "../../../contracts/plotforge";
 import type { PlayOnceReport } from "./tauriBridge";
 import type { StudioDataSource } from "./studioDataSource";
 import type { PlaytestRunResult, PlaytestWorkspace } from "./usePlaytest";
@@ -43,6 +47,8 @@ export interface AgentTurn {
    * warning), this carries the redacted failure message so the rail can
    * surface it as a visible warning rather than a silent missing image. */
   imageWarning: string | null;
+  /** Numeric-only usage totals emitted by providers during this turn. */
+  turnUsage: TurnUsageSummary | null;
 }
 
 export interface AgentConversationWorkspace {
@@ -79,16 +85,68 @@ function applyResultToReport(result: PiAgentApplyResult): PlayOnceReport {
   };
 }
 
-function mapApplyErrorToCode(message: string): string | null {
-  if (message.includes("missing_credential")) return "pi_agent_missing_credential";
-  if (message.includes("timeout")) return "pi_agent_provider_timeout";
-  if (message.includes("text_provider_rate_limit"))
+function mapApplyErrorToCode(message: string, structuredCode?: string): string | null {
+  const code = structuredCode ? `${structuredCode} ${message}` : message;
+  if (code.includes("pi_agent_moderation_flagged"))
+    return "pi_agent_moderation_flagged";
+  if (code.includes("pi_agent_moderation_"))
+    return "pi_agent_moderation_failed";
+  if (code.includes("missing_credential")) return "pi_agent_missing_credential";
+  if (code.includes("timeout")) return "pi_agent_provider_timeout";
+  if (code.includes("text_provider_rate_limit"))
     return "text_provider_rate_limit";
-  if (message.includes("text_provider_content_filtered"))
+  if (code.includes("text_provider_content_filtered"))
     return "text_provider_content_filtered";
-  if (message.includes("text_provider_output_truncated"))
+  if (code.includes("text_provider_output_truncated"))
     return "text_provider_output_truncated";
   return null;
+}
+
+interface NormalizedApplyError {
+  message: string;
+  code: string | null;
+  turnUsage: TurnUsageSummary | null;
+}
+
+function isTurnUsageSummary(value: unknown): value is TurnUsageSummary {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return [
+    candidate.total_input_tokens,
+    candidate.total_output_tokens,
+    candidate.total_spent_cost_units,
+  ].every((total) => typeof total === "number" && Number.isFinite(total) && total >= 0);
+}
+
+/** Tauri rejects commands with the serialized Rust error object, while the
+ * dev bridge and tests may reject with Error/string values. Normalize all
+ * three at the IPC boundary so typed codes and numeric failure evidence are
+ * preserved instead of collapsing to "[object Object]". */
+function normalizeApplyError(error: unknown): NormalizedApplyError {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      code: mapApplyErrorToCode(error.message),
+      turnUsage: null,
+    };
+  }
+  if (error && typeof error === "object") {
+    const payload = error as Record<string, unknown>;
+    const structuredCode = typeof payload.code === "string" ? payload.code : undefined;
+    const rawMessage = typeof payload.message === "string" ? payload.message : "";
+    const message = structuredCode
+      ? rawMessage.includes(structuredCode)
+        ? rawMessage
+        : `${structuredCode}: ${rawMessage || "pi-Agent apply failed"}`
+      : rawMessage || "pi-Agent apply failed";
+    return {
+      message,
+      code: mapApplyErrorToCode(message, structuredCode),
+      turnUsage: isTurnUsageSummary(payload.turn_usage) ? payload.turn_usage : null,
+    };
+  }
+  const message = String(error);
+  return { message, code: mapApplyErrorToCode(message), turnUsage: null };
 }
 
 /** Extracts the env-var name from a redacted missing-credential provider
@@ -114,6 +172,16 @@ export function useAgentConversation(
   // `running=true`) does not spawn two provider calls.
   const runningRef = useRef(false);
   const [running, setRunning] = useState(false);
+  const loadedPathRef = useRef(loadedPath);
+  const previousPathRef = useRef(loadedPath);
+  loadedPathRef.current = loadedPath;
+
+  useEffect(() => {
+    if (previousPathRef.current === loadedPath) return;
+    previousPathRef.current = loadedPath;
+    idCounterRef.current = 0;
+    setTurns([]);
+  }, [loadedPath]);
 
   const runAndAppend = useCallback(
     async (intent: string): Promise<PlaytestRunResult> => {
@@ -133,6 +201,7 @@ export function useAgentConversation(
       }
       runningRef.current = true;
       setRunning(true);
+      const requestPath = loadedPath;
       try {
         const result = await dataSource.piAgentApplyRun({
           agent_id: agentConfig.model_id,
@@ -144,48 +213,57 @@ export function useAgentConversation(
             ? undefined
             : playtest.playtestRestoreId,
         });
-        idCounterRef.current += 1;
         const report = applyResultToReport(result);
         const imageWarning = result.image_generation_failed ?? null;
-        setTurns((prev) => [
-          ...prev,
-          {
-            id: `agent-turn-${idCounterRef.current}`,
-            intent: trimmed,
-            report,
-            error: null,
-            errorCode: null,
-            errorEnvVar: null,
-            imageWarning,
-          },
-        ]);
+        const turnUsage = result.turn_usage ?? null;
+        if (loadedPathRef.current === requestPath) {
+          idCounterRef.current += 1;
+          setTurns((prev) => [
+            ...prev,
+            {
+              id: `agent-turn-${idCounterRef.current}`,
+              intent: trimmed,
+              report,
+              error: null,
+              errorCode: null,
+              errorEnvVar: null,
+              imageWarning,
+              turnUsage,
+            },
+          ]);
+        }
         // Mirror the report into the playtest workspace so TraceDebugView /
         // PlayView (which read `playtest.playtestReport`) stay in sync with
         // the latest pi-Agent turn. The playtest workspace remains the owner
         // of the report state; this hook just feeds it.
-        playtest.setPlaytestReport(report);
-        playtest.setPlaytestError(null);
+        if (loadedPathRef.current === requestPath) {
+          playtest.setPlaytestReport(report);
+          playtest.setPlaytestError(null);
+        }
         return { succeeded: true, report };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const errorCode = mapApplyErrorToCode(message);
+        const normalized = normalizeApplyError(error);
+        const { message, code: errorCode, turnUsage } = normalized;
         const errorEnvVar =
           errorCode === "pi_agent_missing_credential" ? extractEnvVarName(message) : null;
-        idCounterRef.current += 1;
-        setTurns((prev) => [
-          ...prev,
-          {
-            id: `agent-turn-${idCounterRef.current}`,
-            intent: trimmed,
-            report: null,
-            error: message,
-            errorCode,
-            errorEnvVar,
-            imageWarning: null,
-          },
-        ]);
-        playtest.setPlaytestReport(null);
-        playtest.setPlaytestError(message);
+        if (loadedPathRef.current === requestPath) {
+          idCounterRef.current += 1;
+          setTurns((prev) => [
+            ...prev,
+            {
+              id: `agent-turn-${idCounterRef.current}`,
+              intent: trimmed,
+              report: null,
+              error: message,
+              errorCode,
+              errorEnvVar,
+              imageWarning: null,
+              turnUsage,
+            },
+          ]);
+          playtest.setPlaytestReport(null);
+          playtest.setPlaytestError(message);
+        }
         return { succeeded: false, error: message };
       } finally {
         runningRef.current = false;
@@ -211,11 +289,12 @@ export function useAgentConversation(
 
   const setInput = playtest.setPlaytestInput;
   const canSubmit = Boolean(playtest.playtestInput.trim()) && !running;
+  const visibleTurns = previousPathRef.current === loadedPath ? turns : [];
 
   return {
     input: playtest.playtestInput,
     setInput,
-    turns,
+    turns: visibleTurns,
     running,
     canSubmit,
     submit,

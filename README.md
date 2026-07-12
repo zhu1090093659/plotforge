@@ -26,15 +26,15 @@ It keeps the project as files you can read: TOML, JSON, Markdown, and local asse
 
 The current repository contains the MVP foundation:
 
-- Rust workspace crates for schema, storage, rules, runtime, story craft review, mock agent planning, media assets, job state, export, Workshop draft validation, and CLI orchestration.
+- Rust workspace crates for schema, storage, rules, runtime, story craft review, local and real-provider agent planning, MCP, media assets, job state, export, Workshop draft validation, Studio adapters, and CLI orchestration.
 - A folder-project format where source files are the truth and caches are rebuildable.
 - A Vite/React/Tailwind Creator Desktop workspace with a thin Tauri bridge.
 - A static no-network player package under `apps/player-web/static`.
 - Local export profiles, AI usage disclosure files, package hashes, and Steam Submission Kit drafts.
 - A local-only Workshop package schema and validator.
-- A real in-app Agent configuration surface: the `AgentView` (sidebar item #12) wires model providers (OpenAI-compatible / OpenAI Responses / Anthropic Messages), per-project model settings, prompt templates (user-global + project-scoped), and a Skills library that auto-discovers Claude Code / Codex `SKILL.md` folders from external agent roots. The right-side `AgentChatRail` drives `pi_agent_apply_run` to generate a scene proposal via the configured provider and commit it through the runtime/rules boundary.
+- A real in-app Settings surface: the Agent tab wires text, image, TTS, and moderation providers alongside per-project model settings, prompt templates, quota controls, and usage evidence; the MCP and Skills tabs manage their own user-global registries and per-project enablement. The right-side `AgentChatRail` drives `pi_agent_apply_run` to generate a scene proposal through the configured path and commit it at the runtime/rules boundary.
 
-Real model providers, real media providers, Steamworks upload, hosted sharing, and paid Workshop flows are still deferred. The current AI path is a mock/planned-provider foundation. That boundary is intentional.
+`local-pi` remains the default no-network text path; leave real media providers disabled for a fully no-network apply. Real provider clients are opt-in local configuration: PlotForge supplies first-party HTTP adapters for text, image, TTS, and moderation, while credentials remain in environment variables. Steamworks upload, hosted sharing, and paid Workshop flows are still deferred.
 
 ## The Shape Of A World
 
@@ -79,6 +79,20 @@ npm run creator-desktop:dev
 npm run creator-desktop:qa
 ```
 
+## Providers And Usage
+
+Provider configuration lives in Settings → Agent and is stored in the user-global PlotForge registry, never in a game project or export. Entries name the environment variable that holds a credential; the credential value is not stored or displayed.
+
+Text, image, TTS, and moderation providers support `max_concurrency` and `requests_per_minute`. `daily_token_budget` is available only for text providers because the other upstream responses do not provide reliable output-token usage. For non-local apply runs, the first enabled moderation provider screens the exact player input before text or MCP execution. A flagged result or provider failure stops the run explicitly; with no moderation provider configured, the input proceeds without a moderation hash. `local-pi` bypasses moderation and usage-ledger preflight for its local text turn.
+
+The user-global usage ledger records redaction-safe call counts, token totals when reported, and cost units. Inspect it from the CLI:
+
+```bash
+cargo run -p plotforge-cli -- usage summary
+cargo run -p plotforge-cli -- usage summary --json
+cargo run -p plotforge-cli -- usage provider --id <provider-id>
+```
+
 ## Build And Verify
 
 The narrow checks are useful while working:
@@ -116,7 +130,7 @@ Dreams need tools. They also need boundaries.
 - Static exports copy only whitelisted player files, manifest files, and reachable referenced assets.
 - Export profiles and `ai-usage.json` describe capability and evidence. They do not make legal conclusions or platform approval promises.
 - Workshop and Steam Submission Kit flows are local draft support only. They do not upload by default and do not promise Steam outcomes.
-- No hidden network calls belong in MVP runtime paths or tests.
+- Provider and MCP network calls require explicit local configuration; tests use local mock servers and never contact real providers.
 
 The work is to make creation feel open without making the system vague.
 
